@@ -342,8 +342,9 @@ describe('error code grammar', () => {
     imageWidth: true, imageHeight: true, paletteEntryCount: true, fontCellWidth: true, fontHeight: true,
     payloadEntryBytes: true, payloadItems: true, textBytes: true, meshVertices: true, meshTriangles: true, modelParts: true,
     effectRecords: true, missileTypes: true, ringSegments: true, executableObjects: true, executablePages: true, executableRegion: true,
-    cockpitSlots: true, cockpitElements: true, mfdRecords: true, tableRecords: true, snipFrames: true, diagStartupMessages: true, diagTextBytes: true,
-    aiProgramRecords: true, aiScriptItems: true, aiEntries: true, commMenuItems: true, animFrameBytes: true,
+    cockpitSlots: true, cockpitElements: true, cockpitInstruments: true, mfdRecords: true, tableRecords: true, snipFrames: true, diagStartupMessages: true, diagTextBytes: true,
+    aiProgramRecords: true, aiScriptItems: true, aiEntries: true, commMenuItems: true, animFrameBytes: true, commTableItems: true, commNames: true,
+    aiKeywordEntries: true, aiKeywordNames: true, aiKeywordNameBytes: true,
   };
 
   it.each([

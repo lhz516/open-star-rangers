@@ -20,6 +20,11 @@
  *   being the current list-1 mount's missile record +0x34 (`IMUL` wrapping, `IDIV` truncating; a zero c34 is a fault, as
  *   the original's divide exception is). A gun record has no +0x34 (the original reads past its 48 bytes); no craft of
  *   the slice has a gun in list 1 (W2), so reading one is a fault (project choice).
+ * - **Warp** (docs/plan/p3/02/spec.md, MW-11; P3-09): the type-12 indicator, lit while +0xC8 = 0 or +0xC8 + 64 × +0xA4 <
+ *   clock, strictly, unlike the start's interval check (`0x4f2a0`, `0x4f3e4`; the campaign gate `0x33504` always holds
+ *   in the slice); and in view mode 1 page 6's values a, s, p, c (`0x4dcec`), p = warp-path.ts's warpProgress. View 1
+ *   without a transit is unreachable (warp.ts); it reads null as every other view does. A marker as the target reads as
+ *   any target: kind 25, its `map-marker` name, speed 0 and a null shield.
  *
  * The distance (T7) is f32(√((dy × f32(dy) + dz × f32(dz)) + dx × f32(dx))) of the double differences of the f32
  * positions, at 53-bit precision and round to nearest, as `0x42d80` forms it; an f32 store that overflows is a fault, as
@@ -34,7 +39,11 @@ import { readRadar } from '../rules/radar.ts';
 import { toInt32 } from '../rules/record-defaults.ts';
 import type { Entity, Matrix3, WeaponBlock } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
-import type { CombatPlayer, CombatReady, CombatTarget, ResourceReading, WeaponListReading, WeaponRecordReference } from './projection.ts';
+import { warpProgress } from '../rules/warp-path.ts';
+import { WARP_VIEW_MODE } from '../systems/view-switch.ts';
+import type {
+  CombatPlayer, CombatReady, CombatTarget, CombatWarpReading, ResourceReading, WeaponListReading, WeaponRecordReference,
+} from './projection.ts';
 
 /** `0x2e080`'s scale and level 2's offset: level 2 reads 100 down to 50, level 3 50 down to 0. */
 const PERCENT = 100;
@@ -43,10 +52,10 @@ const LEVEL_2_OFFSET = 50;
 const NO_PLAYER: CombatReady = Object.freeze({ readiness: 'ready', player: null });
 
 const fault = (site: string): CoreFaultError => new CoreFaultError('invariant-violated', `combat.${site}`);
-const reading = (current: number, maximum: number): ResourceReading => Object.freeze({ current, maximum });
+export const reading = (current: number, maximum: number): ResourceReading => Object.freeze({ current, maximum });
 
 /** The craft record of `kindBit`; world creation binds every instantiable kind to one. */
-function craftRecord(world: WorldState, kindBit: number): CraftRecord {
+export function craftRecord(world: WorldState, kindBit: number): CraftRecord {
   const craft = world.craftInfo.content.craft[kindBit];
   if (craft === undefined) throw fault('record');
   return craft;
@@ -111,6 +120,20 @@ function lockProgress(world: WorldState, weapons: WeaponBlock, craft: CraftRecor
   return lock.level === 2 ? toInt32(progress + LEVEL_2_OFFSET) : progress;
 }
 
+/** The clock units per second of the Warp interval: craft +0xA4 `SHL` 6. */
+const INTERVAL_UNITS_PER_SECOND = 64;
+
+/** The cockpit's Warp readings; see the module comment. */
+function readWarp(world: WorldState, player: Entity, craft: CraftRecord): CombatWarpReading {
+  const { warpClock } = player;
+  const indicator = warpClock === 0 || warpClock + INTERVAL_UNITS_PER_SECOND * craft.atA4 < world.clock;
+  const transit = world.player.viewMode === WARP_VIEW_MODE ? world.player.warp : null;
+  const page = transit === null
+    ? null
+    : Object.freeze({ angle: transit.angle, error: transit.error, completion: warpProgress(transit), centring: transit.centring });
+  return Object.freeze({ indicator, page });
+}
+
 /** The combat group: ready, with the player's readings or null without a player entity. */
 export function projectCombat(world: WorldState): CombatReady {
   const { player: state } = world;
@@ -140,6 +163,7 @@ export function projectCombat(world: WorldState): CombatReady {
     lock: Object.freeze({ level: weapons.lock.level, losing: weapons.lock.losing, progress: lockProgress(world, weapons, craft) }),
     subsystems: Object.freeze([...combat.subsystems]),
     leftPage: state.leftDisplay.page,
+    warp: readWarp(world, player, craft),
   });
   return Object.freeze({ readiness: 'ready', player: readings });
 }

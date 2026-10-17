@@ -20,8 +20,11 @@ const face = (base: number) => buildImfat(base, [
   { id: base + 1, type: 'CMOV', data: Uint8Array.of(8, 0, 0, 0, 1, 2, 3, 4), relocations: [0] },
   { id: base + 3, type: 'TABL', data: Uint8Array.of(9, 9, 9, 9, 9) },
 ]);
-const COVERED: Record<string, SyntheticFileContent> = { 'MAIN/A.NOB': BASE_ARCHIVE, 'MAIN/B.EXE': Uint8Array.from({ length: 3_000 }, (_, index) => index & 0xff) };
-const RESEARCH: Record<string, SyntheticFileContent> = { 'MAIN/COMMFACE.NOB': face(40_000), 'MAIN/COMMFAC2.NOB': face(50_000) };
+// The HI face archive is covered, as in the production whitelist, and only the LO one is a research archive.
+const COVERED: Record<string, SyntheticFileContent> = {
+  'MAIN/A.NOB': BASE_ARCHIVE, 'MAIN/B.EXE': Uint8Array.from({ length: 3_000 }, (_, index) => index & 0xff), 'MAIN/COMMFACE.NOB': face(40_000),
+};
+const RESEARCH: Record<string, SyntheticFileContent> = { 'MAIN/COMMFAC2.NOB': face(50_000) };
 const CATALOG = catalogFor(COVERED);
 /** A covered archive whose only relocation stores a pointer past its 8-byte block. */
 const BROKEN_FILES: Record<string, SyntheticFileContent> = { ...COVERED, 'MAIN/R.NOB': buildImfat(30_000, [{ id: 30_001, type: 'TEX', data: Uint8Array.of(13, 0, 0, 0, 0, 0, 0, 0), relocations: [0] }]) };
@@ -102,11 +105,11 @@ describe('runSourceCheck', () => {
     const report = await runSourceCheck(good, { open, catalog: CATALOG });
     expect(report).toMatchObject({
       format: 'osr-source-check', version: 1, passed: true, error: null, closeFailures: 0,
-      identity: { versionId: 'synthetic-test', fingerprint: sourceFingerprint(CATALOG), files: 2 },
+      identity: { versionId: 'synthetic-test', fingerprint: sourceFingerprint(CATALOG), files: 3 },
     });
     expect(report.archives).toEqual([
       { path: 'MAIN/A.NOB', coverage: 'verified', entries: 6, types: { 1234: 1, A: 1, B2: 1, M2ID: 1, MESH: 1, TEX: 1 }, entriesRead: 6, maxBlockBytes: 32, maxRelocations: 3 },
-      { path: 'MAIN/COMMFACE.NOB', coverage: 'research', entries: 2, types: { CMOV: 1, TABL: 1 }, entriesRead: 2, maxBlockBytes: 8, maxRelocations: 1 },
+      { path: 'MAIN/COMMFACE.NOB', coverage: 'verified', entries: 2, types: { CMOV: 1, TABL: 1 }, entriesRead: 2, maxBlockBytes: 8, maxRelocations: 1 },
       { path: 'MAIN/COMMFAC2.NOB', coverage: 'research', entries: 2, types: { CMOV: 1, TABL: 1 }, entriesRead: 2, maxBlockBytes: 8, maxRelocations: 1 },
     ]);
     expect(report.reads.sourceReadBytes).toBeGreaterThan(0);
@@ -115,7 +118,7 @@ describe('runSourceCheck', () => {
   });
 
   it('identifies through the product entry and its production whitelist by default, closing every input', async () => {
-    expect(RESEARCH_ARCHIVES).toEqual(['MAIN/COMMFACE.NOB', 'MAIN/COMMFAC2.NOB']);
+    expect(RESEARCH_ARCHIVES).toEqual(['MAIN/COMMFAC2.NOB']);
     const { open, opened, closed } = opener();
     const report = await runSourceCheck(good, { open });
     expect(report).toMatchObject({ passed: false, identity: null, archives: [], error: { code: 'unsupported-version', location: 'file:/MAIN/AISTUFF.NOB' } });
@@ -162,7 +165,7 @@ describe('runSourceCheck', () => {
     const during = new AbortController();
     const second = opener(undefined, onArchiveOpen(() => during.abort()));
     const report = await runSourceCheck(good, { open: second.open, catalog: CATALOG, signal: during.signal });
-    expect(report).toMatchObject({ passed: false, error: { code: 'cancelled' }, identity: { files: 2 } });
+    expect(report).toMatchObject({ passed: false, error: { code: 'cancelled' }, identity: { files: 3 } });
     expectEveryInputClosed(second);
   });
 

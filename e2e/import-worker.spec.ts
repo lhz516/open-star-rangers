@@ -17,7 +17,7 @@ import {
 } from '../src/workers/synthetic-import.test-support.ts';
 import { PRODUCTION_EFFECT_USAGE } from '../src/original-data/conversion/production-effects.test-support.ts';
 import { PRODUCTION_MODEL_USAGE } from '../src/original-data/conversion/production-models.test-support.ts';
-import { COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE } from '../src/original-data/conversion/production-graphics.test-support.ts';
+import { COCKPIT_HUD_MAP_USAGE, MAP_GEOMETRY_USAGE, MODEL_TEXTURE_USAGE } from '../src/original-data/conversion/production-graphics.test-support.ts';
 import { PRODUCTION_FLIGHT_DATA_USAGE } from '../src/original-data/conversion/flight-data.test-support.ts';
 import { PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS } from '../src/original-data/conversion/production-flight-graphics.ts';
 import { HUD_TEXT_USAGE } from '../src/original-data/conversion/production-hud-text.test-support.ts';
@@ -33,8 +33,11 @@ import {
 // P2-04 AC-08 to AC-10: real module Workers in Chromium, loaded through the platform adapter by the app's job owner.
 /** The P3-03 flight graphics of the cockpit-hud-map group: the target display image, its palette and the view labels. */
 const FLIGHT_COCKPIT_ASSETS = PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS.filter(({ group }) => group === 'cockpit-hud-map').length;
-/** The cockpit-hud-map group of a production graphics disc: the P2-05 palette and fonts, the P2-07 Assets, the flight graphics and the HUD text. */
-const COCKPIT_ASSETS = 4 + COCKPIT_HUD_MAP_USAGE.assets + FLIGHT_COCKPIT_ASSETS + HUD_TEXT_USAGE.assets;
+/**
+ * The cockpit-hud-map group of a production graphics disc: the P2-05 palette and fonts, the P2-07 Assets, the flight
+ * graphics, the HUD text and the map geometry.
+ */
+const COCKPIT_ASSETS = 4 + COCKPIT_HUD_MAP_USAGE.assets + FLIGHT_COCKPIT_ASSETS + HUD_TEXT_USAGE.assets + MAP_GEOMETRY_USAGE.assets;
 
 /**
  * The models group of the slice disc: the flight palette, the textures, the flight images of the group, the bound
@@ -228,10 +231,10 @@ test('test entry identifies production-sized synthetic files and transfers four 
   await openHarness(page);
   await startImport(page, 'synthetic', 'production-sized');
   await settled(page);
-  // The generated disc holds the eight whitelisted paths at their production sizes, checked against the catalog itself.
+  // The generated disc holds the nine whitelisted paths at their production sizes, checked against the catalog itself.
   const covered = await page.evaluate(() => window.osrImport.covered);
   expect(covered.sort()).toEqual(PRODUCTION_CATALOG.files.map(({ path, byteLength }) => [path, byteLength]).sort());
-  expect(covered).toHaveLength(8);
+  expect(covered).toHaveLength(9);
   expect(await probe(page)).toEqual({
     workers: [{ entry: '/src/workers/import-worker.test-support.ts', viteWorker: false, type: 'module', name: 'synthetic', posts: 1, terminations: 1 }],
     activeListeners: 0, listeners: 3,
@@ -333,7 +336,7 @@ test('test entry converts the synthetic sounds after the graphics and hands over
   // no craft model is bound.
   const basis = readContentIdentityBasis({
     schemaVersion: CONTENT_SCHEMA_VERSION, sliceId: CLASSIC_P2_SLICE.sliceId, sliceDefinitionVersion: CLASSIC_P2_SLICE.version,
-    converterVersion: 'osr-import.graphics-4.logic-2.audio-2.models-4', origin: { type: 'original-import', sourceFingerprint: final.identity.sourceFingerprint },
+    converterVersion: 'osr-import.graphics-5.logic-4.audio-2.models-4', origin: { type: 'original-import', sourceFingerprint: final.identity.sourceFingerprint },
   });
   const source = await syntheticSource(audioCoveredFiles(), 'synthetic-audio');
   expect(source.identity.fingerprint).toBe(final.identity.sourceFingerprint);

@@ -3,14 +3,15 @@ import { expectContractError } from '../graphics/graphics.test-support.ts';
 import { AI_PROGRAMS_COUNTS, AI_PROGRAMS_LIMITS, AI_SCRIPT_END_OPCODE } from './ai-programs.ts';
 import { BASE_REPAIR_ITEM_COUNT } from './base-repair-items.ts';
 import { COMM_MENUS_LIMITS } from './comm-menus.ts';
+import { COMM_MESSAGES_LIMITS } from './comm-messages.ts';
 import { CRAFT_INFO_COUNTS, CRAFT_INFO_LIMITS } from './craft-info.ts';
 import { DEBRIS_PARAMETERS_LIMITS } from './debris-parameters.ts';
 import { FLIGHT_MESSAGES_LIMITS } from './flight-messages.ts';
 import { decodeRuleDataPayload, readRuleDataContent, type RuleDataRole } from './rule-data-payload.ts';
 import {
-  box, builtInProgram, commandItem, craft, debrisRecord, gun, missile, missileBody, mount, parameterEntry, script, scriptItem,
-  syntheticAiPrograms, syntheticBaseRepairItems, syntheticCommMenus, syntheticCraftInfo, syntheticDebrisParameters,
-  syntheticFlightMessages, syntheticRuleDataAsset, tableProgram, text,
+  absentMessage, box, builtInProgram, commandItem, craft, debrisRecord, gun, keyword, missile, missileBody, mount, parameterEntry, script, scriptItem,
+  message, syntheticAiPrograms, syntheticBaseRepairItems, syntheticCommMenus, syntheticCommMessages, syntheticCraftInfo,
+  syntheticDebrisParameters, syntheticFlightMessages, syntheticRuleDataAsset, tableProgram, text,
 } from './rule-data.test-support.ts';
 
 // AC-14 (structural limits): every limit passes exactly at its value and fails one above it, before any item is read.
@@ -133,6 +134,14 @@ const LIMIT_CASES: Readonly<Record<string, LimitCase>> = {
     role: 'ai-programs', limit: AI_PROGRAMS_LIMITS.scriptTextBytes, path: 'aiPrograms.entries[3].items[0].argument',
     build: aiPrograms((content, count) => { content.entries[3] = script([scriptItem(AI_SCRIPT_END_OPCODE, text(count))]); }),
   },
+  'ai-programs keyword entries': {
+    role: 'ai-programs', limit: AI_PROGRAMS_LIMITS.keywordEntries, path: 'aiPrograms.keywordTables[2]',
+    build: aiPrograms((content, count) => { content.keywordTables[2] = times(count, index => keyword(text(1 + index), index)); }),
+  },
+  'ai-programs keyword name bytes': {
+    role: 'ai-programs', limit: AI_PROGRAMS_LIMITS.keywordNameBytes, path: 'aiPrograms.keywordTables[1][4].name',
+    build: aiPrograms((content, count) => { content.keywordTables[1][4] = keyword(text(count), 4); }),
+  },
   'comm-menus items': {
     role: 'comm-menus', limit: COMM_MENUS_LIMITS.items, path: 'commMenus.otherTargetCommands',
     build: count => ({ ...syntheticCommMenus(), otherTargetCommands: [...times(count - 1, index => commandItem(index + 1)), commandItem(0)] }),
@@ -140,6 +149,42 @@ const LIMIT_CASES: Readonly<Record<string, LimitCase>> = {
   'comm-menus text bytes': {
     role: 'comm-menus', limit: COMM_MENUS_LIMITS.textBytes, path: 'commMenus.objectListLastEntry',
     build: count => ({ ...syntheticCommMenus(), objectListLastEntry: text(count) }),
+  },
+  'comm-messages faces': {
+    role: 'comm-messages', limit: COMM_MESSAGES_LIMITS.faces, path: 'commMessages.faceTables[1]',
+    build: count => {
+      const content = syntheticCommMessages();
+      content.faceTables[1] = times(count, () => [absentMessage()]);
+      return content;
+    },
+  },
+  'comm-messages face messages': {
+    role: 'comm-messages', limit: COMM_MESSAGES_LIMITS.faceMessages, path: 'commMessages.faceTables[2][1]',
+    build: count => {
+      const content = syntheticCommMessages();
+      content.faceTables[2][1] = times(count, index => message(index + 1));
+      return content;
+    },
+  },
+  'comm-messages direct messages': {
+    role: 'comm-messages', limit: COMM_MESSAGES_LIMITS.directMessages, path: 'commMessages.direct',
+    build: count => ({ ...syntheticCommMessages(), direct: times(count, index => (index % 3 ? message(index, 2, 1) : absentMessage())) }),
+  },
+  'comm-messages frames': {
+    role: 'comm-messages', limit: COMM_MESSAGES_LIMITS.frames, path: 'commMessages.direct[2].frameDurations',
+    build: count => {
+      const content = syntheticCommMessages();
+      content.direct[2] = message(...times(count, index => index * 3));
+      return content;
+    },
+  },
+  'comm-messages names': {
+    role: 'comm-messages', limit: COMM_MESSAGES_LIMITS.names, path: 'commMessages.names2011',
+    build: count => ({ ...syntheticCommMessages(), names2011: times(count, index => text(1 + (index % 20))) }),
+  },
+  'comm-messages name bytes': {
+    role: 'comm-messages', limit: COMM_MESSAGES_LIMITS.nameBytes, path: 'commMessages.names2001[0]',
+    build: count => ({ ...syntheticCommMessages(), names2001: [text(count)] }),
   },
   'flight-messages text bytes': {
     role: 'flight-messages', limit: FLIGHT_MESSAGES_LIMITS.textBytes, path: 'flightMessages.speedAssistOff',
@@ -157,10 +202,16 @@ describe('rule-data structural limits', () => {
     expect(DEBRIS_PARAMETERS_LIMITS).toEqual({ records: derive(8), boxes: derive(1) });
     expect(AI_PROGRAMS_LIMITS).toEqual({
       programRecords: derive(10), programNameBytes: derive(20), globalElements: derive(5), entries: derive(25),
-      stateScriptItems: derive(6), scriptItems: derive(40), scriptTextBytes: derive(37),
+      stateScriptItems: derive(6), scriptItems: derive(40), scriptTextBytes: derive(37), keywordEntries: derive(6),
+      // A keyword name is held to a program name's limit, above the 11 bytes observed.
+      keywordNameBytes: AI_PROGRAMS_LIMITS.programNameBytes,
     });
+    expect(AI_PROGRAMS_LIMITS.keywordNameBytes).toBeGreaterThanOrEqual(derive(11));
     expect(COMM_MENUS_LIMITS).toEqual({ items: derive(8), textBytes: derive(15) });
     expect(FLIGHT_MESSAGES_LIMITS).toEqual({ textBytes: derive(45) });
+    expect(COMM_MESSAGES_LIMITS).toEqual({
+      faces: derive(5), faceMessages: derive(61), directMessages: derive(85), frames: derive(4), names: derive(20), nameBytes: derive(11),
+    });
     // The menu builders copy a text with its NUL into a 48-byte field, so the derived limit stays inside the format's.
     expect(COMM_MENUS_LIMITS.textBytes).toBeLessThanOrEqual(47);
   });
@@ -190,6 +241,8 @@ describe('rule-data format counts', () => {
       count => ({ byCraftType: times(count, () => []) })],
     ['group triple values', 'ai-programs', AI_PROGRAMS_COUNTS.triple, 'aiPrograms.groupTriple',
       aiPrograms((content, count) => { content.groupTriple = times(count, () => 1); })],
+    ['keyword tables', 'ai-programs', AI_PROGRAMS_COUNTS.keywordTables, 'aiPrograms.keywordTables',
+      aiPrograms((content, count) => { content.keywordTables = times(count, index => content.keywordTables[index % 4]); })],
     ['element values', 'ai-programs', AI_PROGRAMS_COUNTS.elementValues, 'aiPrograms.globals.elements[1]',
       aiPrograms((content, count) => { content.globals.elements[1] = times(count, () => 1); })],
     ['base repair items', 'base-repair-items', BASE_REPAIR_ITEM_COUNT, 'baseRepairItems.subsystemSelectors',

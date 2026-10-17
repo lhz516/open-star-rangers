@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { ObjectLeftWorldEvent, Vec3 } from '../contracts/domain-events.ts';
+import type { DomainEvent, ObjectLeftWorldEvent, Vec3 } from '../contracts/domain-events.ts';
+import { readTickInput } from '../contracts/tick-input.ts';
 import { activeAreaCentre } from '../rules/active-area.ts';
 import { randomDirection } from '../rules/random-direction.ts';
 import { randValues, rngStateAfter, scriptedRand } from '../rules/rand.test-support.ts';
 import { initialWorldState } from '../world/create-world.ts';
-import { asCreateInput, craftInfoContent, playerOnlyMission, worldInput, type CraftInfoDraft, type WorldInputParts } from '../world/create-world.test-support.ts';
+import { asCreateInput, craftInfoContent, declaration, playerOnlyMission, worldInput, type CraftInfoDraft, type WorldInputParts } from '../world/create-world.test-support.ts';
 import type { Entity, EntityInit } from '../world/entity-table.ts';
 import { constructWorld } from '../world/world.ts';
 import { addPlayerEntity, entityInit, stillEntityInit, tickInput, withEveryKindBound } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { checkActiveArea, checkWarpTransit, isHeldInWarpTransit, switchParking, updateParked } from './area.ts';
+import { requestWarpDeparture } from './ai.ts';
+import { PIPELINE, registerTick, type TickContext } from './pipeline.ts';
 
 // Expectations are written out from docs/original/formats/executable.md, world boundary, active area, parking and
 // autopilot (P3-06/04) and docs/plan/p3/06/spec.md, 活动区域、停放与世界边界: radius 7500 and the inset world rectangle
@@ -48,13 +51,21 @@ const predicted = (state: WorldState, count: number): number[] => randValues(sta
 /** The world RNG state after `count` more draws. */
 const stateAfter = (state: WorldState, count: number) => rngStateAfter(state.rngState, count);
 
+/** A context for the tick at `clock` (tick clock ÷ 2) after its clock stage, the world's tick and clock set to it. */
+function contextAt(state: WorldState, clock: number): TickContext {
+  state.clock = clock - 2;
+  state.tick = Math.floor(clock / 2) - 1;
+  const context = registerTick(state, readTickInput(tickInput()));
+  state.clock = clock;
+  state.tick = context.time.tick;
+  return context;
+}
+
 /** Runs the parked update stage at `clock`, without P3-07's engagement, and returns its events. */
 function parkedUpdate(state: WorldState, clock: number): ObjectLeftWorldEvent[] {
-  const events: ObjectLeftWorldEvent[] = [];
-  state.clock = clock;
-  state.tick = Math.floor(clock / 2);
-  updateParked(state, (event) => events.push(event), () => {});
-  return events;
+  const context = contextAt(state, clock);
+  updateParked(context, () => {});
+  return context.events.filter((event): event is ObjectLeftWorldEvent => event.type === 'object-left-world');
 }
 
 /** One parked update at clock 200, when every entity last updated at 0 is due. */
@@ -121,6 +132,31 @@ describe('area check 0x3a468 (P3-06 AC-06, M-08)', () => {
     near.state = 'active';
     checkActiveArea(state);
     expect(near.state).toBe('active');
+  });
+
+  // P3-09 MW-10 (docs/plan/p3/02/spec.md): while the player entity is in Warp (+0xCC) 0x3a540 centres on the
+  // destination ps +0x10–+0x18, also when an abandoned Warp left the flag set (MW-09).
+  it('centres on the Warp destination while the player entity is in Warp', () => {
+    const state = worldWith();
+    const player = addPlayer(state, { x: 0, y: 0, z: 10000 });
+    const destination = { x: -30000, y: 20000, z: 300 };
+    state.player.map.destination = destination;
+    player.inWarp = true;
+    expect(activeAreaCentre(state)).toBe(destination);
+    const nearDestination = state.entities.allocate(entityInit(7, { position: { x: -30000 + 7000, y: 20000, z: 0 } }));
+    const nearPlayer = state.entities.allocate(entityInit(7, { position: { x: 0, y: 0, z: 0 } }));
+    nearDestination.state = 'active';
+    nearPlayer.state = 'active';
+    checkActiveArea(state);
+    expect([nearDestination.state, nearPlayer.state]).toEqual(['active', 'area-switch']);
+    player.inWarp = false;
+    expect(activeAreaCentre(state)).toBe(player.position);
+  });
+
+  it('faults on a player in Warp without a destination', () => {
+    const state = worldWith();
+    addPlayer(state).inWarp = true;
+    expect(() => activeAreaCentre(state)).toThrow('active-area.warp-destination');
   });
 });
 
@@ -324,8 +360,7 @@ describe('parked update 0x2f1b0: selection and cadence (P3-06 AC-06)', () => {
     parked(state, 7, { warpClock: 50, inWarp: true });
     const start = state.rngState;
     const calls: [number, number, typeof start][] = [];
-    state.clock = 200;
-    updateParked(state, () => {}, (entity, elapsed) => {
+    updateParked(contextAt(state, 200), (entity, elapsed) => {
       calls.push([entity.id, elapsed, state.rngState]);
       // A stand-in engagement that draws once from the world RNG.
       state.rngState = rngStateAfter(state.rngState, 1);
@@ -597,5 +632,180 @@ describe('active objects and the world rectangle (P3-06 AC-06, M-07)', () => {
     expect([craft.activity, craft.state, craft.placementSerial]).toEqual(['active', 'active', 0]);
     expect(craft.position).not.toEqual(before);
     expect(Math.abs(craft.position.x)).toBeGreaterThan(45000);
+  });
+});
+
+describe('the parked enemy report 0x3c3b0 after the travel (P3-10 CB-12, RX6)', () => {
+  // A hostile of kind 7 travels from x −1000 toward x 4000: its due check and six jitter draws, landing near x −800,
+  // where an active base (kind 17, radius 250) stands. The base's first speech draws its face (rand % 5).
+  function travelScene(kindBit: number, withPlayer: boolean) {
+    const state = worldWith((info) => void (info.craft[kindBit].atA4 = 0));
+    if (withPlayer) addPlayer(state);
+    const mover = parked(state, kindBit, { position: { x: -1000, y: 50, z: 7 } });
+    mover.ai.goal = { x: 4000, y: 50, z: 7 };
+    const base = state.entities.allocate(entityInit(17, { position: { x: -800, y: 50, z: 7 } }));
+    base.state = 'active';
+    return { state, base };
+  }
+
+  it('reports a hostile that moved inside the active area before its engagement: the base stamps and draws its face', () => {
+    const { state, base } = travelScene(7, true);
+    const draws = predicted(state, 8);
+    const start = state.rngState;
+    const engaged: (typeof start)[] = [];
+    const context = contextAt(state, 200);
+    updateParked(context, () => void engaged.push(state.rngState));
+    expect(base.communications).toEqual({ face: draws[7] % 5, threatStamp: 200 });
+    expect(engaged).toEqual([rngStateAfter(start, 8)]);
+    expect(state.rngState).toEqual(rngStateAfter(start, 8));
+  });
+
+  it('does not report outside the active area (no player) or for a mover outside the hostile set', () => {
+    for (const [kindBit, withPlayer] of [[7, false], [2, true]] as const) {
+      const { state, base } = travelScene(kindBit, withPlayer);
+      const expected = stateAfter(state, 7);
+      due(state);
+      expect(base.communications).toEqual({ face: null, threatStamp: null });
+      expect(state.rngState).toEqual(expected);
+    }
+  });
+});
+
+describe('the wingman\'s arrival repair at a base (P3-10 CB-12, RX6; BS9)', () => {
+  // The mover stands on its goal, its target's position plus its own offset, so its parked update arrives; the only
+  // draw is the update's cadence. The kind-bit-1 and 7 records have c9C 12 and c54 1000.
+  function arrival(kindBit: number, targetKindBit: number) {
+    const state = worldWith();
+    const target = state.entities.allocate(entityInit(targetKindBit, { position: { x: 500, y: 0, z: 0 } }));
+    target.state = 'active';
+    const mover = parked(state, kindBit, { position: { x: 510, y: 0, z: 0 } });
+    mover.ai = { ...mover.ai, mode: 0, target: target.id, targetOffset: { x: 10, y: 0, z: 0 } };
+    return { state, mover };
+  }
+
+  /** Damages the mover and puts its offset back, which each arrival clears. */
+  function damage(mover: Entity): void {
+    if (mover.combat.type !== 'craft') throw new Error('not a craft');
+    mover.ai.targetOffset = { x: 10, y: 0, z: 0 };
+    Object.assign(mover.combat, { hull: 3, energy: 7, subsystems: Object.freeze(mover.combat.subsystems.map(() => 2)) });
+  }
+
+  const resources = (mover: Entity) => (mover.combat.type === 'craft' ? [mover.combat.hull, mover.combat.energy, mover.combat.subsystems[0]] : null);
+
+  it('fully repairs the wingman once the sample is strictly past the shared limit, then waits 0x780, with no message or draw', () => {
+    const { state, mover } = arrival(1, 17);
+    damage(mover);
+    const expected = stateAfter(state, 1);
+    const context = contextAt(state, 200);
+    updateParked(context, () => {});
+    expect(resources(mover)).toEqual([12, 1000, 0]);
+    expect(state.communications.limits.wingmanArrivalRepair).toBe(200 + 0x780);
+    expect([context.events, state.communications.queue, state.rngState]).toEqual([[], [], expected]);
+    damage(mover);
+    parkedUpdate(state, 200 + 0x780);
+    expect(resources(mover)).toEqual([3, 7, 2]);
+    mover.ai.targetOffset = { x: 10, y: 0, z: 0 };
+    parkedUpdate(state, 2400);
+    expect(resources(mover)).toEqual([12, 1000, 0]);
+    expect(state.communications.limits.wingmanArrivalRepair).toBe(2400 + 0x780);
+  });
+
+  it('does not repair another kind arriving at a base, or the wingman arriving at another kind', () => {
+    for (const [kindBit, targetKindBit] of [[7, 17], [1, 7]] as const) {
+      const { state, mover } = arrival(kindBit, targetKindBit);
+      damage(mover);
+      due(state);
+      expect(resources(mover)).toEqual([3, 7, 2]);
+      expect(state.communications.limits.wingmanArrivalRepair).toBe(0);
+    }
+  });
+});
+
+describe('the Warp departure: message 0x800000 to the parked Warp jump (P3-08/21; AC-09, CR-21, D6)', () => {
+  /** The player and an active kind-7 craft with its interpreter installed, its goal far outside the active area. */
+  function departureWorld() {
+    const mission = playerOnlyMission();
+    mission.declarations.push(declaration(1, { craftType: 7, position: { x: 100, y: 200, z: 60 } }));
+    const state = initialWorldState(asCreateInput(worldInput({ mission })));
+    const world = constructWorld(state);
+    world.step(tickInput());
+    world.step(tickInput());
+    const craft = [...state.entities.walk(1 << 7)][0];
+    expect(craft).toMatchObject({ activity: 'active', state: 'active', ai: { program: { controller: { handler: 'interpreter' } } } });
+    craft.warpClock = 0;
+    Object.assign(craft.ai, { target: null, goal: { x: 30_000, y: 0, z: 0 } });
+    return { state, world, craft };
+  }
+
+  /** A tick in which `post` runs after the object update, where the AI posts `warp-departure`; its events. */
+  function tickPosting(state: WorldState, post: (context: TickContext) => void): readonly DomainEvent[] {
+    const context = registerTick(state, readTickInput(tickInput()));
+    for (const { id, run } of PIPELINE) {
+      run?.(context);
+      if (id === 'object-update') post(context);
+    }
+    return context.events;
+  }
+
+  const about = (events: readonly DomainEvent[], entity: Entity) => events.filter((event) => 'entityId' in event && event.entityId === entity.id);
+
+  it('switches area, enters Warp and makes the parked update due; parks, installs 0x62250 and jumps over the next two ticks', () => {
+    const { state, world, craft } = departureWorld();
+    const events = tickPosting(state, (context) => expect(requestWarpDeparture(context, craft)).toBe(true));
+    const departed = state.clock;
+    expect(craft).toMatchObject({ state: 'area-switch', activity: 'active', inWarp: true, warpClock: 0, lastParkedUpdateClock: departed - 0x80 });
+    expect(about(events, craft)).toEqual([]);
+    // N + 1: the state-5 callback removes the interpreter (releasing its parse) and asks to leave; message 0x20 parks.
+    expect(about(world.step(tickInput()), craft)).toEqual([]);
+    expect(craft).toMatchObject({ activity: 'parked', state: 'new', inWarp: true, warpClock: 0, ai: { program: { controller: null } } });
+    expect(state.ai.parseCache).toEqual([]);
+    // N + 2: no transit with the timer 0, so the callback installs the parked handler; the parked update is due at once
+    // and starts the jump (a counted, discontinuous move).
+    const { position, placementSerial } = craft;
+    world.step(tickInput());
+    expect(craft).toMatchObject({
+      activity: 'parked', state: 'active', inWarp: true, warpClock: state.clock, lastParkedUpdateClock: state.clock,
+      ai: { program: { controller: { handler: 'parked', nextUpdateClock: state.clock + 0x40 } } },
+    });
+    expect(craft.position).not.toEqual(position);
+    expect(craft.placementSerial).toBe(placementSerial + 1);
+  });
+
+  type Departure = ReturnType<typeof departureWorld>;
+
+  it.each([
+    ['its goal is back inside the active area', ({ craft }: Departure) => void (craft.ai.goal = { x: 0, y: 0, z: 0 })],
+    ['its AI target no longer resolves', ({ craft }: Departure) => void (craft.ai.target = 9999)],
+    ['it is parked', ({ craft }: Departure) => void (craft.activity = 'parked')],
+    ['it is already in Warp', ({ craft }: Departure) => void (craft.inWarp = true)],
+    // 0x2ff98: the timer + (+0xA8 + +0xA4) × 64 is not past (here −64, with the records' +0xA8 −14 and +0xA4 13).
+    ['its Warp timer forbids a Warp', ({ state, craft }: Departure) => void (craft.warpClock = state.clock + 1000)],
+  ])('drops the request silently when the handling\'s check fails: %s', (_, change) => {
+    const env = departureWorld();
+    const { craft } = env;
+    let inWarp: boolean | null = null;
+    tickPosting(env.state, (context) => {
+      expect(requestWarpDeparture(context, craft)).toBe(true);
+      change(env);
+      inWarp = craft.inWarp;
+    });
+    // Nothing of the success: the Warp flag as the change left it, and no last parked update due at once.
+    expect(craft.inWarp).toBe(inWarp);
+    expect(craft.lastParkedUpdateClock).not.toBe(env.state.clock - 0x80);
+  });
+
+  it('applies a second request for the same craft as nothing, and drops one for a craft removed before handling', () => {
+    const { state, craft } = departureWorld();
+    tickPosting(state, (context) => {
+      expect(requestWarpDeparture(context, craft)).toBe(true);
+      context.requests.post({ type: 'warp-departure', entityId: craft.id });
+    });
+    expect(craft).toMatchObject({ state: 'area-switch', inWarp: true, lastParkedUpdateClock: state.clock - 0x80 });
+    const other = departureWorld();
+    tickPosting(other.state, (context) => {
+      expect(requestWarpDeparture(context, other.craft)).toBe(true);
+      other.state.entities.remove(other.craft);
+    });
+    expect(other.state.entities.get(other.craft.id)).toBeUndefined();
   });
 });

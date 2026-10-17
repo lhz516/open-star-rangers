@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-13
+updated: 2026-10-15
 related: [ADR-0004, ADR-0018, U-011, U-012]
 ---
 
@@ -10,7 +10,7 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 
 本文是当前构建的游戏输入与键位绑定权威说明。原版事实只在[原版键位冲突表](../original/input/key-map.md)维护；这里记录项目绑定、实现边界、浏览器能力、已知差异与验证状态。绑定契约见 [P3-05 spec](../plan/p3/05/spec.md)，源码落点见[源码结构指南](./source-structure.md)。
 
-> **实现状态：** P3-05 已接通任务游戏输入区、生产绑定表、能力申请和地图输入。Core 仍按各任务逐步接入规则；键盘已到达命令消费者不等于所有动作已有玩法效果。P3-07 的目标、武器和能量规则已于 2026-10-13 与本任务一同合入 main，相关原版事实见 [executable](../original/formats/executable.md) 的 T3、W3、D10、D15。
+> **实现状态：** P3-05 已接通任务游戏输入区、生产绑定表、能力申请和地图输入。Core 仍按各任务逐步接入规则；键盘已到达命令消费者不等于所有动作已有玩法效果。P3-07 的目标、武器和能量规则已于 2026-10-13 与本任务一同合入 main，相关原版事实见 [executable](../original/formats/executable.md) 的 T3、W3、D10、D15。P3-09 的地图与 Warp 规则（`m`、地图鼠标与 `w` 的 Core 效果）见下文[地图与 Warp 上下文中的命令结果](#地图与-warp-上下文中的命令结果)。
 
 ## 1. 适用范围
 
@@ -45,8 +45,9 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 | 未修饰 `Slash`；`NumpadDivide`（Shift 可并用）；`Comma` / `Period`（Shift 可并用）；数字态 `NumpadDecimal`（Shift 与 NumLock 状态相异） | flight | 前两项循环主武器；其余选择上一/下一导弹 | 原版绑定；武器效果待 P3-07 合入 |
 | `KeyE`；`KeyS` / `KeyG`（无 Shift 减、Shift 增）；`KeyD` | flight | 能量页；护盾/炮能量增减；损伤报告 | 原版绑定；规则效果待 P3-07 合入 |
 | `KeyM` | flight、map、base | 开关地图（基地仅限战役的原版情形） | 原版绑定 |
-| `KeyW`（无 Shift 或 Shift） | flight、map | 请求 Warp | 原版绑定；执行门禁归 P3-09 |
+| `KeyW`（无 Shift 或 Shift） | flight、map | 请求 Warp | 原版绑定；门禁由 Core 判定（[§6](#地图与-warp-上下文中的命令结果)） |
 | `KeyC`、`KeyX` | flight | 打开/关闭通讯菜单 | 原版绑定；菜单行为归 P3-10 |
+| 未修饰 `KeyB`（无 Shift、无有效 Ctrl） | flight | 投放 Xpon（`drop-transponder`）；可重复 | 原版绑定，正常玩法为高概率（[X5](../original/formats/executable.md#x5-is-b-normal-play--likely-code-no-runtime-check)）；P3-08 的 D-03 加入，门禁与效果由 Core 判定（[CR-20](../plan/p3/02/spec.md#cr-20-动态-xpon-与-bd-01)、[CR-30](../plan/p3/02/spec.md#cr-30-b-的输入侧d-03)） |
 | `KeyL`；`ArrowUp` / `ArrowDown` | base | 离港；基地服务列表向上/向下导航（可重复） | 原版绑定；服务规则归 P3-10 |
 | `F1`、`ArrowUp`、Shift/NumLock 状态相同的 `Numpad8` | flight；`Numpad8` 在 base 同状态下另作向上导航 | 前视驾驶舱 | 原版绑定 |
 | `F2`–`F10`、`Home`、`PageUp`、`ArrowLeft`、`ArrowRight`、`ArrowDown`；Shift/NumLock 状态相同的 `Numpad7/9/4/5/6/2` | flight | G-08 标注，不提交命令 | 原版视角键；表现缺省项 |
@@ -71,7 +72,7 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 - 未修饰键以 `code` 匹配；Shift、有效 Ctrl 与 NumLock 按绑定表匹配。Ctrl、Alt、Meta 或输入法组合通常不产生绑定，保留原生快捷键；本项目明确绑定的 Ctrl 组合和 Ctrl 横滚除外。AltGraph 会抑制可能由它合成的 CtrlLeft；不确定左 Ctrl 来源时不执行横滚/快捷键。
 - 同一轴的正反键同时按下为 0。失去资格、上下文切换与清键后，repeat 不能重建已释放状态；恢复必须有新的非重复按下。
 
-只有绑定表中标为 repeatable 的离散命令重复：副武器、速度增减、目标下一个/上一个、导弹上一项/下一项、能量调整，以及基地列表导航。首次新按下立即提交；运行时钟到首次按下后 32 单位才重复，之后按观察到的重复时钟每 16 单位一次。只在 running 的帧观察、每个按键每帧最多一次，迟帧不补发；没有 timer、逐 tick 回调或第二条 rAF。速度档位、其他单次命令、G-08 标注与暂停控制不属于此重复器。该节奏是项目选择，不是 BIOS 延迟或 DOS 轮询周期。
+只有绑定表中标为 repeatable 的离散命令重复：副武器、速度增减、目标下一个/上一个、导弹上一项/下一项、能量调整、投放 Xpon（`b`），以及基地列表导航。首次新按下立即提交；运行时钟到首次按下后 32 单位才重复，之后按观察到的重复时钟每 16 单位一次。只在 running 的帧观察、每个按键每帧最多一次，迟帧不补发；没有 timer、逐 tick 回调或第二条 rAF。速度档位、其他单次命令、G-08 标注与暂停控制不属于此重复器。该节奏是项目选择，不是 BIOS 延迟或 DOS 轮询周期。
 
 ## 4. 活动界面与焦点
 
@@ -103,8 +104,19 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 
 - 输入位置为主地图内归一化的 `{ right, down }`，几何由呈现所有者经 [map-input-geometry.ts](../../src/render/map/map-input-geometry.ts) 提供；屏幕像素、主地图边界与逻辑画面在容器 content-box 中的 CSS 像素 frame 共用同一只读几何。零尺寸/缺几何为未就绪，非法几何显式报错。
 - 锁定态用平台相对移动，乘注入的 `movementScale` 转成 CSS 像素后钳制到主地图；非锁定态在支持或申请失败时用地图内的绝对位置回退，区域外/黑边不选取并显示系统指针。`movementScale` 依据引擎报告单位选择（CSS px 时为 1，device px 时为 1/devicePixelRatio）。
-- 合格时如仍有用户激活则申请 Pointer Lock，否则提示点击锁定。普通移动只保留最新 hover，每个 running 帧至多提交一次；左键新按下先补同点 hover 再 select，按住按策略间隔重复，每帧至多一次且不追赶。锁定/聚焦点击只建立锁，不选目标；右键无项目动作。
+- 合格时如仍有用户激活则申请 Pointer Lock，否则提示点击锁定。普通移动只保留最新 hover，每个 running 帧至多提交一次；左键新按下先补同点 hover 再 select，按住按策略间隔重复，每帧至多一次且不追赶。锁定/聚焦点击只建立锁，不选目标；右键无项目动作（原版右键的编号开关归 P3-13 的呈现，见下节）。
 - [map-cursor.ts](../../src/render/map/map-cursor.ts) 绘制本项目的十字光标，只绘制、不持有规则或调度；这不是原版选取框外观。几何测量容器必须与 Pointer Lock 目标一致。
+
+### 地图与 Warp 上下文中的命令结果
+
+P3-09 起 `toggle-map`、`map-point` 与 `request-warp` 由 Core 判定（门禁、次序与请求见 [Core 模块说明](./modules/core.md#地图与-warpp3-09)，契约见 P3-02 spec 的 [MW-04](../plan/p3/02/spec.md#mw-04-命令原因码与内部请求)）。输入层只按绑定提交命令，不自行判断门禁；未被接受的命令都是 `ignored`，原版的这些拒绝没有提示或音效。
+
+- `m`：地图中总是关闭地图（玩家不可用也可关闭）；其他上下文先查玩家，不可用为 `player-unavailable`，然后 Warp 中为 `wrong-context`，飞行与基地中打开。
+- 地图鼠标的 `map-point`：玩家不可用为 `player-unavailable`，否则只在地图中接受，Core 按导入的地图几何把 `{ right, down }` 量化为主地图像素，与上文起点公式落在同一整数像素；hover 只移动光标，select 写目的地并在首次时创建标记。其他上下文为 `wrong-context`。
+- `w`：依次为玩家不可用（`player-unavailable`）、Warp 或基地上下文与从基地打开的地图（`wrong-context`）、尚未选过目的地（`no-destination`）、Warp 间隔未到（`cooldown`）与能量不足（`insufficient-energy`）。
+- 同一批次中被接受的 `m` 或 `w` 之后的命令按新的上下文判定：开图之后的速度、开火、目标与能量命令为 `wrong-context`，`w` 之后的第二个 `w` 与 `map-point` 为 `wrong-context`；本 tick 的手动轴按批次结束时的上下文处理（地图中为 0）。与原版每次轮询一键的差异见 MW-12 的差异 1。
+- 地图上下文中的数字、Enter 与菜单导航在玩家不可用时为 `player-unavailable`，否则为 `wrong-context`；通讯与发射命令仍为 `not-implemented`（P3-10）。Warp 上下文中速度、档位、目标、开火、能量、数字与 Enter 为 `wrong-context`，操纵轴照常进入 Warp 中的积分。
+- 原版的右键在地图中切换放大窗口的编号显示并去抖，没有规则读者：它是 P3-13 的呈现状态，不需要 Core 命令（P3-02 spec 的 MW-11、MW-16；P3-05 审批节的交接已按此同步）。项目当前不为它绑定动作。
 
 ### 对照差异与下游责任
 
@@ -112,7 +124,8 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 
 下游交接：
 
-- **P3-09：** 同 tick 打开地图时飞行命令门禁；地图状态与 `map-point` 的效果；飞行命令地图门禁、地图初始 Core 光标点、位置像素量化、按住 select 效果与音效。
+- **P3-09（已交付）：** 同 tick 打开地图时的飞行命令门禁、地图状态与 `map-point` 的效果、地图初始 Core 光标点与像素量化已在 Core 中（见上节）；按住 select 的每次读取都发出 `warp-destination-set`，其点击音效归 P3-14。实际应用中的浏览器验证归 P3-09/22。
+- **P3-08（`b`，已交付）：** Core 按飞行命令的共同门禁判定 `drop-transponder`（玩家不可用为 `player-unavailable`，非飞行上下文为 `wrong-context`；没有次数、能量或冷却门禁），在同一 tick 的请求处理中于玩家身后创建 Xpon 并发出 `transponder-deployed`。原版按住 `b` 靠 BIOS 重复、按住 Alt 时只有空格起作用；项目按上文的可重复节奏，Alt+`b` 仍投放，两项都归入本节已列的同类差异。切片中通讯菜单从不占用 `b`（菜单只用数字与 `x`），菜单打开时仍提交并由 Core 判定。Node 证据见 [P3-08 子任务 22](../plan/p3/08/subtasks/22-xpon-b-key.md#完成证据)，浏览器触发归其子任务 24。
 - **P3-10：** 通讯菜单对数字/命令的捕获优先级、菜单行为与基地服务队列/离港规则，并处理规则 5 的阻塞项；目前绑定只负责按码提交，不宣称该规则已实现。
 - **P3-13：** 生产地图几何、地图指针与原版外观；接通完整画面时核对与输入共同使用的 geometry/container。
 - **P3-15：** 真实任务完整地图路径及输入层/Core 联合复验，包括地图上下文、同 tick 门禁、指针合成和清键。

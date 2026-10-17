@@ -13,9 +13,10 @@ import { contentOf, PRODUCER, roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
 
 // A synthetic flight (code-generated content and inputs, never original data) whose run has every P3-06 rule with an
-// observable effect: docs/plan/p3/06/spec.md, S-08 and AC-08. No production entry sets a target or an AI goal yet, so
-// the rule tasks that will (P3-07's target selection and destruction, P3-08's AI) are stood in for by writes to the
-// world state before a tick, the same in the recording and in the replay.
+// observable effect: docs/plan/p3/06/spec.md, S-08 and AC-08. When P3-06 was done no production entry set a target or
+// an AI goal, so the rule tasks that now do (P3-07's target selection and destruction, P3-08's AI) are stood in for by
+// writes to the world state before a tick, the same in the recording and in the replay. This stays P3-06's mechanism
+// evidence; P3-08's standard replay of the autonomous AI, without stand-ins, is ai-replay.test.ts (P3-08 AC-11).
 
 const PLAYER = 1;
 const ENEMY = 2;

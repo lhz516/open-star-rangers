@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { DomainEvent } from '../contracts/domain-events.ts';
 import { readTickInput, type Command, type TickAxes } from '../contracts/tick-input.ts';
 import { RandStream } from '../rules/original-random.ts';
-import type { Entity, ObjectState, SteeredMovementBlock } from '../world/entity-table.ts';
+import type { CraftCombat, Entity, MarkerMovementBlock, MovementBlock, ObjectState, SteeredMovementBlock } from '../world/entity-table.ts';
 import { initialPlayerControl, initialPlayerTargeting, type PlayerTargeting } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
 import { entityInit, expectFault, testState } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
-import { availablePlayer, updatePlayer, type ControlRequest, type PlayerRequest } from './flight-control.ts';
-import { PIPELINE, registerTick, type TickContext } from './pipeline.ts';
+import { applyAiMatchRequest, availablePlayer, updatePlayer, type ControlRequest, type PlayerRequest } from './flight-control.ts';
+import { enterBaseView } from './base-interior.test-support.ts';
+import { committedView, PIPELINE, registerTick, type TickContext } from './pipeline.ts';
 
 // Expectations are written out from docs/plan/p3/06/spec.md (操纵, 速度与油门, 行为与边界; checkpoint A) and the original
 // rules in docs/original/formats/executable.md (P3-06/02 and 03). The test player has maximum speed 48 and the synthetic
@@ -61,7 +62,7 @@ function update(state: WorldState, commands: readonly Command[] = [], axes: Tick
     post: (request) => requests.push(request),
     judge: ({ type }, commandIndex) => events.push({ type: 'command-result', tick, commandIndex, commandType: type, outcome: 'rejected', reason: 'not-implemented' }),
     lockMissiles: () => {},
-  });
+  }, committedView(state));
   return { events, requests };
 }
 
@@ -178,10 +179,10 @@ describe('throttle commands (P3-06 AC-04, 速度与油门)', () => {
 describe('command results (P3-06 AC-04, 行为与边界)', () => {
   const THROTTLE_COMMANDS = [speed('increase'), speed('decrease'), speed('zero'), speed('maximum'), preset(5)];
   const MATCH_COMMANDS = [speed('match-target'), speed('toggle-auto-match'), { type: 'confirm-selection' }] as const satisfies readonly Command[];
-  // select-number passes P3-06's gates outside the base and map contexts, but has no effect (P3-05 S-06).
+  // select-number is P3-10's (CB-07): without a menu it changes no speed and is wrong-context (P3-05 S-06).
   const P3_06_COMMANDS: readonly Command[] = [...THROTTLE_COMMANDS, ...MATCH_COMMANDS, selectNumber(5)];
-  const OTHERS = [{ type: 'launch' }, { type: 'toggle-map' }, { type: 'navigate-selection', direction: 'next' }] as const satisfies readonly Command[];
-
+  // P3-09's map commands have their own tests (map.test.ts); cockpit-front has no rule yet.
+  const OTHERS = [{ type: 'launch' }, { type: 'cockpit-front' }, { type: 'navigate-selection', direction: 'next' }] as const satisfies readonly Command[];
   type Unavailable = (state: WorldState, player: Entity) => void;
   const inState = (objectState: ObjectState): [string, Unavailable] => [`in state ${objectState}`, (_, player) => void (player.state = objectState)];
 
@@ -200,7 +201,8 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
     const events = stepControls(state, [...P3_06_COMMANDS, ...OTHERS], { pitch: 1, yaw: 1, roll: 1 });
     expect(results(events)).toEqual([
       ...P3_06_COMMANDS.map((_, index) => [index, 'ignored', 'player-unavailable']),
-      ...OTHERS.map((_, index) => [P3_06_COMMANDS.length + index, 'rejected', 'not-implemented']),
+      // launch and navigate-selection are P3-10's, which gates the player first; cockpit-front has no rule yet.
+      [9, 'ignored', 'player-unavailable'], [10, 'rejected', 'not-implemented'], [11, 'ignored', 'player-unavailable'],
     ]);
     expect(events.every(({ type }) => type === 'command-result')).toBe(true);
     // A player in area-switch parks in request handling, which releases its block (area.ts).
@@ -210,16 +212,19 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
     expect(state.rngState).toBe(rng);
   });
 
+  // In the base context, confirm-selection, launch and navigate-selection are P3-10's base keys; the accepted launch
+  // leaves the base for the rest of the batch, so navigate-selection after it is judged in flight. The map's keys have no
+  // Enter (P3-09, MW-04).
   it.each([
-    ['Warp', WARP, 'wrong-context'],
-    ['base', BASE, 'not-implemented'],
-    ['map', MAP, 'not-implemented'],
-  ] as const)('ignores speed commands and presets as wrong-context in the %s context; select-number and confirm-selection there: %s', (_, viewMode, selectionReason) => {
+    ['Warp', WARP, ['ignored', 'wrong-context'], ['ignored', 'wrong-context'], ['ignored', 'wrong-context']],
+    ['base', BASE, ['accepted', null], ['accepted', null], ['ignored', 'wrong-context']],
+    ['map', MAP, ['ignored', 'wrong-context'], ['ignored', 'wrong-context'], ['ignored', 'wrong-context']],
+  ] as const)('ignores speed commands, presets and select-number as wrong-context in the %s context', (_, viewMode, confirmResult, launchResult, navigateResult) => {
     const [state, player] = withPlayer();
-    state.player.viewMode = viewMode;
+    if (viewMode === BASE) enterBaseView(state);
+    else state.player.viewMode = viewMode;
     state.player.target = state.entities.allocate(entityInit(7)).id;
     const control = structuredClone(state.player.control);
-    const selection = selectionReason === 'wrong-context' ? 'ignored' : 'rejected';
     const events = stepControls(state, [...P3_06_COMMANDS, ...OTHERS]);
     expect(results(events)).toEqual([
       [0, 'ignored', 'wrong-context'],
@@ -229,13 +234,47 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
       [4, 'ignored', 'wrong-context'],
       [5, 'ignored', 'wrong-context'],
       [6, 'ignored', 'wrong-context'],
-      [7, selection, selectionReason],
-      [8, selection, selectionReason],
-      ...OTHERS.map((_, index) => [P3_06_COMMANDS.length + index, 'rejected', 'not-implemented']),
+      [7, ...confirmResult],
+      [8, 'ignored', 'wrong-context'],
+      [9, ...launchResult],
+      [10, 'rejected', 'not-implemented'],
+      [11, ...navigateResult],
     ]);
-    expect(events.every(({ type }) => type === 'command-result')).toBe(true);
+    // The base keys' requests are applied in request handling, after every result.
+    expect(events.filter(({ type }) => type !== 'command-result').map(({ type }) => type)).toEqual(viewMode === BASE ? ['base-confirmed', 'departed', 'transition'] : []);
     expect(craftBlock(player).commandedSpeed).toBe(48);
     expect(state.player.control).toEqual(control);
+  });
+
+  it('judges the P3-06 commands after an accepted launch in flight, and the axes in the batch\'s final context (CB-07; MW-04)', () => {
+    const [state, player] = withPlayer();
+    enterBaseView(state);
+    const target = state.entities.allocate(entityInit(7));
+    target.state = 'active';
+    state.player.target = target.id;
+    const axes = { pitch: 1, yaw: 0, roll: 0 };
+    const commands = [speed('zero'), { type: 'launch' }, speed('zero'), { type: 'confirm-selection' }] as const satisfies readonly Command[];
+    const context = registerTick(state, input(commands, axes));
+    for (const stage of PIPELINE) {
+      if (stage.id === 'request-handling') break;
+      stage.run?.(context);
+    }
+    expect(results(context.events)).toEqual([[0, 'ignored', 'wrong-context'], [1, 'accepted', null], [2, 'accepted', null], [3, 'accepted', null]]);
+    // The launch's request is posted at judgement, the update's own after the loop, the axes in a request of their own.
+    const posted: unknown[] = [];
+    context.requests.handle((request) => void posted.push(request));
+    const unchanged = { pitch: null, yaw: null, roll: null };
+    expect(posted).toEqual([
+      { type: 'depart', entityId: player.id, origin: 'command', commandIndex: 1 },
+      { type: 'control', entityId: player.id, throttle: 0, axes: unchanged },
+      { type: 'match-speed', entityId: player.id, targetEntityId: target.id, commandIndex: 3 },
+      { type: 'control', entityId: player.id, throttle: null, axes: { ...unchanged, pitch: 128 } },
+    ]);
+    // Without the launch the base context takes the axes as 0.
+    const [still] = withPlayer();
+    enterBaseView(still);
+    stepControls(still, [], axes);
+    expect(still.player.control!.lastAxes.pitch).toBe(0);
   });
 
   it('reports player-unavailable before wrong-context', () => {
@@ -245,7 +284,7 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
     expect(results(stepControls(state, [speed('zero'), preset(1), selectNumber(1)]))).toEqual([
       [0, 'ignored', 'player-unavailable'],
       [1, 'ignored', 'player-unavailable'],
-      [2, 'rejected', 'not-implemented'],
+      [2, 'ignored', 'player-unavailable'],
     ]);
   });
 
@@ -262,9 +301,9 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
     expect(throttles(update(state, [speed('decrease'), selectNumber(1), speed('decrease')]))).toEqual([116, 104]);
   });
 
-  it('leaves every command of other tasks not implemented in flight', () => {
+  it('leaves the commands of other tasks to them in flight', () => {
     const [state, player] = withPlayer();
-    expect(results(stepControls(state, OTHERS))).toEqual(OTHERS.map((_, index) => [index, 'rejected', 'not-implemented']));
+    expect(results(stepControls(state, OTHERS))).toEqual([[0, 'ignored', 'wrong-context'], [1, 'rejected', 'not-implemented'], [2, 'ignored', 'wrong-context']]);
     expect(craftBlock(player).commandedSpeed).toBe(48);
   });
 
@@ -350,6 +389,17 @@ describe('axes (P3-06 AC-03, 操纵)', () => {
     const [state, player] = withPlayer();
     state.player.viewMode = WARP;
     stepControls(state, [], { pitch: -1, yaw: 0, roll: 0 });
+    expect(steering(player).pitch).toEqual({ rate: 0.75, enabled: true });
+  });
+
+  it('applies the axes of the tick whose request-warp moves the command view into the Warp context (P3-09 MW-04)', () => {
+    const [state, player] = withPlayer();
+    // Within a unit of the player, the synthetic record's cost is 0, so the start passes at energy 0.
+    state.player.map.destination = { x: player.position.x, y: player.position.y, z: player.position.z + 0.5 };
+    (player.combat as CraftCombat).energy = 0;
+    const events = stepControls(state, [{ type: 'request-warp' }, speed('maximum')], { pitch: -1, yaw: 0, roll: 0 });
+    expect(results(events)).toEqual([[0, 'accepted', null], [1, 'ignored', 'wrong-context']]);
+    expect(state.player.viewMode).toBe(WARP);
     expect(steering(player).pitch).toEqual({ rate: 0.75, enabled: true });
   });
 
@@ -458,7 +508,7 @@ function addTarget(state: WorldState, { kindBit = 7, position = { x: 0, y: 0, z:
   const target = state.entities.allocate(entityInit(kindBit, { position }));
   target.state = 'active';
   if (targetSpeed === null) target.movement = null;
-  else target.movement!.speed = targetSpeed;
+  else (target.movement as Exclude<MovementBlock, MarkerMovementBlock>).speed = targetSpeed;
   if (select) state.player.target = target.id;
   return target;
 }
@@ -487,7 +537,7 @@ describe('player target reference (P3-06 S-05, D-03)', () => {
     const seen: [number, number | null, number][] = [];
     const run = () => updatePlayer(state, input(), state.tick + 1, {
       emit: () => {}, post: () => {}, judge: () => {}, lockMissiles: (entity) => void seen.push([entity.id, state.player.target, craftBlock(player).commandedSpeed]),
-    });
+    }, committedView(state));
     // The assist, due and in range, matches the target's 30 after the lock has seen the block at 48.
     expect(run()).toBe(player);
     expect([seen, craftBlock(player).commandedSpeed]).toEqual([[[player.id, target.id, 48]], 30]);
@@ -605,6 +655,46 @@ describe('manual speed match (P3-06 AC-04, AC-05, 匹配速度与速度辅助)',
     });
     expect(events).toEqual([accepted(1, 0, 'speed')]);
     expect(craftBlock(player).commandedSpeed).toBe(48);
+  });
+});
+
+describe('the AI\'s speed match request (P3-08 AC-05; docs/plan/p3/02/spec.md, CR-21)', () => {
+  /** An AI craft of kind 2 at full throttle (commanded speed 48, arrived) and a target of kind 7 at speed 20. */
+  function aiScene(): [WorldState, Entity, Entity] {
+    const state = testState();
+    const craft = state.entities.allocate(entityInit(2));
+    const target = state.entities.allocate(entityInit(7));
+    (target.movement as SteeredMovementBlock).speed = 20;
+    return [state, craft, target];
+  }
+  const request = (craft: Entity, target: number, a: number, lo: number, hi: number) =>
+    ({ type: 'ai-match-speed', entityId: craft.id, targetEntityId: target, a, lo, hi }) as const;
+
+  it('matches with its own (a, lo, hi) through 0x21adc, emitting nothing, also on a locked block', () => {
+    const [state, craft, target] = aiScene();
+    const block = craft.movement as SteeredMovementBlock;
+    block.locked = true;
+    applyAiMatchRequest(state, craft, request(craft, target.id, Math.fround(0.5), 0, 1));
+    expect([block.commandedSpeed, block.atCommandedSpeed]).toEqual([30, false]);
+    applyAiMatchRequest(state, craft, request(craft, target.id, 0, 0, 0.25));
+    expect(block.commandedSpeed).toBe(12);
+  });
+
+  it('writes nothing when the target no longer resolves or has no block', () => {
+    const [state, craft, target] = aiScene();
+    const before = structuredClone(craft.movement);
+    applyAiMatchRequest(state, craft, request(craft, 99, 0, 0, 1));
+    target.movement = null;
+    applyAiMatchRequest(state, craft, request(craft, target.id, 0, 0, 1));
+    expect(craft.movement).toEqual(before);
+  });
+
+  it('writes nothing for a subject without a craft record, such as the map marker', () => {
+    const [state, , target] = aiScene();
+    const marker = state.entities.allocate(entityInit(25));
+    const before = structuredClone(marker.movement);
+    applyAiMatchRequest(state, marker, request(marker, target.id, 0, 0, 1));
+    expect(marker.movement).toEqual(before);
   });
 });
 

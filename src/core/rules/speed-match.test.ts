@@ -10,6 +10,7 @@ import {
   isAssistKind,
   matchedSpeed,
   nextAssistDue,
+  PLAYER_MATCH,
   speedDifferenceExceeded,
   speedMatch,
   squaredDistance,
@@ -76,6 +77,43 @@ describe('the shared match 0x21adc (P3-06 AC-05, 匹配速度与速度辅助)', 
   it('predicts what it writes', () => {
     expect(speedMatch(block(), RECORD, MAXIMUM, target(60))).toBe(48);
     expect(speedMatch(block({ locked: true }), RECORD, MAXIMUM, target(20))).toBe(20);
+  });
+});
+
+describe('the generalised match 0x21adc(a, lo, hi) (P3-08 revision ⑧, AC-05)', () => {
+  const f32 = Math.fround;
+
+  it('is the player\'s (0, 0, 1) match bit for bit', () => {
+    expect(PLAYER_MATCH).toEqual({ a: 0, lo: 0, hi: 1 });
+    // f32 speeds of every kind: the result with the default shape and with (0, 0, 1) written out are the same bits.
+    for (const speed of [30, 0, -0, 48, 60, -5, 48.000003814697266, f32(0.1), f32(47.99), 1e-40]) {
+      for (const maximum of [MAXIMUM, f32(33.3), 0]) {
+        expect(Object.is(matchedSpeed(speed, maximum, { a: 0, lo: 0, hi: 1 }), matchedSpeed(speed, maximum))).toBe(true);
+      }
+    }
+  });
+
+  it.each([
+    ['scales the target speed by a + 1', f32(0.5), 0, 1, 20, 30],
+    ['raises it to F(maximum × lo), comparing the unrounded double', 0, f32(0.75), 1, 20, 36],
+    ['lowers it to F(maximum × hi), comparing F(v)', 1, 0, f32(0.5), 20, 24],
+    ['takes a below −1 to a reversed speed, clamped to the low bound', -2, 0, 1, 20, 0],
+    ['rounds v once at its store', f32(0.1), 0, 1, f32(1 / 3), f32((f32(0.1) + 1) * f32(1 / 3))],
+  ])('%s', (_, a, lo, hi, speed, matched) => {
+    expect(matchedSpeed(speed, MAXIMUM, { a, lo, hi })).toBe(matched);
+  });
+
+  it('compares v with the low bound before its f32 store', () => {
+    // F(−1e−50) would be −0, not below +0; the double is below it, so the bound +0 is written.
+    expect(Object.is(matchedSpeed(-1e-50, MAXIMUM, { a: 0, lo: 0, hi: 1 }), 0)).toBe(true);
+  });
+
+  it('writes the generalised match like the player\'s and fails in the same cases', () => {
+    const subject = block();
+    expect(applySpeedMatch(subject, RECORD, MAXIMUM, target(20), { a: f32(0.5), lo: 0, hi: 1 })).toBe(true);
+    expect([subject.commandedSpeed, subject.atCommandedSpeed]).toEqual([30, false]);
+    expect(applySpeedMatch(subject, RECORD, MAXIMUM, null, { a: f32(0.5), lo: 0, hi: 1 })).toBe(false);
+    expect(speedMatch(block(), RECORD, MAXIMUM, target(20), { a: 1, lo: 0, hi: f32(0.5) })).toBe(24);
   });
 });
 

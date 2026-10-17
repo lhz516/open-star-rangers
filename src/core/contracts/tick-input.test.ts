@@ -31,6 +31,7 @@ const ALL_COMMANDS: readonly Command[] = [
   ...(['open', 'shield-increase', 'shield-decrease', 'gun-increase', 'gun-decrease'] as const).map((operation) => ({ type: 'energy', operation }) as const),
   { type: 'damage-report' },
   { type: 'cockpit-front' },
+  { type: 'drop-transponder' },
 ];
 
 const tick = (commands: readonly unknown[], axes: unknown = ZERO_AXES): unknown => ({ axes, commands });
@@ -66,9 +67,9 @@ function tracked<T>(value: T, log: string[], path = 'input'): T {
 describe('readTickInput (P3-02 AC-04, 输入与命令)', () => {
   it('accepts every command of the closed union and covers each command type', () => {
     expect(new Set(ALL_COMMANDS.map((command) => command.type))).toEqual(new Set(COMMAND_TYPES));
-    expect(COMMAND_TYPES).toHaveLength(17);
-    // 51 distinct commands, counting map-point once per operation; all fit into one tick.
-    expect(ALL_COMMANDS).toHaveLength(51);
+    expect(COMMAND_TYPES).toHaveLength(18);
+    // 52 distinct commands, counting map-point once per operation; all fit into one tick.
+    expect(ALL_COMMANDS).toHaveLength(52);
     expect(CORE_LIMITS.commandsPerTick).toBeGreaterThanOrEqual(ALL_COMMANDS.length);
     const read = readTickInput(tick(ALL_COMMANDS, { pitch: -1, yaw: 0.5, roll: 1 }));
     expect(read).toEqual({ axes: { pitch: -1, yaw: 0.5, roll: 1 }, commands: ALL_COMMANDS });
@@ -169,6 +170,8 @@ describe('readTickInput (P3-02 AC-04, 输入与命令)', () => {
     ['a speed preset without its level', tick([{ type: 'speed-preset' }]), 'tickInput.commands[0].level', 'is required'],
     ['a speed preset with a selection number', tick([{ type: 'speed-preset', value: 3 }]), 'tickInput.commands[0].level', 'is required'],
     ['a speed preset with an extra field', tick([{ type: 'speed-preset', level: 3, value: 3 }]), 'tickInput.commands[0]', 'contains unknown fields'],
+    // P3-02 CR-20: `drop-transponder` has no field.
+    ['a drop-transponder with a field', tick([{ type: 'drop-transponder', count: 1 }]), 'tickInput.commands[0]', 'contains unknown fields'],
     ['a selection number with a level', tick([{ type: 'select-number', level: 3 }]), 'tickInput.commands[0].value', 'is required'],
     ['a missing command field', tick([{ type: 'fire' }]), 'tickInput.commands[0].channel', 'is required'],
     ['a misplaced command field', tick([{ type: 'fire', operation: 'increase' }]), 'tickInput.commands[0].channel', 'is required'],

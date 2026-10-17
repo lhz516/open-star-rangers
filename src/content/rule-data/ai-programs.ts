@@ -1,17 +1,17 @@
 import {
-  byteStrings, invalid, listOf, mismatch, readF32, readI32, readIndex, readList, readNullable, readPlainRecord, readU32, records,
+  byteStrings, invalid, listOf, mismatch, readF32, readI32, readIndex, readList, readNullable, readPlainRecord, readTuple, readU32, records,
   requireTarget, tuples, type ByteString, type Shape,
 } from './rule-data-fields.ts';
 
-// Canonical content of `data/ai-programs` (P3-03 spec S-05): AICO 6001 as the group-0 slice reads it, the program table
-// TABL 6003, the 25 entries its ID chain names, and the EXE built-in program table 0x1762f8, with the structure of
-// docs/original/formats/ai.md. `atXX` is the source position +0xXX in its structure. Values are kept as stored (field
+// Canonical content of `data/ai-programs` (P3-03 spec S-05 and, from revision 3, S-19): AICO 6001 as the group-0 slice
+// reads it, the program table TABL 6003, the 25 entries its ID chain names, the EXE built-in program table 0x1762f8 and
+// the four EXE keyword tables 0x5ea40–0x5eae7, with the structure of docs/original/formats/ai.md. `atXX` is the source position +0xXX in its structure. Values are kept as stored (field
 // rules 2–6): the load transforms of ai.md §6 are not performed, positions the load code overwrites and unused positions
 // are not carried, and entry IDs become positions in `entries`. A 32-bit integer whose sign the code never observes is
 // kept as u32 (ai.md §6). Meanings are Unconfirmed (U-001, U-022); how programs and scripts run belongs to P3-08.
 
 /** Fixed counts of the format (ai.md §2, §4). */
-export const AI_PROGRAMS_COUNTS = Object.freeze({ triple: 3, elementValues: 4, stateScriptLists: 6 });
+export const AI_PROGRAMS_COUNTS = Object.freeze({ triple: 3, elementValues: 4, stateScriptLists: 6, keywordTables: 4 });
 
 /** The opcode of the item that ends a script (ai.md §5). */
 export const AI_SCRIPT_END_OPCODE = 10000;
@@ -19,7 +19,8 @@ export const AI_SCRIPT_END_OPCODE = 10000;
 /**
  * Structural limits: twice the maximum recorded in ai.md §8, rounded up to a power of two (10 records in one program table,
  * the built-in one; names 20 bytes; 5 AICO elements; 25 entries; 6 IDs in one DFPG list; 40 items in one script; script
- * texts 37 bytes).
+ * texts 37 bytes; 6 entries in one keyword table). A keyword name's limit is that of a program name: the 11 bytes
+ * observed give 32, below it (P3-03 spec, revision 3).
  */
 export const AI_PROGRAMS_LIMITS = Object.freeze({
   programRecords: 32,
@@ -29,7 +30,18 @@ export const AI_PROGRAMS_LIMITS = Object.freeze({
   stateScriptItems: 16,
   scriptItems: 128,
   scriptTextBytes: 128,
+  keywordEntries: 16,
+  keywordNameBytes: 64,
 });
+
+/**
+ * The keyword table each keyword-argument opcode looks its text up in (ai.md §5.3): an index into `keywordTables`. A
+ * schema constant shared by the converter, the reader and Core; it is not carried in the payload.
+ */
+export const AI_KEYWORD_TABLE_BY_OPCODE: ReadonlyMap<number, number> = new Map([[230, 0], [231, 0], [300, 1], [301, 2], [403, 3]]);
+
+/** The name as keyword lookups compare it: only A–Z folded to lower case (ai.md §5.3). */
+export const foldKeywordName = (name: ByteString): ByteString => name.replace(/[A-Z]/g, letter => letter.toLowerCase());
 
 export type I32x3 = readonly [number, number, number];
 export type F32x4 = readonly [number, number, number, number];
@@ -213,6 +225,22 @@ export interface AiScriptEntry {
 
 export type AiEntry = AiParameterEntry | AiScriptEntry;
 
+/** A {name pointer, i32 value} pair of a keyword table (ai.md §5.3; Confirmed, code and fixups). */
+export interface KeywordEntry {
+  /** +0x00 pointer: the text at its fixup target, 1 or more bytes without the NUL. */
+  readonly name: ByteString;
+  /** +0x04 i32, as stored. */
+  readonly value: number;
+}
+
+/**
+ * A keyword table's pairs in stored order, without the null terminator pair. Order is part of the rule: a lookup takes
+ * the first match, so no reader may sort or deduplicate them. Names are distinct within a table once A–Z are folded.
+ */
+export type KeywordTable = readonly KeywordEntry[];
+
+export type KeywordTables = readonly [KeywordTable, KeywordTable, KeywordTable, KeywordTable];
+
 export interface AiPrograms {
   /** AICO +0x00: the i32 triple of difficulty group 0 (ai.md §2). */
   readonly groupTriple: I32x3;
@@ -226,6 +254,8 @@ export interface AiPrograms {
   readonly entries: readonly AiEntry[];
   /** The built-in table's records in source order. */
   readonly builtInPrograms: readonly BuiltInProgram[];
+  /** The keyword tables in address order: `0x5ea40`, `0x5ea60`, `0x5ea98`, `0x5eac8` (`AI_KEYWORD_TABLE_BY_OPCODE`). */
+  readonly keywordTables: KeywordTables;
 }
 
 const readF32x4 = tuples<F32x4>(AI_PROGRAMS_COUNTS.elementValues, readF32);
@@ -320,12 +350,32 @@ function readEntry(value: unknown, path: string): AiEntry {
   }
 }
 
+const readKeywordText = byteStrings(AI_PROGRAMS_LIMITS.keywordNameBytes);
+const readKeywordName = (value: unknown, path: string): ByteString => {
+  const name = readKeywordText(value, path);
+  return name.length > 0 ? name : invalid(path, 'must hold at least one byte');
+};
+const readKeywordEntry = records<KeywordEntry>({ name: readKeywordName, value: readI32 });
+
+/** A table of 1 to `keywordEntries` pairs whose names are distinct once A–Z are folded. */
+function readKeywordTable(value: unknown, path: string): KeywordTable {
+  const entries = readList(value, path, AI_PROGRAMS_LIMITS.keywordEntries, readKeywordEntry, 1);
+  const seen = new Set<ByteString>();
+  entries.forEach(({ name }, index) => {
+    const folded = foldKeywordName(name);
+    if (seen.has(folded)) invalid(`${path}[${index}].name`, 'must differ from the earlier names of the table, A to Z folded');
+    seen.add(folded);
+  });
+  return entries;
+}
+
 const readPrograms = records<AiPrograms>({
   groupTriple: tuples<I32x3>(AI_PROGRAMS_COUNTS.triple, readI32),
   globals: records(GLOBALS),
   programs: listOf(AI_PROGRAMS_LIMITS.programRecords, records(TABLE_PROGRAM)),
   entries: listOf(AI_PROGRAMS_LIMITS.entries, readEntry),
   builtInPrograms: listOf(AI_PROGRAMS_LIMITS.programRecords, records(BUILT_IN_PROGRAM)),
+  keywordTables: (value, path) => readTuple(value, path, AI_PROGRAMS_COUNTS.keywordTables, readKeywordTable) as KeywordTables,
 });
 
 /**

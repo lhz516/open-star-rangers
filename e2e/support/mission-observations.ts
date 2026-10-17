@@ -164,14 +164,19 @@ async function shownFor(page: Page, from: string, to: string): Promise<number> {
   return log[end].time - log[end - 1].time;
 }
 
+/** Where each G-02 placeholder shows and where its end leads. */
+const PLACEHOLDER_POSITIONS = Object.freeze({
+  'G-02/1': ['intro', 'config'], 'G-02/2': ['departure', 'flight'], 'G-02/3': ['transition', 'flight'], 'G-02/4': ['transition', 'flight'],
+} as const);
+
 /**
  * Ends the shown G-02 placeholder by `end` and waits for the position after it: the introduction leads to the start
- * page, the departure to flight. Focus must be on its skip button first. A natural end needs `watchPositions` installed
- * before the placeholder appeared, and must come only after about 3,000 ms of visible time (the exact boundary is a
- * Node test). Resolves to the frame after it.
+ * page, the departure and a running hold's docking or launch placeholder (P3-10, the hold's only item) to flight. Focus
+ * must be on its skip button first. A natural end needs `watchPositions` installed before the placeholder appeared, and
+ * must come only after about 3,000 ms of visible time (the exact boundary is a Node test). Resolves to the frame after it.
  */
-export async function endPlaceholder(page: Page, gap: 'G-02/1' | 'G-02/2', end: PlaceholderEnd): Promise<MissionFrame> {
-  const [from, to] = gap === 'G-02/1' ? ['intro', 'config'] : ['departure', 'flight'];
+export async function endPlaceholder(page: Page, gap: keyof typeof PLACEHOLDER_POSITIONS, end: PlaceholderEnd): Promise<MissionFrame> {
+  const [from, to] = PLACEHOLDER_POSITIONS[gap];
   if (end === 'natural') {
     const frame = await waitForFrame(page, candidate => candidate.position === to, 15_000);
     expect(await shownFor(page, from, to), 'A placeholder ended before 3 s of visible time').toBeGreaterThanOrEqual(2_900);
@@ -312,6 +317,9 @@ export interface DevState {
   /** The run's wingman option, or null for none. */
   readonly wingman: number | null;
   readonly player: number | null;
+  /** The player's view mode and the previous one. */
+  readonly viewMode: number;
+  readonly previousViewMode: number;
   readonly entities: readonly { readonly id: number; readonly kindBit: number; readonly source: string }[];
 }
 
@@ -321,11 +329,12 @@ function readDevState(page: Page): Promise<DevState | null> {
     const run = text('dev-state-run');
     if (run === null) return null;
     const wingman = text('dev-state-wingman');
-    const player = /^entity (\d+|none),/.exec(text('dev-state-player') ?? '');
+    const player = /^entity (\d+|none), view mode 0x([0-9a-f]+) \(previous 0x([0-9a-f]+)\)/.exec(text('dev-state-player') ?? '');
     if (!player) throw new Error('Unreadable player state');
     return {
       run: Number(run), tick: Number(text('dev-state-tick')), seed: Number(text('dev-state-seed')),
       wingman: wingman === 'none' ? null : Number(wingman), player: player[1] === 'none' ? null : Number(player[1]),
+      viewMode: parseInt(player[2], 16), previousViewMode: parseInt(player[3], 16),
       entities: [...document.querySelectorAll<HTMLElement>('[data-testid="dev-entity"]')].map(row => ({
         id: Number(row.dataset.entityId), kindBit: Number(row.dataset.kindBit), source: row.dataset.source ?? '',
       })),

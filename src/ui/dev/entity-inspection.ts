@@ -16,7 +16,7 @@ export function describeSource(source: EntitySource | null): string {
   return group === null ? declaration : `${declaration} group ${group.index} request ${group.request} member ${group.member}`;
 }
 
-/** The name reference itself: `none`, `candidate mission#2 [0]`, `pool [5]` or `craft-type bit 3`. */
+/** The name reference itself: `none`, `candidate mission#2 [0]`, `pool [5]`, `craft-type bit 3` or `map-marker`. */
 export function describeName(name: NameReference): string {
   switch (name.type) {
     case 'none':
@@ -27,6 +27,8 @@ export function describeName(name: NameReference): string {
       return `pool [${name.index}]`;
     case 'craft-type':
       return `craft-type bit ${name.kindBit}`;
+    case 'map-marker':
+      return 'map-marker';
   }
 }
 

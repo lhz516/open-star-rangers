@@ -1,7 +1,7 @@
 /**
  * Speed match rules of P3-06 (docs/plan/p3/06/spec.md, 匹配速度与速度辅助; docs/original/formats/executable.md, throttle,
  * maximum speed and speed matching, P3-06/03): the shared match `0x21adc`, which the manual match (Enter), the speed
- * assist `0x27f68` and P3-08's AI message 0x80000 all call, and the assist's conditions: its kinds, its squared 3-D
+ * assist `0x27f68` and P3-08's AI message 0x80000 all call (the AI with its own (a, lo, hi)), and the assist's conditions: its kinds, its squared 3-D
  * range, its timer and the speed difference the original flashes the HUD for.
  *
  * These read only what they are given; the caller resolves the target ID (an ID that no longer resolves is the
@@ -15,43 +15,59 @@ import { CoreFaultError } from '../errors.ts';
 import type { MovementBlock, SteeredMovementBlock } from '../world/entity-table.ts';
 
 /**
- * The value `0x21adc` writes for a target's current speed, with the arguments every caller passes (a = 0, lo = 0,
- * hi = 1): v = (a + 1) × the target's speed, clamped by the subject's maximum scaled to f32(maximum × lo) below (v, the
- * double, against it) and f32(maximum × hi) above (f32(v) against it).
+ * The shape (a, lo, hi) of a call of `0x21adc`, three f32 values: the player's manual match and assist pass
+ * PLAYER_MATCH, P3-08's AI message 0x80000 its own (docs/plan/p3/08/spec.md, revision ⑧).
  */
-export function matchedSpeed(targetSpeed: number, maximumSpeed: number): number {
-  const low = Math.fround(maximumSpeed * 0);
-  const high = Math.fround(maximumSpeed);
-  if (targetSpeed < low) return low;
-  const stored = Math.fround(targetSpeed);
+export interface SpeedMatchShape {
+  readonly a: number;
+  readonly lo: number;
+  readonly hi: number;
+}
+
+/** (0, 0, 1), the shape of the player's match and of `0x5d080`. */
+export const PLAYER_MATCH: SpeedMatchShape = Object.freeze({ a: 0, lo: 0, hi: 1 });
+
+/**
+ * The value `0x21adc` writes for a target's current speed with `shape`: v = D(D(a + 1) × the target's speed), clamped
+ * by the subject's maximum scaled to F(maximum × lo) below (v, the double, against it) and F(maximum × hi) above (F(v)
+ * against it). With PLAYER_MATCH this is the target's speed clamped into [0, maximum].
+ */
+export function matchedSpeed(targetSpeed: number, maximumSpeed: number, { a, lo, hi }: SpeedMatchShape = PLAYER_MATCH): number {
+  const low = Math.fround(maximumSpeed * lo);
+  const high = Math.fround(maximumSpeed * hi);
+  const speed = (a + 1) * targetSpeed;
+  if (speed < low) return low;
+  const stored = Math.fround(speed);
   return stored > high ? high : stored;
 }
 
 /**
  * The speed `0x21adc` would write on `subject` (the subject's block, its craft record and its maximum speed) from the
- * target's block, or null when it fails: unless both have a block and the subject has a craft record. It does not
- * test the subject's lock.
+ * target's block with `shape`, or null when it fails: unless both have a block and the subject has a craft record. It
+ * does not test the subject's lock.
  */
 export function speedMatch(
   subject: SteeredMovementBlock | null,
   record: CraftRecord | undefined,
   maximumSpeed: number,
   target: Pick<MovementBlock, 'speed'> | null,
+  shape: SpeedMatchShape = PLAYER_MATCH,
 ): number | null {
-  return subject === null || target === null || record === undefined ? null : matchedSpeed(target.speed, maximumSpeed);
+  return subject === null || target === null || record === undefined ? null : matchedSpeed(target.speed, maximumSpeed, shape);
 }
 
 /**
- * `0x21adc` on `subject`: in mode `craft` the matched speed becomes the commanded speed and clears the arrival flag; in
- * any other mode it becomes the current speed. Returns whether it wrote (speedMatch).
+ * `0x21adc` on `subject` with `shape`: in mode `craft` the matched speed becomes the commanded speed and clears the
+ * arrival flag; in any other mode it becomes the current speed. Returns whether it wrote (speedMatch).
  */
 export function applySpeedMatch(
   subject: SteeredMovementBlock | null,
   record: CraftRecord | undefined,
   maximumSpeed: number,
   target: Pick<MovementBlock, 'speed'> | null,
+  shape: SpeedMatchShape = PLAYER_MATCH,
 ): boolean {
-  const speed = speedMatch(subject, record, maximumSpeed, target);
+  const speed = speedMatch(subject, record, maximumSpeed, target, shape);
   if (subject === null || speed === null) return false;
   if (subject.mode === 'craft') {
     subject.commandedSpeed = speed;

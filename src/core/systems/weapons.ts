@@ -85,7 +85,7 @@ function judgeFire(context: TickContext, player: CraftEntity, command: CommandOf
  * player `player-unavailable`, outside the flight context `wrong-context`, both ignored and changing nothing.
  */
 export function judgeWeaponCommand(context: TickContext, command: CommandOf<'fire' | 'cycle-main-weapon' | 'select-missile'>, commandIndex: number): void {
-  const player = combatCommandPlayer(context.world);
+  const player = combatCommandPlayer(context);
   if (typeof player === 'string') {
     emitCommandResult(context, command, commandIndex, { outcome: 'ignored', reason: player });
     return;

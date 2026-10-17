@@ -6,7 +6,8 @@
  */
 import type { EventDelivery } from '../../app/runtime/game-event-bus.ts';
 import type { Attacker, DomainEvent, ShotTrigger, Vec3 } from '../../core/contracts/domain-events.ts';
-import { describeSource } from './entity-inspection.ts';
+import type { MessageIdentity, SpeakerSnapshot } from '../../core/world/world-state.ts';
+import { describeName, describeSource } from './entity-inspection.ts';
 
 export const EVENT_LOG_LIMIT = 500;
 
@@ -35,6 +36,8 @@ export interface EventLogView {
 type Fields = (readonly [string, EventFieldValue])[];
 
 const positionOf = ({ x, y, z }: Vec3): Fields => [['x', x], ['y', y], ['z', z]];
+/** `originX`, `originY`, `originZ` for `origin`. */
+const namedPosition = (name: string, { x, y, z }: Vec3): Fields => [[`${name}X`, x], [`${name}Y`, y], [`${name}Z`, z]];
 
 /** `shooter 12 kind 7`, `lost-shooter` or `none`. */
 function describeAttacker(attacker: Attacker): string {
@@ -52,6 +55,15 @@ function describeTrigger(trigger: ShotTrigger): string {
       return 'automatic';
   }
 }
+
+/** `20011/2#3` (table, portrait, index) or `20983#6` for the direct list. */
+function describeMessage({ table, face, index }: MessageIdentity): string {
+  return face === null ? `${table}#${index}` : `${table}/${face}#${index}`;
+}
+
+/** `entity 4 kind 15 pool [1]`, or null without a speaker. */
+const describeSpeaker = (speaker: SpeakerSnapshot | null): string | null =>
+  (speaker === null ? null : `entity ${speaker.entityId} kind ${speaker.kindBit} ${describeName(speaker.name)}`);
 
 function fieldsOf(event: DomainEvent): Fields {
   switch (event.type) {
@@ -108,6 +120,87 @@ function fieldsOf(event: DomainEvent): Fields {
       return [['entityId', event.entityId], ['shieldLevel', event.shieldLevel], ['chargeLevel', event.chargeLevel], ['commandIndex', event.commandIndex]];
     case 'left-page-changed':
       return [['page', event.page], ['previousPage', event.previousPage], ['commandIndex', event.commandIndex]];
+    // P3-09's (docs/plan/p3/02/spec.md, MW-05), every field: the main position as x, y, z, the others by their name.
+    case 'map-toggled':
+      return [['open', event.open], ['viewMode', event.viewMode], ['previousViewMode', event.previousViewMode], ['commandIndex', event.commandIndex]];
+    case 'warp-destination-set': {
+      const { marker } = event;
+      return [
+        ['playerEntityId', event.playerEntityId], ['column', event.pixel.column], ['row', event.pixel.row], ['iconEntityId', event.icon?.entityId ?? null],
+        ['iconKindBit', event.icon?.kindBit ?? null], ['marker', marker.type], ['markerEntityId', marker.type === 'missing' ? null : marker.entityId],
+        ['commandIndex', event.commandIndex], ...positionOf(event.destination),
+      ];
+    }
+    case 'warp-started':
+      return [
+        ['playerEntityId', event.playerEntityId], ['serial', event.serial], ['distance', event.distance], ['cost', event.check.cost],
+        ['energy', event.check.energy], ['transitLength', event.transitLength], ['fromViewMode', event.fromViewMode], ['commandIndex', event.commandIndex],
+        ...namedPosition('origin', event.origin), ...namedPosition('destination', event.destination),
+      ];
+    case 'warp-completed': {
+      const { arrival } = event;
+      const fields: Fields = [['serial', event.serial], ['viewMode', event.viewMode], ['previousViewMode', event.previousViewMode], ['arrived', arrival !== null]];
+      if (arrival === null) return fields;
+      const { charge } = arrival;
+      return [
+        ...fields, ['playerEntityId', arrival.playerEntityId], ['error', arrival.error], ['snapped', arrival.snapped],
+        ['chargeDistance', charge.distance], ['chargeCost', charge.cost], ['energyBefore', charge.energyBefore], ['energyAfter', charge.energyAfter],
+        ['warpClock', arrival.warpClock], ['hostileNear', arrival.hostileNear], ...positionOf(arrival.position),
+        ['orientation', arrival.orientation.join(' ')], ...namedPosition('origin', arrival.origin), ...namedPosition('destination', arrival.destination),
+      ];
+    }
+    case 'command-delivered':
+      return [
+        ['receiverEntityId', event.receiverEntityId], ['receiverKindBit', event.receiverKindBit], ['code', event.code], ['senderEntityId', event.senderEntityId],
+        ['commandIndex', event.commandIndex],
+      ];
+    case 'radio-queued':
+      return [
+        ['message', describeMessage(event.message)], ['callback', event.callback], ['speaker', describeSpeaker(event.speaker)], ['position', event.position],
+        ['length', event.length],
+      ];
+    case 'radio-taken':
+      return [['message', describeMessage(event.message)], ['speaker', describeSpeaker(event.speaker)]];
+    case 'incoming-started':
+      return [
+        ['message', describeMessage(event.message)], ['speaker', describeSpeaker(event.speaker)], ['frameDurations', event.frameDurations.join(' ')],
+        ['shown', event.shown],
+      ];
+    case 'incoming-ended':
+      return [
+        ['message', describeMessage(event.message)], ['speaker', describeSpeaker(event.speaker)], ['callback', event.callback],
+        ['countdownStarted', event.countdownStarted],
+      ];
+    case 'radio-flushed':
+      return [['cause', event.cause], ['removed', event.removed], ['interrupted', event.interrupted]];
+    case 'docking-requested':
+      return [
+        ['dockingObject', event.dockingObject], ['previousSubState', event.previousSubState], ['deadlineClock', event.deadlineClock],
+        ['commandIndex', event.commandIndex],
+      ];
+    case 'docking-cancelled':
+      return [['dockingObject', event.dockingObject], ['cause', event.cause]];
+    case 'docked':
+      return [['baseEntityId', event.baseEntityId], ['wingmanEntityId', event.wingmanEntityId], ['previousViewMode', event.previousViewMode]];
+    case 'departed':
+      return [
+        ['origin', event.origin], ['commandIndex', event.commandIndex], ['viewMode', event.viewMode], ['previousViewMode', event.previousViewMode],
+        ['wingmanEntityId', event.wingmanEntityId], ...positionOf(event.position),
+      ];
+    case 'transition':
+      return [['gap', event.gap]];
+    case 'base-navigated':
+      return [['direction', event.direction], ['row', event.row], ['moved', event.moved], ['commandIndex', event.commandIndex]];
+    case 'base-confirmed':
+      return [['row', event.row], ['record', event.record], ['moved', event.moved], ['commandIndex', event.commandIndex]];
+    // P3-08's (docs/plan/p3/02/spec.md, CR-22).
+    case 'wingman-command-consumed':
+      return [
+        ['wingmanEntityId', event.wingmanEntityId], ['code', event.code], ['issuedTick', event.issuedTick], ['path', event.path], ['outcome', event.outcome],
+        ['replyLine', event.replyLine],
+      ];
+    case 'transponder-deployed':
+      return [['entityId', event.entityId], ['creatorEntityId', event.creatorEntityId], ...positionOf(event.position)];
   }
 }
 

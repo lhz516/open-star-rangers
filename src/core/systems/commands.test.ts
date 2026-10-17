@@ -8,6 +8,7 @@ import { entityInit, stateText, testState, tickInput } from '../world/world.test
 import type { WorldState } from '../world/world-state.ts';
 import { combatCommandPlayer } from './commands.ts';
 import { registerTick, type Request } from './pipeline.ts';
+import { addActive, BASE_KIND_BIT, radioScene } from './radio.test-support.ts';
 import { referenceTarget } from './targeting.ts';
 import { updateMissileLock } from './weapons.ts';
 
@@ -36,14 +37,21 @@ const P3_06_COMMANDS: readonly Command[] = [
   { type: 'confirm-selection' },
 ];
 
-/** One command of every other type. */
-const OTHER_COMMANDS: readonly Command[] = [
+/** P3-09's commands, judged in map.test.ts and warp.test.ts. */
+const P3_09_COMMANDS: readonly Command[] = [{ type: 'toggle-map' }, { type: 'map-point', operation: 'select', right: 0.5, down: 0.5 }, { type: 'request-warp' }];
+
+/** P3-10's commands other than select-number (CB-07), which communications.test.ts judges. */
+const P3_10_COMMANDS: readonly Command[] = [
   { type: 'navigate-selection', direction: 'next' },
-  { type: 'toggle-map' },
-  { type: 'map-point', operation: 'select', right: 0.5, down: 0.5 },
-  { type: 'request-warp' },
-  { type: 'communications', operation: 'open' },
+  { type: 'communications', operation: 'close' },
   { type: 'launch' },
+];
+
+/** P3-08's command (CR-20), which xpon.test.ts judges. */
+const P3_08_COMMANDS: readonly Command[] = [{ type: 'drop-transponder' }];
+
+/** One command of every type no rule handles yet. */
+const OTHER_COMMANDS: readonly Command[] = [
   { type: 'cockpit-front' },
 ];
 
@@ -64,7 +72,8 @@ const notImplemented = (commands: readonly Command[], tick: number): DomainEvent
 
 describe('command judgement (P3-07 CR-05, CR-07)', () => {
   it('covers every command type', () => {
-    expect(new Set([...COMBAT_COMMANDS, ...P3_06_COMMANDS, ...OTHER_COMMANDS].map(({ type }) => type))).toEqual(new Set<CommandType>(COMMAND_TYPES));
+    expect(new Set([...COMBAT_COMMANDS, ...P3_06_COMMANDS, ...P3_09_COMMANDS, ...P3_10_COMMANDS, ...P3_08_COMMANDS, ...OTHER_COMMANDS].map(({ type }) => type)))
+      .toEqual(new Set<CommandType>(COMMAND_TYPES));
   });
 
   it('gives every other command exactly one rejected/not-implemented result each, in order, and changes nothing else', () => {
@@ -77,7 +86,7 @@ describe('command judgement (P3-07 CR-05, CR-07)', () => {
   });
 
   it('keeps the results in command order across the modules and P3-06\'s throttle commands, with repeated types', () => {
-    const commands = [COMBAT_COMMANDS[0], P3_06_COMMANDS[0], COMBAT_COMMANDS[5], COMBAT_COMMANDS[0], COMBAT_COMMANDS[15], OTHER_COMMANDS[5]];
+    const commands = [COMBAT_COMMANDS[0], P3_06_COMMANDS[0], COMBAT_COMMANDS[5], COMBAT_COMMANDS[0], COMBAT_COMMANDS[15], P3_10_COMMANDS[1], OTHER_COMMANDS[0]];
     const [state] = flightState();
     expect(constructWorld(state).step(tickInput(commands))).toEqual(commands.map(({ type }, commandIndex) => ({
       type: 'command-result',
@@ -88,18 +97,21 @@ describe('command judgement (P3-07 CR-05, CR-07)', () => {
         : type === 'target' ? { outcome: 'ignored', reason: 'no-candidate' }
         // The player's craft record mounts gun 0 on list 0, and its charge is 0.
         : type === 'fire' ? { outcome: 'ignored', reason: 'insufficient-charge' }
-        : type === 'damage-report' ? { outcome: 'ignored', reason: 'no-change' }
+        : type === 'damage-report' || type === 'communications' ? { outcome: 'ignored', reason: 'no-change' }
         : { outcome: 'rejected', reason: 'not-implemented' }),
     })));
   });
 });
 
+/** The common pre-judgement in a tick registered on `state`, whose command view is the committed view. */
+const preJudged = (state: WorldState) => combatCommandPlayer(registerTick(state, readTickInput(tickInput())));
+
 describe('the common pre-judgement of P3-07\'s commands (CR-05)', () => {
   it('gives the player entity when it is active in flight', () => {
     const [state, player] = flightState();
-    expect(combatCommandPlayer(state)).toBe(player);
+    expect(preJudged(state)).toBe(player);
     state.player.viewMode = 0x11;
-    expect(combatCommandPlayer(state)).toBe(player);
+    expect(preJudged(state)).toBe(player);
   });
 
   it.each([
@@ -112,13 +124,23 @@ describe('the common pre-judgement of P3-07\'s commands (CR-05)', () => {
   ])('is player-unavailable with %s, before the context', (_, change) => {
     const [state, player] = flightState();
     change(state, player);
-    expect(combatCommandPlayer(state)).toBe('player-unavailable');
+    expect(preJudged(state)).toBe('player-unavailable');
   });
 
   it.each([[0, 'Warp'], [3, 'Warp'], [6, 'the base'], [8, 'the map']] as const)('is wrong-context in view mode %i (%s)', (viewMode, _) => {
     const [state] = flightState();
     state.player.viewMode = viewMode;
-    expect(combatCommandPlayer(state)).toBe('wrong-context');
+    expect(preJudged(state)).toBe('wrong-context');
+  });
+
+  it('reads the context of the command view, not the committed view (MW-04)', () => {
+    const [state, player] = flightState();
+    const context = registerTick(state, readTickInput(tickInput()));
+    context.commandView.viewMode = 8;
+    expect(combatCommandPlayer(context)).toBe('wrong-context');
+    state.player.viewMode = 8;
+    context.commandView.viewMode = 0x0c;
+    expect(combatCommandPlayer(context)).toBe(player);
   });
 });
 
@@ -166,5 +188,42 @@ describe('the player update\'s P3-07 entry points (CR-07)', () => {
     expect(stateText(state)).toBe(before);
     expect(context.events).toEqual([]);
     expect(context.requests.findLastPending((_request): _request is Request => true)).toBeUndefined();
+  });
+});
+
+// Merge regression (P3-08 subtask 30): P3-10 wrote its browser flow before P3-09's map, when `toggle-map` was still
+// rejected/not-implemented. MW-04 accepts it in the base (step 4: a docked player passes step 2) and P3-10's own scope
+// hands the base's map to P3-09 (its previous view stays 6 and closing returns to the base), so the merged judgement
+// must accept it for a player the formal step docked.
+describe('toggle-map in the base after docking (MW-04, CB-07, CB-10)', () => {
+  it('opens the map over the base for a docked player, gates Warp and launch there, and closes back into the base', () => {
+    const scene = radioScene();
+    const { state, player } = scene;
+    const base = addActive(scene, BASE_KIND_BIT);
+    // Sub-state 4 with the due passed: tick 1's mission flow posts the docking, which request handling applies.
+    Object.assign(state.flow, { subState: 4, dockingDeadline: 0 });
+    state.player.dockingObject = base.id;
+    const world = constructWorld(state);
+    const step = (commands: readonly Command[] = []) => [...world.step(tickInput(commands))];
+    expect(step()).toContainEqual(expect.objectContaining({ type: 'docked', tick: 1, baseEntityId: base.id }));
+    expect([player.activity, state.player.viewMode]).toEqual(['docked', 6]);
+
+    const opened = step([{ type: 'toggle-map' }, { type: 'request-warp' }, { type: 'launch' }]);
+    expect(opened.filter(({ type }) => type === 'command-result')).toEqual([
+      { type: 'command-result', tick: 2, commandIndex: 0, commandType: 'toggle-map', outcome: 'accepted', reason: null },
+      // A map opened from the base (previous view 6) refuses Warp (MW-04 request-warp step 3); the map has no launch (CB-07 item 4).
+      { type: 'command-result', tick: 2, commandIndex: 1, commandType: 'request-warp', outcome: 'ignored', reason: 'wrong-context' },
+      { type: 'command-result', tick: 2, commandIndex: 2, commandType: 'launch', outcome: 'ignored', reason: 'wrong-context' },
+    ]);
+    expect(opened).toContainEqual({ type: 'map-toggled', tick: 2, open: true, viewMode: 8, previousViewMode: 6, commandIndex: 0 });
+    expect([player.activity, state.player.viewMode, state.player.previousViewMode, state.flow.subState]).toEqual(['docked', 8, 6, 5]);
+
+    const closed = step([{ type: 'toggle-map' }, { type: 'navigate-selection', direction: 'next' }]);
+    expect(closed.filter(({ type }) => type === 'command-result')).toEqual([
+      { type: 'command-result', tick: 3, commandIndex: 0, commandType: 'toggle-map', outcome: 'accepted', reason: null },
+      { type: 'command-result', tick: 3, commandIndex: 1, commandType: 'navigate-selection', outcome: 'accepted', reason: null },
+    ]);
+    expect(closed).toContainEqual({ type: 'map-toggled', tick: 3, open: false, viewMode: 6, previousViewMode: 8, commandIndex: 0 });
+    expect([player.activity, state.player.viewMode, state.baseService?.cursor]).toEqual(['docked', 6, 1]);
   });
 });

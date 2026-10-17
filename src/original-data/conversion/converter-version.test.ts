@@ -9,7 +9,9 @@ import { PRODUCTION_CONVERTER_VERSION, productionIdentityBasis } from './convert
 
 describe('production converter version', () => {
   it('is osr-import followed by the packaged converters\' components in stage order', () => {
-    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-4.logic-2.audio-2.models-4');
+    // P3-09 incremented graphics (map geometry) and P3-10 logic (comm-messages): distinct components, both kept; P3-08
+    // incremented logic again for the keyword tables (P3-03 revision 3).
+    expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-5.logic-4.audio-2.models-4');
     expect(PRODUCTION_CONVERTER_VERSION.split('.').slice(1))
       .toEqual([GRAPHICS_CONVERTER_COMPONENT, LOGIC_CONVERTER_COMPONENT, AUDIO_CONVERTER_COMPONENT, MODEL_CONVERTER_COMPONENT]);
   });
@@ -30,7 +32,8 @@ describe('production converter version', () => {
       origin: { type: 'original-import', sourceFingerprint },
     });
     expect(Object.isFrozen(productionIdentityBasis(sourceFingerprint))).toBe(true);
-    // P3-03 切片定义版本 4: production and synthetic identities carry slice definition version 4.
-    expect([productionIdentityBasis(sourceFingerprint).sliceDefinitionVersion, syntheticIdentity().sliceDefinitionVersion]).toEqual([4, 4]);
+    // P3-03 切片定义版本 5 on each branch (P3-09's map geometry revision, P3-10's revision 2), merged as version 6:
+    // production and synthetic identities carry slice definition version 6.
+    expect([productionIdentityBasis(sourceFingerprint).sliceDefinitionVersion, syntheticIdentity().sliceDefinitionVersion]).toEqual([6, 6]);
   });
 });

@@ -3,8 +3,10 @@ import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
 import { initialMovementBlock } from '../rules/flight-state.ts';
 import {
-  ALL_KINDS, allocatorAiState, allocatorFlightState, blankCraftCombat, combatTypeOf, EntityTable, isActiveState, isLive, setActivity, SUBSYSTEM_COUNT,
-  type CraftCombat, type Entity, type EntityCombat, type EntityInit, type MissileCombat, type MovementBlock, type ObjectState, type SteeredMovementBlock,
+  ALL_KINDS, allocatorAiState, allocatorFlightState, blankCraftCombat, clearedControllerCommon, combatTypeOf, EntityTable, isActiveState, isLive,
+  isValidAiProgram, markerInit, NO_AI_PROGRAM, setActivity, SUBSYSTEM_COUNT, TRANSPONDER_KIND_BIT,
+  type AiController, type AiProgramSlot, type CraftCombat, type Entity, type EntityCombat, type EntityInit, type LinearMovementBlock, type MissileCombat, type MovementBlock, type ObjectState,
+  type SpinningMovementBlock, type SteeredMovementBlock,
 } from './entity-table.ts';
 import { busyCombat, entityInit, expectFault, kindDefaults, TEST_MODEL, TEST_ORIENTATION, TEST_VISUALS } from './world.test-support.ts';
 
@@ -169,7 +171,9 @@ describe('flight state of an entity (P3-06 D-02, 检查点 A 定稿的状态与�
   }
 
   it('gives allocator defaults that runtime-kind constructors share: AI mode 5, no targets, zero vectors, no Warp, no formation', () => {
-    expect(allocatorAiState()).toEqual({ mode: 5, target: null, goal: { x: 0, y: 0, z: 0 }, targetOffset: { x: 0, y: 0, z: 0 }, objectTarget: null });
+    expect(allocatorAiState()).toEqual({
+      mode: 5, target: null, goal: { x: 0, y: 0, z: 0 }, targetOffset: { x: 0, y: 0, z: 0 }, objectTarget: null, pendingCommand: null, program: { type: 'none' },
+    });
     expect(allocatorAiState()).not.toBe(allocatorAiState());
     expect(allocatorFlightState()).toEqual({ warpClock: 0, inWarp: false, ai: allocatorAiState(), formation: null });
   });
@@ -177,7 +181,7 @@ describe('flight state of an entity (P3-06 D-02, 检查点 A 定稿的状态与�
   it('copies the flight state detached: a mutable block and AI state, frozen vectors, a frozen formation', () => {
     const init = entityInit(7, {
       maximumSpeed: 70, lastParkedUpdateClock: 6, warpClock: 900, inWarp: true, movement: busyBlock(),
-      ai: { mode: 2, target: 4, goal: { x: 1, y: 2, z: 3 }, targetOffset: { x: -1, y: 0, z: 0 }, objectTarget: 5 },
+      ai: { mode: 2, target: 4, goal: { x: 1, y: 2, z: 3 }, targetOffset: { x: -1, y: 0, z: 0 }, objectTarget: 5, pendingCommand: null, program: { type: 'none' } },
       formation: { leader: 3, offset: { x: 1, y: 2, z: 3 } },
     }) as unknown as { movement: SteeredMovementBlock; ai: { goal: { x: number } }; formation: { offset: { x: number } } };
     const entity = new EntityTable().allocate(init as unknown as EntityInit);
@@ -276,6 +280,11 @@ describe('flight state of an entity (P3-06 D-02, 检查点 A 定稿的状态与�
     ['AI mode 3', ai({ mode: 3 })],
     ['a non-f32 AI goal', ai({ goal: { x: 0.1, y: 0, z: 0 } })],
     ['a non-finite AI target offset', ai({ targetOffset: { x: 0, y: Number.NaN, z: 0 } })],
+    // P3-10 CB-04: the allocator and instantiation write no pending command.
+    ['a pending command', ai({ pendingCommand: { code: 7, issuedTick: 0 } })],
+    ['no pending command field', ai({ pendingCommand: undefined })],
+    // P3-08 CR-16: the selection writes the program slot after allocation.
+    ['a selected AI program', ai({ program: { type: 'table', record: 0, controller: null } })],
     ['a non-finite formation offset', { formation: { leader: 1, offset: { x: 0, y: 0, z: Number.POSITIVE_INFINITY } } }],
   ] as [string, Partial<EntityInit>][])('rejects %s as a broken invariant', (_, overrides) => {
     const table = new EntityTable();
@@ -288,9 +297,9 @@ describe('combat state of an entity (P3-07 S-01, AC-01; P3-02 CR-02, CR-03)', ()
   const busyCraft = (): CraftCombat => busyCombat(7) as CraftCombat;
   const missile = (overrides: Partial<MissileCombat> = {}): MissileCombat => ({ ...(kindDefaults(20).combat as MissileCombat), ...overrides });
 
-  it('gives each kind bit its combat type: craft 0–19, missile 20, projectile 21, explosion 22, fragment 24, none otherwise', () => {
+  it('gives each kind bit its combat type: craft 0–19, missile 20, projectile 21, explosion 22, fragment 24, marker 25, none otherwise', () => {
     const expected = Array.from({ length: 32 }, (_, kindBit) => (kindBit < 20 ? 'craft' : null));
-    Object.assign(expected, { 20: 'missile', 21: 'projectile', 22: 'explosion', 24: 'fragment' });
+    Object.assign(expected, { 20: 'missile', 21: 'projectile', 22: 'explosion', 24: 'fragment', 25: 'marker' });
     expect(Array.from({ length: 32 }, (_, kindBit) => combatTypeOf(kindBit))).toEqual(expected);
     for (const bad of [-1, 32, 1.5, Number.NaN]) expect(combatTypeOf(bad)).toBeNull();
   });
@@ -440,7 +449,7 @@ describe('combat state of an entity (P3-07 S-01, AC-01; P3-02 CR-02, CR-03)', ()
       expect(Object.isFrozen((entity.movement as { velocity: object }).velocity)).toBe(true);
       Object.assign((movement as { velocity: object }).velocity, { x: 9 });
       expect(entity.movement).toMatchObject({ velocity: { x: 1 } });
-      entity.movement!.speed = 6;
+      (entity.movement as LinearMovementBlock | SpinningMovementBlock).speed = 6;
       for (const broken of [{ speed: 0.1 }, { velocity: { x: Number.NaN, y: 0, z: 0 } }, kindBit === 21 ? { previousPosition: { x: 0.1, y: 0, z: 0 } } : { spinAxis: 3 }]) {
         expectFault(() => table.allocate(entityInit(kindBit, { movement: { ...movement, ...broken } as MovementBlock })), 'invariant-violated', 'entities.flight');
       }
@@ -450,7 +459,7 @@ describe('combat state of an entity (P3-07 S-01, AC-01; P3-02 CR-02, CR-03)', ()
   it('keeps the runtime kinds\' object target null: their +0x8C is in their combat state', () => {
     const table = new EntityTable();
     expect(table.allocate(entityInit(7, { ai: { ...allocatorAiState(), objectTarget: 2 } })).ai.objectTarget).toBe(2);
-    for (const kindBit of [20, 21, 22, 24]) {
+    for (const kindBit of [20, 21, 22, 24, 25]) {
       expectFault(() => table.allocate(entityInit(kindBit, { ai: { ...allocatorAiState(), objectTarget: 2 } })), 'invariant-violated', 'entities.runtime-kind');
     }
   });
@@ -470,8 +479,8 @@ describe('combat state of an entity (P3-07 S-01, AC-01; P3-02 CR-02, CR-03)', ()
     ['with a parked-update clock', { lastParkedUpdateClock: 2 }],
     ['with a Warp clock', { warpClock: 2 }],
     ['in Warp', { inWarp: true }],
-  ] as [string, Partial<EntityInit>][])('refuses a runtime kind %s: it keeps the allocator\'s fields (CR-02)', (_, overrides) => {
-    for (const kindBit of [20, 21, 22, 24]) {
+  ] as [string, Partial<EntityInit>][])('refuses a runtime kind %s: it keeps the allocator\'s fields (CR-02, MW-03)', (_, overrides) => {
+    for (const kindBit of [20, 21, 22, 24, 25]) {
       expectFault(() => new EntityTable().allocate(entityInit(kindBit, overrides)), 'invariant-violated', 'entities.runtime-kind');
     }
   });
@@ -479,9 +488,228 @@ describe('combat state of an entity (P3-07 S-01, AC-01; P3-02 CR-02, CR-03)', ()
   it('gives only a missile a maximum speed, its body record\'s', () => {
     const table = new EntityTable();
     expect(table.allocate(entityInit(20, { maximumSpeed: 64 })).maximumSpeed).toBe(64);
-    for (const kindBit of [21, 22, 24]) {
+    for (const kindBit of [21, 22, 24, 25]) {
       expect(table.allocate(entityInit(kindBit)).maximumSpeed).toBe(0);
       expectFault(() => table.allocate(entityInit(kindBit, { maximumSpeed: 64 })), 'invariant-violated', 'entities.runtime-kind');
     }
+  });
+});
+
+describe('the map marker and the map visibility flag (P3-09 AC-01; docs/plan/p3/02/spec.md MW-02, MW-03)', () => {
+  it('allocates a kind-25 marker with its own name, presentation, combat and mode-4 block, active and not map-visible', () => {
+    const entity = new EntityTable().allocate(entityInit(25));
+    expect(entity).toMatchObject({
+      kindBit: 25, name: { type: 'map-marker' }, presentation: { type: 'map-marker' }, combat: { type: 'marker' }, movement: { mode: 'marker', speed: 0 },
+      activity: 'active', state: 'presentation-ready', source: null, side: null, baseInteraction: false, maximumSpeed: 0, warpClock: 0, inWarp: false,
+      mapVisible: false, formation: null, ai: allocatorAiState(),
+    });
+    for (const part of [entity.name, entity.presentation, entity.combat, entity.movement]) expect(Object.isFrozen(part)).toBe(true);
+  });
+
+  it('builds the marker 0x3cb80 allocates at a position and attitude, with the allocator\'s defaults (MW-03)', () => {
+    const position = { x: -4950, y: 10350, z: Math.fround(-2.5) };
+    const init = markerInit(position, TEST_ORIENTATION);
+    expect(init).toEqual({
+      kindBit: 25, source: null, name: { type: 'map-marker' }, side: null, baseInteraction: false, presentation: { type: 'map-marker' },
+      position, orientation: TEST_ORIENTATION, activity: 'active', ruleInputs: { percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 },
+      maximumSpeed: 0, lastParkedUpdateClock: 0, warpClock: 0, inWarp: false, ai: allocatorAiState(), formation: null,
+      movement: { mode: 'marker', speed: 0 }, combat: { type: 'marker' },
+    });
+    const entity = new EntityTable().allocate(init);
+    expect(entity).toMatchObject({ kindBit: 25, position, orientation: [...TEST_ORIENTATION], state: 'presentation-ready', placementSerial: 0, mapVisible: false });
+  });
+
+  it.each([
+    ['a marker without its name', 25, { name: { type: 'none' } }, 'entities.runtime-kind'],
+    ['a missile with the marker\'s name', 20, { name: { type: 'map-marker' } }, 'entities.runtime-kind'],
+    ['a craft with the marker\'s name', 7, { name: { type: 'map-marker' } }, 'entities.name'],
+    ['a marker drawn as a model', 25, { presentation: { type: 'model', model: TEST_MODEL } }, 'entities.presentation'],
+    ['a craft drawn as the marker', 7, { presentation: { type: 'map-marker' } }, 'entities.presentation'],
+    ['a marker with a steered block', 25, { movement: initialMovementBlock(1, 1) }, 'entities.movement'],
+    ['a craft with the marker\'s block', 7, { movement: { mode: 'marker', speed: 0 } }, 'entities.movement'],
+    ['a marker block with a speed', 25, { movement: { mode: 'marker', speed: 1 as 0 } }, 'entities.flight'],
+    ['a marker parked', 25, { activity: 'parked', movement: null }, 'entities.runtime-kind'],
+  ] as [string, number, Partial<EntityInit>, string][])('refuses %s', (_, kindBit, overrides, site) => {
+    const table = new EntityTable();
+    expectFault(() => table.allocate(entityInit(kindBit, overrides)), 'invariant-violated', site);
+    expect(table.size).toBe(0);
+  });
+
+  it('allocates every kind not map-visible; only the rules set the flag', () => {
+    const table = new EntityTable();
+    const entities = [0, 7, 19, 20, 21, 22, 24, 25].map((kindBit) => table.allocate(entityInit(kindBit)));
+    expect(entities.map(({ mapVisible }) => mapVisible)).toEqual(new Array(entities.length).fill(false));
+    entities[1].mapVisible = true;
+    expect(table.get(entities[1].id)!.mapVisible).toBe(true);
+  });
+});
+
+describe('communications fields of an entity (P3-10 CB-04)', () => {
+  it('allocates every kind with no portrait, no threat stamp and no pending command, which the rules write in place', () => {
+    const table = new EntityTable();
+    for (const kindBit of [0, 2, 7, 15, 20, 21, 22, 24]) {
+      const entity = table.allocate(entityInit(kindBit));
+      expect(entity.communications).toEqual({ face: null, threatStamp: null });
+      expect(entity.ai.pendingCommand).toBeNull();
+      expect(Object.isFrozen(entity.communications)).toBe(false);
+    }
+    const [first, second] = [table.allocate(entityInit(7)), table.allocate(entityInit(7))];
+    expect(first.communications).not.toBe(second.communications);
+    first.communications.face = 2;
+    first.communications.threatStamp = 40;
+    first.ai.pendingCommand = { code: 0xffffffff, issuedTick: 3 };
+    expect(second.communications).toEqual({ face: null, threatStamp: null });
+    expect(second.ai.pendingCommand).toBeNull();
+  });
+});
+
+describe('AI program slot and transponder state of an entity (P3-08 AC-01; docs/plan/p3/02/spec.md CR-16 to CR-18, CR-20)', () => {
+  const interpreter = (): AiController => ({
+    ...clearedControllerCommon(),
+    handler: 'interpreter',
+    interpreter: {
+      state: 3,
+      execution: {
+        script: 4, item: 2, variables: [0, -1, 2 ** 31 - 1, -(2 ** 31)], timers: [0, 5, 0, 0], returnStack: [1, 0], wait: { active: true, until: 9 },
+        hold: { active: false, until: 0 },
+      },
+      lastRunEnded: false,
+      steadyClock: 6,
+      stateDeadline: 70,
+      state4Deadline: 0,
+    },
+  });
+  const wingman = (): AiController => ({
+    ...clearedControllerCommon(),
+    handler: 'wingman',
+    wingman: { behaviour: 5, doNotAttack: 3, attackTarget: null, nextGunSwitchClock: 8, nextEngageSearchClock: 0 },
+  });
+  const base = (targetMask: number): AiController => ({ ...clearedControllerCommon(), handler: 'base', base: { targetMask } } as AiController);
+  const parked = (): AiController => ({ ...clearedControllerCommon(), handler: 'parked' });
+  const table = (controller: AiController | null): AiProgramSlot => ({ type: 'table', record: 2, controller } as AiProgramSlot);
+  const builtIn = (controller: AiController | null): AiProgramSlot => ({ type: 'built-in', record: 5, controller } as AiProgramSlot);
+  type Holder = Record<string | number, unknown>;
+  /** A copy of `controller` with the field at `path` set to `value`. */
+  const changed = (controller: AiController, path: readonly (string | number)[], value: unknown): AiController => {
+    const copy = structuredClone(controller) as unknown as Holder;
+    const holder = path.slice(0, -1).reduce<Holder>((at, key) => at[key] as Holder, copy);
+    holder[path.at(-1)!] = value;
+    return copy as unknown as AiController;
+  };
+
+  it('allocates every kind with no program, which only the rules write afterwards', () => {
+    const entities = new EntityTable();
+    for (const kindBit of [0, 1, 7, 14, 17, 20, 21, 22, 24, 25]) {
+      const entity = entities.allocate(entityInit(kindBit));
+      expect(entity.ai.program).toBe(NO_AI_PROGRAM);
+    }
+    expect(Object.isFrozen(NO_AI_PROGRAM)).toBe(true);
+    const entity = entities.allocate(entityInit(7));
+    entity.ai.program = table(null);
+    expect(entities.get(entity.id)!.ai.program).toEqual({ type: 'table', record: 2, controller: null });
+  });
+
+  it('accepts selected and installed slots with the handlers their type allows, and none for every kind', () => {
+    for (const slot of [table(null), table(interpreter()), table(parked()), builtIn(null), builtIn(wingman()), builtIn(base(0x93780)), builtIn(base(0x6c87f)), builtIn(parked())]) {
+      expect(isValidAiProgram(1, slot), JSON.stringify(slot).slice(0, 60)).toBe(true);
+    }
+    for (const kindBit of [0, 14, 20, 25]) expect(isValidAiProgram(kindBit, NO_AI_PROGRAM)).toBe(true);
+    // State 0 before the first choice and state 3 with an empty list have no execution.
+    for (const state of [0, 3]) expect(isValidAiProgram(7, table(changed(changed(interpreter(), ['interpreter', 'execution'], null), ['interpreter', 'state'], state)))).toBe(true);
+  });
+
+  it.each([
+    ['the player with a program', 0, table(null)],
+    ['kind 0x4000 with a program', TRANSPONDER_KIND_BIT, builtIn(null)],
+    ['a missile with a program', 20, table(null)],
+    ['an unknown slot type', 7, { type: 'script', record: 0, controller: null }],
+    ['a negative record', 7, { type: 'table', record: -1, controller: null }],
+    ['a table record with the wingman handler', 7, table(wingman())],
+    ['a built-in record with the interpreter', 7, builtIn(interpreter())],
+    ['an unknown handler', 7, table(changed(parked(), ['handler'], 'pilot'))],
+    ['another base mask', 17, builtIn(base(0xfbfff))],
+    ['a negative period', 7, table(changed(parked(), ['period'], -1))],
+    ['a fractional update clock', 7, table(changed(parked(), ['nextUpdateClock'], 0.5))],
+    ['a non-f32 limit', 7, table(changed(parked(), ['limits', 'turn'], 0.1))],
+    ['a missing trigger', 7, table(changed(parked(), ['triggers'], parked().triggers.slice(0, 2)))],
+    ['an engagement mask beyond u32', 7, table(changed(parked(), ['engagement', 'mask'], 2 ** 32))],
+    ['attack pass phase 3', 7, table(changed(parked(), ['attackPass', 'phase'], 3))],
+    ['a size class beyond u8', 7, table(changed(parked(), ['steering', 'sizeClass'], 256))],
+    ['relative flags beyond bits 0–2', 7, table(changed(parked(), ['steering', 'relativeFlags'], 8))],
+    ['cone bits 4', 7, table(changed(parked(), ['steering', 'coneBits'], 4))],
+    ['a non-f32 control value', 7, table(changed(parked(), ['steering', 'control', 'axes', 1, 'value'], 0.1))],
+    ['a non-finite speed factor', 7, table(changed(parked(), ['steering', 'control', 'speedFactor'], Number.NaN))],
+    ['a non-f32 noise bound', 7, table(changed(parked(), ['steering', 'throttleNoise', 'high'], 0.1))],
+    ['interpreter state 7', 7, table(changed(interpreter(), ['interpreter', 'state'], 7))],
+    ['no execution in state 4', 7, table(changed(changed(interpreter(), ['interpreter', 'execution'], null), ['interpreter', 'state'], 4))],
+    ['a return stack deeper than 8', 7, table(changed(interpreter(), ['interpreter', 'execution', 'returnStack'], new Array(9).fill(0)))],
+    ['a variable beyond i32', 7, table(changed(interpreter(), ['interpreter', 'execution', 'variables', 0], 2 ** 31))],
+    ['wingman behaviour 6', 1, builtIn(changed(wingman(), ['wingman', 'behaviour'], 6))],
+    ['an invalid wingman target', 1, builtIn(changed(wingman(), ['wingman', 'attackTarget'], 0))],
+  ] as [string, number, AiProgramSlot][])('rejects %s', (_, kindBit, slot) => {
+    expect(isValidAiProgram(kindBit, slot)).toBe(false);
+  });
+
+  it('gives cleared controller fields detached, with frozen vectors and lists', () => {
+    const [first, second] = [clearedControllerCommon(), clearedControllerCommon()];
+    expect(first).toEqual(second);
+    expect(first.triggers).not.toBe(second.triggers);
+    first.triggers[0].pressed = true;
+    expect(second.triggers[0].pressed).toBe(false);
+    expect([first.steering.point, first.steering.turnRates, first.steering.control, first.steering.control.axes[0]].every(Object.isFrozen)).toBe(true);
+    expect(first.steering.control.speedFactor).toBeNull();
+  });
+
+  it('gives kind 0x4000 a transponder state, a declared one the declaration\'s, and no other kind one', () => {
+    const entities = new EntityTable();
+    const declared = entities.allocate(entityInit(TRANSPONDER_KIND_BIT, { source: { collection: 'mission', index: 3, group: null } }));
+    expect(declared.transponder).toEqual({ creator: 'declaration', callback: { phase: 'none' } });
+    for (const kindBit of [0, 1, 13, 15, 20, 25]) expect(entities.allocate(entityInit(kindBit)).transponder).toBeNull();
+    declared.transponder!.callback = { phase: 'tumbling', since: 40 };
+    expect(entities.get(declared.id)!.transponder!.callback).toEqual({ phase: 'tumbling', since: 40 });
+  });
+
+  /** A transponder `0x38780` constructs (CR-20 step 1): the allocator's fields, its creator and callback. */
+  const constructed = (transponder: unknown, activity: 'active' | 'parked' = 'active'): EntityInit => entityInit(TRANSPONDER_KIND_BIT, {
+    ...allocatorFlightState(), name: { type: 'none' }, side: null, baseInteraction: false, activity,
+    ruleInputs: { percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 }, transponder: transponder as EntityInit['transponder'],
+  });
+
+  it('copies a constructed transponder\'s state: the player\'s first update exactly while active, a wingman\'s parked drop without one', () => {
+    const entities = new EntityTable();
+    const supplied = { creator: 'player', callback: { phase: 'first-update' } } as const;
+    const dropped = entities.allocate(constructed(supplied));
+    expect(dropped.transponder).toEqual(supplied);
+    expect(dropped.transponder).not.toBe(supplied);
+    expect(Object.isFrozen(dropped.transponder!.callback)).toBe(true);
+    // `b` while the player is not active makes a parked transponder (CR-20 step 2).
+    expect(entities.allocate(constructed({ creator: 'player', callback: { phase: 'none' } }, 'parked')).transponder).toEqual({ creator: 'player', callback: { phase: 'none' } });
+    expect(entities.allocate(constructed({ creator: 'wingman', callback: { phase: 'none' } }, 'parked')).transponder!.creator).toBe('wingman');
+  });
+
+  it.each([
+    ['another kind with a transponder state', entityInit(7, { transponder: { creator: 'player', callback: { phase: 'none' } } })],
+    ['a constructed transponder with a source', { ...constructed({ creator: 'player', callback: { phase: 'first-update' } }), source: { collection: 'mission', index: 0, group: null } }],
+    ['a supplied declaration creator', constructed({ creator: 'declaration', callback: { phase: 'none' } })],
+    ['an unknown creator', constructed({ creator: 'base', callback: { phase: 'none' } })],
+    ['a wingman\'s drop at its first update', constructed({ creator: 'wingman', callback: { phase: 'first-update' } })],
+    ['a parked first update', constructed({ creator: 'player', callback: { phase: 'first-update' } }, 'parked')],
+    ['an active player\'s transponder without its first update', constructed({ creator: 'player', callback: { phase: 'none' } })],
+    ['an active wingman\'s drop', constructed({ creator: 'wingman', callback: { phase: 'none' } })],
+    ['a tumbling transponder', constructed({ creator: 'player', callback: { phase: 'tumbling', since: 3 } })],
+    ['a constructed transponder with a name', { ...constructed({ creator: 'player', callback: { phase: 'first-update' } }), name: { type: 'craft-type', kindBit: 14 } }],
+    ['a constructed transponder with rule inputs', { ...constructed({ creator: 'player', callback: { phase: 'first-update' } }), ruleInputs: { percentB: 1, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 } }],
+    ['a constructed transponder with an AI target', { ...constructed({ creator: 'player', callback: { phase: 'first-update' } }), ai: { ...allocatorAiState(), target: 1 } }],
+  ] as [string, EntityInit][])('rejects %s', (_, init) => {
+    const entities = new EntityTable();
+    expectFault(() => entities.allocate(init), 'invariant-violated', 'entities.transponder');
+    expect(entities.size).toBe(0);
+  });
+
+  it('lets 0x5e4d0 replace the rule inputs, which stay frozen', () => {
+    const entity = new EntityTable().allocate(entityInit(7));
+    entity.ruleInputs = Object.freeze({ ...entity.ruleInputs, aiValueB: 5 });
+    expect(entity.ruleInputs.aiValueB).toBe(5);
+    expect(Object.isFrozen(entity.ruleInputs)).toBe(true);
   });
 });

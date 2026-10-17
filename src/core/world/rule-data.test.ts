@@ -3,10 +3,11 @@ import { ContentContractError } from '../../content/contract-validation.ts';
 import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import { MARKER as CRAFT_INFO_MARKER, debrisRecord, gun, mount } from '../../content/rule-data/rule-data.test-support.ts';
 import { CoreInputError } from '../errors.ts';
-import { createWorld, initialWorldState } from './create-world.ts';
+import { createWorld, initialWorldState, instantiableModelIds } from './create-world.ts';
 import { programRecord } from '../rules/steering.ts';
+import { STARTUP_ROTATIONS } from '../rules/startup-rotations.ts';
 import {
-  aiProgramsContent, animationContent, animationId, asCreateInput, craftInfoContent, debrisContent, declaration, MARKER, modelContent, modelOf,
+  aiProgramsContent, animationContent, animationId, asCreateInput, craftInfoContent, craftTypesContent, debrisContent, declaration, MARKER, modelContent, modelOf,
   originalImportIdentity, playerOnlyMission, projectileVisualsContent, rosterContent, ruleInputs, worldInput, type CraftInfoDraft, type WorldInputParts,
 } from './create-world.test-support.ts';
 import { RULE_DATA_LIMITS } from './rule-data.ts';
@@ -95,8 +96,8 @@ describe('rule-data inputs (CR-01): reading and extraction', () => {
     expect(typedState.ruleData).toEqual(before);
   });
 
-  it('requires the six fields, each exactly { id, content }', () => {
-    for (const field of ['debrisParameters', 'projectileVisuals', 'explosions', 'explosionAnimations', 'models', 'aiPrograms'] as const) {
+  it('requires the nine fields, each exactly { id, content }', () => {
+    for (const field of ['debrisParameters', 'projectileVisuals', 'explosions', 'explosionAnimations', 'models', 'aiPrograms', 'commMenus', 'baseRepairItems', 'commMessages'] as const) {
       expectRejected(inputWith((input) => void Reflect.deleteProperty(input, field)), `input.${field}`, 'is required');
     }
     expectRejected(inputWith((input) => void (input.extra = {})), 'input', 'contains unknown fields');
@@ -230,7 +231,8 @@ describe('rule-data inputs (CR-01): complete sets', () => {
     const mission = playerOnlyMission();
     // A craft count of 2^32 − 1 is −1 as i32: no request.
     mission.declarations.push(declaration(1, { craftType: 7, ruleInputs: ruleInputs({ craftCount: 0xffffffff }) }));
-    expect(create(worldInput({ mission })).ruleData.inputs.models.map(({ id }) => id)).toEqual([modelOf(0)]);
+    // Kind 0x4000's model is required in any run (CR-15): worldInput binds it with a record that requests none either.
+    expect(create(worldInput({ mission })).ruleData.inputs.models.map(({ id }) => id)).toEqual([modelOf(0), modelOf(14)]);
   });
 });
 
@@ -409,6 +411,15 @@ describe('static rule data (CR-01)', () => {
     expect(ruleData.craft[14]).toMatchObject({ parts: 0, debris: [] });
     expect(ruleData.craft[7]!.shape).toMatchObject({ radius: 4, radiusSquared: 16 });
   });
+
+  it('holds the 64 start-up rotations, the code rule\'s frozen table, the same in every world and outside snapshots (MW-01)', () => {
+    const { ruleData } = create(worldInput());
+    expect(ruleData.startupRotations).toBe(STARTUP_ROTATIONS);
+    expect(ruleData.startupRotations).toHaveLength(64);
+    expect(deepFrozen(ruleData.startupRotations)).toBe(true);
+    expect(create(worldInput({ run: { wingman: 3 } })).ruleData.startupRotations).toBe(STARTUP_ROTATIONS);
+    expect(Object.keys(createWorld(asCreateInput(worldInput())).snapshot().state)).not.toContain('ruleData');
+  });
 });
 
 describe('AI program input (CR-01): the homing missiles\' programs', () => {
@@ -431,15 +442,15 @@ describe('AI program input (CR-01): the homing missiles\' programs', () => {
   });
 
   it('requires records 1 and 2, whatever the run mounts', () => {
-    expectRejected(builtIn((records) => void records.pop()), `${AI_PROGRAMS}.builtInPrograms`, 'must have records 1 and 2');
+    expectRejected(builtIn((records) => void records.splice(2)), `${AI_PROGRAMS}.builtInPrograms`, 'must have records 1 and 2');
     expectRejected(builtIn((records) => void records.splice(0)), `${AI_PROGRAMS}.builtInPrograms`, 'must have records 1 and 2');
     const unarmed = craftInfoWith((info) => {
       info.craft[0].mounts = [];
       info.craft[0].mountLists = [[], [], []];
     });
-    expectRejected(builtIn((records) => void records.pop(), { craftInfo: unarmed }), `${AI_PROGRAMS}.builtInPrograms`, 'must have records 1 and 2');
-    // Records past 2 are not required, and more are kept as read.
-    expect(create(builtIn((records) => void records.push({ ...records[0] }))).ruleData.inputs.aiPrograms.content.builtInPrograms).toHaveLength(4);
+    expectRejected(builtIn((records) => void records.splice(2), { craftInfo: unarmed }), `${AI_PROGRAMS}.builtInPrograms`, 'must have records 1 and 2');
+    // More records are kept as read.
+    expect(create(builtIn((records) => void records.push({ ...records[0] }))).ruleData.inputs.aiPrograms.content.builtInPrograms).toHaveLength(6);
   });
 
   it('rejects a negative period of record 1 or 2, and only of those records', () => {
@@ -462,5 +473,88 @@ describe('AI program input (CR-01): the homing missiles\' programs', () => {
     }
     // Negative and zero angles and saturations are finite f32 values, as the original stores them.
     expect(create(builtIn((records) => Object.assign(records[1], { at24: -0, at2C: -2 }))).ruleData.homingPrograms[1]).toEqual({ at14: 16, at24: 0, at2C: -2 });
+  });
+});
+
+describe('AI input and support closure (P3-08 AC-02, CR-15, CR-26)', () => {
+  type Content = ReturnType<typeof aiProgramsContent>;
+  const withPrograms = (change: (content: Content) => void, parts: WorldInputParts = {}) => {
+    const content = aiProgramsContent();
+    change(content);
+    return worldInput({ ...parts, aiPrograms: content });
+  };
+  const WINGMAN_RECORD = 3;
+
+  it('creates a world with each of the five roster entries and without a wingman, adding the wingman\'s record only with one', () => {
+    for (const wingman of [null, 0, 1, 2, 3, 4]) {
+      const { ruleData } = create(worldInput({ run: { wingman } }));
+      expect(ruleData.ai.reachable.builtInPrograms, String(wingman)).toEqual(wingman === null ? [4] : [WINGMAN_RECORD, 4]);
+      expect(ruleData.ai.reachable.tablePrograms).toEqual([0]);
+    }
+  });
+
+  it('keeps the content readers\' structural errors and checks the whole content, reachable or not', () => {
+    // Entry 5 is reachable from no source, yet its structure is still read.
+    const branch = withPrograms((content) => void ((content.entries[5] as { items: { branch: number | null }[] }).items[0].branch = 9));
+    expectRejected(branch, `${AI_PROGRAMS}.entries[5].items[0].branch`, undefined, ContentContractError);
+    // Its opcodes 109 and 9000 are outside the supported set, which only a reachable script must keep to.
+    expect(create(worldInput()).ruleData.ai.scripts[5]).toBeNull();
+  });
+
+  it('rejects reachable unsupported semantics with a CoreInputError at the structural path, repeating no imported value', () => {
+    const reached = withPrograms((content) => void ((content.entries[3] as { items: { opcode: number }[] }).items[0].opcode = 109));
+    const error = expectRejected(reached, `${AI_PROGRAMS}.entries[3].items[0].opcode`, 'unsupported-opcode') as CoreInputError;
+    expect(error.reason).toBe('unsupported-opcode');
+    const keyword = withPrograms((content) => void ((content.entries[1] as { items: { argument: string }[] }).items[0].argument = `${MARKER}-nothing`));
+    expect(expectRejected(keyword, `${AI_PROGRAMS}.entries[1].items[0].argument`, 'unknown-keyword').message).not.toContain('nothing');
+    // CR-01's checks come first: the homing records' period before the closure's.
+    const both = withPrograms((content) => {
+      content.builtInPrograms[1].at14 = -1;
+      (content.entries[3] as { items: { opcode: number }[] }).items[0].opcode = 109;
+    });
+    expectRejected(both, `${AI_PROGRAMS}.builtInPrograms[1].at14`, 'must not be negative');
+  });
+
+  it('draws nothing: the stream after creation is the same whatever the AI content', () => {
+    const { rngState } = create(worldInput({ run: { wingman: 2 } }));
+    const unreachable = withPrograms((content) => {
+      content.programs.forEach((program) => void (program.kindMask = 0x10));
+      content.builtInPrograms.forEach((program) => void (program.kindMask = 0));
+    }, { run: { wingman: 2 } });
+    const state = create(unreachable);
+    expect(state.ruleData.ai.reachable).toEqual({ tablePrograms: [], builtInPrograms: [], parameters: [], scripts: [] });
+    expect(state.rngState).toBe(rngState);
+  });
+
+  it('keeps its own frozen static data: later changes to the input change neither it nor the setup hash', () => {
+    const input = worldInput({ run: { wingman: 0 } });
+    const state = create(input);
+    const before = structuredClone(state.ruleData.ai);
+    const content = input.aiPrograms.content as unknown as Content;
+    content.keywordTables[1][1].value = 77;
+    (content.entries[3] as { items: { argument: string | null }[] }).items[0].argument = '[9 1]';
+    content.programs[0].kindMask = 0;
+    content.globals.elements[2][0] = 0;
+    expect(state.ruleData.ai).toEqual(before);
+    expect(deepFrozen(state.ruleData.ai)).toBe(true);
+    expect(create(worldInput({ run: { wingman: 0 } })).config.setupHash).toBe(state.config.setupHash);
+  });
+
+  describe('kind 0x4000, which `b` constructs in any run (missing-transponder)', () => {
+    it('needs a declaration binding the kind, a positive top speed and its model', () => {
+      const mission = playerOnlyMission();
+      expectRejected(worldInput({ mission, craftTypes: craftTypesContent([0, 1]) }), 'input.craftTypes.content.entries', 'missing-transponder');
+      expectRejected(worldInput({ craftInfo: craftInfoWith((info) => void (info.craft[14].atB8 = 0)) }), `${CRAFT_INFO}.craft[14].atB8`, 'missing-transponder');
+      expectRejected(worldInput({ craftInfo: craftInfoWith((info) => void (info.craft[14].atB8 = -1)) }), `${CRAFT_INFO}.craft[14].atB8`, 'missing-transponder');
+      // A binding that instantiates nothing still requires the model, and nothing else rejects it as unread.
+      const bound = worldInput({ mission: playerOnlyMission() });
+      expect(create(bound).ruleData.craft[14]).toMatchObject({ parts: 0 });
+      expectRejected(inputWith((input) => void models(input).splice(1, 1), { mission: playerOnlyMission() }), 'input.models', 'missing-transponder');
+    });
+
+    it('lists the model among those a run must decode', () => {
+      const { mission, craftTypes, wingmanRoster, identity, run } = worldInput({ mission: playerOnlyMission() });
+      expect(instantiableModelIds({ mission, craftTypes, wingmanRoster, identity, run } as never)).toEqual([modelOf(0), modelOf(14)]);
+    });
   });
 });

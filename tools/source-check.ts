@@ -12,8 +12,11 @@ import { NodeByteSource, type ClosableByteSource } from './node-byte-source.ts';
 // covered archive and the research-only archives and validates each entry. Output holds only canonical disc paths,
 // the version ID, the fingerprint, counts and verdicts, never host paths or file contents.
 
-/** Archives outside the whitelist checked through the low-level opener: the P4 communication faces. */
-export const RESEARCH_ARCHIVES: readonly string[] = Object.freeze(['MAIN/COMMFACE.NOB', 'MAIN/COMMFAC2.NOB']);
+/**
+ * Archives outside the whitelist checked through the low-level opener: the LO communication faces of P4. The HI face
+ * archive is whitelisted since P3-03 revision 2, so it is checked once, as a covered archive.
+ */
+export const RESEARCH_ARCHIVES: readonly string[] = Object.freeze(['MAIN/COMMFAC2.NOB']);
 
 export interface SourceCheckOptions {
   readonly signal?: AbortSignal;

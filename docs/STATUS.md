@@ -2,12 +2,12 @@
 type: status
 status: active
 phase: all
-updated: 2026-10-14
+updated: 2026-10-16
 ---
 
 # 项目进度
 
-**当前阶段：P3 完整玩法切片**（任务拆分已于 2026-10-08 批准；P3-01 至 P3-07 已完成。P2 退出评审与 P1 本地退出评审已通过，P0 其余项目并行收尾）
+**当前阶段：P3 完整玩法切片**（任务拆分已于 2026-10-08 批准；P3-01 至 P3-09 已完成（P3-08、P3-09 尚未合入 main）。P2 退出评审与 P1 本地退出评审已通过，P0 其余项目并行收尾）
 
 本文件是项目总进度入口，只记录当前阶段、阶段状态摘要、任务索引入口、下一步与项目级阻塞，不跟踪阶段退出条件或任务执行状态。阶段范围和退出条件由[总计划 §12](./plan/master-plan.md#12-开发阶段与验收条件)定义，任务状态见各 goal，验收证据见 subtask 文档，最终退出判定见[阶段评审](./reviews/)。
 
@@ -38,6 +38,17 @@ updated: 2026-10-14
      - 战斗规则位于 `src/core` 的 `flight.combat` 组，API、已知差异与交接见 [Core 模块说明](./engineering/modules/core.md)。
      - 与原版的对照见[子任务 27](./plan/p3/07/subtasks/27-comparison-conclusions.md)：36 次原版运行（fixed 40000 cycles，受 U-021 约束）；D-02 六类连续行为一致；单次转移没有不一致；未测分支已逐项列出。
      - AI 开火、基地自动挂点的连续节奏与 CR-13 的调用点接入归 P3-08 至 P3-11。
+   - [P3-09](./plan/p3/09/spec.md)（战略地图、战争迷雾与 Warp）的 goal 已于 2026-10-14 在分支 `p3-09-strategic-map-spec` 上执行完成（尚未合入 main），结论与证据见 [goal](./plan/p3/09/goal.md) 与 [27 最终对齐](./plan/p3/09/subtasks/27-final-alignment.md#完成证据)。
+     - 地图模式、光标与种类 25 标记、对象集合与可见性、Warp 的能量、开始、过程与到达都是 Core 规则，`map` 分区与 Warp 读数见 [Core 模块说明](./engineering/modules/core.md)；`RULES_VERSION` 为 5、快照格式 4，切片定义 5，`ConverterVersion` 为 `osr-import.graphics-5.logic-2.audio-2.models-4`（旧缓存须重新导入）。
+     - D-01（[P3-02 spec](./plan/p3/02/spec.md#审批) 的 MW-01 至 MW-16、[P3-03 spec](./plan/p3/03/spec.md#审批) 修订 2）与 D-02 按用户的预先授权由 agent 定稿，待用户事后审阅。
+     - 与原版的对照见 [B-010](./original/behavior/B-010-map-warp.md)：R-13 至 R-16 一致（fixed 40000 cycles，受 U-021 约束）；只由代码证据覆盖的分支已披露并交 P3-10、P3-11、P3-15 联合复验。地图画面、Warp 效果与音效归 P3-12 至 P3-14。
+     - 合入 main 前须与同期的 P3-08、P3-10 分支核对共享契约（P3-02 spec、`object-sets` 阶段、方向表常数的更正）与规则版本。
+     - 2026-10-15 与 P3-10（实现子任务至 24）一起合入 P3-08 的分支 `p3-08-ai-wingman-spec`，作为 P3-08 实现的基础（尚未合入 main）：共享契约的衔接见 [P3-02 spec 的合并说明](./plan/p3/02/spec.md#审批)；合并后 `RULES_VERSION` 为 6、快照格式 5、切片定义 6，`ConverterVersion` 为 `osr-import.graphics-5.logic-3.audio-2.models-4`。
+   - [P3-08](./plan/p3/08/spec.md)（AI 与僚机）的 goal 已于 2026-10-16 在分支 `p3-08-ai-wingman-spec` 上执行完成（尚未合入 main），结论与证据见 [goal](./plan/p3/08/goal.md) 与 [29 最终对齐](./plan/p3/08/subtasks/29-final-alignment.md#完成证据)。
+     - 该分支已合入 P3-09 与 P3-10（实现子任务至 24）；AI 解释器、内置处理器（僚机、基地、停放）、僚机命令、Xpon 与 `b` 都是 Core 规则，API、已批准的差异与交接见 [Core 模块说明](./engineering/modules/core.md)；`RULES_VERSION` 为 7、快照格式 6、replay 格式 3，`ConverterVersion` 为 `osr-import.graphics-5.logic-4.audio-2.models-4`（旧缓存须重新导入）。
+     - D-01 由用户批准；D-02、D-03 与执行中的决定由 agent 依用户 2026-10-15 的常设授权批准，待用户事后审阅（各 spec 的审批节）。
+     - 与原版的对照见 [B-011](./original/behavior/B-011-ai-wingman.md)：计入的样本全部一致；按用户要求尽量减少 DOSBox 运行，未取得的运行时覆盖以代码证据加 Node 独立期望列为已知限制 1–16 项。
+     - 合入 main 时须与 P3-10 分支的后续提交（其 25–28）再次合并，并处理 [core.md](./engineering/modules/core.md) 已知差异中记录的 P3-09×P3-10 两个联合故障（负责 MW-04 或 CB-07）。
 2. P2 已完成：P2-01 至 P2-13 全部完成，[P2 退出评审](./reviews/P2-exit.md)于 2026-10-08 确认通过并冻结（高概率判定与范围例外已逐项披露）。生产 `ConverterVersion` 为 `osr-import.graphics-3.logic-1.audio-1.models-3`，导入协议版本 5；P3 可消费的内容、适配与遗留责任见评审的[对后续阶段的影响](./reviews/P2-exit.md#4-对后续阶段的影响)，各任务的交付见 [P2 tasks](./plan/p2/tasks.md)。
 3. P0 收尾（用户）：试玩回答 U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-011 的飞行键位由 P3-05 自行取证，P3-01 测量时基对 cycles 的依赖，两者的负责阶段仍为 P0。U-015 的剩余部分见 [unknowns](./original/unknowns.md)；U-025 的负责阶段为 P3。
 4. U-022 的剩余字段：规则语义归 P3，其余任务的字段归 P4（负责阶段见 [unknowns](./original/unknowns.md)）；模型槽位选择已确认，见 [executable](./original/formats/executable.md) §4。

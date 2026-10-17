@@ -4,6 +4,7 @@ import {
   COMMAND_RESULT_REASONS,
   type Attacker,
   type CommandResultEvent,
+  type DepartedEvent,
   type DomainEvent,
   type EntitySource,
   type HitEvent,
@@ -14,7 +15,13 @@ import {
   type SpeedAssistToggledEvent,
   type SpeedMatchedEvent,
   type TargetChangedEvent,
+  type WarpCompletedEvent,
+  type WarpDestinationSetEvent,
   type WeaponSelectedEvent,
+  type WingmanCommandConsumedEvent,
+  type WingmanCommandOutcome,
+  isWingmanCommandReply,
+  WINGMAN_COMMAND_OUTCOMES,
 } from './domain-events.ts';
 import { COMMAND_TYPES, type CommandType } from './tick-input.ts';
 
@@ -56,6 +63,48 @@ const combatEvents: DomainEvent[] = [
   { type: 'left-page-changed', tick: 9, page: 1, previousPage: 0, commandIndex: null },
 ];
 
+// P3-09's events (docs/plan/p3/02/spec.md, MW-05), with both forms of the marker change and the arrival.
+const mapWarpEvents: DomainEvent[] = [
+  { type: 'map-toggled', tick: 10, open: true, viewMode: 8, previousViewMode: 0xc, commandIndex: 0 },
+  { type: 'warp-destination-set', tick: 11, playerEntityId: 1, destination: { x: -45000, y: 2250, z: 0 }, pixel: { column: 0, row: 210 }, icon: null,
+    marker: { type: 'created', entityId: 13 }, commandIndex: 0 },
+  { type: 'warp-destination-set', tick: 12, playerEntityId: 1, destination: at, pixel: { column: 3, row: 4 }, icon: { entityId: 5, kindBit: 7 },
+    marker: { type: 'missing' }, commandIndex: 1 },
+  { type: 'warp-started', tick: 13, playerEntityId: 1, serial: 1, origin: at, destination: at, distance: 0, check: { cost: 0, energy: 1000 },
+    transitLength: 0.5, fromViewMode: 8, commandIndex: 0 },
+  { type: 'warp-completed', tick: 14, serial: 1, viewMode: 0xc, previousViewMode: 1, arrival: null },
+  { type: 'warp-completed', tick: 20, serial: 2, viewMode: 0xc, previousViewMode: 1, arrival: { playerEntityId: 1, origin: at, destination: at, position: at,
+    orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1], error: 0.25, snapped: 13, charge: { distance: 0, cost: 0, energyBefore: 1000, energyAfter: 1000 },
+    warpClock: 1280, hostileNear: true } },
+];
+
+// P3-10's events (docs/plan/p3/02/spec.md, CB-13), one of each type.
+const speaker = { entityId: 4, kindBit: 15, name: { type: 'candidate', declaration: { collection: 'mission', index: 2 }, candidate: 1 } } as const;
+const reply = { table: 20011, face: 2, index: 3 } as const;
+const communicationsEvents: DomainEvent[] = [
+  { type: 'command-delivered', tick: 10, receiverEntityId: 4, receiverKindBit: 15, code: 9, senderEntityId: 1, commandIndex: 2 },
+  { type: 'radio-queued', tick: 10, message: reply, callback: 'docking-reply', speaker, position: 'head', length: 1 },
+  { type: 'radio-taken', tick: 10, message: { table: 20983, face: null, index: 6 }, speaker: null },
+  { type: 'incoming-started', tick: 11, message: reply, speaker, frameDurations: [5, 8, 5], shown: true },
+  { type: 'incoming-ended', tick: 12, message: reply, speaker, callback: 'docking-reply', countdownStarted: true },
+  { type: 'radio-flushed', tick: 12, cause: 'docking-cancel', removed: 2, interrupted: 'playing' },
+  { type: 'docking-requested', tick: 12, playerEntityId: 1, dockingObject: 4, previousSubState: 0, deadlineClock: 0x790, commandIndex: 0 },
+  { type: 'docking-cancelled', tick: 13, playerEntityId: 1, dockingObject: 4, cause: 'gate' },
+  { type: 'docked', tick: 13, playerEntityId: 1, baseEntityId: 4, wingmanEntityId: null, previousViewMode: 0xc },
+  { type: 'departed', tick: 14, playerEntityId: 1, origin: 'automatic', commandIndex: null, viewMode: 0xc, previousViewMode: 6, position: at,
+    orientation: [0, 0, -1, 0, 1, 0, 1, 0, 0], wingmanEntityId: 2 },
+  { type: 'transition', tick: 14, gap: 'G-02/4' },
+  { type: 'base-navigated', tick: 14, direction: 'next', row: null, moved: false, commandIndex: 1 },
+  { type: 'base-confirmed', tick: 14, row: 3, record: 7, moved: true, commandIndex: 2 },
+];
+
+// P3-08's events (docs/plan/p3/02/spec.md, CR-22), one of each type and a consumption without a reply.
+const aiEvents: DomainEvent[] = [
+  { type: 'wingman-command-consumed', tick: 15, wingmanEntityId: 2, code: 6, issuedTick: 14, path: 'active', outcome: 'fallback', replyLine: 0x15 },
+  { type: 'wingman-command-consumed', tick: 16, wingmanEntityId: 2, code: 3, issuedTick: 14, path: 'parked', outcome: 'refused', replyLine: null },
+  { type: 'transponder-deployed', tick: 16, entityId: 20, creatorEntityId: 1, position: at, orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
+];
+
 describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06; P3-07 CR-05, CR-06)', () => {
   it('has closed, frozen outcome and reason lists', () => {
     expect(COMMAND_OUTCOMES).toEqual(['accepted', 'rejected', 'ignored']);
@@ -63,12 +112,24 @@ describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06;
       'not-implemented', 'player-unavailable', 'wrong-context', 'no-target',
       // P3-07 (CR-05).
       'no-candidate', 'no-change', 'no-weapon', 'weapon-disabled', 'no-ammunition', 'insufficient-charge', 'cooldown', 'misfire', 'out-of-arc',
+      // P3-09 (MW-04).
+      'no-destination', 'insufficient-energy',
+      // P3-10 (CB-07).
+      'subsystem-disabled',
     ]);
     expect(Object.isFrozen(COMMAND_OUTCOMES) && Object.isFrozen(COMMAND_RESULT_REASONS)).toBe(true);
+    // P3-08 (CR-22) adds no command reason; a wingman's consumption has its own closed outcomes.
+    expect(WINGMAN_COMMAND_OUTCOMES).toEqual(['applied', 'fallback', 'refused', 'acknowledged', 'status', 'unknown-code']);
+    expect(Object.isFrozen(WINGMAN_COMMAND_OUTCOMES)).toBe(true);
+    // The outcome table itself is exercised through the comparator (compare.test.ts); a code below 1 has no outcome.
+    expect([isWingmanCommandReply('active', 1, 'applied', 0x10), isWingmanCommandReply('active', 0, 'refused', 0)]).toEqual([true, false]);
   });
 
   it('is plain data that survives a JSON round trip unchanged', () => {
-    const events: DomainEvent[] = [rejected, instantiated, toggled, matchedByCommand, matchedByAssist, released, leftWorld, ...combatEvents];
+    const events: DomainEvent[] = [
+      rejected, instantiated, toggled, matchedByCommand, matchedByAssist, released, leftWorld, ...combatEvents, ...mapWarpEvents, ...communicationsEvents,
+      ...aiEvents,
+    ];
     expect(JSON.parse(JSON.stringify(events))).toEqual(events);
     expect(Object.keys(rejected)).toEqual(['type', 'tick', 'commandIndex', 'commandType', 'outcome', 'reason']);
     expect(Object.keys(instantiated)).toEqual(['type', 'tick', 'entityId', 'kindBit', 'source', 'position']);
@@ -79,8 +140,21 @@ describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06;
       | 'command-result' | 'object-instantiated' | 'speed-assist-toggled' | 'speed-matched' | 'speed-assist-released' | 'object-left-world'
       | 'target-changed' | 'target-cleared' | 'weapon-selected' | 'shot-fired' | 'hit' | 'object-destroyed' | 'explosion-started' | 'missile-ended'
       | 'fragment-expired' | 'source-released' | 'energy-depleted' | 'energy-allocation-changed' | 'left-page-changed'
+      | 'map-toggled' | 'warp-destination-set' | 'warp-started' | 'warp-completed'
+      | 'command-delivered' | 'radio-queued' | 'radio-taken' | 'incoming-started' | 'incoming-ended' | 'radio-flushed' | 'docking-requested'
+      | 'docking-cancelled' | 'docked' | 'departed' | 'transition' | 'base-navigated' | 'base-confirmed'
+      | 'wingman-command-consumed' | 'transponder-deployed'
     >();
     expect(new Set(combatEvents.map(({ type }) => type)).size).toBe(13);
+    expect(new Set(mapWarpEvents.map(({ type }) => type)).size).toBe(4);
+    expectTypeOf<WarpDestinationSetEvent['marker']['type']>().toEqualTypeOf<'created' | 'moved' | 'missing'>();
+    expectTypeOf<WarpCompletedEvent['previousViewMode']>().toEqualTypeOf<1>();
+    expect(new Set(communicationsEvents.map(({ type }) => type)).size).toBe(13);
+    expectTypeOf<DepartedEvent['origin']>().toEqualTypeOf<'command' | 'automatic'>();
+    expect(new Set(aiEvents.map(({ type }) => type)).size).toBe(2);
+    expectTypeOf<WingmanCommandConsumedEvent['path']>().toEqualTypeOf<'active' | 'parked'>();
+    expectTypeOf<WingmanCommandConsumedEvent['outcome']>().toEqualTypeOf<WingmanCommandOutcome>();
+    expectTypeOf<WingmanCommandConsumedEvent['replyLine']>().toEqualTypeOf<number | null>();
     expectTypeOf<Attacker['type']>().toEqualTypeOf<'shooter' | 'lost-shooter' | 'none'>();
     expectTypeOf<ShotTrigger['type']>().toEqualTypeOf<'command' | 'ai' | 'automatic'>();
     expectTypeOf<HitEvent['cause']>().toEqualTypeOf<'projectile' | 'missile' | 'collision' | 'area' | 'parked'>();
@@ -126,9 +200,28 @@ function checkTypes(): unknown[] {
   const assistWithCommand: SpeedMatchedEvent = { type: 'speed-matched', tick: 1, targetEntityId: 2, origin: 'assist', commandIndex: 0 };
   // @ts-expect-error A source that left is a snapshot or null, never omitted.
   const omittedSource: ObjectLeftWorldEvent = { type: 'object-left-world', tick: 1, entityId: 2, kindBit: 7 };
+  // @ts-expect-error A missing marker has no entity.
+  const missingWithEntity: WarpDestinationSetEvent['marker'] = { type: 'missing', entityId: 3 };
+  // @ts-expect-error A completion always leaves view mode 1.
+  const completedFromMap: WarpCompletedEvent = { type: 'warp-completed', tick: 1, serial: 1, viewMode: 0xc, previousViewMode: 8, arrival: null };
+  const noDestination: CommandResultEvent = { ...rejected, outcome: 'ignored', reason: 'no-destination' };
+  const launch = { type: 'departed', tick: 1, playerEntityId: 1, viewMode: 0xc, previousViewMode: 6, position: at, orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    wingmanEntityId: null } as const;
+  // @ts-expect-error A command's launch names its command.
+  const commandLaunchWithoutIndex: DepartedEvent = { ...launch, origin: 'command', commandIndex: null };
+  // @ts-expect-error An automatic launch has no command.
+  const automaticLaunchWithIndex: DepartedEvent = { ...launch, origin: 'automatic', commandIndex: 0 };
+  // @ts-expect-error The direct list has no portrait.
+  const directWithFace: DomainEvent = { type: 'radio-taken', tick: 1, message: { table: 20983, face: 0, index: 0 }, speaker: null };
+  // @ts-expect-error A portrait table needs a portrait.
+  const portraitWithoutFace: DomainEvent = { type: 'radio-taken', tick: 1, message: { table: 20011, face: null, index: 0 }, speaker: null };
+  // @ts-expect-error Sub-states are closed: P3-11 adds 1, 2 and 6.
+  const unknownSubState: DomainEvent = { type: 'docking-requested', tick: 1, playerEntityId: 1, dockingObject: 2, previousSubState: 2, deadlineClock: 0, commandIndex: 0 };
   // @ts-expect-error Events are read-only.
   instantiated.position.x = 0;
   return [
+    missingWithEntity, completedFromMap, noDestination,
+    commandLaunchWithoutIndex, automaticLaunchWithIndex, directWithFace, portraitWithoutFace, unknownSubState,
     accepted, ignored, wingman, acceptedWithReason, rejectedWithoutReason, unknownReason, unknownCommand, unknownCollection, omittedGroup, noTarget,
     commandWithDifference, assistWithCommand, omittedSource, cooldown, commandWithoutIndex, automaticWithIndex, lostWithEntity, automaticWithChannel,
   ];

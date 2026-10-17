@@ -5,6 +5,7 @@
  * (`0x3a41c`) inset by 100. No rule bounds an active object: nothing here clamps, moves or refuses a position.
  */
 import type { Vec3 } from '../contracts/domain-events.ts';
+import { CoreFaultError } from '../errors.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { worldHalfExtent, type WorldFrame } from './coordinates.ts';
 
@@ -16,11 +17,16 @@ export const ACTIVE_AREA_RADIUS_SQUARED = 56_250_000;
 
 /**
  * The active area's centre for `0x3a540`: the player entity's position, or null without a player entity. While the
- * player Warps the original takes the player state's point instead; P3-09 adds that here.
+ * player entity is in Warp (+0xCC) it is the Warp destination instead (docs/plan/p3/02/spec.md, MW-10), also after a
+ * Warp abandoned by destruction or rescue left `inWarp` set (MW-09): the player then stands in the tunnel's private
+ * frame. A Warp always has a destination, so a missing one is a fault.
  */
 export function activeAreaCentre({ player, entities }: Pick<WorldState, 'player' | 'entities'>): Vec3 | null {
   const entity = player.entityId === null ? undefined : entities.get(player.entityId);
-  return entity === undefined ? null : entity.position;
+  if (entity === undefined) return null;
+  if (!entity.inWarp) return entity.position;
+  if (player.map.destination === null) throw new CoreFaultError('invariant-violated', 'active-area.warp-destination');
+  return player.map.destination;
 }
 
 /**

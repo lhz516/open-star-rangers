@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CommandResultEvent, DomainEvent, ObjectInstantiatedEvent } from '../../core/contracts/domain-events.ts';
-import { COMBAT_EVENTS } from '../../app/runtime/combat-events.test-support.ts';
+import { COMBAT_EVENTS, MAP_WARP_EVENTS } from '../../app/runtime/combat-events.test-support.ts';
 import { EVENT_LOG_LIMIT, EventLog, summarizeEvent } from './event-log.ts';
 
 // P3-04 AC-22, the event log window (docs/plan/p3/04/spec.md: 开发诊断, 事件日志): the latest 500 structured summaries,
@@ -82,6 +82,86 @@ describe('event log', () => {
       .find(([name]) => name === 'trigger')).toEqual(['trigger', 'ai 2']);
     expect(summary({ ...(COMBAT_EVENTS[3] as Extract<DomainEvent, { type: 'shot-fired' }>), trigger: { type: 'automatic' } })
       .find(([name]) => name === 'trigger')).toEqual(['trigger', 'automatic']);
+  });
+
+  it('summarizes P3-09\'s map and Warp events by every field, in a fixed order', () => {
+    const summaries = MAP_WARP_EVENTS.map((event) => summarizeEvent(event, NO_COMMAND, 1).fields);
+    expect(summaries).toEqual([
+      [['open', true], ['viewMode', 8], ['previousViewMode', 0xc], ['commandIndex', 0]],
+      [
+        ['playerEntityId', 1], ['column', 0], ['row', 210], ['iconEntityId', 14], ['iconKindBit', 7], ['marker', 'created'], ['markerEntityId', 30],
+        ['commandIndex', 1], ['x', -45000], ['y', 2250], ['z', 3],
+      ],
+      [
+        ['playerEntityId', 1], ['serial', 1], ['distance', 45100.5], ['cost', 90], ['energy', 1000], ['transitLength', 3.5], ['fromViewMode', 8],
+        ['commandIndex', 0], ['originX', 1], ['originY', 2], ['originZ', 3], ['destinationX', -45000], ['destinationY', 2250], ['destinationZ', 3],
+      ],
+      [['serial', 1], ['viewMode', 0xc], ['previousViewMode', 1], ['arrived', false]],
+    ]);
+    const destinationSet = MAP_WARP_EVENTS[1] as Extract<DomainEvent, { type: 'warp-destination-set' }>;
+    expect(summarizeEvent({ ...destinationSet, icon: null, marker: { type: 'missing' } }, NO_COMMAND, 1).fields.slice(3, 7)).toEqual([
+      ['iconEntityId', null], ['iconKindBit', null], ['marker', 'missing'], ['markerEntityId', null],
+    ]);
+    const completed = MAP_WARP_EVENTS[3] as Extract<DomainEvent, { type: 'warp-completed' }>;
+    const arrival = {
+      playerEntityId: 1, origin: { x: 0, y: 0, z: 0 }, destination: { x: 9, y: 9, z: 0 }, position: { x: 9, y: 9, z: 600 },
+      orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1] as const, error: 0.25, snapped: 30,
+      charge: { distance: 12, cost: 3, energyBefore: 1000, energyAfter: 996 }, warpClock: 640, hostileNear: true,
+    };
+    expect(summarizeEvent({ ...completed, arrival }, NO_COMMAND, 1).fields).toEqual([
+      ['serial', 1], ['viewMode', 0xc], ['previousViewMode', 1], ['arrived', true], ['playerEntityId', 1], ['error', 0.25], ['snapped', 30],
+      ['chargeDistance', 12], ['chargeCost', 3], ['energyBefore', 1000], ['energyAfter', 996], ['warpClock', 640], ['hostileNear', true],
+      ['x', 9], ['y', 9], ['z', 600], ['orientation', '1 0 0 0 1 0 0 0 1'], ['originX', 0], ['originY', 0], ['originZ', 0],
+      ['destinationX', 9], ['destinationY', 9], ['destinationZ', 0],
+    ]);
+  });
+
+  it('summarizes P3-10\'s communications, docking and base events by their own scalar fields, in a fixed order', () => {
+    const summary = (event: DomainEvent) => summarizeEvent(event, NO_COMMAND, 1).fields;
+    const speaker = { entityId: 4, kindBit: 15, name: { type: 'none' } } as const;
+    const reply = { table: 20011, face: 2, index: 3 } as const;
+    const direct = { table: 20983, face: null, index: 6 } as const;
+    expect([
+      { type: 'command-delivered', tick: 5, receiverEntityId: 4, receiverKindBit: 15, code: 9, senderEntityId: 1, commandIndex: 2 },
+      { type: 'radio-queued', tick: 5, message: reply, callback: 'docking-reply', speaker, position: 'head', length: 1 },
+      { type: 'radio-taken', tick: 5, message: direct, speaker: null },
+      { type: 'incoming-started', tick: 5, message: reply, speaker, frameDurations: [5, 8, 5], shown: true },
+      { type: 'incoming-ended', tick: 5, message: reply, speaker, callback: 'docking-reply', countdownStarted: true },
+      { type: 'radio-flushed', tick: 5, cause: 'docking-cancel', removed: 2, interrupted: 'playing' },
+      { type: 'docking-requested', tick: 5, playerEntityId: 1, dockingObject: 4, previousSubState: 0, deadlineClock: 0x782, commandIndex: 0 },
+      { type: 'docking-cancelled', tick: 5, playerEntityId: 1, dockingObject: 4, cause: 'gate' },
+      { type: 'docked', tick: 5, playerEntityId: 1, baseEntityId: 4, wingmanEntityId: null, previousViewMode: 12 },
+      { type: 'departed', tick: 5, playerEntityId: 1, origin: 'command', commandIndex: 1, viewMode: 12, previousViewMode: 6, position: { x: 1, y: 2, z: 3 },
+        orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1], wingmanEntityId: 2 },
+      { type: 'transition', tick: 5, gap: 'G-02/4' },
+      { type: 'base-navigated', tick: 5, direction: 'next', row: null, moved: false, commandIndex: 2 },
+      { type: 'base-confirmed', tick: 5, row: 3, record: 7, moved: true, commandIndex: 3 },
+    ].map((event) => summary(event as DomainEvent))).toEqual([
+      [['receiverEntityId', 4], ['receiverKindBit', 15], ['code', 9], ['senderEntityId', 1], ['commandIndex', 2]],
+      [['message', '20011/2#3'], ['callback', 'docking-reply'], ['speaker', 'entity 4 kind 15 none'], ['position', 'head'], ['length', 1]],
+      [['message', '20983#6'], ['speaker', null]],
+      [['message', '20011/2#3'], ['speaker', 'entity 4 kind 15 none'], ['frameDurations', '5 8 5'], ['shown', true]],
+      [['message', '20011/2#3'], ['speaker', 'entity 4 kind 15 none'], ['callback', 'docking-reply'], ['countdownStarted', true]],
+      [['cause', 'docking-cancel'], ['removed', 2], ['interrupted', 'playing']],
+      [['dockingObject', 4], ['previousSubState', 0], ['deadlineClock', 0x782], ['commandIndex', 0]],
+      [['dockingObject', 4], ['cause', 'gate']],
+      [['baseEntityId', 4], ['wingmanEntityId', null], ['previousViewMode', 12]],
+      [['origin', 'command'], ['commandIndex', 1], ['viewMode', 12], ['previousViewMode', 6], ['wingmanEntityId', 2], ['x', 1], ['y', 2], ['z', 3]],
+      [['gap', 'G-02/4']],
+      [['direction', 'next'], ['row', null], ['moved', false], ['commandIndex', 2]],
+      [['row', 3], ['record', 7], ['moved', true], ['commandIndex', 3]],
+    ]);
+  });
+
+  it('summarizes P3-08\'s wingman command and transponder events by their own scalar fields, in a fixed order', () => {
+    const summary = (event: DomainEvent) => summarizeEvent(event, NO_COMMAND, 1).fields;
+    expect([
+      { type: 'wingman-command-consumed', tick: 6, wingmanEntityId: 2, code: 3, issuedTick: 5, path: 'parked', outcome: 'refused', replyLine: null },
+      { type: 'transponder-deployed', tick: 6, entityId: 9, creatorEntityId: 1, position: { x: 1, y: -15, z: 2 }, orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
+    ].map((event) => summary(event as DomainEvent))).toEqual([
+      [['wingmanEntityId', 2], ['code', 3], ['issuedTick', 5], ['path', 'parked'], ['outcome', 'refused'], ['replyLine', null]],
+      [['entityId', 9], ['creatorEntityId', 1], ['x', 1], ['y', -15], ['z', 2]],
+    ]);
   });
 
   it('keeps 500 events untruncated and drops the oldest of 501', () => {

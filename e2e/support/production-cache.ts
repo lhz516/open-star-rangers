@@ -9,7 +9,7 @@ import {
   buildPackageRecord, buildStoredPayload, chargeDeclaredBudget, readGroupInputs, RESOURCE_CACHE_DATABASE,
 } from '../../src/platform/storage/resource-cache-records.ts';
 import { scenarioGroups } from '../../src/workers/import-scenarios.test-support.ts';
-import { PRODUCTION_PACKAGE } from '../../src/workers/production-package.ts';
+import { PRODUCTION_PACKAGE, type ExpectedPackageProfile } from '../../src/workers/production-package.ts';
 import { modelsPackage } from './viewer-observations.ts';
 
 /** The package a seed stored: its groups under the production identity, in slice definition order. */
@@ -26,22 +26,27 @@ let mission: Promise<readonly HeldGroup[]> | undefined;
  */
 export const missionPackage = (): Promise<readonly HeldGroup[]> => (mission ??= scenarioGroups('mission-startable'));
 
+/** The package key fields a seed may name instead of the production package's. */
+export type SeedKey = Pick<ExpectedPackageProfile, 'sourceFingerprint' | 'converterVersion'>;
+
 /**
  * Seeds only an isolated test context with converted synthetic content under the production identity: the `models`
  * package, or `converted`, such as the canary package (P2-12 S-06) or `missionPackage()` (P3-04 S-09). The manifest identity is derived anew for the
- * production basis; payloads are unchanged. Record builders run in Node; the page creates the stored ArrayBuffers. No
- * test modules or alternate app entry are served by preview. Resolves to what it stored.
+ * production basis, or for `key`'s source and converter version, such as a development test entry's profile (P3-08);
+ * payloads are unchanged. Record builders run in Node; the page creates the stored ArrayBuffers. No test modules or
+ * alternate app entry are served by preview. Resolves to what it stored.
  */
-export async function seedProductionCache(page: Page, converted?: readonly HeldGroup[]): Promise<SeededPackage> {
+export async function seedProductionCache(page: Page, converted?: readonly HeldGroup[], key?: SeedKey): Promise<SeededPackage> {
+  const { sourceFingerprint, converterVersion } = key ?? PRODUCTION_PACKAGE;
   const inputs = readGroupInputs(converted ?? await modelsPackage(), 'invalid-request');
   const { schemaVersion, sliceId, sliceDefinitionVersion } = inputs[0].manifest.identity;
   const groups = applyManifestIdentity({
     schemaVersion, sliceId, sliceDefinitionVersion,
-    converterVersion: PRODUCTION_PACKAGE.converterVersion,
-    origin: { type: 'original-import', sourceFingerprint: PRODUCTION_PACKAGE.sourceFingerprint },
+    converterVersion,
+    origin: { type: 'original-import', sourceFingerprint },
   }, inputs.map(({ manifest, payloads, sources }) => ({
     group: manifest.group, assets: manifest.assets, payloads,
-    sources: sources && { ...sources, sourceFingerprint: PRODUCTION_PACKAGE.sourceFingerprint },
+    sources: sources && { ...sources, sourceFingerprint },
   })));
   chargeDeclaredBudget(PRODUCTION_PACKAGE.limits, groups, 'groups');
   const completeness = validatePackage(CLASSIC_P2_SLICE, groups);

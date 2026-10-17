@@ -12,7 +12,7 @@ import { FakeEndpoint, portEndpoint } from '../../workers/import-host.test-suppo
 import { productionIdentityBasis } from '../../original-data/conversion/converter-version.ts';
 import { runGraphicsStep, stepGroupDraft } from '../../original-data/conversion/graphics-step.ts';
 import { modelsGroupDraft } from '../../original-data/conversion/model-step.ts';
-import { COCKPIT_HUD_MAP_USAGE, MODEL_TEXTURE_USAGE, productionGraphicsFiles } from '../../original-data/conversion/production-graphics.test-support.ts';
+import { COCKPIT_HUD_MAP_USAGE, MAP_GEOMETRY_USAGE, MODEL_TEXTURE_USAGE, productionGraphicsFiles } from '../../original-data/conversion/production-graphics.test-support.ts';
 import { fail } from '../../content/contract-validation.ts';
 import { PRODUCTION_MODEL_USAGE } from '../../original-data/conversion/production-models.test-support.ts';
 import { PRODUCTION_EFFECT_USAGE } from '../../original-data/conversion/production-effects.test-support.ts';
@@ -229,11 +229,11 @@ describe('graphics conversion over a structured-clone channel', () => {
     const snapshot = owner.getSnapshot();
     if (snapshot.status !== 'finished') throw new Error(`expected finished, got ${snapshot.status}`);
     // With no bound craft model, the models group is incomplete: no craft roles. The P2-05 palette and fonts with the
-    // production cockpit, HUD and map Assets, the P3-03 target display with its palette and view labels, and the HUD text
-    // complete the cockpit-hud-map group.
+    // production cockpit, HUD and map Assets, the P3-03 target display with its palette and view labels, the HUD text and
+    // the P3-09 map geometry complete the cockpit-hud-map group.
     expect(snapshot.groups).toEqual([
       { group: 'models', status: 'incomplete', assets: null, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'role-cardinality' })]) },
-      { group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets + 3 + HUD_TEXT_USAGE.assets, diagnostics: [] },
+      { group: 'cockpit-hud-map', status: 'group-complete', assets: 4 + COCKPIT_HUD_MAP_USAGE.assets + 3 + HUD_TEXT_USAGE.assets + MAP_GEOMETRY_USAGE.assets, diagnostics: [] },
       { group: 'audio', status: 'group-complete', assets: PRODUCTION_SOUND_USAGE.assets, diagnostics: [] },
     ]);
     expect(snapshot.usage).toEqual({ ...PRODUCTION_CONVERSION_USAGE, sourceReadBytes: snapshot.usage.sourceReadBytes });
@@ -254,10 +254,9 @@ describe('graphics conversion over a structured-clone channel', () => {
     ]);
     const cases: [string, ImportJob, readonly File[], Record<string, unknown>][] = [
       ['identify-source', createImportJob(), complete.files, { layer: 'source', code: 'unsupported-version' }],
-      // The status display messages, the HUD text and the view labels are mapped first; the fonts after them name the
-      // missing CCKD entry.
+      // The map geometry, a CCKD mapping, is mapped first and names the missing CCKD entry.
       ['convert-graphics', createImportJob(withoutCockpit.open), withoutCockpit.files,
-        { layer: 'source', code: 'entry-not-found', location: 'sources.mappings[3].parts[0].alternatives[0]' }],
+        { layer: 'source', code: 'entry-not-found', location: 'sources.mappings[0].parts[0].alternatives[0]' }],
       // Opening the archive again resolves its path from the root directory, the first sector the graphics stage reads.
       ['convert-graphics', createImportJob(failingAfterIdentification(complete.open)), complete.files, { layer: 'disc', code: 'read-failed', location: 'image:lba 18' }],
       ['convert-graphics', createImportJob(brokenFont.open), brokenFont.files,
@@ -373,7 +372,7 @@ describe('audio conversion over a structured-clone channel', () => {
     const audioGroup = taken[1];
     const manifest = readGroupManifest(audioGroup.manifest);
     expect(manifest.identity).toMatchObject({
-      converterVersion: 'osr-import.graphics-4.logic-2.audio-2.models-4', origin: { type: 'original-import', sourceFingerprint: snapshot.identity.sourceFingerprint },
+      converterVersion: 'osr-import.graphics-5.logic-4.audio-2.models-4', origin: { type: 'original-import', sourceFingerprint: snapshot.identity.sourceFingerprint },
     });
     expect((audioGroup.payloads as { bytes: Uint8Array }[]).map(({ bytes }) => bytes.byteLength))
       .toEqual(manifest.assets.map(({ payloadIdentity }) => payloadIdentity.byteLength));
@@ -474,7 +473,7 @@ describe('cockpit-hud-map assembly over a structured-clone channel', () => {
     const drafts = received.map(({ group, input }, index) => ({ group, assets: manifests[index].assets, payloads: [], sources: input.sources }) as GroupDraft);
     const identity = { ...basis, manifestIdentity: deriveManifestIdentity(basis, drafts) };
     expect(manifests.map(({ identity: sent }) => sent)).toEqual(received.map(() => identity));
-    expect(identity.converterVersion).toBe('osr-import.graphics-4.logic-2.audio-2.models-4');
+    expect(identity.converterVersion).toBe('osr-import.graphics-5.logic-4.audio-2.models-4');
 
     // The read usage plus the conversion usage, which counts every sent Asset and payload byte once.
     expect(snapshot.usage).toEqual(addBudgets(source!.usage(), step.usage));

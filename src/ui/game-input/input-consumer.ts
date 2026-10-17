@@ -13,7 +13,7 @@
  *   the page received outside Pointer Lock go through the port, which applies the owner's own rules; a G-item press goes
  *   to the input status. The event's default is prevented as the page interception decides.
  * - **Frames:** a running frame submits the repeats due at its clock, each held key at most once, and a frame that
- *   shows a new interaction context sets the neutral intent.
+ *   shows a new interaction context sets the neutral intent. A frame cut at a transition tick is not running.
  * - **Clearing:** losing qualification by blur, focusout or otherwise clears the local state and, while running, sends
  *   the run one `clear-input('focus-loss')`; hidden and pagehide clear only the local state, as the session pauses
  *   itself. Status, cancellation and cleanup notifications only read and clear local state. Nothing but a new press
@@ -295,10 +295,13 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
     if (!this.#released) this.#map?.pointer(input, this.#moment(this.#eligible));
   }
 
-  #frame(wired: WiredRun, { runId, phase, projection }: GameSessionFrame): void {
+  #frame(wired: WiredRun, { runId, phase, projection, report }: GameSessionFrame): void {
     if (!this.#current(wired)) return;
+    // A frame cut at a transition tick (P3-10) is the run's last before its hold, which refuses input from its delivery
+    // on: it counts as not running, so it submits no repeat and clears the held keys rather than having them refused.
+    const running = phase === 'running' && report?.cut !== 'transition';
     const moment: InputMoment = {
-      eligible: this.#eligible, running: phase === 'running', runId, context: projection.player.interactionContext, clock: projection.clock.clock,
+      eligible: this.#eligible, running, runId, context: projection.player.interactionContext, clock: projection.clock.clock,
     };
     const { intentChanged, repeats } = this.#state.frame(moment);
     if (intentChanged) this.#setIntent(moment);

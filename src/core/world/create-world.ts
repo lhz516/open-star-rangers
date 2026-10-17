@@ -1,7 +1,7 @@
 /**
  * World creation, the formal Core entry (docs/plan/p3/02/spec.md, 运行配置与世界创建; 技术决定 7, 8). Input: the
- * three logic Assets, the craft info (docs/plan/p3/06/spec.md, D-01), the six rule-data inputs (rule-data.ts;
- * docs/plan/p3/02/spec.md, CR-01), the package's ContentIdentity and the run configuration. Creation corresponds to the original's mission build: it validates, converts coordinates, fills the
+ * three logic Assets, the craft info (docs/plan/p3/06/spec.md, D-01), the ten rule-data inputs (rule-data.ts;
+ * docs/plan/p3/02/spec.md, CR-01, MW-01 and CB-01), the package's ContentIdentity and the run configuration. Creation corresponds to the original's mission build: it validates, converts coordinates, fills the
  * records' defaults (drawing only the +0x78 defaults) and orders the spawn queue, and returns a world at tick 0 with
  * clock 0, no entities, view mode 0xC and mission status built. It returns no events: spawns due at time 0 are
  * instantiated by the first step.
@@ -18,9 +18,11 @@ import { readExactRecord } from '../contracts/validation.ts';
 import { loadMission, type LogicAssetInput } from '../mission/load-mission.ts';
 import { RandStream } from '../rules/original-random.ts';
 import { buildSpawnState } from '../rules/spawn-schedule.ts';
-import { checkCraftInfo, readCraftInfoInput } from './craft-info-input.ts';
+import { communicationsRuleData } from './comm-input.ts';
+import { checkCraftInfo, checkPlayerWarp, readCraftInfoInput } from './craft-info-input.ts';
+import { buildMapRuleData } from './map-rule-data.ts';
 import { difficultyGroup, readRunConfig, type RunConfig } from './run-config.ts';
-import { buildRuleData, readRuleDataInputs, RULE_DATA_FIELDS } from './rule-data.ts';
+import { buildRuleData, readRuleDataInputs, RULE_DATA_FIELDS, transponderModel } from './rule-data.ts';
 import { checkSetup, instantiableRecords } from './setup-check.ts';
 import { setupHash } from './setup-hash.ts';
 import { constructWorld, type World } from './world.ts';
@@ -44,6 +46,14 @@ export interface CreateWorldInput {
   readonly models: readonly LogicAssetInput[];
   /** `data/ai-programs` of the same package (rule-data.ts). */
   readonly aiPrograms: LogicAssetInput;
+  /** `data/hud/map-geometry` of the same package (rule-data.ts, map-rule-data.ts; docs/plan/p3/02/spec.md, MW-01). */
+  readonly mapGeometry: LogicAssetInput;
+  /** `data/comm-menus` of the same package (rule-data.ts; comm-input.ts). */
+  readonly commMenus: LogicAssetInput;
+  /** `data/base-repair-items` of the same package. */
+  readonly baseRepairItems: LogicAssetInput;
+  /** `data/comm-messages` of the same package. */
+  readonly commMessages: LogicAssetInput;
   /** The identity of the validated package every Asset above was decoded from (P3-04, local checks). */
   readonly identity: ContentIdentity;
   readonly run: RunConfig;
@@ -68,8 +78,12 @@ export function initialWorldState(value: CreateWorldInput): WorldState {
   const group = difficultyGroup(run.rawDifficulty);
   const rand = new RandStream(run.seed);
   const spawn = buildSpawnState(setup, geometry, { group, wingman: run.wingman }, rand);
+  // MW-01's checks in its order, before the other craft info checks: the map geometry's three, then the player's Warp fields.
+  const map = buildMapRuleData(ruleInputs.mapGeometry.content, geometry.frame, run.clockUnitsPerTick);
+  checkPlayerWarp(craftInfo.content);
   checkCraftInfo(craftInfo.content, setup, spawn);
-  const ruleData = buildRuleData(ruleInputs, craftInfo.content, instantiableRecords(setup, spawn));
+  const communications = communicationsRuleData(ruleInputs, craftInfo.content, setup, spawn);
+  const ruleData = buildRuleData(ruleInputs, craftInfo.content, instantiableRecords(setup, spawn), transponderModel(setup), map, communications);
   const config = { content, mission: setup.mission, setupHash: setupHash(setup, craftInfo, ruleInputs), group, slot: setup.campaign.slot, ...run };
   return createWorldState(config, setup, craftInfo, ruleData, spawn, rand.state);
 }
@@ -77,9 +91,9 @@ export function initialWorldState(value: CreateWorldInput): WorldState {
 const MODEL_SET_FIELDS = ['mission', 'craftTypes', 'wingmanRoster', 'identity', 'run'] as const;
 
 /**
- * The model Asset IDs `models` must hold for a run of `value` (docs/plan/p3/02/spec.md, CR-01): those the craft type
- * table binds to the craft the run can instantiate (setup-check.ts, instantiableRecords), once each in ascending ID
- * order, so a caller decodes exactly these from the package. It reads these fields as createWorld does and throws its
+ * The model Asset IDs `models` must hold for a run of `value` (docs/plan/p3/02/spec.md, CR-01, CR-15): those the craft
+ * type table binds to the craft the run can instantiate (setup-check.ts, instantiableRecords) and to kind 0x4000, which
+ * `b` constructs in any run, once each in ascending ID order, so a caller decodes exactly these from the package. It reads these fields as createWorld does and throws its
  * errors for them; its draws come from its own stream.
  */
 export function instantiableModelIds(value: Pick<CreateWorldInput, (typeof MODEL_SET_FIELDS)[number]>): readonly AssetId[] {
@@ -88,7 +102,9 @@ export function instantiableModelIds(value: Pick<CreateWorldInput, (typeof MODEL
   const run = readRunConfig(input.run, 'input.run', setup, readContentIdentity(input.identity, 'input.identity'));
   const geometry = checkSetup(setup, run.wingman);
   const spawn = buildSpawnState(setup, geometry, { group: difficultyGroup(run.rawDifficulty), wingman: run.wingman }, new RandStream(run.seed));
-  return Object.freeze([...new Set(instantiableRecords(setup, spawn).map(({ model }) => model))].sort(compareText));
+  const transponder = transponderModel(setup);
+  const models = instantiableRecords(setup, spawn).map(({ model }) => model);
+  return Object.freeze([...new Set(transponder === null ? models : [...models, transponder])].sort(compareText));
 }
 
 /** Creates a world from logic content, the craft info, the rule data, their identity and a run configuration; see the module comment. */

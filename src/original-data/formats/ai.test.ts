@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AI_PROGRAMS_LIMITS, readAiPrograms, type AiPrograms } from '../../content/rule-data/ai-programs.ts';
 import { encodeRuleDataPayload } from '../../content/rule-data/rule-data-payload.ts';
 import {
-  builtInProgram, deepFrozen, MARKER, parameterEntry, script, scriptItem, syntheticAiPrograms, tableProgram, text,
+  builtInProgram, deepFrozen, keyword, MARKER, parameterEntry, script, scriptItem, syntheticAiPrograms, tableProgram, text,
 } from '../../content/rule-data/rule-data.test-support.ts';
 import type { DiscPath } from '../disc/disc-path.ts';
 import { SourceError, type SourceErrorData } from '../source-error.ts';
@@ -10,8 +10,8 @@ import { sourceFailure } from '../source-error.test-support.ts';
 import { memoryByteSource } from '../synthetic.test-support.ts';
 import { AI_LAYOUT, AI_SOURCE_LIMITS, parseAiPrograms } from './ai.ts';
 import {
-  aiContent, aiSources, BUILT_IN_LOCATION, nameLocation, SYNTHETIC_AI_IDS, syntheticAiSources, syntheticBuiltIn,
-  syntheticBuiltInExecutable, type SyntheticAiSources,
+  aiContent, aiSources, BUILT_IN_LOCATION, keywordNameLocation, keywordTableLocation, nameLocation, SYNTHETIC_AI_IDS, syntheticAiSources,
+  syntheticBuiltIn, syntheticBuiltInExecutable, syntheticKeywordExecutable, syntheticKeywordTables, type SyntheticAiSources,
 } from './ai.test-support.ts';
 import type { SyntheticBlock } from './formats.test-support.ts';
 import { openLeExecutable } from './le-executable.ts';
@@ -536,4 +536,153 @@ it('builds the built-in table with stored words equal to the fixup targets', () 
   const content = aiContent();
   const { bytes, fixups } = syntheticBuiltIn(content.builtInPrograms);
   for (const fixup of fixups) expect(getU32(bytes, fixup.at)).toBe(fixup.offset);
+});
+
+// P3-03 AC-23 (revision 3): the four EXE keyword tables. The synthetic tables (rule-data test support) hold 3, 6, 2 and 3
+// pairs; the fourth equals the first and shares its name regions, the second shares one region with the first and one
+// with the third, so 9 distinct name regions serve the 14 pairs, some starting at odd offsets.
+describe('keyword tables (AC-23)', () => {
+  const keywords = (change: (synthetic: SyntheticAiSources['keywords']) => void, content?: AiPrograms) => {
+    const synthetic = syntheticAiSources(content);
+    change(synthetic.keywords);
+    return synthetic;
+  };
+  const table = (index: number, path = '') => `${keywordTableLocation(index)}${path}`;
+  const { keywordEntryBytes: pair } = AI_LAYOUT;
+
+  it('parses the four tables in address order, keeping pair order, i32 values and name bytes, reading each shared name once', () => {
+    const content = aiContent();
+    const synthetic = syntheticAiSources(content);
+    expect(synthetic.keywords.names).toHaveLength(9);
+    expect(synthetic.keywords.names.some(({ region }) => region.offset % 2 === 1)).toBe(true);
+    expect(synthetic.keywords.tables[3].fixups).toEqual(synthetic.keywords.tables[0].fixups);
+    const parsed = parse(synthetic).content.keywordTables;
+    expect(parsed).toEqual(content.keywordTables);
+    expect(deepFrozen(parsed)).toBe(true);
+    expect(parsed.flat().map(({ value }) => value)).toEqual(expect.arrayContaining([-1, 0x7fffffff, -0x80000000]));
+    // The canonical payload round-trips the parsed content byte for byte.
+    const bytes = encodeRuleDataPayload({ role: 'ai-programs', content: parse(synthetic).content });
+    expect(encodeRuleDataPayload({ role: 'ai-programs', content: readAiPrograms(JSON.parse(new TextDecoder('latin1').decode(bytes))) })).toEqual(bytes);
+  });
+
+  it('reads the tables and names through the LE fixed-up region reader', async () => {
+    const content = aiContent();
+    const synthetic = syntheticAiSources(content);
+    const built = syntheticKeywordExecutable(synthetic.keywords);
+    const executable = await openLeExecutable(memoryByteSource(built.file), 'file');
+    const sources = aiSources(synthetic);
+    const tables = await Promise.all(built.tables.map(async (region, index) => ({ region, ...await executable.readFixedUpRegion(region, table(index)), location: table(index) })));
+    tables.forEach(({ fixups }, index) => expect(fixups).toEqual(synthetic.keywords.tables[index].fixups));
+    const names = await Promise.all(built.names.map(async (region, index) => ({ region, bytes: await executable.readRegion(region, 'name'), location: keywordNameLocation(index) })));
+    const parsed = parseAiPrograms(AISTUFF, { ...sources, keywordTables: tables as unknown as typeof sources.keywordTables, keywordNames: names }, 0);
+    expect(parsed.content.keywordTables).toEqual(content.keywordTables);
+  });
+
+  it.each<[string, (offset: number, object: number, target: number) => number[]]>([
+    ['an additive fixup', (offset, object, target) => [0x07, 0x04, offset & 0xff, offset >>> 8, object, target & 0xff, target >>> 8, 1, 0]],
+    ['a 16-bit offset fixup', (offset, object, target) => [0x05, 0x00, offset & 0xff, offset >>> 8, object, target & 0xff, target >>> 8]],
+  ])('rejects a table that %s patches in the LE reader', async (_, record) => {
+    const built = syntheticKeywordExecutable(syntheticAiSources().keywords, record);
+    const executable = await openLeExecutable(memoryByteSource(built.file), 'file');
+    expect(await regionFailure(() => executable.readFixedUpRegion(built.tables[0], table(0)))).toEqual(diagnostic('invalid-payload', table(0)));
+  });
+
+  it.each<[string, (synthetic: SyntheticAiSources['keywords']) => void, string, string]>([
+    ['a fixup at a value word', ({ tables }) => tables[1].fixups.push({ at: pair + 4, object: 4, offset: 0x10 }), 'unsupported-payload', table(1, '/entries[1]')],
+    ['a fixup at the terminator pair', ({ tables }) => tables[2].fixups.push({ at: 2 * pair, object: 4, offset: 0x10 }), 'unsupported-payload', table(2, '/terminator')],
+    ['a fixup across two words', ({ tables }) => tables[0].fixups.push({ at: 2 * pair + 2, object: 4, offset: 0x10 }), 'unsupported-payload', table(0, '/entries[2]')],
+    ['a missing name fixup', ({ tables }) => tables[1].fixups.splice(4, 1), 'unsupported-payload', table(1, '/entries[4]/name')],
+    ['a fixup to another object', ({ tables }) => { tables[3].fixups[1] = { ...tables[3].fixups[1], object: 3 }; }, 'unsupported-payload', table(3, '/entries[1]/name')],
+    ['a stored pointer other than the target offset', ({ tables }) => setU32(tables[0].bytes, pair, 0), 'unsupported-payload', table(0, '/entries[1]/name')],
+    ['a pair after a null pair inside the table', ({ tables }) => { setU32(tables[1].bytes, 2 * pair, 0); tables[1].fixups.splice(2, 1); }, 'unsupported-payload', table(1, '/entries[2]/name')],
+    ['no terminator pair', ({ tables }) => setU32(tables[2].bytes, 2 * pair, 0x10), 'unsupported-payload', table(2, '/terminator')],
+    ['a terminator with a value', ({ tables }) => setU32(tables[3].bytes, 3 * pair + 4, 1), 'unsupported-payload', table(3, '/terminator')],
+    ['a region of no whole pairs', ({ tables }) => { tables[1].bytes = tables[1].bytes.slice(0, -4); }, 'invalid-payload', table(1)],
+    ['a region of only the terminator', ({ tables }) => { tables[2].bytes = new Uint8Array(pair); tables[2].fixups = []; }, 'invalid-payload', table(2)],
+    ['a table that does not follow the previous one', ({ tables }) => { tables[2].region = { ...tables[2].region, offset: tables[2].region.offset + pair }; }, 'invalid-payload', table(2)],
+    ['a table in another object', ({ tables }) => { tables[1].region = { ...tables[1].region, object: 3 }; }, 'invalid-payload', table(1)],
+    ['a name target inside a region', ({ tables }) => {
+      tables[0].fixups[1] = { ...tables[0].fixups[1], offset: tables[0].fixups[1].offset + 1 };
+      setU32(tables[0].bytes, pair, tables[0].fixups[1].offset);
+    }, 'subresource-mismatch', table(0, '/entries[1]/name')],
+    ['a name region without a NUL', ({ names }) => { names[4].bytes = names[4].bytes.slice(0, -1); }, 'invalid-payload', keywordNameLocation(4)],
+    ['a name region past its NUL', ({ names }) => { names[2].bytes = Uint8Array.of(...names[2].bytes, 0x41); }, 'invalid-payload', keywordNameLocation(2)],
+    ['an empty name', ({ names }) => { names[6].bytes = Uint8Array.of(0); }, 'invalid-payload', keywordNameLocation(6)],
+    ['a name region no pair names', ({ names }) => names.push({ region: { object: 4, offset: 0x20, length: 2 }, bytes: Uint8Array.of(0x41, 0) }), 'subresource-mismatch', keywordNameLocation(9)],
+    // The names are given in reverse order, so the copy comes first.
+    ['a repeated name region', ({ names }) => names.push(names[3]), 'subresource-mismatch', keywordNameLocation(3)],
+    ['a name repeated within a table with A–Z folded', ({ names }) => { names[1].bytes = Uint8Array.from('\x80priv\0', character => character.charCodeAt(0)); }, 'unsupported-payload', table(0, '/entries[1]/name')],
+  ])('rejects %s', async (_name, change, code, location) => {
+    expect(await regionFailure(() => parse(keywords(change)))).toEqual(diagnostic(code, location));
+  });
+
+  it('rejects a zero name word before the terminator even with a fixup to a name region at offset 0', async () => {
+    const synthetic = syntheticAiSources();
+    const { tables, names } = synthetic.keywords;
+    const first = tables[0].fixups[0];
+    const region = names.find(({ region: { offset } }) => offset === first.offset)!;
+    // Every pair naming that region now names offset 0, where the region moves.
+    for (const table of tables) {
+      table.fixups = table.fixups.map(fixup => (fixup.offset === first.offset ? { ...fixup, offset: 0 } : fixup));
+      for (const { at, offset } of table.fixups) if (offset === 0) setU32(table.bytes, at, 0);
+    }
+    region.region = { ...region.region, offset: 0 };
+    expect(await regionFailure(() => parse(synthetic))).toEqual(diagnostic('unsupported-payload', table(0, '/entries[0]/name')));
+  });
+
+  it('accepts a name repeated across tables and names that differ only outside A–Z', () => {
+    const plain = syntheticAiPrograms();
+    plain.keywordTables[2] = [keyword(text(7), 1), keyword(`${text(3)}q\xc4`, 2), keyword(`${text(3)}Q\xe4`, 3)];
+    const content = aiContent(plain);
+    expect(parse(syntheticAiSources(content)).content.keywordTables[2]).toEqual(content.keywordTables[2]);
+  });
+
+  /** Tables of `counts` pairs whose names are `name(i)` for a running index, the fourth table empty of new names. */
+  const tablesOf = (counts: readonly number[], name: (index: number) => string) => {
+    let next = 0;
+    const tables = counts.map(count => Array.from({ length: count }, () => keyword(name(next), next++)));
+    return unchecked({ ...syntheticAiPrograms(), keywordTables: [...tables, tables[0]] });
+  };
+  /** The `index`th of `width`-byte names: MARKER text and a distinct last byte, never two equal under the A–Z fold. */
+  const named = (width: number) => (index: number) => `${text(width - 1)}${String.fromCharCode(0x30 + index)}`;
+
+  it('limits the pairs of a table: 16 pass, 17 fail before any pair is read', async () => {
+    const at = AI_PROGRAMS_LIMITS.keywordEntries;
+    expect(parse(syntheticAiSources(tablesOf([1, at, 1], named(3)))).content.keywordTables[1]).toHaveLength(at);
+    expect(await regionFailure(() => parse(syntheticAiSources(tablesOf([1, at + 1, 1], named(3))))))
+      .toEqual(limitExceeded(table(1, '/entries'), 'aiKeywordEntries', at));
+  });
+
+  // The names are given in reverse order (aiSources), so the first region past a limit is the last one built.
+  it('limits the name regions: 32 pass, 33 fail at the first region past the limit', async () => {
+    const at = AI_SOURCE_LIMITS.keywordNames;
+    expect(parse(syntheticAiSources(tablesOf([16, 16, 1], index => named(3)(index % at)))).content.keywordTables[2]).toHaveLength(1);
+    const over = syntheticAiSources(tablesOf([16, 16, 1], named(3)));
+    expect(over.keywords.names).toHaveLength(at + 1);
+    expect(await regionFailure(() => parse(over))).toEqual(limitExceeded(keywordNameLocation(0), 'aiKeywordNames', at));
+  });
+
+  it('limits the name bytes with their NULs: 256 pass, 257 fail', async () => {
+    const at = AI_SOURCE_LIMITS.keywordNameBytes;
+    // 32 names of 7 bytes and their NULs: 256 bytes.
+    const exact = syntheticAiSources(tablesOf([16, 16, 1], index => named(7)(index % 32)));
+    expect(exact.keywords.names.reduce((total, { bytes }) => total + bytes.length, 0)).toBe(at);
+    expect(() => parse(exact)).not.toThrow();
+    const over = syntheticAiSources(tablesOf([16, 16, 1], index => (index === 31 ? `${named(7)(index)}+` : named(7)(index % 32))));
+    expect(await regionFailure(() => parse(over))).toEqual(limitExceeded(keywordNameLocation(0), 'aiKeywordNameBytes', at));
+  });
+
+  it('limits a name to the keyword name bytes', async () => {
+    const at = AI_PROGRAMS_LIMITS.keywordNameBytes;
+    const plain = syntheticAiPrograms();
+    plain.keywordTables[2] = [keyword(text(at), 0)];
+    expect(parse(syntheticAiSources(aiContent(plain))).content.keywordTables[2][0].name).toHaveLength(at);
+    plain.keywordTables[2] = [keyword(text(at + 1), 0)];
+    const synthetic = syntheticAiSources(unchecked(plain));
+    expect(await regionFailure(() => parse(synthetic))).toEqual(limitExceeded(keywordNameLocation(8), 'textBytes', at));
+  });
+
+  it('builds the same synthetic sources from equal content', () => {
+    expect(syntheticKeywordTables(aiContent().keywordTables)).toEqual(syntheticAiSources().keywords);
+  });
 });

@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "03"
-updated: 2026-10-09
+updated: 2026-10-15
 related: [ADR-0007, ADR-0015, U-001, U-004, U-008, U-018, U-020, U-022, U-026, U-027, U-028, U-030]
 reviewed: sha256:dc6bc0cbc39a
 ---
@@ -46,7 +46,7 @@ reviewed: sha256:dc6bc0cbc39a
 - **S-02 任务事件：** 把 SCEN 3019 段 2 的事件触发（区间、消息文字、总结选择字节）与记录 +0x54 的引用并入 `mission/first-campaign`，取代 P2-09 对段 2 的“不转换”处理（[源字段处理](../../p2/09/spec.md#源字段处理)）。生成配对仍按失败关闭处理。`loadMission` 把事件触发原样透传到 `MissionSetup`，不解释、不调度。
 - **S-03 机型与武器数据：** 由 `CRAFT.NOB` TABL 4003 中切片所选的一对（槽 1、组 0）与 CINF 4037，生成 `data/craft-info`。
 - **S-04 碎片参数：** 由 `DEBRIS.NOB` TABL 4501 生成 `data/debris-parameters`。
-- **S-05 AI 数据：** 由 `AISTUFF.NOB` 中组 0 的闭包（AICO 6001 中闭环读取的字段：组 0 三元组、头部字段及其所指数组；TABL 6003 及其引用的 22 个 TABL 与 3 个 DFPG）与 EXE 内置表 `0x1762f8`，生成 `data/ai-programs`。
+- **S-05 AI 数据：** 由 `AISTUFF.NOB` 中组 0 的闭包（AICO 6001 中闭环读取的字段：组 0 三元组、头部字段及其所指数组；TABL 6003 及其引用的 22 个 TABL 与 3 个 DFPG）与 EXE 内置表 `0x1762f8`，生成 `data/ai-programs`。AI 脚本参数解析所用的 EXE 关键字表见 S-19（修订 3）。
 - **S-06 通讯菜单：** 由 `COMM.NOB` TABL 2003、2005、2007、2009、2013 生成 `data/comm-menus`。
 - **S-07 基地修理项目：** 由 TABL 10165 的 11 条记录生成 `data/base-repair-items`，只取 +0x6C 的子系统选择值。
 - **S-08 程序文字：** 由 7 条 EXE 字串生成 `data/flight-messages`，由 TABL 10399 第 8 项生成 `data/hud/view-labels`，由闭包 #47 的 64 个 EXE 文字区域生成 `data/hud/text`。
@@ -65,6 +65,8 @@ reviewed: sha256:dc6bc0cbc39a
   导入阶段或协议消息变化时，递增协议版本。
 - **S-15 合成数据与回归：** 用代码生成新增格式的合成样本，含按文档化规则编码的 ANIM；把合成内容包与合成导入白名单扩展到切片定义版本 4。既有的 Node 与浏览器回归随之更新，并须通过。
 - **S-16 本地核对：** 本地 CLI 用与 Worker 相同的作业模块转换基准镜像；`tools/nob-check.ts` 扩展到 ANIM 的全部帧，以及 EXIC/EXPL/ANIM/SND 与 TABL 4003→CINF 的引用（其余新增解析器带切片专用的失败关闭规则，只经本地 CLI 在切片条目上运行）；另以本地独立读取核对规范数据，并将 ANIM 帧与本地截图或参考视频做外观核对。
+- **S-18 通讯消息元数据（修订 2）：** 由 `COMMFACE.NOB` 的 TABL 20011、20019、20985（各头像的子表）与 20983，以及它们引用的 CMOV 的帧数与各帧时长，加上 `COMM.NOB` TABL 2001、2011 的名单，生成 logic 组的 `data/comm-messages`，供 P3-10 的 D-03 逻辑媒体模型使用（[P3-10 D-03](../10/spec.md#实施关卡)）。只导入规则所需的元数据：CMOV 的图像、声音与文字仍属 G-03，不导入；不读取 `COMMFAC2.NOB`。
+- **S-19 AI 关键字表（修订 3，P3-08 的 D-03）：** EXE 中脚本参数解析器 `0x60894` 查值所用的四张关键字表 `0x5ea40`–`0x5eae7` 及其名称区域，并入 `data/ai-programs`（[P3-08 的修订：AI 解析数据](#p3-08-的修订ai-解析数据修订-3)）。
 - **S-17 文档：** 同步受影响的内容：
   - [内容](../../../engineering/modules/content.md)、[原版数据](../../../engineering/modules/original-data.md)与 [Core](../../../engineering/modules/core.md) 分册；如有改动，也包括 [Worker](../../../engineering/modules/workers.md) 与[应用](../../../engineering/modules/app.md)分册；
   - [源码结构](../../../engineering/source-structure.md)的目录树；
@@ -76,7 +78,7 @@ reviewed: sha256:dc6bc0cbc39a
 - 规则语义与规则实现（R-04 至 R-22）以及 Core 对新数据的使用：归 P3-02、P3-06 至 P3-11。`loadMission` 只透传事件触发，其余行为不变。
 - 渲染、HUD 与音效的消费者：归 P3-12 至 P3-14，包括 EXPL 每次爆炸的选择、星云组的起点与方向、音效何时及是否循环播放。不为 data Asset 做专用显示；完整资源查看器归 P4。
 - 闭包中处置为 G 的内容（#34–#41），不导入：
-  - MUSC 与 SONG（G-01）；CINC 与 Smacker 过场（G-02）；`COMMFACE*.NOB` 与 COMM TABL 2001、2011（G-03）；
+  - MUSC 与 SONG（G-01）；CINC 与 Smacker 过场（G-02）；`COMMFACE*.NOB` 中 CMOV 的图像、声音与文字，以及 `COMMFAC2.NOB` 整个文件（G-03；修订 2 起，S-18 所列的表、CMOV 帧数与时长，以及 COMM TABL 2001、2011 的名单改为导入）；
   - OPTIONS 页面（G-04、G-06、G-07）；SCENARIO TABL 3011–3017（G-06）；
   - 基地内部的画面，含 TABL 10165 除 +0x6C 外的字段、图像与文字，以及 TEX 11091、CCKD 10097、MFDD 10475、BITM 10157–10163 等（G-05）；
   - TABL 11375 与 TABL 10399 第 0–7 项（G-08）。
@@ -147,10 +149,12 @@ reviewed: sha256:dc6bc0cbc39a
 | 15、16 | `CRAFT.NOB` TABL 4003（槽 1、组 0 的一对）、CINF 4037 | `data/craft-info` | logic | S-03 | P3-06、P3-07、P3-09、P3-10 |
 | 18 | `DEBRIS.NOB` TABL 4501 | `data/debris-parameters` | logic | S-04 | P3-07、P3-12 |
 | 22、23 | `AISTUFF.NOB` AICO 6001（组 0 三元组）、TABL 6003 与其引用的 25 条；EXE 表 `0x1762f8` | `data/ai-programs` | logic | S-05 | P3-08 |
+| —（修订 3） | EXE 关键字表 `0x5ea40`–`0x5eae7`（4 张）与其 14 个名称区域 | `data/ai-programs`（扩展） | logic | S-19 | P3-08 |
 | 24 | `COMM.NOB` TABL 2003、2005、2007、2009、2013 | `data/comm-menus` | logic | S-06 | P3-10、P3-08、P3-13 |
 | 31 | `SR.NOB` TABL 10165 各记录 +0x6C | `data/base-repair-items` | logic | S-07 | P3-10 |
 | 30 | EXE 字串 `0x17106c`、`0x171094`、`0x170db8`、`0x170dc8`、`0x170ddc`、`0x170df8`、`0x170e14` | `data/flight-messages` | logic | S-08 | P3-11、P3-06、P3-05、P3-13 |
 | 25 | TABL 10399 第 8 项 | `data/hud/view-labels` | cockpit-hud-map | S-08 | P3-12、P3-13 |
+| —（修订 2） | `COMMFACE.NOB` TABL 20011、20019、20985 及其各头像子表、TABL 20983、所引用 CMOV 的帧数与帧时长；`COMM.NOB` TABL 2001、2011 | `data/comm-messages` | logic | S-18 | P3-10 |
 | 47 | EXE 对象 4 中 HUD、地图与信息窗直接绘制的 64 个文字区域 | `data/hud/text` | cockpit-hud-map | S-08 | P3-13（P3-09、P3-10 提供 Warp、地图与通讯状态） |
 | 17 | RENS 10751 头部 | `data/scene-settings` | models | S-09 | P3-12 |
 | 19 | TEX 11069 | `image/hit-shimmer` | models | S-09 | P3-12 |
@@ -243,8 +247,9 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 | `mission/first-campaign` | mission / `mission` | 现有内容，加上事件触发与声明的 `eventTrigger` | 不变 | 不变 | `likely`，U-022 |
 | `data/craft-info` | data / `craft-info` | 所选倍率与 CINF 全部记录 | 无 | TABL 4003（子资源为所选的槽与组）、CINF 4037 | `likely`，U-001、U-008、U-026 |
 | `data/debris-parameters` | data / `debris-parameters` | 按种类位的 20 组碎片参数记录 | 无 | `DEBRIS.NOB` TABL 4501 | `likely`，U-001、U-027 |
-| `data/ai-programs` | data / `ai-programs` | 组 0 三元组、程序表、所引用的条目、内置程序表 | 无 | AICO 6001（子资源为组 0）、TABL 6003、22 个 TABL、3 个 DFPG、EXE 区域 | `likely`，U-001、U-022 |
+| `data/ai-programs` | data / `ai-programs` | 组 0 三元组、程序表、所引用的条目、内置程序表 | 无 | AICO 6001（子资源为组 0）、TABL 6003、22 个 TABL、3 个 DFPG、EXE 区域（内置表及其名称；修订 3 起另有四张关键字表及其名称） | `likely`，U-001、U-022 |
 | `data/comm-menus` | data / `comm-menus` | 5 张菜单表 | 无 | COMM TABL 2003、2005、2007、2009、2013 | `likely`，U-001 |
+| `data/comm-messages` | data / `comm-messages` | 通讯消息表（各头像子表与直接列表）、每条消息的存在与帧时长，以及两份名单（修订 2） | 无 | COMMFACE TABL 20011、20019、20985 与其子表、TABL 20983、所引用的 CMOV（子资源为帧数与帧时长）；COMM TABL 2001、2011 | `confirmed`（executable RQ4、RQ7、RQ9；用途为 P3-10 D-03） |
 | `data/base-repair-items` | data / `base-repair-items` | 11 个子系统选择值 | 无 | TABL 10165（子资源为各记录的选择字段） | `likely`，U-030 |
 | `data/flight-messages` | data / `flight-messages` | 7 条消息文字 | 无 | 7 个 EXE 区域 | `confirmed` |
 | `data/hud/view-labels` | data / `view-labels` | 子模式 8 的标签 | 无 | TABL 10399（子资源为第 8 项） | `confirmed` |
@@ -279,6 +284,8 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 | `event-sound` | audio | sound | 恰为 8 |
 | `hud-sound` | audio | sound | 恰为 3 |
 
+**修订 2：** `SLICE_DEFINITION_VERSION` 由 4 递增为 5，新增 logic 组的 data 角色 `comm-messages`，恰为 1；其余角色要求不变。版本 4 的包按 `definition-version-mismatch` 为 `incomplete`，与版本 3 的处理相同。与 P3-09 的修订合并后为版本 6，见[合并说明](#合并说明2026-10-15p3-09-与-p3-10-的修订-2)。
+
 `explosion-animation`、`explosion-frame` 与 `nebula-background` 不是必需角色：它们是上表必需 Asset 的依赖，完整性验证通过依赖闭包要求它们存在。这次修订由本 spec 承担，P2 已批准的 spec 与评审作为历史记录不改写（[P3 阶段索引](../tasks.md#p3-03-规则数据与补充内容导入)）。
 
 ### 规范 payload
@@ -298,8 +305,9 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 | `mission`（扩展） | `eventTriggers`：段 2 事件触发的数组，按段内顺序；每个触发含 `ranges`，每个区间含研究确定的类型化字段、该区间引用的消息（字节串，数量与形状由 S-01 按区间 +8 引用的消息单元确定，可为空）与总结选择值。声明新增 `eventTrigger`（触发序号或 null） | 段 2 的每个元素都必须是被至少一条记录引用的事件触发，否则为 `unsupported-payload`。生成配对的指针与数量必须为零，否则为 `unsupported-payload`。三个运行时计数不转换：研究确认载入或任务开始时会重置它们，则不检查存储值；否则存储值必须为零，非零为 `unsupported-payload`。僚机选项的 `eventTrigger` 必须为 null。`RuleInputs` 与其他既有字段不变 |
 | `craft-info` | `hitDamageScale`：TABL 4003 所选一对的倍率，用途已确认，见难度读取路径 1；`guns`、`missiles`：按源序号排列的记录，载入时改写的首字由位置表示；`craft`：恰 20 项，下标为种类位；`missileBodies` | 记录内的字段按字段处理规则类型化；记录之间的引用转为序号。所选 CINF 的 ID 只用于核验映射 |
 | `debris-parameters` | `byCraftType`：恰 20 项，每项是该种类位的 96 字节记录数组；嵌套的浮点数组（指针 +0x38、数量 +0x3C）转为数组 | 载入时写入 +0x0C 的归一化取反副本属算术派生，+0x0C 的存储值不转换，由 P3-07 按格式文档实现。载入时对嵌套数组的调整，按 S-01 确定的性质适用字段处理规则 5 |
-| `ai-programs` | `groupTriple`：AICO 6001 组 0 的三个值；AICO 6001 中闭环读取的其余字段：头部 +0x08–+0x48 与 +0x18 所指的 5 × 16 字节 `f32` 数组（[ai §2](../../../original/formats/ai.md)）；`programs`：TABL 6003 的 0x54 字节记录，到首字为零为止；`entries`：组 0 闭包的 25 个条目的规范结构；`builtInPrograms`：EXE 中 10 条 0x54 字节的记录。ID 链按 [executable 的 AISTUFF 闭包](../../../original/formats/executable.md#data-loaded-by-the-loop-p3-0110)转为 `entries` 的序号：记录 +0x1C 所指的条目，该条目 +0x38 所指的条目，以及载入器读取的 6 个 ID 列表（+0x3C/+0x40 至 +0x64/+0x68）；各字段所在结构以 S-01 为准 | `entries` 的集合恰为组 0 闭包的 25 条。代码指针（例如内置记录 +0x18 的处理程序）按字段处理规则 4 保留为不透明标识。程序如何解释归 P3-08 |
-| `comm-menus` | 5 张菜单，键名按已确认的选择条件命名（目标种类 2、`0x68000` 种类并通过门禁、其余、命令处理程序的两张）；每张菜单的项目含文字与研究确定的类型化字段 | 菜单的选择与状态机归 P3-10；头像相关的 TABL 2001、2011 不导入（G-03） |
+| `ai-programs` | `groupTriple`：AICO 6001 组 0 的三个值；AICO 6001 中闭环读取的其余字段：头部 +0x08–+0x48 与 +0x18 所指的 5 × 16 字节 `f32` 数组（[ai §2](../../../original/formats/ai.md)）；`programs`：TABL 6003 的 0x54 字节记录，到首字为零为止；`entries`：组 0 闭包的 25 个条目的规范结构；`builtInPrograms`：EXE 中 10 条 0x54 字节的记录。ID 链按 [executable 的 AISTUFF 闭包](../../../original/formats/executable.md#data-loaded-by-the-loop-p3-0110)转为 `entries` 的序号：记录 +0x1C 所指的条目，该条目 +0x38 所指的条目，以及载入器读取的 6 个 ID 列表（+0x3C/+0x40 至 +0x64/+0x68）；各字段所在结构以 S-01 为准 | `entries` 的集合恰为组 0 闭包的 25 条。代码指针（例如内置记录 +0x18 的处理程序）按字段处理规则 4 保留为不透明标识。程序如何解释归 P3-08。修订 3 起为 schema 2，增加四张关键字表（[P3-08 的修订](#p3-08-的修订ai-解析数据修订-3)） |
+| `comm-menus` | 5 张菜单，键名按已确认的选择条件命名（目标种类 2、`0x68000` 种类并通过门禁、其余、命令处理程序的两张）；每张菜单的项目含文字与研究确定的类型化字段 | 菜单的选择与状态机归 P3-10；TABL 2001、2011 由 `comm-messages` 导入（修订 2） |
+| `comm-messages`（修订 2） | `faceTables`：表 20011、20019、20985 三项，各为按头像排列的子表数组，子表为消息数组；`direct`：表 20983 的消息数组；每条消息为 `{ present: false }`（条目为 0）或 `{ present: true, frameDurations }`（各帧时长，i32，单位 1/8 秒，按帧序）；`names2001`、`names2011`：名单，字节串，按 TABL 顺序 | 头像数、每头像消息数、帧数与名单长度在读取前按限值判定；帧数 ≥ 1，时长按来源保留（不做非负以外的推断，负值为 `unsupported-payload`）。只记录规则需要的元数据，不含 CMOV 的图像、声音与文字。查找、头像分配与时序归 P3-10 |
 | `base-repair-items` | `subsystemSelectors`：11 个值，按记录顺序 | 只取 +0x6C；值域按[闭包 #31](../01/subtasks/10-data-closure.md#决定表) 与格式文档记录的值域核对，超出为 `unsupported-payload` |
 | `flight-messages` | 7 条字节串，键名按已确认的发送者与触发命名（完成、信标、速度辅助开关两条、摇杆灵敏度三条） | 显示时机与位置归 P3-11 与 P3-13；摇杆键是否接入由 P3-05 决定 |
 | `view-labels` | `labels`：`{ subMode: 8, text }` 一项 | 第 0–7 项属 G-08，第 9–12 项的用途未确认，都不导入 |
@@ -338,7 +346,8 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
   - TABL 4003 中所选一对的条目 ID，等于映射的 CINF 部件；
   - AISTUFF 组 0 的表选择与 TABL 6003 记录中的全部 ID，恰为映射的 25 个部件，不多也不少；
   - EXIC 的三张列表恰为映射的 17 个 EXPL；每个 EXPL 的 ANIM 是对应动画 Asset 映射的 ANIM，SND 是音频表中已交付的爆炸音效 Asset 的来源条目；
-  - NEBC 的 15 个 ID 恰为映射的 BITM 部件，且顺序一致。
+  - NEBC 的 15 个 ID 恰为映射的 BITM 部件，且顺序一致；
+  - （修订 2）表 20011、20019、20985 的各头像子表 ID 与子表中非 0 的 CMOV ID、表 20983 中非 0 的 CMOV ID，恰为映射的 TABL 与 CMOV 部件。
 - 新增映射的置信度、U 项与证据按 [Asset 与角色](#asset-与角色)表。
 
 ### 限值与预算
@@ -365,6 +374,8 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 ### 包身份与转换器版本
 
 - 输出发生变化的转换器，各自递增其组件（例如 `graphics-4`、`logic-2`、`audio-2`、`models-4`，以实际变化为准）。`PRODUCTION_CONVERTER_VERSION` 仍是唯一定义；`PRODUCTION_PACKAGE` 的常量随之更新，并由其测试从 `original-data` 推导核对。
+- 修订 2：logic 组的转换器组件随 `comm-messages` 递增；定义版本为 5；`PRODUCTION_CATALOG` 加入 `MAIN/COMMFACE.NOB`，来源指纹随之改变，用户须重新导入。
+- 修订 3：logic 组的转换器组件随关键字表再递增一次（`logic-3` → `logic-4`），`ai-programs` 的 payload schema 为 2；定义版本、白名单与来源指纹不变（[P3-08 的修订](#p3-08-的修订ai-解析数据修订-3)）。
 - 内容身份为：内容 schema 1、切片 ID `classic-p2-slice`、定义版本 4、新的 `ConverterVersion` 与原有来源。`ManifestIdentity` 的推导机制不变。
 - 导入协议保持版本 5。只有阶段集合或消息形状改变时才递增，并且旧版本的消息被拒绝。
 
@@ -375,6 +386,83 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 - 旧转换器版本的条目与当前生产配置不一致，因此不提供恢复，用户须重新导入。即使读到这样的记录，切片定义版本 3 也会报 `cache-incompatible`；恢复时仍由 `validatePackage` 与读取器重新校验。
 - 旧记录保留在浏览器中，不迁移也不清理（P5）。包变大后存储需求增加，建议性的空间预检照常工作；[本地导入指南](../../../guides/local-import.md#缓存与重新导入)补充重新导入的说明。
 - 不涉及玩家存档；规范数据与 `MissionSetup` 都不是存档格式。
+
+### P3-09 的修订：地图几何（修订 2）
+
+本节由 P3-09 的子任务 08 加入（2026-10-14），定稿 [P3-09 spec](../09/spec.md#地图几何的内容输入) 的关卡 D-01 中内容输入的部分；Core 一侧的输入、校验与 setupHash 在 [P3-02 的 MW-01](../02/spec.md#mw-01-世界创建输入与静态规则数据)。前文各节与本节不一致时以本节为准；其他导入项、限值与错误不变。原版依据：[cockpit 的 10 型记录](../../../original/formats/cockpit.md#instrument-types-per-slot-confirmed-p3-0730)、[地图鼠标](../../../original/formats/executable.md#map-mouse-input-p3-0503)、[光标与标记中的 `0x49e74`](../../../original/formats/executable.md#cursor-destination-and-marker-p3-0902)、[放大窗口与信息小窗](../../../original/formats/executable.md#zoom-window-information-window-and-labels-p3-0904)与 [hud §1 的字体表](../../../original/formats/hud.md#1-bitmap-fonts-confirmed)。
+
+- **Asset 与角色：**
+
+  | Asset ID | kind / 角色 | 内容 | 依赖 | 来源部件 | 映射置信度 |
+  |---|---|---|---|---|---|
+  | `data/hud/map-geometry` | data / `map-geometry` | 地图仪表记录的含末像素矩形与重绘间隔，以及字体 1 的字形高度 | 无 | `SR.NOB` CCKD 10103：布局号为 6 的目录槽中类型为 10 的唯一仪表记录（子资源）与头部字体表第 1 项（子资源） | `confirmed` |
+
+  只导入规则需要的这三个字段：Core 用它们得出主地图、信息小窗与放大窗口的像素矩形、两组换算比例、光标起点与信息行容量；P3-13 通过 Core 的 `map` 分区取得同一几何，不重新解释原版记录。CCKD 10101（LO 套件）、10097 与其他仪表记录不导入；记录的 +0x14、+0x24 与运行时的 +0x1C 不导入（地图处理程序不读，[cockpit](../../../original/formats/cockpit.md#instrument-types-per-slot-confirmed-p3-0730)）。
+- **切片定义版本 5：** `SLICE_DEFINITION_VERSION` 由 4 递增为 5，新增必需角色 `map-geometry`（组 `cockpit-hud-map`，kind `data`，恰为 1）。切片 ID、候选、配置、组与其他角色不变。与 P3-10 的修订 2 合并后为版本 6，见[合并说明](#合并说明2026-10-15p3-09-与-p3-10-的修订-2)。
+- **规范 payload（schema 1，`MAP_GEOMETRY_SCHEMA_VERSION`）：** 沿用 HUD data payload 的规范 ASCII JSON（与 `view-labels`、`hud-text` 相同的规则）：
+
+  ```ts
+  interface MapGeometry {
+    rectangle: { x0: number; y0: number; x1: number; y1: number }; // 记录 +0x04–+0x10（i32），画面像素，含末像素
+    redrawInterval: number;                                          // 记录 +0x18（u32），时钟单位
+    informationLineHeight: number;                                   // 字体表第 1 项头部 +3（u8），像素
+  }
+  ```
+
+  - **读取器 `readMapGeometry`**（`src/content/hud/`）：严格读取，结果冻结并与输入隔离；字段恰为上述三个。约束：0 ≤ x0 ≤ x1 ≤ 639，0 ≤ y0 ≤ y1 ≤ 479；s = y1 − y0 + 1 ≥ 2（信息小窗与放大窗口各高 s >> 1 ≥ 1）；x0 + s < x1（右侧条带宽 x1 − (x0 + s) ≥ 1）；`redrawInterval` 为 u32；`informationLineHeight` 为 1–8 的整数（与字体读取器的高度上限相同）。不满足的为 `invalid-flight-data-payload`（与其他 HUD data payload 相同），诊断只有结构路径与原因。跨输入的检查（起点在主地图内、比例为有限正数、重绘间隔与步长）在 Core（P3-02 MW-01）。
+  - **限值：** `payloadBytes` 256（三个字段的规范编码远小于此，2 的幂）。
+- **来源与核验：** 生成 `cockpit-hud-map` 组的图形步骤在读取 CCKD 10103 的同一次读取中：先按目录核对头部与目录范围，找到 +0x00 等于 6 的目录槽（恰一个，否则 `unsupported-payload`）；核对其仪表记录数组（+0x18 指针、+0x1C 数量、48 字节步长）完整位于条目之内，数量不超过 32（基准每槽至多 11 个，按 2 倍取整到 2 的幂），然后才读取；类型为 10 的记录恰为一个（否则 `unsupported-payload`）；字体表第 1 项沿用既有字体读取器。子资源在转换器从同一次读取中解析出后升为 `verified`，写法沿用现有转换器的约定。读取越界为 `invalid-payload`，计数超限为 `limit-exceeded`；诊断不回显数值。
+- **预算：** 图形步骤的份额增加 1 个 Asset 与该 payload 的字节数（按限值），其余维度不变；`PRODUCTION_PACKAGE.limits` 随之更新。
+- **包身份与转换器版本：** 图形转换器的组件由 `graphics-4` 递增为 `graphics-5`（若并行任务合入时已先递增，则相对实际集成基线再递增一次），`PRODUCTION_CONVERTER_VERSION` 随之改变；内容 schema 仍为 1，导入协议版本不变（阶段集合与消息形状不变）。
+- **持久化与兼容：** 旧转换器版本与切片定义版本 4 的缓存不再恢复，用户须重新导入（切片定义版本不符报 `cache-incompatible`）；IndexedDB 的数据库版本、记录格式与缓存键结构不变；取消、坏输入、配额不足或事务失败沿用既有事务，不留半包，不覆盖已有有效包；旧记录不迁移也不清理（P5）。
+- **应用与 Core：** 应用从同一经 `validatePackage` 验证的包中按角色解码该 Asset，作为 `createWorld`、录制入口与 `ReplayContent` 的 `mapGeometry: { id, content }`（P3-02 MW-01）；setupHash 覆盖其 ID 与完整内容。实际任务不再依赖渲染器存在才取得地图几何。
+- **任务记录 +0x7C 不在本修订中：** 对象记录读取器已把它列为保留字并拒绝非零值；切片全为 0，Core 的地图可见基础值恒为 false（P3-02 MW-01）。
+
+### P3-08 的修订：AI 解析数据（修订 3）
+
+本节由 P3-08 的子任务 09 加入（2026-10-15，关卡 D-03），定稿 [P3-08 spec](../08/spec.md#跨任务修订d-03) 中“AI 解析数据的导入”一项；Core 一侧的读取在 [P3-02 的 CR-26](../02/spec.md#cr-26-ai-解析数据与-cr-15-的输入核对d-03)。前文各节与本节不一致时以本节为准；其他导入项、角色、限值与错误不变。原版事实只记在 [ai §5.3](../../../original/formats/ai.md#53-argument-parser-p3-0802) 与 [§10.2](../../../original/formats/ai.md#102-dfpgs-scripts-and-keyword-tables)，本节只写导入契约。
+
+- **起因：** 脚本的关键字类参数（操作码 230、231、300、301、403）由代码侧的表查值（ai §5.3），这些表与名称文字都在 EXE 中，现有 `data/ai-programs` 没有它们；名称是原版文字，不能写进源码（P3-08 spec 技术决定 4）。这是[研究门槛](#研究门槛与阻塞) 3 的情形：事实已由 P3-08 的研究写入 ai §5.3；向 P3-01/10 闭包追加记录（按 P3-03/24 的先例）不在 P3-08 子任务 09 的写入范围，已作为建议交协调者。分隔符集合与数值常量是代码语法与常量，不导入，由 Core 作为代码常量实现（ai §5.3 的处置）。
+- **来源与范围：** 四张表全部导入，不按切片裁剪：`0x5ea40`、`0x5ea60`、`0x5ea98`、`0x5eac8`（LE 对象 2），按地址次序，每张为 {名称指针, i32 值} 项的数组，以名称字为 0 的终止项结束；名称是 LE 对象 4 中以 NUL 结束的文字。理由：
+  1. 四张表连续占据一个恰好由 17 个 LE fixup 覆盖的区域，整体导入才能核对 fixup 集合不多不少；
+  2. 与字段处理规则 7 的理由相同：哪张表会被执行属于规则研究（切片只执行前三张，ai §10.2），导入不预先裁剪；
+  3. 第一张与第四张表的名称目标与值相同（ai §5.3），两张都导入即可，不需要另证相同，也不让内容依赖这一观察。
+- **规范形状（`ai-programs` payload schema 2）：** `AiPrograms` 增加一个字段（名称由实现按类型注释确定，下为示意）：
+
+  ```ts
+  keywordTables: readonly [KeywordTable, KeywordTable, KeywordTable, KeywordTable]; // 按地址次序：0x5ea40、0x5ea60、0x5ea98、0x5eac8
+  type KeywordTable = readonly KeywordEntry[];   // 按存储次序，不含终止项；1 ≤ 项数 ≤ 每张表的项数上限
+  interface KeywordEntry {
+    name: ByteString;   // 名称指针的 fixup 目标处的文字，按字段处理规则 8：1–255 的字节，不含结尾 NUL
+    value: number;      // 值字，i32，按存储保留（值字没有 fixup）
+  }
+  ```
+
+  - 表与操作码的对应（230/231 → 第一张，300 → 第二张，301 → 第三张，403 → 第四张）是已确认的代码事实（ai §5.3），作为 schema 常量由转换器、读取器与 Core 共用，不进入 payload。
+  - 表项次序是规则的一部分：查值取第一个匹配项（ai §5.3），读取器与 Core 都不得排序或去重。
+  - 名称的匹配规则（去掉参数文字的尾随空格后比较；只把 A–Z 折叠为小写）属于 Core（P3-02 的 CR-26），导入不改写名称。
+  - 其他字段与 schema 1 相同；`programs`、`entries`、`builtInPrograms` 的内容与次序不变。
+- **核验（同一次读取中完成；错误层与 code 沿用[错误](#错误)，位置只含结构名与下标，不回显名称、值或字节）：**
+  1. **区域：** 四个表区域各恰好覆盖该表的全部项与终止项（每项 8 字节），四个区域首尾相接；名称区域每个恰好覆盖文字及其 NUL（与内置表名称相同的规则，见[来源映射与核验](#来源映射与核验)）。
+  2. **fixup：** 表区域内恰有 17 个 LE fixup，每个非终止项的 +0 恰一个，全部为源类型 7、内部引用、目标对象 4、16 位目标偏移；值字与终止项没有 fixup，存储的指针字等于目标偏移（与内置表 `0x1762f8` 的核对相同）。多出、缺少或类型不同为 `unsupported-payload`。
+  3. **终止项：** 每张表恰有一个名称字为 0 的终止项且位于表区域末尾；终止项的值字须为 0，否则为 `unsupported-payload`（字段处理规则 6）；终止项之前不得出现名称字为 0 的项。
+  4. **名称目标：** 每个目标是一个已映射名称区域的起点；名称至少 1 字节、区域内恰有一个 NUL 且在末尾；全部表引用的目标集合恰为映射的名称区域，不多也不少（不一致为 `subresource-mismatch`，同 ID 链的规则）。多个项指向同一目标时只读一次，各项都得到该文字。
+  5. **重复键：** 同一张表内，按 A–Z 折叠后相等的两个名称为 `unsupported-payload`：后者永远查不到，说明来源超出研究覆盖。不同表之间可以重复（第一张与第四张相同）。值不要求互异。
+  6. **读取器：** 内容读取器对 payload 再做形状、张数、项数、字节串（1–255、无 NUL、长度上限）与表内重复键的检查，错误为内容层的 `invalid-logic-payload`；fixup 与区域只在转换器中核对。
+- **限值与预算（按[限值的取值](#限值与预算)：观测值的 2 倍向上取整到 2 的幂；观测值见 ai §5.3，由实现记入 [ai §8](../../../original/formats/ai.md#8-observed-maxima)）：**
+  - 表的张数为 4，是格式规则，不是可调上限；
+  - 每张表的项数：观测最大 6 → 16；
+  - 名称区域数：观测 14 → 32；名称字节总数（含 NUL）：观测 111 → 256；单个名称的字节上限按同一规则由实现以观测最大值推导，不低于 `AI_PROGRAMS_LIMITS.programNameBytes`；
+  - 读取量：logic 组的转换步骤多读 4 个表区域（共 168 字节）与 14 个名称区域（共 111 字节）；其预算份额与 payload 字节份额按同一规则由实际用量推导，`PRODUCTION_PACKAGE.limits` 随之由测试推导核对；limit 与 limit + 1 各有测试。
+- **版本、身份与缓存：**
+  - [rule-data-payload.ts](../../../../src/content/rule-data/rule-data-payload.ts) 中 `ai-programs` 的 payload schema 由 1 递增为 2；读取器只接受 2，schema 1 的描述符为 `unsupported-payload-schema`。其他规则数据角色的 schema 不变。
+  - logic 转换器组件相对实际集成基线递增一次：当前为 `logic-3`（[合并说明](#合并说明2026-10-15p3-09-与-p3-10-的修订-2)），递增为 `logic-4`；实现前若另有任务先递增，则在其上再递增。`PRODUCTION_CONVERTER_VERSION` 仍为唯一定义，随之变为 `osr-import.graphics-5.logic-4.audio-2.models-4`（图形、音频与模型组件以实现时的实际值为准）。
+  - 内容 schema、切片 ID、切片定义版本（6）、角色与数量、来源白名单与导入协议版本都不变（没有新增角色、组或封包）。
+  - 旧转换器版本的包不提供恢复，须重新导入；旧记录保留，不迁移也不删除；当前版本的缓存仍经 `validatePackage` 与读取器重新校验；坏包或写入失败不发布半包（沿用[持久化与兼容](#持久化与兼容)）。[本地导入指南](../../../guides/local-import.md#缓存与重新导入)随实现补一句须重新导入的说明。
+  - Core 的 `aiPrograms` 输入与 setupHash 覆盖完整内容（P3-02 的 CR-01），新表随之受绑定；用旧内容录制的 replay 因 setupHash 不符而在执行前拒绝。App 仍把完整内容交给 Core，不提取局部参数。
+- **补充核对（P3-02 的 CR-15 的要求）：** SCEN 头部 +0x0C（选择 flag 与份额的波次模式字）非零时，现有任务读取器已以 `unsupported-payload` 拒绝；对象记录 +0x7C（地图可见基础值）是保留字，SCEN 与 SCCT 的记录非零即拒绝（与[修订 2 的末条](#p3-09-的修订地图几何修订-2)相同）。所以支持的内容中二者恒为 0，不需要补充导入；将来支持非零值时，须同时修订本 spec 的任务内容与 P3-02 的 CR-15、CR-26、MW-01。
+- **实现：** 由 [P3-08 goal](../08/goal.md) 的子任务 13 实现，P3-03 goal 不重新打开；已完成子任务的证据保留。本机真实镜像经 `node tools/package-check.ts` 转换核对，报告只记计数与哈希，私有输出留在 `local/research/p3-08/import/`。
+- **改动的部分：** S-05（前向引用）、S-19（新增）、导入项表、Asset 与角色表的来源部件、规范 payload 中 `ai-programs` 一行的约束、包身份与转换器版本（修订 3 一条）、本节，以及 AC-23（新增）。其余契约不变。
 
 ## 技术决定
 
@@ -429,6 +517,8 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 | AC-19 | 本地核对（S-16）满足以下要求：<br>- **CLI：** 在开发者本机的基准镜像上，用与 Worker 相同的作业模块得到 `complete` 的版本 4 包，`loadMission` 成功。输出每个新增角色的 Asset 数、记录、帧、文字与声音的计数，payload 字节，各阶段读取增量、manifest 身份与哈希，以及限值与观测值的对照；<br>- **nob-check：** 扩展后能解码全部 186 个 ANIM 帧，每帧恰好用尽其数据，并核对 EXIC/EXPL/ANIM/SND 与 TABL 4003→CINF 的引用；既有的 NEBC/BITM 引用核对继续通过；<br>- **独立读取：** 只共用光盘与 IMFAT 读取，与规范数据逐项一致，只记录结论、计数与哈希；<br>- **外观：** ANIM 帧与至少一处本地截图或参考视频中的爆炸外观一致，记录方法、来源与置信度；比较用的图像只临时存放在 `local/`，不进入仓库或文档；<br>- **存放：** 全部输出只在 `local/` | 本地运行记录（只含结论、计数与哈希）；subtask 证据 |
 | AC-20 | 文档：<br>- S-17 列出的分册、目录树与指南已同步，指南写明须重新导入；<br>- 新增 CLI 写入工具用法与 `AGENTS.md`；<br>- 新增格式文档已加入文档地图；<br>- [audio](../../../original/formats/audio.md) 记录 `flags` 8 出现在切片中及其表示；<br>- 修改过的文档都更新了 `updated:`，链接与锚点有效 | 文档核对与链接检查 |
 | AC-21 | 工程检查：`pnpm check` 通过；`pnpm test:e2e` 通过 | 命令输出 |
+| AC-22 | 通讯消息元数据（S-18，修订 2）：<br>- **正向：** 合成 COMMFACE 的三张头像表、子表与直接列表，以及合成 CMOV 的帧数与时长，转换为 `comm-messages`；条目为 0 的消息为 `present: false`；两份名单为字节串、保留 128–255 的字节；<br>- **ID 链与拒绝：** 子表或 CMOV 与映射不一致为 `subresource-mismatch`；帧数为 0、负时长、超限与截断按 code 拒绝；<br>- **切片：** 定义版本 5 的合成包为 `complete`，缺少 `comm-messages` 为 `incomplete`，版本 4 的包为 `definition-version-mismatch`；<br>- **白名单与读取：** 生产白名单含 `MAIN/COMMFACE.NOB`；读取日志只含映射的 TABL 与 CMOV，不读取 `COMMFAC2.NOB`；<br>- **本地核对：** 本地 CLI 在基准镜像上得到版本 5 的 `complete` 包，计数与 executable RQ4 的数据一致（只输出计数与哈希） | Node 测试；本地 CLI；`pnpm check` 与 `pnpm test:e2e` |
+| AC-23 | AI 关键字表（S-19，修订 3）：<br>- **正向：** 合成 EXE 中的四张表（含两张表共享名称目标、非对齐的名称起点、多项指向同一名称）按地址次序转换，项序、i32 值（含负值与最高位）与名称字节保留，payload 往返逐字节相同；<br>- **拒绝：** fixup 多出、缺少、类型或目标对象不符，值字或终止项带 fixup，缺少终止项或终止项值非零，名称目标不在映射区域起点，名称区域含多余字节或缺 NUL，映射的名称区域未被引用，表内折叠后重复的名称，项数与字节的 limit + 1，各返回预期的 code 与位置（limit 恰好通过）；<br>- **版本与缓存：** `ai-programs` schema 1 的 payload 被拒绝；logic 组件与 `ConverterVersion` 已递增，旧版本缓存不恢复，新缓存可提交与恢复；<br>- **真实镜像：** `tools/package-check.ts` 报告新表的计数与哈希，与独立读取一致 | Node 转换器、读取器与缓存测试（合成数据，不含原版名称或值）；本地核对只记计数与哈希 |
 
 ## 验证策略
 
@@ -485,3 +575,46 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 
 - **改动的部分：** 问题与目标、S-05、S-08、S-13、不包含、涉及模块、当前实现与依据、导入项表、字段处理规则 8 与 10、Asset 与角色、切片定义版本 4、规范 payload（含新增的“声音 payload schema 2”一节）、来源映射与核验、限值的取值、错误、持久化与兼容、技术决定 9 与 14–16、验证策略的针对性检查，以及 AC-05、AC-06、AC-07、AC-10、AC-11、AC-17、AC-20。其余契约与原批准范围相同。
 - **批准：** 修订后的契约经审阅后，用户于 2026-10-09 明确批准（“Approve the revised spec (revision 1); then add the remediation subtasks to the goal”）。批准范围为修订后的完整契约，含技术决定 14 至 16 与改动后的 AC。已完成子任务的证据保留，受影响的验收由 goal 新增的修复子任务承担。
+
+### 修订 2（2026-10-14，P3-09 的 D-01；按用户 2026-10-14 的预先授权由 agent 定稿，待用户事后审阅）
+
+P3-09 的关卡 D-01 要求把地图几何的内容输入作为本 spec 的增量修订定稿（[P3-09 spec 的地图几何的内容输入](../09/spec.md#地图几何的内容输入)）。
+
+- **改动的部分：** 只新增“P3-09 的修订：地图几何（修订 2）”一节与本条记录，并改了 front matter 的日期。没有新增或改动 S/AC 编号；其他导入项、字段处理规则、限值、错误与持久化规则不变；已完成子任务的证据不改写。修订后未重跑 review-spec。
+- **授权：** [P3-09 goal 的审批节](../09/goal.md#审批)记录的预先授权：关卡 08（D-01）由 agent 按研究证据取推荐方案定稿，如实记为“按预先授权由 agent 定稿、待用户事后审阅”。这不是用户本人对本修订的批准。授权不涵盖总计划与 ADR 中的冻结决定，本修订不涉及它们。
+- **所选方案与理由：** 新增 `cockpit-hud-map` 组的 data 角色 `map-geometry`，只含 10 型记录的矩形、重绘间隔与字体 1 的高度。原版每次进入地图都只从该矩形导出主地图与右侧两块区域（`0x49e74`），信息行容量是区域高度除以字体 1 的高度，调度器读重绘间隔；三者都影响规则（光标起点与量化、换算、命中、信息行），所以作为 setupHash 绑定的规则数据导入。
+- **被排除的方案：**
+  1. **扩展既有的 `layout` payload：** 改变图像布局的 schema，并让规则数据依赖只供绘制的布局资源。
+  2. **只导入矩形，信息行容量由 P3-13 计算：** 计数行的生成取决于容量，Core 就无法给出完整的信息行，P3-13 要重新实现规则。
+  3. **导入全部仪表记录或 LO 套件：** 超出 P3-09 spec S-02 的最小范围。
+  4. **在 Core 中硬编码矩形：** 违反不硬编码原版数据的规则。
+  5. **同时导入记录 +0x7C：** 读取器已拒绝其非零值，切片没有需要（见[地图几何的修订](#p3-09-的修订地图几何修订-2)末条）。
+
+### 修订 2（2026-10-14，已批准）
+
+P3-10 的 D-03（逻辑媒体边界）证明原版没有关闭通讯媒体的受支持设置，档案打不开时停靠请求必定超时（[executable RQ7](../../../original/formats/executable.md#rq7-archive-choice-and-the-absence-of-a-media-off-path--confirmed-code-durations-confirmed-data)）。Core 的逻辑模型因此需要消息时长与头像子表的元数据，以及计算名称序号的两份名单。
+
+- **改动的部分：** S-18（新增）、不包含的 G-03 一条、导入项表、Asset 与角色、切片定义版本（修订 2 段：版本 5）、规范 payload（`comm-menus` 的约束与新增 `comm-messages`）、来源映射与核验（第五条 ID 链）、包身份与转换器版本（白名单与指纹），以及 AC-22（新增）。其余契约不变；已完成子任务的证据保留。
+- **实现：** 由 [P3-10 goal](../10/goal.md) 新增的子任务实现，P3-03 goal 不重新打开。
+- **批准：** 用户于 2026-10-14 授权 agent 直接批准 P3-10 关卡的推荐方案（“i authorize you to approve the recommended options for gates 07, 08 and 10”）。本修订是 D-03 推荐方案的组成部分，由 P3-10 子任务 07 依据该授权批准。
+
+
+### 合并说明（2026-10-15，P3-09 与 P3-10 的修订 2）
+
+上面两条修订 2 在各自分支上定稿，都把 `SLICE_DEFINITION_VERSION` 由 4 递增为 5，并分别递增转换器的图形组件（地图几何，`graphics-5`）与逻辑组件（`comm-messages`，`logic-3`）。两者在 P3-08 的分支上合入同一实现（协调者按用户授权执行，见 [P3-08 goal](../08/goal.md#执行记录)），不改变任何一方的范围与决定，只调整版本：
+
+- **切片定义版本 6：** 版本 4 的角色加上 `map-geometry` 与 `comm-messages`，各恰为 1。两个分支的版本 5 内容不同，合并后再递增一次，任一分支单独产生的版本 5 包都按 `definition-version-mismatch` 为不完整，缓存记录报 `cache-incompatible`。
+- **转换器版本：** `osr-import.graphics-5.logic-3.audio-2.models-4`。两次递增的是不同组件，各取较大值即可区分两边单独的输出，不再另行递增。
+- **来源指纹与白名单：** 采用 P3-10 的（生产白名单加入 `MAIN/COMMFACE.NOB`）；P3-09 没有改变白名单。
+- 文中“版本 5”的段落分别描述各自的修订，合并后的要求以本说明为准。
+
+### 修订 3（2026-10-15，P3-08 的 D-03；由 agent 依用户 2026-10-15 的授权批准）
+
+P3-08 的关卡 D-03 要求把 AI 脚本参数解析所需的 EXE 关键字表作为本 spec 的增量修订定稿（[P3-08 spec 的跨任务修订](../08/spec.md#跨任务修订d-03)）。
+
+- **改动的部分：** S-05（前向引用）、S-19（新增）、导入项表、Asset 与角色表的来源部件、规范 payload 中 `ai-programs` 一行的约束、包身份与转换器版本（修订 3 一条）、新增的“[P3-08 的修订：AI 解析数据（修订 3）](#p3-08-的修订ai-解析数据修订-3)”一节，以及 AC-23（新增）。编号接续 P3-09、P3-10 已加入的 S-18、AC-22 与两条修订 2，不冲突。其余契约与已批准范围不变；已完成子任务的证据保留，P3-03 goal 不重新打开。
+- **实现：** P3-08 goal 的子任务 13。
+- **批准与授权出处：** 由 agent 依用户 2026-10-15 的授权（原话：“approve D-01 and continue working. i authorize you to make decision to approve future decisions.”）批准，授权记在 [P3-08 spec 的审批](../08/spec.md#审批)。这不是用户本人对本修订的批准；授权不涵盖总计划与 ADR 中的冻结决定，本修订不涉及它们。
+- **所选方案：** 四张关键字表全部导入（表项次序、i32 值、名称字节、终止项、fixup 身份与名称区域都核对），`ai-programs` payload schema 1 → 2，logic 转换器组件与生产 `ConverterVersion` 相对当前合并值递增一次（`logic-3` → `logic-4`），旧缓存不恢复；表内折叠后重复的名称拒绝；分隔符与数值常量作为代码常量不导入；SCEN 头部 +0x0C 与记录 +0x7C 维持由导入拒绝，不补导入。
+- **被排除的方案：** 只导入切片执行的三张表（须在转换器中另证第四张与第一张相同，且不能核对 17 个 fixup 的完整集合）；允许表内重复名称（后者永不命中，说明来源超出研究覆盖）；硬编码名称或导入时把关键字预先解析为数值（违反不在源码写原版文字与“文字按存储保留”的规则，见 P3-08 spec 技术决定 4）；新建独立的角色或 Asset（关键字表只服务于同一 AI 程序输入，新角色会改变切片定义版本与 Core 输入）。
+- 修订后未重跑 review-spec。

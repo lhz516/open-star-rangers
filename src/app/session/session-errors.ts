@@ -1,6 +1,6 @@
 /** The phases of the P1 synthetic session (docs/plan/p1/05/spec.md). */
 export type SessionPhase = 'idle' | 'running' | 'paused' | 'faulted' | 'disposed';
-/** The formal session adds the initial departure hold and the recording-capacity stop (docs/plan/p3/04/spec.md, 会话). */
+/** The formal session adds the transition holds and the recording-capacity stop (docs/plan/p3/04/spec.md, 会话, 运行中衔接). */
 export type GameSessionPhase = SessionPhase | 'transition' | 'stopped';
 export type SessionFailurePhase = 'runtime' | 'scheduler' | 'consumer' | 'cleanup' | 'control';
 

@@ -17,7 +17,9 @@ export type SourceResolution = typeof SOURCE_RESOLUTIONS[number];
 /**
  * Archive entry types that can supply each canonical kind: entry types from
  * docs/original/formats/imfat.md §5; image records also embedded in MFDD/CCKD/ANIM/TABL (textures.md §2). A data
- * Asset may map a whole ANIM, as an explosion animation lists the frames of its entry (P3-03 spec, Asset 与角色).
+ * Asset may map a whole ANIM, as an explosion animation lists the frames of its entry (P3-03 spec, Asset 与角色), CCKD
+ * subresources, as the map geometry reads an instrument record and a font (P3-03 spec, P3-09 的修订), and a CMOV's
+ * frames, as `data/comm-messages` keeps their durations (P3-03 spec, revision 2).
  */
 export const SOURCE_ENTRY_TYPES = Object.freeze({
   mission: Object.freeze(['SCCT', 'SCEN']),
@@ -27,7 +29,7 @@ export const SOURCE_ENTRY_TYPES = Object.freeze({
   font: Object.freeze(['CCKD', 'TABL']),
   layout: Object.freeze(['CCKD', 'TABL']),
   sound: Object.freeze(['SND']),
-  data: Object.freeze(['AICO', 'ANIM', 'CINF', 'DFPG', 'DIAG', 'EXIC', 'EXPL', 'M2ID', 'NEBC', 'RENS', 'SCCT', 'TABL']),
+  data: Object.freeze(['AICO', 'ANIM', 'CCKD', 'CINF', 'CMOV', 'DFPG', 'DIAG', 'EXIC', 'EXPL', 'M2ID', 'NEBC', 'RENS', 'SCCT', 'TABL']),
 } satisfies Record<AssetKind, readonly string[]>);
 
 /** The only files a region locator may name: non-archive files read by byte region (P2-06 spec, effect geometry data). */

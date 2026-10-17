@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { extname } from 'node:path';
-import type { Page, TestInfo } from '@playwright/test';
+import type { CDPSession, Page, TestInfo } from '@playwright/test';
 import { catalogFor } from '../src/original-data/source/source.test-support.ts';
 import { MISSION_OBJECTIVES, SLICE_GAPS } from '../src/ui/mission/slice-gaps-copy.ts';
 import type { Recording } from '../src/core/replay/recording.ts';
@@ -9,6 +9,11 @@ import { RULES_VERSION } from '../src/core/replay/rules-version.ts';
 import { MISSION_SCENARIOS, scenarioFiles, scenarioSource, type MissionScenario } from '../src/workers/import-scenarios.test-support.ts';
 import { exitCode, runReplayCheck } from '../tools/replay-check.ts';
 import { button, filePayloads, importFiles, openTestEntry } from './support/app-entry.ts';
+import {
+  bridgeView, countPointerLockChanges, expectedCharge, FLIGHT_VIEW, MAP_VIEW, WARP_VIEW, loggedPosition, MAP_WARP_EVENTS, mapWarpLog, pointerLockChanges, readBridgeView, readDevEntity,
+  readLog, stopWatchingResume, stopWatchingStore, submitEditorCommand, waitForBridge, waitForMapWarpLog, watchResume, watchStore,
+  expectCompletionPublished, type BridgeView,
+} from './support/map-warp.ts';
 import { expect, test } from './support/audited-test.ts';
 import { exportedTickInputs, openKeyboardMenu, startKeyboardFlight, tabTo, waitForTickAfter } from './support/keyboard-input.ts';
 import {
@@ -16,6 +21,8 @@ import {
   leaveGuards, missionEntry, missionFrame, reloadWithoutConfirmation, requestLeave, stopWatchingPositions, submitDevCommand,
   waitForFrame, watchPositions, type DevState,
 } from './support/mission-observations.ts';
+import { nativeBrowser, NativeTarget, until } from './support/native-lifecycle.ts';
+import { ResourceBalance, settleTooling } from './support/resource-balance.ts';
 
 // P3-04 subtask 10 (docs/plan/p3/04/spec.md, 验证策略; AC-08, AC-10, AC-12, AC-16, AC-19 and AC-22 in development
 // builds): the mission flow on the development test entry, which imports the synthetic mission scenarios of
@@ -345,6 +352,8 @@ const downloadResources = (page: Page) => page.evaluate(() => ({
 test('the native leave confirmation shows only while a run exists; dismissing it keeps the run, whose downloaded recording replays in Node', async ({ page, browser }, testInfo) => {
   await page.addInitScript(installObjectUrlProbe);
   await importScenario(page, 'mission-startable', [LEAVE_SEED]);
+  // The reloads below restore this save, so it must have finished first.
+  await expect(page.getByTestId('resource-statuses')).toContainText(/Saved in this browser \(saved in /);
   expect(await leaveGuards(page)).toBe(0);
 
   // The introduction and the start page hold no run: a real reload asks nothing, after a trusted click on the entry.
@@ -559,4 +568,374 @@ test('exports a keyboard-driven recording that Node replays with identical event
       comparison: report.comparison, rejected: [oldVersion.error, oldRules.error],
     }),
   });
+});
+
+// P3-09 subtask 22 (docs/plan/p3/09/spec.md, AC-12): the strategic map and a Warp in the real mission, in development
+// builds. Core's facts come from the panel's refreshed state and event log, the session bridge's from the mission's UI
+// store (e2e/support/map-warp.ts); the destination is drafted in the panel's own command editor, since the production
+// map geometry is still null (P3-13). Nothing writes the world or a projection.
+
+/** The seeds of the Warp run and of the run after reopening. */
+const WARP_SEEDS = Object.freeze([0x0eed_0030, 0x0eed_0031]);
+/**
+ * The centre of main-map pixel column 230, row 127 (of 400 × 400), clear of every icon of the synthetic mission, so the
+ * select creates a marker; the Warp of about 37,000 units to it costs about 373 of the player's 100,000 energy.
+ */
+const DESTINATION = Object.freeze({ operation: 'select', right: String(230.5 / 400), down: String(127.5 / 400) });
+const MAP_NOT_READY = 'Map input is not ready.';
+
+/** Waits until the bridge's results hold a new result of `type` after `afterId`, and resolves to it. */
+async function nextResult(page: Page, type: string, afterId: number) {
+  const next = (view: BridgeView) => view.results.find(result => result.commandId > afterId && result.commandType === type);
+  return next(await waitForBridge(page, view => next(view) !== undefined, `No ${type} result after #${afterId}`))!;
+}
+
+const lastId = (view: BridgeView): number => view.results.at(-1)?.commandId ?? 0;
+
+test.describe('strategic map and Warp (P3-09 AC-12)', () => {
+  test('m, p, unlocked Esc and context filtering in the Core map; an editor destination; w starts a Warp the menu holds, which completes once; exit and reopen leave nothing', async ({ page, browser }, testInfo) => {
+    await page.addInitScript(countPointerLockChanges);
+    await importScenario(page, 'mission-startable', WARP_SEEDS);
+    // Playwright's main-world script, which locator evaluations below create, registers its listeners before the baseline.
+    await settleTooling(page);
+    const balance = await ResourceBalance.start(page, testInfo, { audio: false });
+    const zone = page.getByTestId('game-input-zone');
+    const inputStatus = page.getByTestId('input-status');
+
+    await startKeyboardFlight(page);
+    let view = await waitForBridge(page, candidate => candidate.map?.warpRequest === 'no-destination', 'The flight did not reach its player');
+    expect(view).toMatchObject({ phase: 'running', runId: 1, context: 'flight', viewMode: FLIGHT_VIEW, map: { state: 'closed', destination: null, markerEntityId: null } });
+    expect(view.energy, 'The synthetic player starts with energy').toBeGreaterThan(0);
+
+    // m in the input zone: Core's view mode 8 and its map-toggled event, the bridge's map context, and the input's
+    // not-ready map with the system pointer and no lock.
+    await page.keyboard.press('m');
+    expect(await nextResult(page, 'toggle-map', lastId(view))).toMatchObject({ outcome: 'accepted', reason: null });
+    view = await waitForBridge(page, candidate => candidate.context === 'map', 'The bridge did not report the map');
+    expect(view).toMatchObject({ viewMode: MAP_VIEW, map: { state: 'open', destination: null, warpRequest: 'no-destination' } });
+    await expect(inputStatus).toContainText(MAP_NOT_READY);
+    expect(await waitForMapWarpLog(page, 1)).toEqual([expect.objectContaining({ type: 'map-toggled', fields: expect.objectContaining({ open: 'true', viewMode: '8', previousViewMode: '12' }) })]);
+    const player = await devState(page);
+    expect(player).toMatchObject({ viewMode: MAP_VIEW, previousViewMode: FLIGHT_VIEW });
+    await zone.click();
+    await expect(zone).toBeFocused();
+    expect(await zone.evaluate(element => (element as HTMLElement).style.cursor)).not.toBe('none');
+
+    // p pauses and resumes in the map, which stays open.
+    await page.keyboard.press('p');
+    await expect(status(page)).toHaveAttribute('data-phase', 'paused');
+    await expect(status(page)).toHaveAttribute('data-pause', 'user');
+    const paused = await expectStableTick(page);
+    expect(await bridgeView(page)).toMatchObject({ phase: 'paused', context: 'map', tick: paused });
+    await zone.click();
+    await page.keyboard.press('p');
+    await expect(status(page)).toHaveAttribute('data-phase', 'running');
+    expect((await expectAdvancingTick(page)).from).toBeGreaterThanOrEqual(paused);
+
+    // Flight keys are filtered by the map context, and with no geometry the mouse submits nothing.
+    const filtered = lastId(await bridgeView(page));
+    for (const key of ['Equal', 'Space', 'KeyT', 'Digit1', 'Shift+Digit5', 'KeyE', 'Backslash']) await page.keyboard.press(key);
+    await page.keyboard.down('BracketRight');
+    let tick = (await missionFrame(page))!.tick!;
+    tick = (await waitForFrame(page, frame => (frame.tick ?? 0) >= tick + 8)).tick!;
+    await page.keyboard.up('BracketRight');
+    const box = (await zone.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.move(box.x + box.width / 3, box.y + box.height / 3, { steps: 5 });
+    await page.mouse.click(box.x + box.width / 3, box.y + box.height / 3);
+    await waitForFrame(page, frame => (frame.tick ?? 0) >= tick + 8);
+    view = await bridgeView(page);
+    expect(lastId(view), 'A flight key or the mouse submitted a command in the map').toBe(filtered);
+    expect(view).toMatchObject({ context: 'map', map: { state: 'open', destination: null, markerEntityId: null } });
+    await expect(page.getByTestId('dev-pending')).toHaveText('No pending commands.');
+    await expect(inputStatus).toContainText(MAP_NOT_READY);
+
+    // The unlocked Esc closes the map without opening the mission menu.
+    await page.keyboard.press('Escape');
+    expect(await nextResult(page, 'toggle-map', filtered)).toMatchObject({ outcome: 'accepted' });
+    view = await waitForBridge(page, candidate => candidate.context === 'flight', 'Esc did not close the map');
+    expect(view).toMatchObject({ phase: 'running', viewMode: FLIGHT_VIEW, map: { state: 'closed' } });
+    expect(await missionFrame(page)).toMatchObject({ position: 'flight' });
+    await expect(page.getByTestId('mission-menu')).toHaveCount(0);
+    await expect(inputStatus).not.toContainText('Map input');
+    expect((await waitForMapWarpLog(page, 2)).at(-1)).toMatchObject({ type: 'map-toggled', fields: { open: 'false', viewMode: '12', previousViewMode: '8' } });
+
+    // The panel's command editor selects a destination in the reopened map: Core logs it with a new marker, and the
+    // bridge reports the same destination, the marker and an accepted Warp gate.
+    await page.keyboard.press('m');
+    view = await waitForBridge(page, candidate => candidate.context === 'map', 'm did not reopen the map');
+    const select = await submitEditorCommand(page, 'map-point', DESTINATION);
+    expect(select).toMatchObject({ outcome: 'accepted', reason: null });
+    const set = (await waitForMapWarpLog(page, 4)).filter(entry => entry.type === 'warp-destination-set');
+    expect(set).toHaveLength(1);
+    expect(set[0].fields).toMatchObject({ iconEntityId: 'null', marker: 'created', column: '230', row: '127' });
+    const destination = loggedPosition(set[0].fields);
+    const marker = Number(set[0].fields.markerEntityId);
+    expect(destination.z).toBe(0);
+    view = await waitForBridge(page, candidate => candidate.map?.markerEntityId === marker, 'The bridge did not report the marker');
+    expect(view.map).toMatchObject({ state: 'open', destination, warpRequest: 'accepted' });
+    const reading = view.map!.destinationCost!;
+    expect(reading.cost).toBeGreaterThan(0);
+    expect(reading.cost).toBeLessThanOrEqual(reading.energy);
+    expect(reading.percent).toBe(Math.max(Math.trunc((reading.cost / reading.energy) * 100), 1));
+    expect(await devState(page)).toMatchObject({ viewMode: MAP_VIEW });
+    expect(await page.evaluate(readDevEntity, marker)).toEqual({ kindBit: 25, name: 'map-marker' });
+
+    // Refocused by a click, which in the map selects nothing, w starts the Warp.
+    await zone.click();
+    await expect(zone).toBeFocused();
+    const beforeWarp = lastId(await bridgeView(page));
+    await page.keyboard.press('w');
+    expect(await nextResult(page, 'request-warp', beforeWarp)).toMatchObject({ outcome: 'accepted', reason: null });
+    expect(lastId(await bridgeView(page)), 'The click submitted a command').toBe(beforeWarp + 1);
+    view = await waitForBridge(page, candidate => candidate.context === 'warp', 'The bridge did not report the Warp');
+    expect(view).toMatchObject({ viewMode: WARP_VIEW, phase: 'running' });
+    const started = (await waitForMapWarpLog(page, 5)).filter(entry => entry.type === 'warp-started');
+    expect(started).toHaveLength(1);
+    expect(started[0].fields).toMatchObject({ serial: '1', fromViewMode: '8', playerEntityId: String(player.player) });
+    expect(loggedPosition(started[0].fields, 'destination')).toEqual(destination);
+    expect(Number(started[0].fields.cost)).toBeLessThanOrEqual(Number(started[0].fields.energy));
+    await expect(inputStatus).not.toContainText('Map input');
+
+    // In the Warp context m and w do nothing; the mission menu holds the Warp, and Continue resumes it.
+    await zone.click();
+    for (const key of ['m', 'w', 'Equal']) await page.keyboard.press(key);
+    await waitForFrame(page, frame => (frame.tick ?? 0) >= (view.tick ?? 0) + 8);
+    expect(lastId(await bridgeView(page)), 'A key submitted a command in the Warp').toBe(beforeWarp + 1);
+    expect(await devState(page)).toMatchObject({ viewMode: WARP_VIEW, previousViewMode: MAP_VIEW });
+    await button(page, 'Mission menu').click();
+    await waitForFrame(page, frame => frame.position === 'menu');
+    const held = await expectStableTick(page);
+    const heldView = await bridgeView(page);
+    expect(heldView).toMatchObject({ context: 'warp', tick: held });
+    expect(await expectStableTick(page)).toBe(held);
+    expect(await bridgeView(page)).toEqual(heldView);
+    // From here every state the bridge publishes is recorded, so the completion's own frame can be read.
+    await page.evaluate(watchStore);
+    await button(page, 'Continue').click();
+    await waitForFrame(page, frame => frame.position === 'flight');
+    await expect(status(page)).toHaveAttribute('data-phase', 'running');
+    expect((await expectAdvancingTick(page)).from).toBeGreaterThanOrEqual(held);
+
+    // The Warp completes once: one charge by the completion's rule, at the arrival Core logs.
+    const completion = (await waitForMapWarpLog(page, 6, 90_000)).find(entry => entry.type === 'warp-completed')!;
+    expect(completion).toBeDefined();
+    // The bridge published the completion's frame with Core's charged energy and the arrival position.
+    expectCompletionPublished(await page.evaluate(stopWatchingStore), completion);
+    expect(completion.fields).toMatchObject({ serial: '1', viewMode: '12', previousViewMode: '1', arrived: 'true' });
+    expect(Number(completion.fields.energyAfter)).toBe(expectedCharge(completion.fields));
+    expect(Number(completion.fields.energyAfter)).toBeLessThan(Number(completion.fields.energyBefore));
+    expect(loggedPosition(completion.fields, 'origin')).toEqual(loggedPosition(started[0].fields, 'origin'));
+    expect(loggedPosition(completion.fields, 'destination')).toEqual(destination);
+    // The charge's distance is the one from the origin to the arrival Core logs (the f32 store, truncated).
+    const [arrival, origin] = [loggedPosition(completion.fields), loggedPosition(completion.fields, 'origin')];
+    const travelled = Math.hypot(arrival.x - origin.x, arrival.y - origin.y, arrival.z - origin.z);
+    expect(Math.abs(Number(completion.fields.chargeDistance) - Math.trunc(travelled))).toBeLessThanOrEqual(1);
+    view = await waitForBridge(page, candidate => candidate.context === 'flight', 'The bridge did not report the end of the Warp');
+    expect(view).toMatchObject({ viewMode: FLIGHT_VIEW, warpCompletion: null, map: { state: 'closed' } });
+    await waitForFrame(page, frame => (frame.tick ?? 0) >= completion.tick + 16);
+    expect((await mapWarpLog(page)).map(entry => entry.type)).toEqual(['map-toggled', 'map-toggled', 'map-toggled', 'warp-destination-set', 'warp-started', 'warp-completed']);
+    expect(await devState(page)).toMatchObject({ viewMode: FLIGHT_VIEW, previousViewMode: WARP_VIEW });
+
+    // The recording holds exactly the map and Warp commands, no steering from the key held in the map, and replays in
+    // Node with the same events and checkpoints.
+    const recordingPath = testInfo.outputPath('warp-recording.json');
+    const ticks = await exportedTickInputs(page, recordingPath);
+    expect(ticks.flatMap(input => input.commands)).toEqual([
+      { type: 'toggle-map' }, { type: 'toggle-map' }, { type: 'toggle-map' },
+      { type: 'map-point', operation: 'select', right: Number(DESTINATION.right), down: Number(DESTINATION.down) }, { type: 'request-warp' },
+    ]);
+    expect(ticks.every(({ axes }) => axes.pitch === 0 && axes.yaw === 0 && axes.roll === 0), 'A steering key acted in the map').toBe(true);
+    const source = scenarioSource('mission-startable')!;
+    const report = await runReplayCheck(recordingPath, await writeDisc(testInfo), { catalog: catalogFor(source.covered, source.versionId) });
+    expect(report).toMatchObject({ passed: true, error: null, finalTick: ticks.length, comparison: { match: true } });
+
+    // Exit and reopen: the new run starts without the old destination, marker or Warp, and nothing is left behind.
+    await button(page, 'Mission menu').click();
+    await button(page, 'Return to main menu').click();
+    await expect(missionEntry(page)).toBeFocused();
+    expect(await leaveGuards(page)).toBe(0);
+    await balance.check('after the Warp run');
+    await startKeyboardFlight(page);
+    view = await waitForBridge(page, candidate => candidate.map?.warpRequest === 'no-destination', 'The reopened flight did not reach its player');
+    expect(view).toMatchObject({ runId: 1, context: 'flight', viewMode: FLIGHT_VIEW, map: { state: 'closed', destination: null, markerEntityId: null }, results: [] });
+    expect(await devState(page)).toMatchObject({ seed: WARP_SEEDS[1], viewMode: FLIGHT_VIEW });
+        await button(page, 'Mission menu').click();
+    await button(page, 'Return to main menu').click();
+    await expect(missionEntry(page)).toBeFocused();
+    await balance.check('after reopening');
+    expect(await pointerLockChanges(page)).toEqual({ changes: 0, locked: false });
+    await balance.attach();
+    await testInfo.attach('warp-run', {
+      contentType: 'application/json',
+      body: JSON.stringify({ chrome: browser.version(), destination, set: set[0], started: started[0], completed: completion, reading, report }, null, 1),
+    });
+  });
+});
+
+/** Page function for the native page: the run's frame and status, and the document's visibility history. */
+function nativeWarpState() {
+  const screen = document.querySelector<HTMLElement>('[data-testid="mission-screen"]');
+  const status = document.querySelector<HTMLElement>('[data-testid="mission-status"]');
+  const number = (value: string | undefined): number | null => (value === undefined || value === '' ? null : Number(value));
+  return {
+    visibility: document.visibilityState,
+    position: screen?.dataset.position ?? null,
+    tick: number(screen?.dataset.tick),
+    phase: status?.dataset.phase ?? null,
+    pause: status?.dataset.pause ?? null,
+    visibilityEvents: [...(window.osrVisibilityEvents ?? [])],
+  };
+}
+
+function installNativeVisibilityObserver(): void {
+  window.osrVisibilityEvents = [document.visibilityState];
+  document.addEventListener('visibilitychange', () => { window.osrVisibilityEvents!.push(document.visibilityState); });
+}
+
+/** A trusted key press through CDP; `text` makes it type a character, as a select's type-ahead needs. */
+async function nativePress(target: NativeTarget, code: string, key: string, keyCode: number, text?: string): Promise<void> {
+  await target.command('Input.dispatchKeyEvent', { type: 'keyDown', code, key, windowsVirtualKeyCode: keyCode, ...(text ? { text } : {}) });
+  await target.command('Input.dispatchKeyEvent', { type: 'keyUp', code, key, windowsVirtualKeyCode: keyCode });
+}
+
+test('a real hidden page during a Warp pauses it; after visible and an explicit resume it continues without catching up and charges once', async ({ audit, baseURL }, testInfo) => {
+  if (!baseURL) throw new Error('Native visibility requires a development origin');
+  const directory = testInfo.outputPath('native-warp');
+  await mkdir(directory, { recursive: true });
+  const paths = await Promise.all((await discOf('mission-startable')).map(async file => {
+    const path = `${directory}/${file.name}`;
+    await writeFile(path, new Uint8Array(await file.arrayBuffer()));
+    return path;
+  }));
+  const browser = await nativeBrowser();
+  let root: CDPSession | undefined;
+  let contextId: string | undefined;
+  let app: NativeTarget | undefined;
+  const attached: string[] = [];
+  try {
+    root = await browser.newBrowserCDPSession();
+    const cdp = root;
+    contextId = (await cdp.send('Target.createBrowserContext')).browserContextId;
+    const appId = (await cdp.send('Target.createTarget', { url: 'about:blank', browserContextId: contextId })).targetId;
+    const backgroundId = (await cdp.send('Target.createTarget', { url: 'about:blank', browserContextId: contextId })).targetId;
+    for (const targetId of [appId, backgroundId]) {
+      await audit.attachTarget(browser, targetId);
+      attached.push(targetId);
+    }
+    const session = await cdp.send('Target.attachToTarget', { targetId: appId, flatten: false });
+    const native = app = new NativeTarget(cdp, session.sessionId);
+    for (const domain of ['Page', 'Runtime', 'Network', 'Log']) await native.command(`${domain}.enable`);
+    await native.command('Page.addScriptToEvaluateOnNewDocument', { source: `(${installNativeVisibilityObserver.toString()})();` });
+    const url = new URL(`/e2e/entries/app.html?worker=mission-startable&seeds=${WARP_SEEDS[0]}`, baseURL);
+    await native.command('Page.navigate', { url: url.href });
+    await cdp.send('Target.activateTarget', { targetId: appId });
+    const state = () => native.evaluate(nativeWarpState);
+    const log = () => native.evaluate(readLog, MAP_WARP_EVENTS);
+    const bridge = async () => {
+      const view = await native.evaluate(readBridgeView);
+      if (!view) throw new Error('No mission UI store to read');
+      return view;
+    };
+    await until(() => native.evaluate(() => document.querySelector('[data-testid="original-data-status"]')?.textContent ?? ''), text => text === 'Original game data: None in this browser.', 'Application load');
+    await native.press('Import original game data');
+    await until(() => native.evaluate(() => document.querySelector('#import-files') !== null), Boolean, 'Import page');
+    await native.setInputFiles('#import-files', paths);
+    await native.press('Start import');
+    // Until the save finishes, a disabled "Save again" sits above "Return to menu"; its removal would move the button
+    // between the press's settled position and its click.
+    await until(() => native.evaluate(() => document.querySelector('[data-testid="import-statuses"]')?.textContent ?? ''),
+      text => text.includes('Mission loads into Core') && text.includes('Saved in this browser'), 'Synthetic mission import', 60_000);
+    await native.press('Return to menu');
+    await until(() => native.evaluate(() => document.querySelector('button[data-eligibility]')?.getAttribute('data-eligibility')),
+      eligibility => eligibility === 'eligible', 'Startable mission');
+    await native.press('Start mission');
+    await until(state, current => current.position === 'intro', 'Introduction');
+    await native.press('Skip');
+    await until(state, current => current.position === 'config', 'Mission start page');
+    await native.press('Start');
+    await until(state, current => current.position === 'departure', 'Departure');
+    await native.press('Skip');
+    await until(bridge, view => view.map?.warpRequest === 'no-destination' && view.phase === 'running', 'Running flight');
+
+    // The map by m, a destination from the editor's own controls, and w from the refocused input zone.
+    await nativePress(native, 'KeyM', 'm', 77, 'm');
+    await until(bridge, view => view.context === 'map', 'Map');
+    await native.evaluate(() => { document.querySelector<HTMLSelectElement>('[data-testid="dev-command-type"]')!.focus(); });
+    for (const character of 'map-') await nativePress(native, '', character, 0, character);
+    await until(() => native.evaluate(() => document.querySelector<HTMLSelectElement>('[data-testid="dev-command-type"]')!.value), value => value === 'map-point', 'Editor type');
+    await native.evaluate(() => { document.querySelector<HTMLSelectElement>('[data-field="operation"]')!.focus(); });
+    await nativePress(native, 'KeyS', 's', 83, 's');
+    for (const field of ['right', 'down'] as const) {
+      await native.evaluate(name => { document.querySelector<HTMLInputElement>(`[data-field="${name}"]`)!.select(); }, field);
+      await native.command('Input.insertText', { text: DESTINATION[field] });
+    }
+    await until(() => native.evaluate(() => ['operation', 'right', 'down'].map(name => document.querySelector<HTMLInputElement>(`[data-field="${name}"]`)!.value)),
+      values => values.join() === [DESTINATION.operation, DESTINATION.right, DESTINATION.down].join(), 'Editor fields');
+    await native.press('Submit command');
+    await until(bridge, current => current.map?.markerEntityId !== null && current.map?.warpRequest === 'accepted', 'Destination');
+    await native.click('[data-testid="game-input-zone"]');
+    await nativePress(native, 'KeyW', 'w', 87, 'w');
+    await until(bridge, current => current.context === 'warp', 'Warp started');
+    const started = await until(log, entries => entries.some(entry => entry.type === 'warp-started'), 'warp-started logged');
+    const startTick = started.find(entry => entry.type === 'warp-started')!.tick;
+    await until(state, current => (current.tick ?? 0) >= startTick + 16, 'Warp under way');
+
+    // Really hidden: Core pauses at once and holds its tick, energy, position and the Warp's progress.
+    await cdp.send('Target.activateTarget', { targetId: backgroundId });
+    const hidden = await until(state, current => current.visibility === 'hidden' && current.phase === 'paused' && current.pause === 'hidden', 'Native hidden and automatic pause');
+    const hiddenView = await bridge();
+    expect(hiddenView).toMatchObject({ context: 'warp', phase: 'paused', tick: hidden.tick });
+    await new Promise(resolve => setTimeout(resolve, 1_500));
+    expect(await state()).toMatchObject({ phase: 'paused', pause: 'hidden', tick: hidden.tick });
+    await cdp.send('Target.activateTarget', { targetId: appId });
+    const visible = await until(state, current => current.visibility === 'visible' && current.phase === 'paused', 'Native visible return');
+    expect(visible.tick).toBe(hidden.tick);
+    await new Promise(resolve => setTimeout(resolve, 400));
+    expect(await state()).toMatchObject({ phase: 'paused', tick: hidden.tick });
+    expect(await bridge()).toEqual(hiddenView);
+
+    // The explicit resume continues the same Warp from the held tick. Its first frame only anchors, so each tick shown
+    // afterwards is within the time since that frame; catching up the hidden time would add up to 5 ticks at once.
+    await native.evaluate(watchStore);
+    await native.evaluate(watchResume);
+    await native.press('Resume');
+    const resumed = await until(state, current => current.phase === 'running' && (current.tick ?? 0) > hidden.tick!, 'Explicit resume');
+    const timing = await native.evaluate(stopWatchingResume);
+    if (timing.click === null || timing.frame === null) throw new Error(`The resume click or its frame was not recorded: ${JSON.stringify(timing)}`);
+    const shown = timing.ticks.filter(({ tick }) => tick > hidden.tick!);
+    expect(shown.length, 'ticks shown after the resume').toBeGreaterThan(0);
+    for (const { tick, time } of shown) {
+      expect(tick - hidden.tick!, `ticks shown ${(time - timing.frame).toFixed(1)} ms after the resume's first frame`)
+        .toBeLessThanOrEqual(Math.floor((time - timing.frame) / (1000 / 32)) + 1);
+    }
+    expect((await bridge()).context).toBe('warp');
+
+    const entries = await until(log, current => current.some(entry => entry.type === 'warp-completed'), 'warp-completed logged', 90_000);
+    await until(state, current => (current.tick ?? 0) >= entries.at(-1)!.tick + 16, 'Ticks after the completion');
+    const final = await log();
+    expect(final.map(entry => entry.type)).toEqual(['map-toggled', 'warp-destination-set', 'warp-started', 'warp-completed']);
+    const completion = final[3];
+    expect(completion.fields).toMatchObject({ serial: '1', arrived: 'true' });
+    expect(Number(completion.fields.energyAfter)).toBe(expectedCharge(completion.fields));
+    expectCompletionPublished(await native.evaluate(stopWatchingStore), completion);
+    expect(await bridge()).toMatchObject({ context: 'flight', viewMode: FLIGHT_VIEW });
+    expect(native.errors, 'Native page errors').toEqual([]);
+    await testInfo.attach('native-warp-visibility', {
+      contentType: 'application/json',
+      body: JSON.stringify({ browser: browser.version(), origin: baseURL, hidden, visible, resumed, timing, started: final[2], completed: completion, allowed: native.allowed }, null, 1),
+    });
+    for (const targetId of [backgroundId, appId]) {
+      await audit.close(targetId);
+      attached.splice(attached.indexOf(targetId), 1);
+    }
+  } finally {
+    for (const targetId of attached) await audit.close(targetId).catch(() => undefined);
+    app?.dispose();
+    try {
+      if (root && contextId) await root.send('Target.disposeBrowserContext', { browserContextId: contextId });
+    } finally {
+      await browser.close();
+    }
+  }
 });

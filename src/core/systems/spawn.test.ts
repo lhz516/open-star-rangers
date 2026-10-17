@@ -6,8 +6,8 @@ import { RandStream } from '../rules/original-random.ts';
 import { randValues, rngStateAfter } from '../rules/rand.test-support.ts';
 import { initialWorldState } from '../world/create-world.ts';
 import {
-  asCreateInput, craftInfoContent, declaration, MARKER, missionFrame, modelOf, playerOnlyMission, rosterContent, ruleInputs, sliceMission,
-  worldInput, type MissionDraft, type WorldInputParts,
+  aiProgramsContent, asCreateInput, craftInfoContent, declaration, MARKER, missionFrame, modelOf, playerOnlyMission, rosterContent, ruleInputs, sliceMission,
+  transponderBinding, worldInput, type MissionDraft, type WorldInputParts,
 } from '../world/create-world.test-support.ts';
 import { readTickInput } from '../contracts/tick-input.ts';
 import { isActiveState, type Entity } from '../world/entity-table.ts';
@@ -196,18 +196,20 @@ describe('spawn enable flag and queue queries (P3-02 AC-05; P3-11 interfaces)', 
 
   it('posts nothing for a non-positive request count, and a group template the build leaves at probability 0 never fires', () => {
     const m = playerOnlyMission();
+    // Record 2 binds kind 0x4000 (CR-15) and requests none either.
     m.declarations.push(
       stored(1, 7, 0, 400, { ruleInputs: ruleInputs({ craftCount: 0xffffffff }) }),
-      declaration(2, { origins: ['group-template'], position: { x: 400, y: 0, z: 0 } }),
-      declaration(3, { origins: ['group-member'], craftType: 8, memberOf: 0 }),
-      declaration(4, { origins: ['group-template'], position: { x: 400, y: 0, z: 0 }, ruleInputs: ruleInputs({ percentA: 100 }) }),
-      declaration(5, { origins: ['group-member'], craftType: 8, memberOf: 1 }),
-      declaration(6, { origins: ['group-member'], craftType: 8, memberOf: 2 }),
+      transponderBinding(2),
+      declaration(3, { origins: ['group-template'], position: { x: 400, y: 0, z: 0 } }),
+      declaration(4, { origins: ['group-member'], craftType: 8, memberOf: 0 }),
+      declaration(5, { origins: ['group-template'], position: { x: 400, y: 0, z: 0 }, ruleInputs: ruleInputs({ percentA: 100 }) }),
+      declaration(6, { origins: ['group-member'], craftType: 8, memberOf: 1 }),
+      declaration(7, { origins: ['group-member'], craftType: 8, memberOf: 2 }),
     );
     m.groups = [
-      { template: 2, members: [3], spawnCount: 2, layout: [{ x: 0, y: 0, z: 0 }] },
-      { template: 4, members: [5], spawnCount: 0xffffffff, layout: [{ x: 0, y: 0, z: 0 }] },
-      { template: 4, members: [6], spawnCount: 0, layout: [{ x: 0, y: 0, z: 0 }] },
+      { template: 3, members: [4], spawnCount: 2, layout: [{ x: 0, y: 0, z: 0 }] },
+      { template: 5, members: [6], spawnCount: 0xffffffff, layout: [{ x: 0, y: 0, z: 0 }] },
+      { template: 5, members: [7], spawnCount: 0, layout: [{ x: 0, y: 0, z: 0 }] },
     ];
     const { state, world } = setUp({ mission: m });
     expect(instantiated(world.step(tickInput())).map(({ source }) => source.index)).toEqual([0]);
@@ -221,20 +223,22 @@ describe('records and groups as aliases (P3-02 AC-06 integration, Q-03)', () => 
   const runtime = (value: number) => float32OfDouble(value * Q, 'nearest');
 
   /**
-   * Record 1 is a section-1 record of kind bit 7 at stored position p and group 0's template; record 2 a member
-   * reachable only through group 0. Record 3, reachable only through group 1, is its template at p, unconverted.
+   * Record 1 is a section-1 record of kind bit 7 at stored position p and group 0's template; record 2 binds kind
+   * 0x4000 (CR-15) and requests nothing; record 3 a member reachable only through group 0. Record 4, reachable only
+   * through group 1, is its template at p, unconverted, with member 5.
    */
   function aliasMission(): MissionDraft {
     const m = playerOnlyMission();
     m.declarations.push(
       declaration(1, { origins: ['object', 'group-template'], craftType: 7, position: { ...p } }),
-      declaration(2, { origins: ['group-member'], craftType: 8, memberOf: 0 }),
-      declaration(3, { origins: ['group-template'], position: { ...p }, ruleInputs: ruleInputs({ percentA: 100 }) }),
-      declaration(4, { origins: ['group-member'], craftType: 8, memberOf: 1 }),
+      transponderBinding(2),
+      declaration(3, { origins: ['group-member'], craftType: 8, memberOf: 0 }),
+      declaration(4, { origins: ['group-template'], position: { ...p }, ruleInputs: ruleInputs({ percentA: 100 }) }),
+      declaration(5, { origins: ['group-member'], craftType: 8, memberOf: 1 }),
     );
     m.groups = [
-      { template: 1, members: [2, 2], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }, { x: 10, y: 0, z: 0 }] },
-      { template: 3, members: [4], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }] },
+      { template: 1, members: [3, 3], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }, { x: 10, y: 0, z: 0 }] },
+      { template: 4, members: [5], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }] },
     ];
     return m;
   }
@@ -246,11 +250,11 @@ describe('records and groups as aliases (P3-02 AC-06 integration, Q-03)', () => 
     const once = { x: runtime(p.x), y: runtime(p.y), z: runtime(p.z) };
     expect(at(1)).toEqual(once);
     expect(once.x).not.toBe(runtime(runtime(p.x)));
-    expect(at(2, 0)).toEqual(once);
-    expect(at(2, 1)).toEqual({ ...once, x: float32OfDouble(once.x + 10, 'nearest') });
-    expect(at(4)).toEqual(p);
+    expect(at(3, 0)).toEqual(once);
+    expect(at(3, 1)).toEqual({ ...once, x: float32OfDouble(once.x + 10, 'nearest') });
+    expect(at(5)).toEqual(p);
     // The build fills section-1 records only: the group-only member keeps its source values.
-    expect(state.entities.get(events.find(({ source }) => source.index === 2)!.entityId)!.ruleInputs).toEqual({ percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 });
+    expect(state.entities.get(events.find(({ source }) => source.index === 3)!.entityId)!.ruleInputs).toEqual({ percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 });
     expect(state.entities.get(events.find(({ source }) => source.index === 1)!.entityId)!.ruleInputs).toMatchObject({ percentB: 100, aiValueA: 3, aiValueB: 3 });
   });
 });
@@ -280,9 +284,10 @@ describe('group dispatch (P3-02 AC-05, Q-02 section-5 dispatch)', () => {
   it('takes offset i mod L and places a new anchor from the template at each cycle\'s start, drawing x then y', () => {
     const { state, world } = setUp({ mission: cycleMission() });
     // The player at its stored position draws its first energy update and its AI goal (two); each member then draws
-    // its first energy update and its Warp timer, but no AI goal, since the AI target it copies is the player, near and
-    // of the other side (P3-06, 0x68050).
-    const [, , , r2, r3, , , , , r6, r7] = randValues(state.rngState, 11);
+    // its first energy update, its Warp timer and its program selection's start (table record 0 matches kinds 7 and 8
+    // fully), but no AI goal, since the AI target it copies is the player, near and of the other side (P3-06, 0x68050).
+    const r = randValues(state.rngState, 13);
+    const [r2, r3, r6, r7] = [r[3], r[4], r[11], r[12]];
     const events = instantiated(world.step(tickInput()));
     const members = events.filter(({ source }) => source.group?.index === 0);
     // Rectangle 0 in runtime units: x −1500 to 1500, y 750 to 3000.
@@ -326,7 +331,7 @@ describe('placement at instantiation (P3-02 AC-06, Q-02)', () => {
     );
     m.groups = [{ template: 5, members: [7], spawnCount: 0, layout: [{ x: 0, y: 0, z: 0 }] }];
     const { state, world } = setUp({ mission: m });
-    const r = randValues(state.rngState, 31);
+    const r = randValues(state.rngState, 34);
     const events = instantiated(world.step(tickInput()));
     const player = { x: 100 * Q, y: 200 * Q, z: 0 };
     // Each axis f32(base + offset), rounded to nearest (Q-11).
@@ -337,11 +342,11 @@ describe('placement at instantiation (P3-02 AC-06, Q-02)', () => {
     });
     const byIndex = (index: number) => events.filter(({ source }) => source.index === index).map(({ position }) => position);
     // After its placement draws each object draws its first energy update (one), its AI goal (two) and, but the
-    // player, its Warp timer (one).
-    expect(byIndex(1)).toEqual([near(player, r.slice(3, 9)), near(player, r.slice(13, 19))]);
+    // player, its Warp timer (one) and its program selection (one: table record 0 matches kinds 7 and 8).
+    expect(byIndex(1)).toEqual([near(player, r.slice(3, 9)), near(player, r.slice(14, 20))]);
     // Record 4 has not spawned yet and record 5 has kind 0: the whole-world default, x then y.
-    expect(byIndex(3)).toEqual([{ x: expectedWorld(6, r[23]), y: expectedWorld(6, r[24]), z: 0 }]);
-    expect(byIndex(6)).toEqual([{ x: expectedWorld(6, r[29]), y: expectedWorld(6, r[30]), z: 0 }]);
+    expect(byIndex(3)).toEqual([{ x: expectedWorld(6, r[25]), y: expectedWorld(6, r[26]), z: 0 }]);
+    expect(byIndex(6)).toEqual([{ x: expectedWorld(6, r[32]), y: expectedWorld(6, r[33]), z: 0 }]);
     const [oldest] = entities(state).filter(({ source }) => source?.index === 1);
     oldest.destroyed = true;
     oldest.state = 'destroyed-source';
@@ -365,18 +370,19 @@ describe('placement at instantiation (P3-02 AC-06, Q-02)', () => {
 
 describe('activity and the player at instantiation (P3-02 AC-05, Q-07)', () => {
   /**
-   * The player stored above the origin; group-only templates at exact runtime points, each with one member of kind
-   * bit 8. The player's height does not count: the radius reads x and y only.
+   * The player stored above the origin and the binding of kind 0x4000 (CR-15), which requests nothing; group-only
+   * templates at exact runtime points, each with one member of kind bit 8. The player's height does not count: the
+   * radius reads x and y only.
    */
   function activityMission(points: readonly [number, number][], playerSpawnTime = 0): MissionDraft {
     const m = missionFrame();
-    m.declarations.push(declaration(0, { craftType: 0, spawnTime: playerSpawnTime, position: { x: 0, y: 0, z: 1 } }));
+    m.declarations.push(declaration(0, { craftType: 0, spawnTime: playerSpawnTime, position: { x: 0, y: 0, z: 1 } }), transponderBinding(1));
     points.forEach(([x, y], group) => {
       m.declarations.push(
-        declaration(1 + group * 2, { origins: ['group-template'], position: { x, y, z: 0 }, ruleInputs: ruleInputs({ percentA: 100 }) }),
-        declaration(2 + group * 2, { origins: ['group-member'], craftType: 8, memberOf: group }),
+        declaration(2 + group * 2, { origins: ['group-template'], position: { x, y, z: 0 }, ruleInputs: ruleInputs({ percentA: 100 }) }),
+        declaration(3 + group * 2, { origins: ['group-member'], craftType: 8, memberOf: group }),
       );
-      m.groups.push({ template: 1 + group * 2, members: [2 + group * 2], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }] });
+      m.groups.push({ template: 2 + group * 2, members: [3 + group * 2], spawnCount: 1, layout: [{ x: 0, y: 0, z: 0 }] });
     });
     return m;
   }
@@ -461,8 +467,9 @@ describe('the wingman (P3-02 AC-08, R-03, Q-06)', () => {
     const wingman = state.entities.get(2)!;
     // Where it was instantiated; it has moved since.
     expect(events[1].position).toEqual({ x: 100 * Q + offset(r[3], r[4]), y: 200 * Q + offset(r[5], r[6]), z: offset(r[7], r[8]) });
-    // Like the player, the wingman draws no Warp timer.
-    expect(wingman).toMatchObject({ warpClock: 0, inWarp: false, ai: { mode: 4, target: null, goal: { x: expectedWorld(6, r[10]), y: expectedWorld(6, r[11]), z: 0 } } });
+    // Like the player, the wingman draws no Warp timer. Its install (P3-08/19) mirrors the formation into +0xC4 and +0x90
+    // (WA4): mode 2 at the player; the goal instantiation drew stays.
+    expect(wingman).toMatchObject({ warpClock: 0, inWarp: false, ai: { mode: 2, target: 1, goal: { x: expectedWorld(6, r[10]), y: expectedWorld(6, r[11]), z: 0 } } });
     expect(wingman.name).toEqual({ type: 'candidate', declaration: { collection: 'wingman', index }, candidate: 0 });
     expect([wingman.side, wingman.baseInteraction]).toEqual(['friendly', false]);
     expect(wingman.ruleInputs).toEqual({ percentB: 100, percentC: 100, percentD: 100, aiValueA: 3, aiValueB: 3, aiValueC: (wingmanDraw % 60) + 20 });
@@ -472,6 +479,75 @@ describe('the wingman (P3-02 AC-08, R-03, Q-06)', () => {
       id: 2, kindBit: 1, presentation: { type: 'model', model: modelOf(1) }, position: wingman.position, orientation: wingman.orientation, placementSerial: 0,
       hitShimmerStart: null, explosionStart: null,
     });
+  });
+});
+
+describe('the enemy-appears report at instantiation (P3-10 CB-12, RX5)', () => {
+  // The player at its stored position, wingman option 0 (face aiValueA − 1 = 2) and record 1 of hostile kind 7 at 1 s,
+  // 750 units from the player: active at its instantiation in tick 33 (clock 66), when W is active in state 7 and well
+  // within 3500 of it. W's line of type 8 draws once (8 + rand % 2) and stamps the limit at 66 + 0x280.
+  function run(blocked: boolean, wingman: number | null = 0) {
+    const m = playerOnlyMission();
+    m.declarations.push(stored(1, 7, 400, 0, { spawnTime: 1 }));
+    const { state, world } = setUp({ mission: m, run: { wingman } });
+    stepTo(world, state, 32);
+    if (blocked) state.communications.limits.enemyAppears = 1e9;
+    const events = stepTo(world, state, 33);
+    return { state, events };
+  }
+
+  it('lets an active W report an active hostile placed within 3500: one draw more than with the limit blocked, and the limit stamped', () => {
+    const reported = run(false);
+    const blocked = run(true);
+    expect(reported.events.map(({ kindBit }) => kindBit)).toEqual([7]);
+    expect(reported.state.entities.get(2)).toMatchObject({ kindBit: 1, activity: 'active', state: 'active' });
+    expect(reported.state.communications.limits.enemyAppears).toBe(66 + 0x280);
+    expect(reported.state.rngState).toBe(rngStateAfter(blocked.state.rngState, 1));
+  });
+
+  it('reports nothing without a wingman', () => {
+    expect(run(false, null).state.communications.limits.enemyAppears).toBe(0);
+  });
+});
+
+describe('program selection at instantiation step 13 (P3-08 AC-03; CR-23; ai §1)', () => {
+  /**
+   * Table records 0, 1 and 3 match kind 7 fully from any start, record 2 only kind 0x10: start s = rand mod 4 selects
+   * record 0, 1, 3 or 3.
+   */
+  function fourRecords() {
+    const programs = aiProgramsContent();
+    const [full, , other] = programs.programs;
+    programs.programs = [full, full, other, full];
+    return programs;
+  }
+  const selected = (rand: number): number => [0, 1, 3, 3][rand % 4];
+
+  it('draws the start after the Warp timer and before `0x38cd4`\'s line, writing the record without a controller', () => {
+    // As above: record 1 of hostile kind 7 is instantiated active in tick 33, near the active W, whose line draws last.
+    const m = playerOnlyMission();
+    m.declarations.push(stored(1, 7, 400, 0, { spawnTime: 1 }));
+    const { state, world } = setUp({ mission: m, run: { wingman: 0, seed: 1 }, aiPrograms: fourRecords() });
+    stepTo(world, state, 32);
+    const before = state.rngState;
+    stepTo(world, state, 33);
+    let draws = 0;
+    while (rngStateAfter(before, draws) !== state.rngState) draws++;
+    const r = randValues(before, draws);
+    const hostile = entities(state).find(({ source }) => source?.index === 1)!;
+    expect(state.communications.limits.enemyAppears).toBe(66 + 0x280);
+    // The order Warp timer, selection, line makes the last three draws: a different order would read other values.
+    expect(selected(r.at(-2)!)).not.toBe(selected(r.at(-1)!));
+    expect(hostile.warpClock).toBe(66 + (r.at(-3)! % 0x2d00));
+    expect(hostile.ai.program).toEqual({ type: 'table', record: selected(r.at(-2)!), controller: null });
+  });
+
+  it('leaves the player and kind 0x4000, which do not select, without a program', () => {
+    const { state, world } = setUp();
+    world.step(tickInput());
+    const unselected = entities(state).filter(({ kindBit }) => kindBit === 0 || kindBit === 14);
+    expect(unselected.length).toBe(36);
+    for (const entity of unselected) expect(entity.ai.program).toEqual({ type: 'none' });
   });
 });
 
@@ -548,14 +624,18 @@ describe('flight state at instantiation (P3-06 S-05, S-07, AC-04, AC-06, AC-07; 
     expect(player.movement).toEqual({ mode: 'craft', speed: 64, commandedSpeed: 64, atCommandedSpeed: true, speedRatio: 1, ...quiet });
     // 0x68050 never writes the player's target; the player record names no candidates, so a world goal in mode 4, after
     // the first energy update's draw (r[2]).
-    expect(player.ai).toEqual({ mode: 4, target: null, goal: { x: expectedWorld(6, r[3]), y: expectedWorld(6, r[4]), z: 0 }, targetOffset: ZERO, objectTarget: null });
+    expect(player.ai).toEqual({ mode: 4, target: null, goal: { x: expectedWorld(6, r[3]), y: expectedWorld(6, r[4]), z: 0 }, targetOffset: ZERO, objectTarget: null, pendingCommand: null, program: { type: 'none' } });
     expect(state.player).toMatchObject({ entityId: 1, target: null, control: { lastAxes: { pitch: 0, yaw: 0, roll: 0 }, speedAssist: { enabled: true, dueClock: 0, engaged: false } } });
     // Record 3's first craft (kind bit 7), anchored on the player: placement, its first energy update, its AI goal,
-    // then its Warp timer.
+    // then its Warp timer and its program selection: table record 0, whose mask 0x180 has kind bits 7 and 8, matches
+    // fully from any start, uninstalled until the craft's first callback (CR-23).
     const next = state.entities.get(2)!;
     expect(next.position).toEqual(near(player.position, r.slice(5, 11)));
     expect(next).toMatchObject({ activity: 'active', maximumSpeed: 64, lastParkedUpdateClock: 2, warpClock: 2 + (r[14] % 0x2d00), inWarp: false });
-    expect(next.ai).toEqual({ mode: 4, target: null, goal: { x: expectedWorld(6, r[12]), y: expectedWorld(6, r[13]), z: 0 }, targetOffset: ZERO, objectTarget: null });
+    expect(next.ai).toEqual({
+      mode: 4, target: null, goal: { x: expectedWorld(6, r[12]), y: expectedWorld(6, r[13]), z: 0 }, targetOffset: ZERO, objectTarget: null, pendingCommand: null,
+      program: { type: 'table', record: 0, controller: null },
+    });
     expect(next.movement).toEqual(player.movement);
     expect(next.movement).not.toBe(player.movement);
   });
@@ -602,17 +682,18 @@ describe('flight state at instantiation (P3-06 S-05, S-07, AC-04, AC-06, AC-07; 
       stored(4, 8, 0, -400, { aiTarget: 1, aiTargetCraftTypes: [0] }),
     );
     const { state, world } = setUp({ mission: m });
-    // Each craft's first energy update (1), the player's goal (2), record 1's goal (2) and Warp timer (1), then one Warp
-    // timer each for records 2 and 4.
+    // Each craft's first energy update (1), the player's goal (2), record 1's goal (2), Warp timer (1) and program
+    // selection (1), then one Warp timer and one selection each for records 2 and 4.
     const before = state.rngState;
-    const r = randValues(before, 11);
+    const r = randValues(before, 14);
     world.step(tickInput());
     const [, first, second, fourth] = entities(state);
     expect(first.ai).toMatchObject({ mode: 4, target: null });
-    expect(second.ai).toEqual({ mode: 2, target: first.id, goal: ZERO, targetOffset: ZERO, objectTarget: null });
-    expect(fourth.ai).toEqual({ mode: 2, target: first.id, goal: ZERO, targetOffset: ZERO, objectTarget: null });
-    expect([first, second, fourth].map(({ warpClock }) => warpClock)).toEqual([2 + (r[6] % 0x2d00), 2 + (r[8] % 0x2d00), 2 + (r[10] % 0x2d00)]);
-    expect(state.rngState).toBe(rngStateAfter(before, 11));
+    const program = { type: 'table', record: 0, controller: null };
+    expect(second.ai).toEqual({ mode: 2, target: first.id, goal: ZERO, targetOffset: ZERO, objectTarget: null, pendingCommand: null, program });
+    expect(fourth.ai).toEqual({ mode: 2, target: first.id, goal: ZERO, targetOffset: ZERO, objectTarget: null, pendingCommand: null, program });
+    expect([first, second, fourth].map(({ warpClock }) => warpClock)).toEqual([2 + (r[6] % 0x2d00), 2 + (r[9] % 0x2d00), 2 + (r[12] % 0x2d00)]);
+    expect(state.rngState).toBe(rngStateAfter(before, 14));
   });
 
   it('gives a wingman whose option names the player\'s kind the player as its target, in mode 2, with no AI or Warp draw', () => {
@@ -622,10 +703,10 @@ describe('flight state at instantiation (P3-06 S-05, S-07, AC-04, AC-06, AC-07; 
     const before = state.rngState;
     world.step(tickInput());
     const wingman = entities(state)[1];
-    expect(wingman).toMatchObject({ kindBit: 1, warpClock: 0, ai: { mode: 2, target: 1, goal: ZERO } });
-    // The player's first energy update (1) and goal (2), the wingman's anchor (6) and first energy update (1) are all
-    // the draws.
-    expect(state.rngState).toBe(rngStateAfter(before, 10));
+    expect(wingman).toMatchObject({ kindBit: 1, warpClock: 0, ai: { mode: 2, target: 1, goal: ZERO, program: { type: 'built-in', record: 3, controller: null } } });
+    // The player's first energy update (1) and goal (2), the wingman's anchor (6) and first energy update (1), and its
+    // selection's two starts, since no table record has kind 2 and the built-in table's record 3 does, are all the draws.
+    expect(state.rngState).toBe(rngStateAfter(before, 12));
   });
 
   it('faults rather than store a Warp timer past the safe integers', () => {

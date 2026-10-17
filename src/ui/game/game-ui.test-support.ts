@@ -137,6 +137,6 @@ export function projectionDouble(projection: Projection, tick: number, parts: Pa
 }
 
 /** A frozen running frame of `run` showing `projection`. */
-export function frameDouble(run: GameSessionRun, projection: Projection, report: GameSessionFrame['report'] = Object.freeze({ ticks: 1, capped: false, stop: null })): GameSessionFrame {
+export function frameDouble(run: GameSessionRun, projection: Projection, report: GameSessionFrame['report'] = Object.freeze({ ticks: 1, capped: false, stop: null, cut: null, transitions: [] })): GameSessionFrame {
   return Object.freeze({ runId: run.runId, phase: 'running', render: run.renderFrame(), projection, report });
 }

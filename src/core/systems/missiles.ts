@@ -19,14 +19,15 @@
  * - any other state: the generic part.
  *
  * In request handling, `steer` applies its block through `0x21fd8` with the missile's body record (object +0x1C) and
- * maximum speed (+0x78). A missile's `expire` (`0x2b408`) emits `missile-ended`, then either detonates (the explosion,
+ * maximum speed (+0x78); on an AI craft (P3-08's movement helpers, rules/ai-piloting.ts; CR-21) with its craft record
+ * and maximum speed. Any other subject is a fault. A missile's `expire` (`0x2b408`) emits `missile-ended`, then either detonates (the explosion,
  * then per blast victim in walk order the shake `0x2b628` and `0x2a40c`) or fizzles (pending removal, the shooter and
  * the target let go). The player's camera hook `0x3119c` is the presentation layer's, through `missile-ended` (P3-12).
  */
 import type { MissileBodyRecord, MissileRecord } from '../../content/rule-data/craft-info.ts';
 import { CoreFaultError } from '../errors.ts';
 import { missileBodyRecord } from '../rules/combat-init.ts';
-import { applyFloatControl, type FloatAxisControl, type FloatControl } from '../rules/flight-control.ts';
+import { applyFloatControl, type ControlRecord, type FloatAxisControl, type FloatControl } from '../rules/flight-control.ts';
 import { motionStep } from '../rules/flight-motion.ts';
 import {
   advanceGuidance, blastHits, blastShake, initialGuidance, initialHoming, type FuseScene, type MissileEntity, type UnguidedCheckInterval,
@@ -85,10 +86,13 @@ function floatControl({ scale, axes: [pitch, yaw, roll], speedFactor }: ControlB
   return { scale, axes: { pitch: axisControl(pitch), yaw: axisControl(yaw), roll: axisControl(roll) }, speedFactor };
 }
 
-/** `0x21fd8` on the missile `entity`; a disturbance's draws come from the world's RNG. */
-function applyControl(world: WorldState, entity: Entity, missile: MissileCombat, control: ControlBlock): void {
+/**
+ * `0x21fd8` on `entity` with its record at object +0x1C: a missile's body record, an AI craft's craft record (undefined
+ * when it has none, which leaves the block alone); a disturbance's draws come from the world's RNG.
+ */
+function applyControl(world: WorldState, entity: Entity, record: ControlRecord | undefined, control: ControlBlock): void {
   const rand = new RandStream(world.rngState);
-  applyFloatControl(steeredBlock(entity), bodyRecord(world, missile), entity.maximumSpeed, floatControl(control), rand);
+  applyFloatControl(steeredBlock(entity), record, entity.maximumSpeed, floatControl(control), rand);
   world.rngState = rand.state;
 }
 
@@ -159,7 +163,7 @@ function flyMissile(context: TickContext, missile: MissileEntity, unguided: Ungu
     if (isHomingUpdateDue(homing, world.clock)) runProgram(context, missile, homing, 1);
   }
   const action = advanceGuidance(missile, fuseScene(world), world.clock, unguided);
-  if (action.type === 'control') applyControl(world, missile, combat, action.control);
+  if (action.type === 'control') applyControl(world, missile, bodyRecord(world, combat), action.control);
   else if (action.type === 'expire') context.requests.post({ type: 'expire', entityId: missile.id });
 }
 
@@ -187,10 +191,16 @@ export function updateMissile(context: TickContext, entity: Entity, missile: Mis
   }
 }
 
-/** Message 0x40000 in request handling: the block through `0x21fd8` on the missile (H5). */
+/**
+ * Message 0x40000 in request handling: the block through `0x21fd8` on the missile (H5) or the AI craft (CR-21), whose
+ * gates (a block, a record, no lock) leave it without effect; a disturbance's draws come from the world's RNG.
+ */
 export function applySteer(context: TickContext, entity: Entity, request: RequestOf<'steer'>): void {
-  if (entity.combat.type !== 'missile') throw fault('steer');
-  applyControl(context.world, entity, entity.combat, request.control);
+  const { world } = context;
+  const { combat } = entity;
+  if (combat.type !== 'missile' && combat.type !== 'craft') throw fault('steer');
+  const record = combat.type === 'missile' ? bodyRecord(world, combat) : world.craftInfo.content.craft[entity.kindBit];
+  applyControl(world, entity, record, request.control);
 }
 
 /** `missile-ended` with the missile's pose; the shooter while it still resolves. */

@@ -103,6 +103,7 @@ describe('production game input bindings', () => {
       ['KeyD', { type: 'damage-report' }],
       ['KeyC', { type: 'communications', operation: 'open' }],
       ['KeyX', { type: 'communications', operation: 'close' }],
+      ['KeyB', { type: 'drop-transponder' }],
     ] as const;
     for (const [code, action] of single) expectCommand(code, action);
     expectCommand('KeyR', { type: 'target', operation: 'next' });
@@ -176,6 +177,7 @@ describe('production game input bindings', () => {
         || action.command.type === 'select-missile'
         || (action.command.type === 'energy' && ['shield-increase', 'shield-decrease', 'gun-increase', 'gun-decrease'].includes(action.command.operation))
         || action.command.type === 'navigate-selection'
+        || action.command.type === 'drop-transponder'
       );
       expect(binding.repeatable, `${binding.code} ${JSON.stringify(action)} in ${binding.contexts}`).toBe(expected);
     }
@@ -197,6 +199,18 @@ describe('production game input bindings', () => {
     expect(lockCodes.has('AltLeft')).toBe(true);
     expect(lockCodes.has('AltRight')).toBe(true);
     expect([...lockCodes].every(code => boundCodes.has(code) || code === 'ControlLeft' || code === 'ControlRight')).toBe(true);
+  });
+
+  it('binds KeyB to drop-transponder unmodified and in flight only (P3-05 绑定表, P3-02 CR-30)', () => {
+    const bindings = GAME_INPUT_BINDINGS.bindings.filter(({ code }) => code === 'KeyB');
+    expect(bindings).toEqual([{
+      code: 'KeyB', shift: false, ctrl: false, numLock: 'any', contexts: ['flight'], action: { kind: 'command', command: { type: 'drop-transponder' } },
+      repeatable: true, source: 'original',
+    }]);
+    for (const numLock of [false, true]) expectCommand('KeyB', { type: 'drop-transponder' }, 'flight', { numLock });
+    for (const patch of [{ shift: true }, { ctrl: true }, { shift: true, ctrl: true }]) expect(resolved('KeyB', 'flight', patch)).toBeNull();
+    for (const context of ['warp', 'map', 'base', null] as const) expect(resolved('KeyB', context)).toBeNull();
+    expect(KEYBOARD_LOCK_CODES).toContain('KeyB');
   });
 
   it('does not bind unlisted keys, Ctrl variants, or Shift+Slash as an alias', () => {

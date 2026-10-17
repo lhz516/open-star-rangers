@@ -265,7 +265,7 @@ class RecipeTests(unittest.TestCase):
 
     def test_long_recipe_ceilings(self):
         self.assertEqual((MAX_RECIPE_BYTES, CEILINGS["maxPauses"], CEILINGS["maxLogBytes"]),
-                         (256 * 1024, 2048, 4 << 30))
+                         (1024 * 1024, 2048, 4 << 30))
 
         def many(count):
             def change(d):
@@ -329,6 +329,36 @@ class RecipeTests(unittest.TestCase):
             {"id": "enter", "pause": "gate", "kind": "key", "ascii": 13, "scan": 28},
             {"id": "minus", "pause": "start", "kind": "key", "ascii": 45, "scan": 12}])))
         self.assertEqual((only_keys.devices, len(only_keys.stimuli)), ({}, 2))
+
+    def test_conditional_stimuli(self):
+        """`if` selects a stimulus by an earlier (or the same pause's) integer reading (P3-08/10)."""
+        def branch(d):
+            d["stimuli"][3].update({"if": {"pause": "start", "field": "scenario", "equals": 4242}})
+            d["stimuli"].append({"id": "latch-b", "pause": "end", "kind": "device", "device": "latch", "value": 7,
+                                 "if": {"pause": "end", "field": "scenario", "equals": -1}})
+        recipe = parse_recipe(text(self.stimuli(change=branch)))
+        latch, other = recipe.stimuli[3:]
+        self.assertEqual((latch.only_if[0].pause, latch.only_if[0].field, latch.only_if[1]), ("start", "scenario", 4242))
+        self.assertEqual(other.only_if[1], 0xFFFFFFFF)  # compared as unsigned 32-bit values
+        self.assertIsNone(recipe.stimuli[0].only_if)
+        self.assertNotEqual(recipe.fingerprint, parse_recipe(text(self.stimuli())).fingerprint)
+        cases = (
+            ("recipe-key-unknown", lambda c: c.update(register="EAX")),
+            ("recipe-key-missing", lambda c: c.pop("equals")),
+            ("recipe-reference-invalid", lambda c: c.update(pause="missing")),
+            ("recipe-reference-invalid", lambda c: c.update(pause="end", field="flag")),  # not read at that pause
+            ("recipe-reference-invalid", lambda c: c.update(field="speed")),  # f32
+            ("recipe-value-invalid", lambda c: c.update(equals=1 << 31)),  # outside the i32 field range
+            ("recipe-type-invalid", lambda c: c.update(equals="4242")),
+        )
+        for code, change in cases:
+            with self.subTest(code=code):
+                def broken(d, change=change):
+                    branch(d)
+                    change(d["stimuli"][3]["if"])
+                self.assertRejected(code, self.stimuli(change=broken))
+        self.assertRejected("recipe-reference-invalid", self.stimuli(change=lambda d: d["stimuli"][1].update(
+            {"if": {"pause": "end", "field": "scenario", "equals": 1}})))  # a later pause's reading
 
     def test_stimulus_rejections(self):
         cases = (
@@ -501,6 +531,46 @@ class RecipeTests(unittest.TestCase):
         self.assertNotEqual(recipe.fingerprint, parse_recipe(text(self.selection())).fingerprint)
         self.assertTrue(parse_recipe(text(self.selection())).pause("pick").stop.when.applies(stop.sites[0]))
 
+    def test_condition_list(self):
+        def listed(d):  # P3-08/26: one condition per site, and two registers at one site
+            d["pauses"][1]["stop"]["offsets"] = [0x1F90, 0x1FA0, 0x1FB0, 0x1FC0, 0x1FD0, 0x1FE0, 0x1FF0, 0x2000]
+            d["pauses"][1]["stop"]["when"] = [
+                {"register": "EBX", "in": [{"pause": "start", "field": "count"}], "at": [0x1F90]},
+                {"register": "ESI", "notIn": [0], "at": [0x1FA0, 0x1FB0]},
+                {"register": "EDI", "in": [5, {"pause": "start", "register": "ESI"}], "at": [0x1FA0]}]
+        recipe = parse_recipe(text(self.selection(listed)))
+        stop = recipe.pause("pick").stop
+        self.assertEqual(len(stop.sites), 8)
+        parts = stop.when.parts()
+        self.assertEqual([(part.register, part.include) for part in parts],
+                         [("EBX", True), ("ESI", False), ("EDI", True)])
+        self.assertEqual((parts[1].applies(stop.sites[0]), parts[1].applies(stop.sites[2]),
+                          parts[2].applies(stop.sites[2])), (False, True, False))
+        self.assertEqual(stop.when.to_json([[7], [0], [5, 0x1234]]), [
+            {"register": "EBX", "in": ["7"], "at": ["1f90"]}, {"register": "ESI", "notIn": ["0"], "at": ["1fa0", "1fb0"]},
+            {"register": "EDI", "in": ["5", "1234"], "at": ["1fa0"]}])
+        single = parse_recipe(text(self.selection())).pause("pick").stop.when
+        self.assertEqual(single.parts(), (single,))  # the object form is unchanged
+
+        def when(value):
+            return lambda d: d["pauses"][1]["stop"].update(when=value)
+
+        good = {"register": "EBX", "in": [1]}
+        for code, change in [("recipe-empty", when([])),
+                             ("recipe-budget-exceeded", when([good] * 9)),
+                             ("recipe-type-invalid", when([good, 3])),
+                             ("recipe-key-missing", when([good, {"in": [1]}])),
+                             ("recipe-value-invalid", when([good, {"register": "EBX", "in": [1],
+                                                                   "at": [0x1F90, 0x1FA0]}])),
+                             ("recipe-reference-invalid", when([good, {"register": "EBX", "in": [
+                                 {"pause": "end", "field": "ticks"}]}])),
+                             ("recipe-key-unknown", lambda d: d["pauses"][1].update(stop={
+                                 "kind": "breakpoint", "object": 2, "offset": 0x1F90,
+                                 "when": [{"register": "EBX", "in": [1], "at": [0x1F90]}]}))]:
+            with self.subTest(code=code):
+                self.assertRejected(code, self.selection(change))
+        self.assertEqual(len(parse_recipe(text(self.selection(when([good] * 8)))).pause("pick").stop.when.parts()), 8)
+
     def test_alternative_sites_and_condition_rejections(self):
         def stop(**changes):
             def change(d):
@@ -518,7 +588,7 @@ class RecipeTests(unittest.TestCase):
             ("recipe-address-invalid", stop(offset=0x1F90)),
             ("recipe-type-invalid", stop(offsets=0x1F90)),
             ("recipe-value-invalid", stop(offsets=[0x1F90])),
-            ("recipe-value-invalid", stop(offsets=[1, 2, 3, 4, 5])),
+            ("recipe-value-invalid", stop(offsets=list(range(1, 10)))),
             ("recipe-value-invalid", stop(offsets=[0x1F90, 0x1F90])),
             ("recipe-value-invalid", stop(offsets=[])),
             ("recipe-type-invalid", stop(offsets=[0x1F90, "0x1FA0"])),
@@ -626,6 +696,170 @@ class RecipeTests(unittest.TestCase):
         for code, when_ref, bound_ref in cases:
             with self.subTest(code=code, when=when_ref, bound=bound_ref):
                 self.assertRejected(code, self.selection(refer(when_ref, bound_ref)))
+
+    # -- reading tests (P3-10 subtask 09) ---------------------------------------------------------------------------
+    UNTIL = {"every": 3, "any": [{"field": "speed", "gt": {"pause": "start", "field": "speed", "offset": 0.5}},
+                                 {"field": "count", "ne": 65535}, {"field": "neg", "le": {"field": "delta"}}]}
+
+    def waiting(self, until=None, change=None):
+        """The scenario plus a breakpoint pause "wait" (no fields) between `start` and `end` with an `until` test."""
+        def apply(d):
+            d["pauses"].insert(1, {"id": "wait", "stop": {"kind": "breakpoint", "object": 2, "offset": 0x1F90,
+                                                          "until": copy.deepcopy(until or self.UNTIL)}})
+            if change is not None:
+                change(d)
+        return self.mutated(apply)
+
+    def test_until_stop(self):
+        recipe = parse_recipe(text(self.waiting()))
+        until = recipe.pause("wait").stop.until
+        self.assertEqual((until.every, until.test.any_of), (3, True))
+        self.assertEqual(until.test.fields(), ("speed", "count", "neg", "delta"))
+        self.assertEqual(until.test.references(), (("start", "speed"),))
+        self.assertEqual(until.to_json(), self.UNTIL)
+        self.assertIsNone(recipe.pause("wait").stop.when)
+        self.assertEqual(recipe.pause("wait").fields, ())
+        self.assertEqual(recipe.planned(), parse_recipe(text(scenario_recipe(SHA))).planned())
+        self.assertEqual(parse_recipe(text(self.waiting({"all": [{"field": "flag", "eq": 1}]}))).pause(
+            "wait").stop.until.every, 1)
+        self.assertNotEqual(recipe.fingerprint, parse_recipe(text(self.waiting({**self.UNTIL, "every": 4}))).fingerprint)
+
+        def own_field(d):  # a test field need not be listed by any pause: the probe reads it
+            d["fields"].append({"id": "probe-only", "address": {"object": 4, "offset": 0x850}, "type": "f32",
+                                "unit": "raw"})
+            d["pauses"][1]["stop"]["until"] = {"all": [{"field": "probe-only", "lt": -2.5e3}]}
+        self.assertEqual(parse_recipe(text(self.waiting(change=own_field))).pause("wait").stop.until.test.fields(),
+                         ("probe-only",))
+
+        def bare(d):  # without the test the probe-only field would be unused
+            d["fields"].append({"id": "probe-only", "address": {"object": 4, "offset": 0x850}, "type": "f32",
+                                "unit": "raw"})
+        self.assertRejected("recipe-reference-invalid", self.mutated(bare))
+
+    def test_reading_test_logic(self):
+        test = parse_recipe(text(self.waiting())).pause("wait").stop.until.test
+        earlier = {("start", "speed"): 1.5}
+        self.assertTrue(test.evaluate({"speed": 2.5, "count": 65535, "neg": 0, "delta": -5}, earlier))
+        self.assertFalse(test.evaluate({"speed": 2.0, "count": 65535, "neg": 0, "delta": -5}, earlier))
+        self.assertTrue(test.evaluate({"count": 1}, earlier))  # one true comparison decides `any`
+        self.assertIsNone(test.evaluate({"count": 65535, "neg": 0, "delta": -5}, earlier))  # speed unknown
+        self.assertIsNone(test.evaluate({"speed": 9.0, "count": 65535}, {}))  # the earlier reading is missing
+        every = parse_recipe(text(self.waiting({"all": [{"field": "count", "ge": 2}, {"field": "neg", "lt": 0}]})))
+        test = every.pause("wait").stop.until.test
+        self.assertFalse(test.evaluate({"count": 1}, {}))  # one false comparison decides `all`
+        self.assertIsNone(test.evaluate({"count": 2}, {}))
+        self.assertTrue(test.evaluate({"count": 2, "neg": -1}, {}))
+        self.assertEqual(test.to_json(), {"all": [{"field": "count", "ge": 2}, {"field": "neg", "lt": 0}]})
+
+    def test_until_rejections(self):
+        def until(**changes):
+            return self.waiting({**self.UNTIL, **changes})
+
+        def clause(item):
+            return self.waiting({"all": [item]})
+
+        cases = [
+            ("recipe-key-unknown", self.mutated(lambda d: d["pauses"][1]["stop"].update(until=self.UNTIL))),  # VRT
+            ("recipe-value-invalid", until(every=0)),
+            ("recipe-value-invalid", until(every=10_001)),
+            ("recipe-type-invalid", until(every="2")),
+            ("recipe-value-invalid", until(all=[{"field": "flag", "eq": 0}])),
+            ("recipe-key-missing", self.waiting({"every": 2})),
+            ("recipe-key-unknown", until(expression="speed > 2")),
+            ("recipe-empty", self.waiting({"all": []})),
+            ("recipe-type-invalid", self.waiting({"all": {"field": "flag", "eq": 0}})),
+            ("recipe-budget-exceeded", self.waiting({"all": [{"field": "flag", "eq": 0}] * 17})),
+            ("recipe-key-missing", clause({"field": "flag"})),
+            ("recipe-value-invalid", clause({"field": "flag", "eq": 0, "ne": 1})),
+            ("recipe-key-unknown", clause({"field": "flag", "between": [0, 1]})),
+            ("recipe-key-missing", clause({"eq": 0})),
+            ("recipe-reference-invalid", clause({"field": "missing", "eq": 0})),
+            ("recipe-value-invalid", clause({"field": "flag ", "eq": 0})),
+            ("recipe-type-invalid", clause({"field": "flag", "eq": True})),
+            ("recipe-type-invalid", clause({"field": "flag", "eq": "0"})),
+            ("recipe-type-invalid", clause({"field": "flag", "eq": None})),
+            ("recipe-value-invalid", clause({"field": "flag", "eq": (1 << 53) + 1})),
+            ("recipe-reference-invalid", clause({"field": "flag", "eq": {"field": "missing"}})),
+            ("recipe-reference-invalid", clause({"field": "flag", "eq": {"pause": "end", "field": "ticks"}})),
+            ("recipe-reference-invalid", clause({"field": "flag", "eq": {"pause": "wait", "field": "flag"}})),
+            ("recipe-reference-invalid", clause({"field": "flag", "eq": {"pause": "start", "field": "missing"}})),
+            ("recipe-key-missing", clause({"field": "flag", "eq": {"pause": "start"}})),
+            ("recipe-key-unknown", clause({"field": "flag", "eq": {"field": "count", "scale": 2}})),
+            ("recipe-type-invalid", clause({"field": "flag", "eq": {"field": "count", "offset": "1"}})),
+            ("recipe-value-invalid", clause({"field": "flag", "eq": {"field": "count", "offset": -(1 << 54)}})),
+        ]
+        for code, document in cases:
+            with self.subTest(code=code, document=document["pauses"]):
+                self.assertRejected(code, document)
+
+        def short_end(d):  # `end` no longer lists `ticks`
+            d["pauses"][2]["fields"] = ["scenario"]
+            d["pauses"][1]["stop"]["until"] = {"all": [{"field": "flag", "eq": {"pause": "end", "field": "ticks"}}]}
+        self.assertRejected("recipe-reference-invalid", self.waiting(change=short_end))
+
+        def late_bound(d):  # a probed bound field must name an earlier pause's reading
+            d["fields"].append({"id": "node", "address": {"bound": {"pause": "end", "field": "ticks"}, "offset": 0},
+                                "type": "u32", "unit": "raw"})
+            d["pauses"][1]["stop"]["until"] = {"all": [{"field": "node", "eq": 1}]}
+        self.assertRejected("recipe-reference-invalid", self.waiting(change=late_bound))
+
+    def test_until_probe_counts_against_the_budget(self):
+        def limit(document, value):
+            document = copy.deepcopy(document)
+            document["limits"]["maxReadBytes"] = value
+            return document
+
+        plain = scenario_recipe(SHA)
+        low = next(value for value in range(64, 4096) if self.accepts(limit(plain, value)))
+        self.assertRejected("recipe-budget-exceeded", limit(self.waiting(), low))
+        windows = parse_recipe(text(plain))
+        probe = windows.code_window.size + windows.data_window.size + 2 * (4 + 2 + 4 + 2)  # speed, count, neg, delta
+        self.assertFalse(self.accepts(limit(self.waiting(), low + probe - 1)))
+        self.assertTrue(self.accepts(limit(self.waiting(), low + probe)))
+
+    def accepts(self, document):
+        try:
+            parse_recipe(text(document))
+        except BaselineError as error:
+            self.assertEqual(error.code, "recipe-budget-exceeded")
+            return False
+        return True
+
+    def test_stimulus_tests(self):
+        def tests(d):
+            d["stimuli"][1]["if"] = {"all": [{"field": "neg", "lt": -1000}]}  # `start` reads neg
+            d["stimuli"][2]["if"] = {"any": [{"field": "ticks", "ge": {"field": "count", "offset": -3}},
+                                             {"field": "speed", "eq": 1.5}]}
+            d["stimuli"][3]["if"] = {"all": [{"field": "ticks", "gt": {"pause": "start", "field": "ticks"}}]}
+            d["stimuli"][0]["if"] = {"all": [{"field": "scenario", "eq": 1}]}
+            d["pauses"][0]["fields"] = ["scenario"]  # the key's gate reads the identity check field
+        recipe = parse_recipe(text(self.stimuli(change=tests)))
+        enter, ctrl, deflect, latch = recipe.stimuli
+        self.assertEqual((enter.kind, enter.test.fields()), ("key", ("scenario",)))
+        self.assertEqual(ctrl.test.to_json(), {"all": [{"field": "neg", "lt": -1000}]})
+        self.assertEqual(deflect.test.fields(), ("ticks", "count", "speed"))
+        self.assertEqual(latch.test.references(), (("start", "ticks"),))
+        plain = parse_recipe(text(self.stimuli()))
+        self.assertIsNone(plain.stimuli[0].test)
+        self.assertNotEqual(recipe.fingerprint, plain.fingerprint)
+
+        def stimulus_test(index, value):
+            return lambda d: d["stimuli"][index].update({"if": value})
+
+        cases = [
+            # the gate reads no field, and nothing precedes it
+            ("recipe-reference-invalid", stimulus_test(0, {"all": [{"field": "ticks", "eq": 1}]})),
+            ("recipe-reference-invalid", stimulus_test(1, {"all": [{"field": "flag", "eq": {"pause": "start",
+                                                                                           "field": "flag"}}]})),
+            ("recipe-reference-invalid", stimulus_test(3, {"all": [{"field": "flag", "eq": 1}]})),  # `end` lacks flag
+            ("recipe-reference-invalid", stimulus_test(1, {"all": [{"field": "flag", "eq": {"field": "missing"}}]})),
+            ("recipe-key-missing", stimulus_test(1, {})),
+            ("recipe-type-invalid", stimulus_test(1, [{"field": "flag", "eq": 1}])),
+            ("recipe-key-unknown", stimulus_test(1, {"all": [{"field": "flag", "eq": 1}], "every": 2})),
+        ]
+        for code, change in cases:
+            with self.subTest(code=code):
+                self.assertRejected(code, self.stimuli(change=change))
 
     def test_source_verification(self):
         recipe = parse_recipe(text(scenario_recipe(SHA)))

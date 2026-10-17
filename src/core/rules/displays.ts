@@ -1,8 +1,8 @@
 /**
  * Rules of the left display and the status display (docs/plan/p3/02/spec.md, CR-04, CR-05 and CR-10;
  * docs/original/formats/executable.md, D9 and D15; docs/original/formats/cockpit.md, instrument types per slot): the
- * page changes of the `energy` open and `damage-report` commands, the views whose cockpit gauges write rule state, and
- * the status display's blink and subsystem fields 1, 5 and 8. The frame-end step and the commands are
+ * page changes of the `energy` open and `damage-report` commands, the views whose cockpit gauges write rule state, the
+ * status display's blink and subsystem fields 1, 5 and 8, and the menu pages 2–4 (P3-10, CB-07 and CB-09). The frame-end step and the commands are
  * systems/displays.ts's and systems/energy.ts's.
  */
 import { CoreFaultError } from '../errors.ts';
@@ -32,6 +32,33 @@ export function pageChange(page: LeftPage, command: 'open' | 'damage-report'): P
   const [from, to]: readonly [LeftPage, LeftPage] = command === 'open' ? [STATUS_PAGE, ENERGY_PAGE] : [ENERGY_PAGE, STATUS_PAGE];
   if (page === from) return to;
   return page === to ? 'no-change' : 'wrong-context';
+}
+
+/** Field 13, the communications subsystem: its state 2 refuses `c` and stops the handlers of pages 2–5 (D15). */
+export const COMMUNICATIONS_FIELD = 13;
+
+/** Pages 2, 3 and 4: the category menu, the object list and the command menu, each page its menu's level (comm §7.2). */
+export const isMenuPage = (page: LeftPage): page is 2 | 3 | 4 => page >= 2 && page <= 4;
+
+/**
+ * Whether the handler of pages 2–4 (`0x4da28`) sets page 0 directly (comm §7.5): the left display shows a menu page,
+ * field 13 is not 2 and no menu is built, which a flush or the end of an incoming message can leave behind. It never
+ * rebuilds a menu.
+ */
+export function clearsMenuPage(page: LeftPage, hasMenu: boolean, subsystems: readonly SubsystemState[]): boolean {
+  return isMenuPage(page) && !hasMenu && subsystems[COMMUNICATIONS_FIELD] !== 2;
+}
+
+/** The incoming message's page (RQ8). */
+export const INCOMING_PAGE = 5;
+
+/**
+ * Whether the page-5 handler `0x4dc50` leaves page 5 for page 0: page 5 shows, field 13 is not 2 and no message plays,
+ * as after a menu opened on page 5 closes (D-03 item 3 point 4; CB-09). The original gets there after three failed
+ * draws; Core sets page 0 at once, which only the presentation sees.
+ */
+export function clearsIncomingPage(page: LeftPage, playing: boolean, subsystems: readonly SubsystemState[]): boolean {
+  return page === INCOMING_PAGE && !playing && subsystems[COMMUNICATIONS_FIELD] !== 2;
 }
 
 /** Field 10, whose state 2 replaces the status page by its interference animation (D15). */

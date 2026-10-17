@@ -47,6 +47,8 @@ const COMMAND_FIELDS = {
   'damage-report': {},
   /** Consumed by P3-12/P3-13; whether it may leave an automatic view is the owning rule's gate. */
   'cockpit-front': {},
+  /** P3-08: the original's `b`, which drops a transponder behind the player (CR-20; Likely normal play, X5). */
+  'drop-transponder': {},
 } as const satisfies Readonly<Record<string, Readonly<Record<string, FieldReader<unknown>>>>>;
 
 type CommandFieldReaders = typeof COMMAND_FIELDS;

@@ -44,8 +44,8 @@ export type HitTest = (entity: Entity) => void;
 
 /**
  * Moves one entity by its block's mode: `craft` (mode 0) and `warp` (mode 3) integrate; `linear` (mode 1) moves, then
- * runs `hitTest` when the block's flag is set, as the original's loop does; `spinning` (mode 2) moves and turns. The
- * switch is exhaustive, so a new variant of MovementBlock does not compile without its case.
+ * runs `hitTest` when the block's flag is set, as the original's loop does; `spinning` (mode 2) moves and turns; the map
+ * marker's `marker` (mode 4) is never integrated (docs/plan/p3/02/spec.md, MW-03). The switch is exhaustive, so a new variant of MovementBlock does not compile without its case.
  */
 function moveEntity(world: WorldState, entity: Entity, block: MovementBlock, step: MotionStep, hitTest: HitTest): void {
   switch (block.mode) {
@@ -71,6 +71,8 @@ function moveEntity(world: WorldState, entity: Entity, block: MovementBlock, ste
       entity.orientation = moved.orientation;
       return;
     }
+    case 'marker':
+      return;
     default:
       unhandledMode(block);
   }

@@ -11,6 +11,7 @@ import type { WorldRuleData } from '../world/rule-data.ts';
 import { constructWorld } from '../world/world.ts';
 import { entityInit, stateText, testState, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { enterBaseView } from './base-interior.test-support.ts';
 import { registerTick, type Request } from './pipeline.ts';
 import { acquireAutomatic, fireAiChannel, fireAutomatic, updateMissileLock } from './weapons.ts';
 
@@ -130,7 +131,7 @@ describe('the common pre-judgement of the weapon commands (CR-05)', () => {
   it.each([
     ['player-unavailable for a destroyed player', (state: WorldState, player: Entity) => { player.destroyed = true; return state; }, 'player-unavailable'],
     ['wrong-context in the map', (state: WorldState) => { state.player.viewMode = 8; return state; }, 'wrong-context'],
-    ['wrong-context in the base', (state: WorldState) => { state.player.viewMode = 6; return state; }, 'wrong-context'],
+    ['wrong-context in the base', (state: WorldState) => { enterBaseView(state); return state; }, 'wrong-context'],
   ] as const)('ignores every weapon command with %s and changes nothing', (_, change, reason) => {
     const commands = [FIRE_PRIMARY, FIRE_SECONDARY, CYCLE, missileStep('next')];
     const [state, player] = flightWorld();
@@ -306,6 +307,36 @@ describe('the AI entry points (AC-06; CR-05, W9, W10)', () => {
       { type: 'launch', family: 'missile', shooter: shooter.id, missile: 1, mount: 3, target: enemy.id, trigger: { type: 'ai', channel: 2 } },
     ]);
     expect(shooter.combat.weapons.lock.level).toBe(0);
+  });
+
+  it('posts an AI shooter\'s lock level with a guided launch, one less from a damaged mount, then clears it (A13; spec revision ⑦)', () => {
+    const [state, shooter, enemy] = aiWorld();
+    const context = registerTick(state, readTickInput(tickInput()));
+    const { lock, mounts } = shooter.combat.weapons;
+    lock.level = 4;
+    expect(fireAiChannel(context, shooter, 1)).toEqual({ launched: 1, last: 'launched' });
+    expect(lock.level).toBe(0);
+    lock.level = 4;
+    mounts[2].damage = 1;
+    state.clock += 6;
+    expect(fireAiChannel(context, shooter, 1)).toEqual({ launched: 1, last: 'launched' });
+    expect(launches(context)).toMatchObject([
+      { family: 'missile', mount: 2, target: enemy.id, launchByte: 4, trigger: { type: 'ai', channel: 1 } },
+      { family: 'missile', mount: 2, target: enemy.id, launchByte: 3, trigger: { type: 'ai', channel: 1 } },
+    ]);
+    expect(context.events).toEqual([]);
+  });
+
+  it('launches no guided missile at an object target that no longer resolves, nor from a mount without ammunition', () => {
+    const [state, shooter] = aiWorld();
+    const context = registerTick(state, readTickInput(tickInput()));
+    shooter.ai.objectTarget = 9999;
+    expect(fireAiChannel(context, shooter, 1)).toEqual({ launched: 0, last: 'no-target' });
+    // The fixed gun of list 0 needs no target.
+    expect(fireAiChannel(context, shooter, 0)).toEqual({ launched: 1, last: 'launched' });
+    shooter.combat.weapons.mounts[2].ammunition = 0;
+    expect(fireAiChannel(context, shooter, 1)).toEqual({ launched: 0, last: 'no-ammunition' });
+    expect(launches(context)).toMatchObject([{ family: 'gun', mount: 0, trigger: { type: 'ai', channel: 0 } }]);
   });
 
   it('acquires and then fires an automatic mount independently of the lists', () => {

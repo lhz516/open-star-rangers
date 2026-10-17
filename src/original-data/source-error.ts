@@ -36,8 +36,8 @@ export type SourceErrorCode =
  * Names a `limit-exceeded` diagnostic reports: the P2-03 archive limits, the P2-05 graphics structural limits, the
  * P2-09 payload limits (entry bytes, item counts and text bytes), the P2-06 mesh, model, effect and executable limits
  * and the P2-07 container counts (CCKD directory slots, elements per slot, records per MFDD list and records per TABL
- * image list) and SNIP and DIAG bounds (frames, startup messages and text bytes). `budget-exceeded` reports a P2-01
- * budget dimension instead.
+ * image list) and SNIP and DIAG bounds (frames, startup messages and text bytes); P3-09 adds `cockpitInstruments`, the
+ * instrument records of the CCKD slot the map geometry reads. `budget-exceeded` reports a P2-01 budget dimension instead.
  *
  * P3-03 structures (docs/plan/p3/03/spec.md, limits and budgets; layouts in docs/original/formats/) reuse the generic
  * names wherever they describe the structure; the location's structure path then names it:
@@ -58,6 +58,17 @@ export type SourceErrorCode =
  * - `aiEntries`: the distinct entries (DFPG and scripts) that the group-0 ID chain names.
  * - `commMenuItems`: the 8-byte items of one COMM menu, up to and including its last item.
  * - `animFrameBytes`: the encoded data bytes of one ANIM frame (frame record +32).
+ *
+ * Revision 2 (`data/comm-messages`) reuses `payloadEntryBytes` for the COMMFACE TABL and CMOV entries and the COMM name
+ * lists, `payloadItems` for a CMOV's frame records and `textBytes` for the names, and adds:
+ * - `commTableItems`: the u32 entry IDs of one COMMFACE TABL: a face table's faces, a sub-table's messages or the
+ *   direct list's messages.
+ * - `commNames`: the names of one COMM name list, before its null pointer.
+ *
+ * Revision 3 (the keyword tables of `data/ai-programs`) reuses `textBytes` for each keyword name, and adds:
+ * - `aiKeywordEntries`: the pairs of one EXE keyword table before its null pair.
+ * - `aiKeywordNames`: the EXE name regions the keyword tables point to.
+ * - `aiKeywordNameBytes`: the bytes of those name regions together, NULs included.
  *
  * Counts the format fixes, such as the 20 kind bits, the 18 × 3 TABL 4003 pairs and the 3 EXIC lists, are format
  * rules rather than limits.
@@ -84,6 +95,7 @@ export type SourceLimitName =
   | 'executableRegion'
   | 'cockpitSlots'
   | 'cockpitElements'
+  | 'cockpitInstruments'
   | 'mfdRecords'
   | 'tableRecords'
   | 'snipFrames'
@@ -94,6 +106,11 @@ export type SourceLimitName =
   | 'aiEntries'
   | 'commMenuItems'
   | 'animFrameBytes'
+  | 'commTableItems'
+  | 'commNames'
+  | 'aiKeywordEntries'
+  | 'aiKeywordNames'
+  | 'aiKeywordNameBytes'
   | BudgetDimension;
 
 export interface SourceLimit {

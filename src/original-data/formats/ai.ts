@@ -1,6 +1,7 @@
 import {
-  AI_PROGRAMS_LIMITS, AI_SCRIPT_END_OPCODE, type AiEntry, type AiGlobals, type AiParameterEntry, type AiPrograms,
-  type AiScriptEntry, type BuiltInProgram, type F32x4, type I32x3, type ScriptItem, type StateScripts, type TableProgram,
+  AI_PROGRAMS_LIMITS, AI_SCRIPT_END_OPCODE, foldKeywordName, type AiEntry, type AiGlobals, type AiParameterEntry,
+  type AiPrograms, type AiScriptEntry, type BuiltInProgram, type F32x4, type I32x3, type KeywordEntry, type KeywordTable,
+  type KeywordTables, type ScriptItem, type StateScripts, type TableProgram,
 } from '../../content/rule-data/ai-programs.ts';
 import type { ByteString } from '../../content/rule-data/rule-data-fields.ts';
 import type { ArchiveEntryRead } from '../archive/archive-reader.ts';
@@ -10,10 +11,11 @@ import type { ExecutableRegion } from '../source-mapping.ts';
 import type { FixedUpRegion, RegionFixup } from './le-executable.ts';
 import { entryLocation, PayloadBlock } from './payload-block.ts';
 
-// Parsing of the AISTUFF group-0 closure and the EXE built-in program table into `data/ai-programs` content (P3-03 spec
-// S-05; layouts, load transforms and evidence in docs/original/formats/ai.md). The parser receives only what the caller
-// has read: AICO 6001, the selected group's program table, the entries its ID chain names, the built-in table region
-// with its LE fixups, and one region per built-in name. Values keep their stored values: the load transforms of ai.md §6
+// Parsing of the AISTUFF group-0 closure, the EXE built-in program table and the EXE keyword tables into `data/ai-programs`
+// content (P3-03 spec S-05 and S-19; layouts, load transforms and evidence in docs/original/formats/ai.md). The parser
+// receives only what the caller has read: AICO 6001, the selected group's program table, the entries its ID chain names,
+// the built-in table region with its LE fixups, one region per built-in name, the four keyword table regions with their
+// fixups and one region per keyword name. Values keep their stored values: the load transforms of ai.md §6
 // are the consumer's, positions the load code overwrites are not read, the code pointers become opaque {object, offset}
 // identities (field rule 4), and entry IDs become positions in `entries`, in the order the table loader 0x649c8 first
 // reaches them. Diagnostics name the entry or region and a structure path, never names, texts or values.
@@ -26,6 +28,10 @@ export const AI_LAYOUT = Object.freeze({
   programBytes: 0x54,
   parameterHeaderBytes: 0x6c,
   scriptItemBytes: 0x18,
+  /** A keyword table pair: the name pointer, then the i32 value (ai.md §5.3). */
+  keywordEntryBytes: 8,
+  /** The LE object every keyword name pointer targets (ai.md §5.3). */
+  keywordNameObject: 4,
 });
 
 /**
@@ -33,7 +39,7 @@ export const AI_LAYOUT = Object.freeze({
  * rounded up to a power of two, raised where needed to hold the payload limits of `AI_PROGRAMS_LIMITS`. AICO 6001 is 192
  * bytes with 3 triples. TABL 6003 is 572 bytes, which gives 2,048, below the 2,772 bytes of `programRecords` records and
  * the terminator record, so 4,096. DFPGs are at most 160 bytes (six full lists take 492). Scripts are at most 1,217
- * bytes (`scriptItems` items take 3,072).
+ * bytes (`scriptItems` items take 3,072). The keyword tables name 14 regions of 111 bytes with their NULs (revision 3).
  */
 export const AI_SOURCE_LIMITS = Object.freeze({
   globalsEntryBytes: 512,
@@ -41,6 +47,8 @@ export const AI_SOURCE_LIMITS = Object.freeze({
   programTableEntryBytes: 4_096,
   parameterEntryBytes: 512,
   scriptEntryBytes: 4_096,
+  keywordNames: 32,
+  keywordNameBytes: 256,
 });
 
 /** An EXE region the caller has read, located in diagnostics by `location`, such as its source mapping path. */
@@ -48,6 +56,11 @@ export interface AiRegionRead {
   readonly region: ExecutableRegion;
   readonly bytes: Uint8Array;
   readonly location: string;
+}
+
+/** An EXE region read with its fixups (`LeExecutable.readFixedUpRegion`). */
+export interface AiFixedUpRegionRead extends AiRegionRead {
+  readonly fixups: readonly RegionFixup[];
 }
 
 export interface AiProgramSources {
@@ -61,6 +74,10 @@ export interface AiProgramSources {
   readonly builtIn: FixedUpRegion & { readonly location: string };
   /** One region per name the built-in records point to, each covering the name and its NUL exactly, in any order. */
   readonly builtInNames: readonly AiRegionRead[];
+  /** The four keyword table regions in address order, each its pairs and its null terminator pair. */
+  readonly keywordTables: readonly [AiFixedUpRegionRead, AiFixedUpRegionRead, AiFixedUpRegionRead, AiFixedUpRegionRead];
+  /** One region per distinct name the keyword pairs point to, each covering the name and its NUL exactly, in any order. */
+  readonly keywordNames: readonly AiRegionRead[];
 }
 
 export interface ParsedAiPrograms {
@@ -144,14 +161,24 @@ function readText(block: PayloadBlock, bytes: Uint8Array, offset: number, limit:
   return String.fromCharCode(...scanned.subarray(0, length));
 }
 
-/** A region holding exactly a name and its NUL. */
-function regionText({ bytes, location }: AiRegionRead): ByteString {
+/** A region holding exactly a name of at most `limit` bytes and its NUL. */
+function regionText({ bytes, location }: AiRegionRead, limit = AI_PROGRAMS_LIMITS.programNameBytes): ByteString {
   const length = bytes.indexOf(0);
   if (length === -1) throw new SourceError('invalid-payload', location, 'the text has no terminating NUL');
   if (length !== bytes.length - 1) throw new SourceError('invalid-payload', location, 'the NUL is not the last byte of the region');
-  const limit = AI_PROGRAMS_LIMITS.programNameBytes;
   if (length > limit) throw new SourceError('limit-exceeded', location, 'the text exceeds its payload limit', { name: 'textBytes', limit, observed: length });
   return String.fromCharCode(...bytes.subarray(0, length));
+}
+
+/** The regions of `names` by their object and offset; a region given twice is a mismatch. */
+function regionsByStart(names: readonly AiRegionRead[]): Map<string, AiRegionRead> {
+  const regions = new Map<string, AiRegionRead>();
+  for (const name of names) {
+    const key = `${name.region.object}/${name.region.offset}`;
+    if (regions.has(key)) mismatch(name.location, 'the region is given twice');
+    regions.set(key, name);
+  }
+  return regions;
 }
 
 /** The value fields both program tables convert alike (ai.md §3.1). */
@@ -350,12 +377,7 @@ function parseBuiltIn({ bytes, fixups, location }: AiProgramSources['builtIn'], 
     }
   }
   const fixupAt = new Map(fixups.map(fixup => [fixup.at, fixup]));
-  const regions = new Map<string, AiRegionRead>();
-  for (const name of names) {
-    const key = `${name.region.object}/${name.region.offset}`;
-    if (regions.has(key)) mismatch(name.location, 'the region is given twice');
-    regions.set(key, name);
-  }
+  const regions = regionsByStart(names);
   const named = new Set<string>();
   const fields = regionFields(bytes, location);
   const programs = Array.from({ length: count }, (_, index): BuiltInProgram => {
@@ -386,6 +408,97 @@ function parseBuiltIn({ bytes, fixups, location }: AiProgramSources['builtIn'], 
     if (!named.has(key)) mismatch(region.location, 'no built-in program names the region');
   }
   return programs;
+}
+
+const unsupported = (location: string, reason: string): never => {
+  throw new SourceError('unsupported-payload', location, reason);
+};
+
+/**
+ * The number of pairs before the terminator pair of a keyword table region of `length` bytes, checked against the
+ * structure and the limit before any pair is read; the converter judges region lengths with it before reading them.
+ */
+export function keywordTableEntries(length: number, location: string): number {
+  const size = AI_LAYOUT.keywordEntryBytes;
+  if (length % size !== 0 || length < 2 * size) throw new SourceError('invalid-payload', location, 'the region is not one or more pairs and a terminator pair');
+  const count = length / size - 1;
+  const limit = AI_PROGRAMS_LIMITS.keywordEntries;
+  if (count > limit) throw new SourceError('limit-exceeded', `${location}/entries`, 'the structure exceeds its payload limit', { name: 'aiKeywordEntries', limit, observed: count });
+  return count;
+}
+
+/**
+ * Checks the keyword name regions' count and total bytes with their NULs against the source limits, failing at the
+ * first region past a limit; the converter judges region lengths with it before reading them.
+ */
+export function checkKeywordNameRegions(regions: readonly { readonly length: number; readonly location: string }[]): void {
+  const { keywordNames, keywordNameBytes } = AI_SOURCE_LIMITS;
+  if (regions.length > keywordNames) {
+    throw new SourceError('limit-exceeded', regions[keywordNames].location, 'the structure exceeds its payload limit',
+      { name: 'aiKeywordNames', limit: keywordNames, observed: regions.length });
+  }
+  const total = regions.reduce((sum, { length }) => sum + length, 0);
+  if (total <= keywordNameBytes) return;
+  let bytes = 0;
+  const { location } = regions.find(({ length }) => (bytes += length) > keywordNameBytes)!;
+  throw new SourceError('limit-exceeded', location, 'the structure exceeds its payload limit', { name: 'aiKeywordNameBytes', limit: keywordNameBytes, observed: total });
+}
+
+/**
+ * The keyword tables (ai.md §5.3): four consecutive regions of {name pointer, i32 value} pairs, each ended by one null
+ * pair at its end. Exactly the name word of every other pair is patched, by a fixup to the start of a given name region
+ * in object 4 whose stored word is the target offset; every given region is named, and the names of a table differ
+ * with A–Z folded. A pair may share a name region with others; the region is read once.
+ */
+function parseKeywordTables(tables: AiProgramSources['keywordTables'], names: readonly AiRegionRead[]): KeywordTables {
+  const size = AI_LAYOUT.keywordEntryBytes;
+  checkKeywordNameRegions(names.map(({ bytes, location }) => ({ length: bytes.length, location })));
+  const regions = regionsByStart(names);
+  const texts = new Map<string, ByteString>();
+  const result = tables.map(({ region, bytes, fixups, location }, table): KeywordTable => {
+    const count = keywordTableEntries(bytes.length, location);
+    const previous = tables[table - 1]?.region;
+    if (previous && (region.object !== previous.object || region.offset !== previous.offset + previous.length)) {
+      throw new SourceError('invalid-payload', location, 'the region does not follow the previous keyword table');
+    }
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const fixupAt = new Map<number, RegionFixup>();
+    for (const fixup of fixups) {
+      const index = Math.floor(fixup.at / size);
+      const path = index < count ? `/entries[${index}]` : '/terminator';
+      if (fixup.at % size !== 0 || index >= count) unsupported(`${location}${path}`, 'a fixup patches a value word or the terminator pair');
+      if (fixup.object !== AI_LAYOUT.keywordNameObject) unsupported(`${location}${path}/name`, 'the fixup targets another object');
+      fixupAt.set(fixup.at, fixup);
+    }
+    const terminator = count * size;
+    if (view.getUint32(terminator, true) !== 0) unsupported(`${location}/terminator`, 'the last pair is not a null pair');
+    if (view.getInt32(terminator + 4, true) !== 0) unsupported(`${location}/terminator`, 'the value of the terminator pair is not zero');
+    const seen = new Set<ByteString>();
+    return Object.freeze(Array.from({ length: count }, (_, index): KeywordEntry => {
+      const path = `${location}/entries[${index}]`;
+      const stored = view.getUint32(index * size, true);
+      // A zero name word ends the table for the lookup, whatever its fixup.
+      if (stored === 0) unsupported(`${path}/name`, 'a null pair precedes the terminator pair');
+      const fixup = fixupAt.get(index * size) ?? unsupported(`${path}/name`, 'the name pointer has no fixup');
+      if (stored !== fixup.offset) unsupported(`${path}/name`, 'the stored pointer is not the fixup target offset');
+      const key = `${fixup.object}/${fixup.offset}`;
+      let name = texts.get(key);
+      if (name === undefined) {
+        const target = regions.get(key) ?? mismatch(`${path}/name`, 'no given region starts at the name');
+        name = regionText(target, AI_PROGRAMS_LIMITS.keywordNameBytes);
+        if (name.length === 0) throw new SourceError('invalid-payload', target.location, 'the name is empty');
+        texts.set(key, name);
+      }
+      const folded = foldKeywordName(name);
+      if (seen.has(folded)) unsupported(`${path}/name`, 'the name repeats an earlier name of the table, A to Z folded');
+      seen.add(folded);
+      return Object.freeze({ name, value: view.getInt32(index * size + 4, true) });
+    }));
+  });
+  for (const [key, region] of regions) {
+    if (!texts.has(key)) mismatch(region.location, 'no keyword pair names the region');
+  }
+  return Object.freeze(result) as KeywordTables;
 }
 
 /**
@@ -447,6 +560,7 @@ export function parseAiPrograms(archive: DiscPath, sources: AiProgramSources, gr
     programs: Object.freeze(records.map(({ parametersId, values }) => Object.freeze({ ...values, parameters: index(parametersId) }))),
     entries: Object.freeze(entries),
     builtInPrograms: Object.freeze(parseBuiltIn(sources.builtIn, sources.builtInNames)),
+    keywordTables: parseKeywordTables(sources.keywordTables, sources.keywordNames),
   });
   return Object.freeze({ content, entryIds: Object.freeze(entryIds) });
 }

@@ -15,12 +15,12 @@
  * its destroyed flag, the player's kill counters, `object-destroyed`, then a parked victim waits for removal and any
  * other goes to destruction.ts's entry (P3-07/18: the explosion, or the player's delayed one).
  *
- * The calls of other tasks at fixed places of these rules (CR-13) are not here yet; each owner adds its static call, and
- * the state it keeps across ticks is its own:
- * - `0x3c208` (P3-10, with its draws): in `0x2a694` after the shield, when the attacker is not `none`; in `0x2a5fc`
- *   after `0x2a694`, when the hull is at least 0;
- * - `0x3c0f4` (P3-10): at the destruction, after the destroyed flag, before the object event; in `0x2a5fc` after
- *   `0x2a694`, when the hull is below 0 (so a collision kill below 0 calls it twice, D5);
+ * The calls of other tasks at fixed places of these rules (CR-13) are static calls; the state each keeps across ticks is
+ * its own:
+ * - `0x3c208` (P3-10, comm-reactions.ts, with its draws): in `0x2a694` after the shield and before the hull, when the
+ *   attacker is not `none`; in `0x2a5fc` after `0x2a694`, when the hull is at least 0, also for a gated victim;
+ * - `0x3c0f4` (P3-10, comm-reactions.ts): at the destruction, after the destroyed flag, before the object event; in
+ *   `0x2a5fc` after `0x2a694`, when the hull is below 0 (so a collision kill below 0 calls it twice, D5);
  * - `0x6977c` (P3-11): right after that `0x3c0f4`, with the event class of `object-destroyed`; handled at once;
  * - `0x32d74` (P3-11) for the player, before the destruction entry, and `0x32dec` (P3-11) for the wingman, before the
  *   parked test; the kill counters come before both.
@@ -28,6 +28,7 @@
 import type { Attacker, HitEvent } from '../contracts/domain-events.ts';
 import { CoreFaultError } from '../errors.ts';
 import type { CraftEntity } from '../rules/combat-init.ts';
+import { attackerKind } from '../rules/comm-reactions.ts';
 import { absorbByShield, damageHull } from '../rules/damage.ts';
 import { RandStream } from '../rules/original-random.ts';
 import { toInt32 } from '../rules/record-defaults.ts';
@@ -36,6 +37,7 @@ import { damageSubsystems } from '../rules/subsystems.ts';
 import type { Entity } from '../world/entity-table.ts';
 import { KILL_KIND_BITS, type KillKindBit } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { reactToDestruction, reactToHit } from './comm-reactions.ts';
 import { destroyEntity } from './destruction.ts';
 import { emit, type TickContext } from './pipeline.ts';
 
@@ -96,13 +98,15 @@ function countKill(world: WorldState, kindBit: number): void {
 }
 
 /**
- * The destruction in `0x2a694` (D2, D8): the destroyed flag; `object-destroyed` where the object event goes, class 0
- * for the player's kill; the player's kill counter by the victim's kind, for victims other than the player and the
- * wingman; then a parked victim waits for removal without exploding, and any other goes to the destruction entry.
+ * The destruction in `0x2a694` (D2, D8): the destroyed flag; `0x3c0f4`; `object-destroyed` where the object event
+ * goes, class 0 for the player's kill; the player's kill counter by the victim's kind, for victims other than the player
+ * and the wingman; then a parked victim waits for removal without exploding, and any other goes to the destruction
+ * entry.
  */
-function destroy(context: TickContext, victim: CraftEntity, attacker: Attacker): void {
+function destroy(context: TickContext, victim: CraftEntity, { attacker, source }: Blow): void {
   const { world } = context;
   victim.destroyed = true;
+  reactToDestruction(context, attackerKind(attacker), source, victim);
   const byPlayer = attacker.type === 'shooter' && attacker.kindBit === PLAYER_KIND_BIT;
   const player = victim.kindBit === PLAYER_KIND_BIT;
   const outcome = player ? 'delayed' : victim.activity === 'parked' ? 'removed' : 'explodes';
@@ -130,9 +134,9 @@ function projectileOutcome(world: WorldState, victim: Entity, absorbed: boolean)
 }
 
 /**
- * `0x2a694` on a victim not yet destroyed, then `hit`: the destruction-view gate, the shield, the hull and a subsystem
- * roll (with the status-display redraw of the player's damaged subsystem and the heavy-damage note), `hit`, and the
- * destruction when the hull is at 0 or below and the shield did not take the whole damage.
+ * `0x2a694` on a victim not yet destroyed, then `hit`: the destruction-view gate, the shield, `0x3c208` for an attacker,
+ * the hull and a subsystem roll (with the status-display redraw of the player's damaged subsystem and the heavy-damage
+ * note), `hit`, and the destruction when the hull is at 0 or below and the shield did not take the whole damage.
  */
 function damageCraft(context: TickContext, victim: CraftEntity, damage: number, blow: Blow): DamageOutcome {
   const { world } = context;
@@ -144,8 +148,12 @@ function damageCraft(context: TickContext, victim: CraftEntity, damage: number, 
   if (!gated) {
     const craft = world.craftInfo.content.craft[victim.kindBit];
     if (craft === undefined) throw fault('craft');
+    const shieldRand = new RandStream(world.rngState);
+    const hullDamage = absorbByShield(combat, damage, shieldRand);
+    world.rngState = shieldRand.state;
+    const kind = attackerKind(blow.attacker);
+    if (kind !== 0) reactToHit(context, kind, blow.source, victim, damage);
     const rand = new RandStream(world.rngState);
-    const hullDamage = absorbByShield(combat, damage, rand);
     damageHull(combat, hullDamage);
     const roll = damageSubsystems(victim, craft, { hullDamage, noAttacker: blow.attacker.type === 'none', sourceKindBit: blow.source?.kindBit ?? null }, rand);
     world.rngState = rand.state;
@@ -171,7 +179,7 @@ function damageCraft(context: TickContext, victim: CraftEntity, damage: number, 
     impact: blow.impact,
     projectile,
   });
-  if (!gated && !absorbed && combat.hull <= 0) destroy(context, victim, blow.attacker);
+  if (!gated && !absorbed && combat.hull <= 0) destroy(context, victim, blow);
   return { absorbed, projectile };
 }
 
@@ -211,7 +219,8 @@ export function applyShotHit(context: TickContext, source: Entity, victim: Entit
 
 /**
  * `0x2a5fc`: `damage` (i32, as the caller computed it) to `victim` from a collision or AI area damage. Nothing for a
- * destroyed victim; otherwise the hit feedback clock, then `0x2a694` without an attacker or source, and `hit`.
+ * destroyed victim; otherwise the hit feedback clock, then `0x2a694` without an attacker or source, and `hit`; then
+ * `0x3c208` without an attacker when the hull is at 0 or above, otherwise `0x3c0f4` once more (D5).
  */
 export function applyContactDamage(context: TickContext, victim: Entity, damage: number, cause: 'collision' | 'area'): void {
   const target = listedVictim(context.world, victim);
@@ -219,6 +228,8 @@ export function applyContactDamage(context: TickContext, victim: Entity, damage:
   if (target.destroyed) return;
   target.combat.hitFeedbackClock = context.world.clock;
   damageCraft(context, target, damage, { cause, source: null, attacker: { type: 'none' }, impact: null });
+  if (target.combat.hull >= 0) reactToHit(context, 0, null, target, damage);
+  else reactToDestruction(context, 0, null, target);
 }
 
 /**

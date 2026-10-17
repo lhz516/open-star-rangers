@@ -362,10 +362,31 @@ describe('the steer request', () => {
     expect(blockOf(entity)).toEqual(before);
   });
 
-  it('faults for an entity that is no missile, as only missiles post it', () => {
+  it('applies a block on an AI craft through 0x21fd8 with its craft record\'s rates and its maximum speed (CR-21)', () => {
     const state = world();
     const craft = craftAt(state, PLAIN, at(0, 0, 0));
-    expectFault(() => applySteer(contextOf(state), craft, steer(craft.id, steering(1, 0, 0))), 'invariant-violated', 'missiles.steer');
+    applySteer(contextOf(state), craft, steer(craft.id, { ...steering(0.5, 0.25, -0.5), speedFactor: 0.5 }));
+    // The synthetic craft record's rates: +0xAC 0.75 (pitch), +0xB4 0.25 (yaw); the maximum TEST_MAXIMUM_SPEED.
+    expect(blockOf(craft).steering).toEqual({ pitch: { rate: f32(-0.09375), enabled: true }, yaw: { rate: 0.0625, enabled: true }, roll: { rate: 0, enabled: false } });
+    expect(blockOf(craft)).toMatchObject({ commandedSpeed: TEST_MAXIMUM_SPEED / 2, atCommandedSpeed: false });
+  });
+
+  it('changes nothing on a craft without a block or with a locked one', () => {
+    const state = world();
+    const parked = craftAt(state, PLAIN, at(0, 0, 0), { activity: 'parked', movement: null });
+    applySteer(contextOf(state), parked, steer(parked.id, steering(1, 1, 1)));
+    expect(parked.movement).toBe(null);
+    const locked = craftAt(state, PLAIN, at(0, 0, 0));
+    blockOf(locked).locked = true;
+    const before = structuredClone(blockOf(locked));
+    applySteer(contextOf(state), locked, steer(locked.id, { scale: 1, axes: [setTo(0.5), setTo(0), setTo(0.5)], speedFactor: 1 }));
+    expect(blockOf(locked)).toEqual(before);
+  });
+
+  it('faults for an entity that is neither a missile nor a craft', () => {
+    const state = world();
+    const marker = state.entities.allocate(entityInit(25));
+    expectFault(() => applySteer(contextOf(state), marker, steer(marker.id, steering(1, 0, 0))), 'invariant-violated', 'missiles.steer');
   });
 });
 
@@ -480,13 +501,17 @@ describe('the expire request (0x2b408)', () => {
 
   it('leaves a victim of a kind in 0xf9c7c unshaken and draws only for its damage', () => {
     const state = world();
-    state.rngState = seedWhere(1, ([value]) => (value & 0xff) >= 0x32);
+    // Without a shooter the attacker is the hostile mask 0x93780, so P3-10's 0x3c208 first draws the active kind-3
+    // (0x87c) victim's face at its first speech (rand % 3, executable RX9 row 4), and stamps it; the missile's forced
+    // roll then takes the second draw.
+    state.rngState = seedWhere(2, ([, forced]) => (forced & 0xff) >= 0x32);
     const seed = state.rngState;
     const victim = craftAt(state, EXEMPT, at(0, 0, 1));
     const before = structuredClone(blockOf(victim));
     const entity = missileAt(state, UNGUIDED, at(0, 0, 0), { detonate: true, guidance: guidanceOf({ phase: 4 }) });
     expect(emitted(state, expire(entity))).toMatchObject([{ type: 'missile-ended' }, { type: 'hit', victimEntityId: victim.id, damage: DAMAGE }]);
     expect(blockOf(victim)).toEqual(before);
-    expect(state.rngState).toBe(rngStateAfter(seed, 1));
+    expect(victim.communications.face).toBe(randValues(seed, 1)[0] % 3);
+    expect(state.rngState).toBe(rngStateAfter(seed, 2));
   });
 });

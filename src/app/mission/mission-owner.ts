@@ -8,11 +8,15 @@
  *   (P3-06 D-01) and its rule-data inputs (docs/plan/p3/02/spec.md, CR-01), with the models of the craft the run can
  *   instantiate. One of these the package lacks or that does not decode fails each start as world creation's refusal
  *   does.
- * - **Flow:** G-02/1, the start page, G-02/2 over a run held at tick 0, flight, the pausing mission menu, and the end of a
- *   run that faulted or stopped (`mission-flow.ts`). Restart exits the run and begins again at G-02/1.
+ * - **Flow:** G-02/1, the start page, G-02/2 over a run held at tick 0, flight, G-02/3 and G-02/4 over a run held after
+ *   a transition tick (运行中衔接（P3-10 的修订）), the pausing mission menu, and the end of a run that faulted or stopped
+ *   (`mission-flow.ts`). Restart exits the run and begins again at G-02/1.
  * - **Placeholders:** one one-shot timer at a time, checked against the monotonic clock, counts 3,000 ms of time the
  *   session reports as visible without pagehide; hidden time keeps the remainder and revokes the timer. Each placeholder
- *   ends once, naturally or by skip; a timer or clock failure stops it visibly, and only leaving the screen follows.
+ *   ends once, naturally or by skip; a timer or clock failure stops it visibly, and only leaving the screen follows. A
+ *   running hold shows one placeholder per item of the session's sequence, whose end completes that item with this
+ *   owner's session, the runId and the item's transitionId; a late timer or a repeated skip finds no placeholder of its
+ *   own to end.
  * - **Ownership:** the session, its run-level consumers (released by the session, newest first, when each run ends),
  *   owner-level consumers by stage, and one leave-page guard while a run exists. Release order: input and timers,
  *   session, UI bridge and diagnostics, leave guard, then picture, audio and the like; every step is attempted and any
@@ -196,14 +200,32 @@ export interface MissionPlaceholder {
   readonly failure: { readonly cause: unknown } | null;
 }
 
-export type MissionOperation = 'pause' | 'resume' | 'open-menu' | 'continue' | 'restart' | 'complete-departure';
+/** The placeholder of one item of a running hold (G-02/3 docking, G-02/4 launch), bound to its run and transition. */
+export interface MissionTransitionPlaceholder {
+  /** From the same sequence as `MissionPlaceholder.id`; `skip` takes either. */
+  readonly id: number;
+  readonly gap: 'G-02/3' | 'G-02/4';
+  readonly runId: number;
+  /** The session's transitionId of this item. */
+  readonly transitionId: number;
+  /** The item's position in its tick's sequence, from 0, and the sequence's length. */
+  readonly index: number;
+  readonly count: number;
+  readonly status: MissionPlaceholder['status'];
+  readonly failure: MissionPlaceholder['failure'];
+}
+
+export type MissionOperation = 'pause' | 'resume' | 'open-menu' | 'continue' | 'restart' | 'complete-departure' | 'complete-transition';
 
 export interface MissionOwnerSnapshot {
   readonly ownerId: number;
   readonly released: boolean;
   readonly config: MissionConfigView;
   readonly flow: MissionFlowState;
+  /** G-02/1 or G-02/2 while one shows. */
   readonly placeholder: MissionPlaceholder | null;
+  /** The current item of a running hold while the flow is at `transition`. */
+  readonly transitionPlaceholder: MissionTransitionPlaceholder | null;
   /** The session's latest status. */
   readonly session: GameSessionStatus;
   /** Why the last action failed; cleared by the next action. */
@@ -289,11 +311,17 @@ const isThenable = (value: unknown): value is PromiseLike<unknown> =>
 
 const isUint32 = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 0xffff_ffff;
 
+/** What a placeholder shows besides its id and timing status. */
+type PlaceholderPage =
+  | Pick<MissionPlaceholder, 'gap' | 'variant'>
+  | Pick<MissionTransitionPlaceholder, 'gap' | 'runId' | 'transitionId' | 'index' | 'count'>;
+type HoldPage = Extract<PlaceholderPage, { readonly transitionId: number }>;
+const isHold = (page: PlaceholderPage): page is HoldPage => 'transitionId' in page;
+
 /** One placeholder's timing; `token` identifies the scheduled callback, so a cancelled or late one does nothing. */
 interface Timing {
   readonly id: number;
-  readonly gap: MissionPlaceholder['gap'];
-  readonly variant: MissionPlaceholder['variant'];
+  readonly page: PlaceholderPage;
   remainingMs: number;
   /** The clock reading at which the current visible stretch began; null while not timing. */
   since: number | null;
@@ -418,7 +446,7 @@ class Owner implements MissionOwner {
       if (failures.length > 0) throw new RollbackError(cause, failures, 'Mission owner creation and rollback failed');
       throw cause;
     }
-    this.#beginPlaceholder('G-02/1', null);
+    this.#beginPlaceholder({ gap: 'G-02/1', variant: null });
     this.#publish();
   }
 
@@ -433,7 +461,7 @@ class Owner implements MissionOwner {
 
   skip(placeholderId: number): void {
     const timing = this.#timing;
-    if (!this.#ready('intro', 'departure') || timing?.id !== placeholderId || timing.failure) return;
+    if (!this.#ready('intro', 'departure', 'transition') || timing?.id !== placeholderId || timing.failure) return;
     this.#act(() => { this.#endPlaceholder(timing); });
   }
 
@@ -552,8 +580,9 @@ class Owner implements MissionOwner {
     return this.#released;
   }
 
+  /** Intents are for event handlers: none applies inside another or inside a session callback, which refuses control. */
   #ready(...positions: MissionFlowState['position'][]): boolean {
-    return !this.#released && !this.#acting && positions.includes(this.#flow.position);
+    return !this.#released && !this.#acting && this.#inSession === 0 && positions.includes(this.#flow.position);
   }
 
   /** Applies one intent: no other intent applies meanwhile, and the snapshot is published once after it. */
@@ -644,7 +673,7 @@ class Owner implements MissionOwner {
     this.#revokeGuard = revoke as Revoke;
     this.#link.confirm(Object.freeze({ identity: this.#identityKey, wingman }));
     this.#next({ type: 'started', runId: run.runId });
-    this.#beginPlaceholder('G-02/2', variant);
+    this.#beginPlaceholder({ gap: 'G-02/2', variant });
   }
 
   #failStart(failure: MissionStartFailure): void {
@@ -702,12 +731,12 @@ class Owner implements MissionOwner {
     }
     if (thrown) this.#report(thrown.cause);
     this.#next({ type: 'restarted' });
-    this.#beginPlaceholder('G-02/1', null);
+    this.#beginPlaceholder({ gap: 'G-02/1', variant: null });
   }
 
-  #beginPlaceholder(gap: Timing['gap'], variant: Timing['variant']): void {
+  #beginPlaceholder(page: PlaceholderPage): void {
     if (this.#released) return;
-    this.#timing = { id: ++this.#placeholders, gap, variant, remainingMs: PLACEHOLDER_MS, since: null, handle: null, token: null, failure: null };
+    this.#timing = { id: ++this.#placeholders, page: Object.freeze(page), remainingMs: PLACEHOLDER_MS, since: null, handle: null, token: null, failure: null };
     if (this.#session.status().environmentVisible) this.#resumeTiming();
   }
 
@@ -794,7 +823,10 @@ class Owner implements MissionOwner {
     this.#report(cause);
   }
 
-  /** Ends a placeholder once, naturally or by skip: G-02/1 opens the start page, G-02/2 releases the run's hold. */
+  /**
+   * Ends a placeholder once, naturally or by skip: G-02/1 opens the start page, G-02/2 releases the run's hold, and a
+   * running hold's item completes that item; the session's status then shows the next item or the hold's end.
+   */
   #endPlaceholder(timing: Timing): void {
     try {
       this.#cancelTimer();
@@ -803,7 +835,21 @@ class Owner implements MissionOwner {
       return this.#failTiming(timing, cause);
     }
     this.#timing = null;
-    if (timing.gap === 'G-02/1') {
+    const { page } = timing;
+    if (isHold(page)) {
+      try {
+        this.#session.control({ type: 'complete-transition', runId: page.runId, transitionId: page.transitionId });
+      } catch (cause) {
+        // A hold that ended meanwhile refuses the completion; its end is in the flow already. Any other refusal shows.
+        const { transition } = this.#session.status();
+        const ended = transition === null || transition.gap === 'G-02/2' || transition.transitionId !== page.transitionId;
+        if (!(ended && cause instanceof GameSessionError && cause.kind === 'invalid-state')) {
+          this.#actionError = Object.freeze({ operation: 'complete-transition', cause });
+        }
+      }
+      return;
+    }
+    if (page.gap === 'G-02/1') {
       const preselection = preselectWingman(this.#link.confirmed(), this.#identityKey, this.#config.wingmanOptions.length);
       return this.#next({ type: 'intro-ended', preselection });
     }
@@ -824,16 +870,10 @@ class Owner implements MissionOwner {
       if (!this.#acting) this.#latchSession(status);
       const { runId } = this.#flow;
       if ((status.phase === 'faulted' || status.phase === 'stopped') && runId !== null && status.runId === runId) {
-        if (this.#timing) {
-          try {
-            this.#cancelTimer();
-          } catch (cause) {
-            this.#latch(cause);
-          }
-          this.#timing = null;
-        }
+        this.#dropTiming();
         this.#next({ type: 'run-ended', reason: status.phase });
       }
+      if (runId !== null && status.runId === runId) this.#followHold(status, runId);
       if (status.environmentVisible) this.#resumeTiming();
       else this.#suspendTiming();
       if (!this.#acting) this.#publish();
@@ -842,6 +882,35 @@ class Owner implements MissionOwner {
     }
     return undefined;
   };
+
+  /**
+   * Keeps the flow and placeholder with the run's hold: its entry, each new item (a placeholder bound to the item's
+   * transitionId), and its end, after which the run runs or waits paused.
+   */
+  #followHold(status: GameSessionStatus, runId: number): void {
+    const { transition } = status;
+    if (status.phase === 'transition' && transition !== null && transition.gap !== 'G-02/2') {
+      this.#next({ type: 'transition-held' });
+      const current = this.#timing?.page;
+      if (current && isHold(current) && current.transitionId === transition.transitionId) return;
+      this.#dropTiming();
+      const { gap, transitionId, index, count } = transition;
+      this.#beginPlaceholder({ gap, runId, transitionId, index, count });
+    } else if (status.phase === 'running' || status.phase === 'paused') {
+      this.#next({ type: 'transition-ended' });
+    }
+  }
+
+  /** Revokes the current placeholder without ending it; a failed cancellation latches. */
+  #dropTiming(): void {
+    if (!this.#timing) return;
+    try {
+      this.#cancelTimer();
+    } catch (cause) {
+      this.#latch(cause);
+    }
+    this.#timing = null;
+  }
 
   /** Runs `action` as the session's own processing, during which the input control port refuses intents. */
   #within(action: () => undefined): undefined {
@@ -897,18 +966,18 @@ class Owner implements MissionOwner {
 
   #build(): MissionOwnerSnapshot {
     const timing = this.#timing;
+    const shown = timing && {
+      id: timing.id,
+      status: timing.failure ? 'failed' as const : timing.since === null ? 'waiting' as const : 'timing' as const,
+      failure: timing.failure,
+    };
     return Object.freeze({
       ownerId: this.ownerId,
       released: this.#released !== null,
       config: this.#config,
       flow: this.#flow,
-      placeholder: timing && Object.freeze({
-        id: timing.id,
-        gap: timing.gap,
-        variant: timing.variant,
-        status: timing.failure ? 'failed' : timing.since === null ? 'waiting' : 'timing',
-        failure: timing.failure,
-      }),
+      placeholder: timing && shown && !isHold(timing.page) ? Object.freeze({ ...timing.page, ...shown }) : null,
+      transitionPlaceholder: timing && shown && isHold(timing.page) ? Object.freeze({ ...timing.page, ...shown }) : null,
       session: this.#session.status(),
       actionError: this.#actionError,
       cleanupFailure: this.#cleanupFailure,

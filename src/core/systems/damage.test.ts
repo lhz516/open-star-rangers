@@ -397,3 +397,62 @@ describe('no scaling on these entries (D2, AC-09)', () => {
     }
   });
 });
+
+describe('the communications reactions at their call points (CR-13; P3-10 CB-12; D2, D5, RX4)', () => {
+  // Pool name 0 is TABL 2001 position 2: a destroyed friendly's message is 20983 index 0x41 + 2, which resolves here.
+  const LOST = 0x41 + 2;
+
+  function reactionScene(): Scene {
+    const sc = scene();
+    const { communications } = sc.state.ruleData;
+    const messages = { ...communications.messages, direct: Object.freeze(Array.from({ length: 70 }, () => Object.freeze([1]))) };
+    const nameIndexes = { ...communications.nameIndexes, pool: Object.freeze([{ in2001: 2, in2011: null }]) };
+    const state: WorldState = { ...sc.state, ruleData: { ...sc.state.ruleData, communications: { ...communications, messages, nameIndexes } } };
+    return { state, context: registerTick(state, readTickInput(tickInput())), player: sc.player };
+  }
+  const radioMessages = (context: TickContext) => context.events.flatMap((event) => (event.type === 'radio-queued' ? [event.message.index] : []));
+
+  it('runs 0x3c208 after the shield\'s draw and before the hull and the hit event: an active craft\'s face is drawn second', () => {
+    const { state, context } = scene();
+    const enemy = craftIn(state, 7, 50, 100);
+    const craft = arm(craftIn(state, 2, 1000, 100), 1000, 100, { 4: 1 });
+    const seed = drawNext(state, 1, ([value]) => (value & 0xff) >= 0x54);
+    applyShotHit(context, projectileOf(state, enemy.id), craft, 10, IMPACT);
+    expect(craft.communications.face).toBe(randValues(seed, 2)[1] % 3);
+    expect(craft.communications.threatStamp).toBe(context.time.clock);
+    expect(state.rngState).toBe(rngStateAfter(seed, 2));
+  });
+
+  it('reads the wingman\'s hull before this hit\'s damage in 0x2a694 and after it in 0x2a5fc', () => {
+    for (const contact of [false, true]) {
+      const { state, context } = scene();
+      const capacity = state.craftInfo.content.craft[1]!.at9C;
+      const threshold = Math.trunc((capacity * 30) / 100);
+      const wingman = craftIn(state, 1, 0, threshold);
+      if (contact) applyContactDamage(context, wingman, 1, 'collision');
+      else applyShotHit(context, projectileOf(state, craftIn(state, 7, 50, 100).id), wingman, 1, IMPACT);
+      expect(wingman.combat.hull).toBe(threshold - 1);
+      expect(state.communications.limits.wingmanLowHull).toBe(contact ? context.time.clock + 0x5a00 : 0);
+    }
+  });
+
+  it('runs 0x3c0f4 at the destruction before object-destroyed, and once more after a contact kill below 0, not after one at exactly 0', () => {
+    for (const [hull, losses] of [[5, 2], [10, 1]] as const) {
+      const { state, context } = reactionScene();
+      const base = craftIn(state, 17, 0, hull, { name: { type: 'pool', index: 0 } });
+      applyContactDamage(context, base, 10, 'collision');
+      expect(radioMessages(context)).toEqual(Array.from({ length: losses }, () => LOST));
+      const types = context.events.map(({ type }) => type);
+      expect(types.indexOf('radio-queued')).toBeLessThan(types.indexOf('object-destroyed'));
+    }
+  });
+
+  it('passes the player\'s hit and kill of a friendly to 0x3c208 and 0x3c0f4 with attacker kind 1', () => {
+    const { state, context, player } = reactionScene();
+    const base = craftIn(state, 17, 0, 5, { name: { type: 'pool', index: 0 } });
+    applyShotHit(context, projectileOf(state, player.id), base, 10, IMPACT);
+    expect(radioMessages(context)).toEqual([4, 5]);
+    expect(state.player.communications.limits).toEqual({ friendlyHit: context.time.clock, friendlyKill: context.time.clock });
+
+  });
+});

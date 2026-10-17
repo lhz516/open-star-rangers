@@ -7,28 +7,35 @@
  * Draws, in the original's order: a request's placement draws (each group member's layout cycle placing its anchor
  * first), then each instantiation's own: name fallbacks, then those of the extension point (docs/plan/p3/06/spec.md,
  * 实例化扩展; docs/plan/p3/02/spec.md, CR-07): P3-07's first energy update `0x3060c`, P3-06's initial AI state
- * `0x68050` and Warp timer +0xC8. The other rule tasks add theirs at the marked places: `0x20990` (P3-08), `0x38cd4`
- * (P3-10).
+ * `0x68050` and Warp timer +0xC8, P3-08's program selection `0x20990` (one or two starts, rules/ai-selection.ts; the
+ * controller installs at the object's first callback, ai.ts), and P3-10's `0x38cd4` (comm-reactions.ts) for an active
+ * hostile. Every draw steps the world's generator directly, so a report that draws itself interleaves in the original's
+ * order.
  *
  * The original's resource test `0x6a0b8` after allocation, whose failure conditions were not established, always
  * passes here (a disclosed difference).
  */
 import type { Vector3 } from '../../content/logic/logic-content.ts';
-import type { EntitySource, ObjectInstantiatedEvent } from '../contracts/domain-events.ts';
+import type { EntitySource } from '../contracts/domain-events.ts';
 import { isDue } from '../contracts/time.ts';
 import { CoreFaultError } from '../errors.ts';
 import { initialiseCraftCombat, type CraftEntity } from '../rules/combat-init.ts';
 import { initialMovementBlock, initialWarpClock } from '../rules/flight-state.ts';
+import { selectionSubject, selectProgram } from '../rules/ai-selection.ts';
 import { aiCandidates, initialAiState } from '../rules/initial-ai.ts';
 import { assignName } from '../rules/name-assignment.ts';
-import { RandStream } from '../rules/original-random.ts';
+import { HOSTILE_KINDS } from '../rules/comm-reactions.ts';
+import { RandStream, type RandSource } from '../rules/original-random.ts';
 import { memberPosition, placeRecord, type AttitudeRows, type Placement, type PlacementRecord } from '../rules/placement.ts';
 import { activeAreaCentre, isWithinActiveArea } from '../rules/active-area.ts';
+import { hasKind } from '../rules/radio.ts';
 import { firingRecord, PLAYER_KIND_BIT, postsRequests } from '../rules/spawn-schedule.ts';
 import { allocatorFlightState, blankCraftCombat, setActivity, type Entity, type EntityRuleInputs, type Matrix3 } from '../world/entity-table.ts';
 import { COCKPIT_VIEW_MODE, initialPlayerControl, initialPlayerTargeting } from '../world/player-state.ts';
 import type { RuntimeRecord, SpawnEntry, SpawnSourceType } from '../world/spawn-state.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { reportEnemyAppears } from './comm-reactions.ts';
+import { emit, type TickContext } from './pipeline.ts';
 
 /** Message 0x4000: one spawn request of a firing queue entry. */
 export interface SpawnRequest {
@@ -38,6 +45,18 @@ export interface SpawnRequest {
   readonly index: number;
   /** The request's number within the firing, from 0. */
   readonly request: number;
+}
+
+/** Draws straight from the world's generator, one RNG step per value. */
+function worldRand(world: WorldState): RandSource {
+  return {
+    next() {
+      const stream = new RandStream(world.rngState);
+      const value = stream.next();
+      world.rngState = stream.state;
+      return value;
+    },
+  };
 }
 
 const IDENTITY: Matrix3 = Object.freeze([1, 0, 0, 0, 1, 0, 0, 0, 1]) as unknown as Matrix3;
@@ -90,7 +109,7 @@ function anchoredPosition(world: WorldState, anchor: number): Vector3 | null {
  * The placement service (`0x68398`) for one of the world's records, at this moment; also for P3-11's rescue. Draws from
  * `rand` as placeRecord does.
  */
-export function placeWorldRecord(world: WorldState, record: RuntimeRecord, rand: RandStream): Placement {
+export function placeWorldRecord(world: WorldState, record: RuntimeRecord, rand: RandSource): Placement {
   const placementRecord: PlacementRecord = {
     gridSpacing: record.gridSpacing,
     anchor: record.anchor === null ? null : { target: anchoredPosition(world, record.anchor) },
@@ -108,15 +127,8 @@ function entityRuleInputs({ percentB, percentC, percentD, aiValueA, aiValueB, ai
 }
 
 /** Instantiation `0x67938` of `record` at a placed position and attitude; emits `object-instantiated`. */
-function instantiate(
-  world: WorldState,
-  record: RuntimeRecord,
-  source: EntitySource,
-  position: Vector3,
-  attitude: AttitudeRows,
-  rand: RandStream,
-  emit: (event: ObjectInstantiatedEvent) => void,
-): Entity {
+function instantiate(context: TickContext, record: RuntimeRecord, source: EntitySource, position: Vector3, attitude: AttitudeRows, rand: RandSource): Entity {
+  const { world } = context;
   const declaration = (source.collection === 'mission' ? world.setup.declarations : world.setup.wingmanOptions)[source.index];
   const kindBit = declaration.craftType;
   // World creation admits no kind-0 record that spawns and binds every kind to a model and a craft record (D-01).
@@ -147,7 +159,9 @@ function instantiate(
   entity.ai = initialAiState(world.entities, entity, aiCandidates(record, world.spawn, world.setup), world.spawn.frame, rand);
   entity.lastParkedUpdateClock = world.clock;
   entity.warpClock = initialWarpClock(kindBit, world.clock, rand);
-  // `0x20990` (P3-08) goes here.
+  // `0x20990`: only the program selection, its draws here; the first callback installs the controller (CR-23).
+  const { ruleData } = world;
+  entity.ai.program = selectProgram(selectionSubject(entity), ruleData.ai.tablePrograms, ruleData.inputs.aiPrograms.content.builtInPrograms, rand);
   const player = kindBit === PLAYER_KIND_BIT;
   // An object other than the player starts active only inside the active area (`0x3a540`), the area check's test.
   if (player || isWithinActiveArea(activeAreaCentre(world), position)) {
@@ -155,8 +169,8 @@ function instantiate(
     // placement attitude, which 0x21794 writes back.
     setActivity(entity, 'active', initialMovementBlock(entity.maximumSpeed, craft.atB8));
     if (player) entity.orientation = IDENTITY;
+    else if (hasKind(HOSTILE_KINDS, kindBit)) reportEnemyAppears(context, position);
   }
-  // `0x38cd4` (P3-10) goes here.
   if (player) {
     world.player.entityId = entity.id;
     world.player.viewMode = COCKPIT_VIEW_MODE;
@@ -166,7 +180,7 @@ function instantiate(
     world.player.targeting = initialPlayerTargeting();
     world.player.statusDisplay.redraw = true;
   }
-  emit({ type: 'object-instantiated', tick: world.tick, entityId: entity.id, kindBit, source: entity.source as EntitySource, position: entity.position });
+  emit(context, { type: 'object-instantiated', tick: world.tick, entityId: entity.id, kindBit, source: entity.source as EntitySource, position: entity.position });
   return entity;
 }
 
@@ -174,7 +188,8 @@ const formationOffset = (offset: Vector3, first: Vector3): Vector3 =>
   Object.freeze({ x: Math.fround(offset.x - first.x), y: Math.fround(offset.y - first.y), z: Math.fround(offset.z - first.z) });
 
 /** A group request (`0x67678`, source 1): every member, a layout cycle at a time, then the group's count. */
-function dispatchGroup(world: WorldState, index: number, request: number, rand: RandStream, emit: (event: ObjectInstantiatedEvent) => void): void {
+function dispatchGroup(context: TickContext, index: number, request: number, rand: RandSource): void {
+  const { world } = context;
   const { template, members } = world.setup.groups[index];
   const group = world.spawn.groups[index];
   const templateRecord = world.spawn.records[template];
@@ -191,7 +206,7 @@ function dispatchGroup(world: WorldState, index: number, request: number, rand: 
       if (templateRecord.aiTarget !== null) memberRecord.aiTarget = templateRecord.aiTarget;
       if (templateRecord.aiTargetCraftTypes.length > 0) memberRecord.aiTargetCraftTypes = templateRecord.aiTargetCraftTypes;
       const source: EntitySource = { collection: 'mission', index: member, group: { index, request, member: position } };
-      const entity = instantiate(world, memberRecord, source, memberPosition(anchor.position, layout[cycle]), anchor.attitude, rand, emit);
+      const entity = instantiate(context, memberRecord, source, memberPosition(anchor.position, layout[cycle]), anchor.attitude, rand);
       // After instantiation: the cycle's first member leads, the later ones follow it at f32(l − layout[0]) (+0x7C,
       // +0x80–+0x88).
       if (group.leader === null) group.leader = entity.id;
@@ -203,19 +218,19 @@ function dispatchGroup(world: WorldState, index: number, request: number, rand: 
 
 /**
  * Request handling of a spawn request (`0x67678`): a section-1 record or the wingman places and instantiates one
- * object and counts it in its record; a group instantiates its members. Writes the world RNG state back. The original
- * instantiates nothing while its main flow is in state 1 (`0x339cc`), a state P3-11 introduces with its gate.
+ * object and counts it in its record; a group instantiates its members. The original instantiates nothing while its
+ * main flow is in state 1 (`0x339cc`), a state P3-11 introduces with its gate.
  */
-export function dispatchSpawn(world: WorldState, request: SpawnRequest, emit: (event: ObjectInstantiatedEvent) => void): void {
-  const rand = new RandStream(world.rngState);
+export function dispatchSpawn(context: TickContext, request: SpawnRequest): void {
+  const { world } = context;
+  const rand = worldRand(world);
   if (request.source === 'group') {
-    dispatchGroup(world, request.index, request.request, rand, emit);
+    dispatchGroup(context, request.index, request.request, rand);
   } else {
     const record = firingRecord(world.spawn, world.setup, request.source, request.index);
     const placement = placeWorldRecord(world, record, rand);
     const source: EntitySource = { collection: request.source === 'record' ? 'mission' : 'wingman', index: request.index, group: null };
-    instantiate(world, record, source, placement.position, placement.attitude, rand, emit);
+    instantiate(context, record, source, placement.position, placement.attitude, rand);
     record.spawnCount++;
   }
-  world.rngState = rand.state;
 }

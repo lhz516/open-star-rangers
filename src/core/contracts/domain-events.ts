@@ -5,11 +5,15 @@
  * object-instantiated. The speed and world-exit events are P3-06's (docs/plan/p3/06/spec.md, 检查点 A 定稿的状态与契约):
  * the player update emits the speed assist's events before the tick's command results and `speed-assist-toggled` right
  * after its command's result, request handling a manual match's `speed-matched`, and the parked update
- * `object-left-world`. P3-07's combat events and reasons follow (docs/plan/p3/02/spec.md, CR-05, CR-06). New event
- * types or reasons are added by revising the spec, not by consumers.
+ * `object-left-world`. P3-07's combat events and reasons follow (docs/plan/p3/02/spec.md, CR-05, CR-06), then P3-09's
+ * map and Warp events and reasons (MW-04, MW-05), then P3-10's communications, docking and base events and reason
+ * (CB-07, CB-13), then P3-08's wingman command and transponder events (CR-22). New event types or reasons are added by
+ * revising the spec, not by consumers.
  */
 import type { Activity, EntityId, ExplosionVariant, Level, Matrix3 } from '../world/entity-table.ts';
+import type { MapPixel } from '../world/map-rule-data.ts';
 import type { LeftPage, TargetMode } from '../world/player-state.ts';
+import type { MessageIdentity, MissionSubState, RadioCallback, SpeakerSnapshot } from '../world/world-state.ts';
 import type { CommandType } from './tick-input.ts';
 
 /** Fields every domain event has. */
@@ -45,10 +49,18 @@ export type CommandOutcome = (typeof COMMAND_OUTCOMES)[number];
  * - `cooldown`: the mount's interval has not passed;
  * - `misfire`: the damaged mount's draw failed;
  * - `out-of-arc`: an aimed gun has no solution towards its target.
+ * P3-09's (docs/plan/p3/02/spec.md, MW-04), both `ignored`; a Warp's interval reuses `cooldown`:
+ * - `no-destination`: a Warp request without a selected destination;
+ * - `insufficient-energy`: the Warp's cost exceeds the player's energy.
+ * P3-10's (CB-07):
+ * - `subsystem-disabled`: a player subsystem the command needs is in state 2;
+ * `no-candidate` also covers a communications menu without a qualifying object or item.
  */
 export const COMMAND_RESULT_REASONS = Object.freeze([
   'not-implemented', 'player-unavailable', 'wrong-context', 'no-target',
   'no-candidate', 'no-change', 'no-weapon', 'weapon-disabled', 'no-ammunition', 'insufficient-charge', 'cooldown', 'misfire', 'out-of-arc',
+  'no-destination', 'insufficient-energy',
+  'subsystem-disabled',
 ] as const);
 export type CommandResultReason = (typeof COMMAND_RESULT_REASONS)[number];
 
@@ -294,11 +306,264 @@ export interface EnergyAllocationChangedEvent extends DomainEventBase<'energy-al
   readonly commandIndex: number;
 }
 
-/** Right after an accepted page command's result. */
+/**
+ * Right after an accepted page command's result, including every communications menu command (CB-03); a page write
+ * without a command (a flush, an incoming message, the left display handler) emits it only when the page changes.
+ */
 export interface LeftPageChangedEvent extends DomainEventBase<'left-page-changed'> {
   readonly page: LeftPage;
   readonly previousPage: LeftPage;
   readonly commandIndex: number | null;
+}
+
+// P3-09's events (docs/plan/p3/02/spec.md, MW-05): detached fact snapshots like P3-07's, in finite runtime units.
+
+/** When request handling applies a `map-toggle`: the map opened or closed. The map itself has no original sound. */
+export interface MapToggledEvent extends DomainEventBase<'map-toggled'> {
+  readonly open: boolean;
+  /** The view mode and previous view mode after the toggle. */
+  readonly viewMode: number;
+  readonly previousViewMode: number;
+  readonly commandIndex: number;
+}
+
+/** What a select did to the map marker: created or moved it, or found none (MW-03). */
+export type WarpMarkerChange =
+  | { readonly type: 'created' | 'moved'; readonly entityId: EntityId }
+  | { readonly type: 'missing' };
+
+/** When request handling applies each select, even at an unchanged point (the click sound 10463); a hover never emits it. */
+export interface WarpDestinationSetEvent extends DomainEventBase<'warp-destination-set'> {
+  readonly playerEntityId: EntityId;
+  readonly destination: Vec3;
+  readonly pixel: MapPixel;
+  /** The icon the select hit, whose z the destination took; null for none. */
+  readonly icon: { readonly entityId: EntityId; readonly kindBit: number } | null;
+  readonly marker: WarpMarkerChange;
+  readonly commandIndex: number;
+}
+
+/** When request handling applies a `warp-start`, before its `left-page-changed`; the charge comes only at the completion. */
+export interface WarpStartedEvent extends DomainEventBase<'warp-started'> {
+  readonly playerEntityId: EntityId;
+  readonly serial: number;
+  readonly origin: Vec3;
+  readonly destination: Vec3;
+  /** R(d): the f32 start distance. */
+  readonly distance: number;
+  /** The gate's c and E (i32): the check, not a charge. */
+  readonly check: { readonly cost: number; readonly energy: number };
+  readonly transitLength: number;
+  readonly fromViewMode: number;
+  readonly commandIndex: number;
+}
+
+/** The arrival of a completed Warp whose player entity exists. */
+export interface WarpArrival {
+  readonly playerEntityId: EntityId;
+  readonly origin: Vec3;
+  readonly destination: Vec3;
+  readonly position: Vec3;
+  readonly orientation: Matrix3;
+  /** s at the completion. */
+  readonly error: number;
+  /** The object the nearest-object snap took (possibly the player itself or the marker); null without a snap. */
+  readonly snapped: EntityId | null;
+  /** trunc(D), c and the energy before and after the charge (i32). */
+  readonly charge: { readonly distance: number; readonly cost: number; readonly energyBefore: number; readonly energyAfter: number };
+  /** The new +0xC8. */
+  readonly warpClock: number;
+  /** `0x3c040`: a hostile object, not destroyed, in state ≥ 7 or 4, strictly nearer than the player craft's +0x0C (sound 10181). */
+  readonly hostileNear: boolean;
+}
+
+/**
+ * Once per Warp, in the `warp-completion` stage, before the `left-page-changed` that restores the page. A depletion by
+ * the charge is the next energy update's `energy-depleted`, not part of it.
+ */
+export interface WarpCompletedEvent extends DomainEventBase<'warp-completed'> {
+  readonly serial: number;
+  readonly viewMode: number;
+  readonly previousViewMode: 1;
+  /** Null when the player entity does not exist: only the view and page are restored. */
+  readonly arrival: WarpArrival | null;
+}
+
+// P3-10's events (docs/plan/p3/02/spec.md, CB-13): detached fact snapshots like P3-07's, without a clock, names or
+// content bytes.
+
+/** Request handling wrote the receiver's pending command; it does not say the receiver acted on it. */
+export interface CommandDeliveredEvent extends DomainEventBase<'command-delivered'> {
+  readonly receiverEntityId: EntityId;
+  readonly receiverKindBit: number;
+  /** A u32 from 1. */
+  readonly code: number;
+  readonly senderEntityId: EntityId;
+  readonly commandIndex: number;
+}
+
+/** Every queuing; `length` is the queue's after it. */
+export interface RadioQueuedEvent extends DomainEventBase<'radio-queued'> {
+  readonly message: MessageIdentity;
+  readonly callback: RadioCallback;
+  readonly speaker: SpeakerSnapshot | null;
+  /** A docking reply goes to the head, every other item in due order. */
+  readonly position: 'head' | 'sorted';
+  readonly length: number;
+}
+
+/** The `communications-reply` stage took the queue's head: the channel is loading. */
+export interface RadioTakenEvent extends DomainEventBase<'radio-taken'> {
+  readonly message: MessageIdentity;
+  readonly speaker: SpeakerSnapshot | null;
+}
+
+/** The presentation sub-step started playing a message. */
+export interface IncomingStartedEvent extends DomainEventBase<'incoming-started'> {
+  readonly message: MessageIdentity;
+  readonly speaker: SpeakerSnapshot | null;
+  /** i32, in 1/8 s. */
+  readonly frameDurations: readonly number[];
+  /** Page 5 shows it: the view mode is not 1. */
+  readonly shown: boolean;
+}
+
+/** The presentation sub-step ended a message and ran its callback. */
+export interface IncomingEndedEvent extends DomainEventBase<'incoming-ended'> {
+  readonly message: MessageIdentity;
+  readonly speaker: SpeakerSnapshot | null;
+  readonly callback: RadioCallback;
+  /** The callback moved sub-state 3 to 4. */
+  readonly countdownStarted: boolean;
+}
+
+/** A flush, after its `left-page-changed`; P3-11 adds its causes. */
+export interface RadioFlushedEvent extends DomainEventBase<'radio-flushed'> {
+  readonly cause: 'docking-cancel';
+  readonly removed: number;
+  readonly interrupted: 'none' | 'loading' | 'playing';
+}
+
+/** Command code 9's selection started the docking wait, after its command's result. */
+export interface DockingRequestedEvent extends DomainEventBase<'docking-requested'> {
+  readonly playerEntityId: EntityId;
+  readonly dockingObject: EntityId;
+  readonly previousSubState: MissionSubState;
+  readonly deadlineClock: number;
+  readonly commandIndex: number;
+}
+
+/** One of the three cancellations (DK1, DK2); the original gives no feedback. */
+export interface DockingCancelledEvent extends DomainEventBase<'docking-cancelled'> {
+  readonly playerEntityId: EntityId;
+  readonly dockingObject: EntityId;
+  readonly cause: 'timeout' | 'invalid-object' | 'gate';
+}
+
+/** A docking request handling applied; a gate failure has only its `docking-cancelled`. */
+export interface DockedEvent extends DomainEventBase<'docked'> {
+  readonly playerEntityId: EntityId;
+  readonly baseEntityId: EntityId;
+  readonly wingmanEntityId: EntityId | null;
+  readonly previousViewMode: number;
+}
+
+interface DepartedFields extends DomainEventBase<'departed'> {
+  readonly playerEntityId: EntityId;
+  readonly viewMode: number;
+  readonly previousViewMode: number;
+  readonly position: Vec3;
+  readonly orientation: Matrix3;
+  readonly wingmanEntityId: EntityId | null;
+}
+
+/** A launch request handling applied: the player's `l`, or sub-state 5's automatic launch. */
+export type DepartedEvent =
+  | (DepartedFields & { readonly origin: 'command'; readonly commandIndex: number })
+  | (DepartedFields & { readonly origin: 'automatic'; readonly commandIndex: null });
+
+/** Right after `docked` (G-02/3) or each `departed` (G-02/4): Runtime cuts the frame after this tick and holds. */
+export interface TransitionEvent extends DomainEventBase<'transition'> {
+  readonly gap: 'G-02/3' | 'G-02/4';
+}
+
+/** One per base navigation request; `row` is the cursor after it, null without a base service. */
+export interface BaseNavigatedEvent extends DomainEventBase<'base-navigated'> {
+  readonly direction: 'previous' | 'next';
+  readonly row: number | null;
+  readonly moved: boolean;
+  readonly commandIndex: number;
+}
+
+/** One per base confirmation request; `record` is the confirmed row's record, null without a base service. */
+export interface BaseConfirmedEvent extends DomainEventBase<'base-confirmed'> {
+  readonly row: number | null;
+  readonly record: number | null;
+  readonly moved: boolean;
+  readonly commandIndex: number;
+}
+
+// P3-08's events (docs/plan/p3/02/spec.md, CR-22): detached fact snapshots like P3-07's and P3-10's.
+
+export const WINGMAN_COMMAND_OUTCOMES = Object.freeze(['applied', 'fallback', 'refused', 'acknowledged', 'status', 'unknown-code'] as const);
+export type WingmanCommandOutcome = (typeof WINGMAN_COMMAND_OUTCOMES)[number];
+
+/** The status reply's lines, by hull percentage (WB3, WB4). */
+const STATUS_LINES: readonly number[] = [0xb, 0xc, 0xd];
+
+/**
+ * The outcomes and reply lines each path gives codes 1–6 (CR-22's 结果映射, WB3, WB4): outcome → line, null for no
+ * reply. Code 7 is `status` with a status line and every higher code `unknown-code` with line 3, on both paths.
+ */
+const WINGMAN_REPLIES: Readonly<Record<'active' | 'parked', readonly Partial<Record<WingmanCommandOutcome, number | null>>[]>> = {
+  active: [
+    { applied: 0x10, fallback: 0, refused: 0 },
+    { applied: 3, refused: 0 },
+    { applied: 0xe },
+    { applied: 0x14, fallback: 0 },
+    { applied: 0x12, fallback: 0 },
+    { applied: 0x12, fallback: 0x15 },
+  ],
+  parked: [
+    { applied: 0x10, refused: 0 },
+    { acknowledged: 3, refused: 0 },
+    { applied: 0xe, refused: null },
+    { applied: 0xe, refused: null },
+    { applied: 0x12, refused: 0 },
+    { applied: 0x12, refused: 0x15 },
+  ],
+};
+
+/** Whether a consumption of `code` on `path` may have `outcome` with `replyLine` (CR-22); `code` is a u32 from 1. */
+export function isWingmanCommandReply(path: 'active' | 'parked', code: number, outcome: WingmanCommandOutcome, replyLine: number | null): boolean {
+  if (!Number.isInteger(code) || code < 1) return false;
+  if (code === 7) return outcome === 'status' && replyLine !== null && STATUS_LINES.includes(replyLine);
+  if (code > 7) return outcome === 'unknown-code' && replyLine === 3;
+  return WINGMAN_REPLIES[path][code - 1][outcome] === replyLine;
+}
+
+/**
+ * A wingman consumed its pending command (`0x614a8` active, `0x61f20` parked), once, after the effect and the reply
+ * call and as the slot is cleared; a blocked or overwritten command has none. `issuedTick` is the tick of the
+ * delivery's `command-delivered`; `replyLine` is the line the reply call asked for (the drawn line and the message are
+ * in its `radio-queued`), null when the parked refusal of codes 3 and 4 does not reply.
+ */
+export interface WingmanCommandConsumedEvent extends DomainEventBase<'wingman-command-consumed'> {
+  readonly wingmanEntityId: EntityId;
+  /** A u32 from 1. */
+  readonly code: number;
+  readonly issuedTick: number;
+  readonly path: 'active' | 'parked';
+  readonly outcome: WingmanCommandOutcome;
+  readonly replyLine: number | null;
+}
+
+/** A `create-transponder` request constructed an active transponder (CR-20); a parked one, or a wingman's drop, has none. */
+export interface TransponderDeployedEvent extends DomainEventBase<'transponder-deployed'> {
+  readonly entityId: EntityId;
+  readonly creatorEntityId: EntityId;
+  readonly position: Vec3;
+  readonly orientation: Matrix3;
 }
 
 export type DomainEvent =
@@ -320,4 +585,23 @@ export type DomainEvent =
   | SourceReleasedEvent
   | EnergyDepletedEvent
   | EnergyAllocationChangedEvent
-  | LeftPageChangedEvent;
+  | LeftPageChangedEvent
+  | MapToggledEvent
+  | WarpDestinationSetEvent
+  | WarpStartedEvent
+  | WarpCompletedEvent
+  | CommandDeliveredEvent
+  | RadioQueuedEvent
+  | RadioTakenEvent
+  | IncomingStartedEvent
+  | IncomingEndedEvent
+  | RadioFlushedEvent
+  | DockingRequestedEvent
+  | DockingCancelledEvent
+  | DockedEvent
+  | DepartedEvent
+  | TransitionEvent
+  | BaseNavigatedEvent
+  | BaseConfirmedEvent
+  | WingmanCommandConsumedEvent
+  | TransponderDeployedEvent;

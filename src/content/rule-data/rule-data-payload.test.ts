@@ -7,6 +7,7 @@ import {
   checkRuleDataBinding, decodeRuleDataPayload, encodeRuleDataPayload, readRuleDataContent, RULE_DATA_ROLES,
   RULE_DATA_SCHEMA_VERSIONS, type RuleDataPayload, type RuleDataRole,
 } from './rule-data-payload.ts';
+import { foldKeywordName } from './ai-programs.ts';
 import { deepFrozen, F32_DENORMAL, MARKER, SYNTHETIC_RULE_DATA, syntheticRuleDataAsset } from './rule-data.test-support.ts';
 
 type Descriptor = Parameters<typeof decodeRuleDataPayload>[1];
@@ -27,6 +28,7 @@ const FIRST_KEYS: Readonly<Record<RuleDataRole, readonly [string, string]>> = {
   'comm-menus': ['gatedTargetCommands', 'otherTargetCommands'],
   'base-repair-items': ['subsystemSelectors', 'subsystemSelectors'],
   'flight-messages': ['missionComplete', 'beacon'],
+  'comm-messages': ['faceTables', 'direct'],
 };
 
 /** The reader path of each role's content. */
@@ -37,12 +39,13 @@ const ROOTS: Readonly<Record<RuleDataRole, string>> = {
   'comm-menus': 'commMenus',
   'base-repair-items': 'baseRepairItems',
   'flight-messages': 'flightMessages',
+  'comm-messages': 'commMessages',
 };
 
 describe('rule-data payload encoding', () => {
-  it('has a schema 1 for each of the six logic group roles', () => {
-    expect(RULE_DATA_ROLES).toEqual(['craft-info', 'debris-parameters', 'ai-programs', 'comm-menus', 'base-repair-items', 'flight-messages']);
-    expect(Object.values(RULE_DATA_SCHEMA_VERSIONS)).toEqual([1, 1, 1, 1, 1, 1]);
+  it('has a schema for each of the seven logic group roles: 2 for ai-programs with its keyword tables, 1 otherwise', () => {
+    expect(RULE_DATA_ROLES).toEqual(['craft-info', 'debris-parameters', 'ai-programs', 'comm-menus', 'base-repair-items', 'flight-messages', 'comm-messages']);
+    expect(Object.values(RULE_DATA_SCHEMA_VERSIONS)).toEqual([1, 1, 2, 1, 1, 1, 1]);
     expect(Object.isFrozen(RULE_DATA_ROLES) && Object.isFrozen(RULE_DATA_SCHEMA_VERSIONS)).toBe(true);
   });
 
@@ -187,6 +190,40 @@ describe('rule-data payload decoding', () => {
   });
 });
 
+describe('ai-programs keyword tables', () => {
+  const content = () => SYNTHETIC_RULE_DATA['ai-programs']() as { keywordTables: { name: string; value: number }[][] };
+  const read = (change: (tables: { name: string; value: number }[][]) => void) => {
+    const plain = content();
+    change(plain.keywordTables);
+    return () => readRuleDataContent('ai-programs', plain);
+  };
+
+  it('keeps the four tables, their pair order, i32 values and name bytes as given, shared names included', () => {
+    const decoded = readRuleDataContent('ai-programs', content());
+    const tables = decoded.role === 'ai-programs' ? decoded.content.keywordTables : [];
+    expect(tables).toEqual(content().keywordTables);
+    expect(tables[3]).toEqual(tables[0]);
+    expect(tables.flat().map(({ value }) => value)).toEqual(expect.arrayContaining([0, -1, 0x7fffffff, -0x80000000]));
+    // Bytes outside A–Z are not folded, so these two names of one table differ.
+    expect(foldKeywordName(tables[1][1].name)).not.toBe(foldKeywordName(tables[1][2].name));
+    expect(foldKeywordName('AZaz@[\xc4')).toBe('azaz@[\xc4');
+  });
+
+  it('rejects a name repeated within a table with A–Z folded, and accepts it across tables', () => {
+    expectContractError(read(tables => { tables[1][3].name = tables[1][0].name; }), 'invalid-logic-payload', 'aiPrograms.keywordTables[1][3].name', [MARKER]);
+    expectContractError(read(tables => { tables[0][2].name = tables[0][1].name.toLowerCase(); }), 'invalid-logic-payload', 'aiPrograms.keywordTables[0][2].name', [MARKER]);
+    expect(read(tables => { tables[2][0].name = tables[1][3].name; })).not.toThrow();
+  });
+
+  it('rejects an empty table, an empty name, a NUL, and values outside i32', () => {
+    expectContractError(read(tables => { tables[2] = []; }), 'invalid-logic-payload', 'aiPrograms.keywordTables[2]');
+    expectContractError(read(tables => { tables[0][0].name = ''; }), 'invalid-logic-payload', 'aiPrograms.keywordTables[0][0].name');
+    expectContractError(read(tables => { tables[0][0].name = 'a\0b'; }), 'invalid-logic-payload', 'aiPrograms.keywordTables[0][0].name');
+    expectContractError(read(tables => { tables[0][0].value = 0x80000000; }), 'invalid-logic-payload', 'aiPrograms.keywordTables[0][0].value');
+    expectContractError(read(tables => { tables[0][0].value = 1.5; }), 'invalid-logic-payload', 'aiPrograms.keywordTables[0][0].value');
+  });
+});
+
 describe('rule-data descriptor binding', () => {
   const withDescriptor = (role: RuleDataRole, change: (descriptor: Record<string, unknown>) => void) => {
     const { bytes, descriptor } = syntheticRuleDataAsset(role);
@@ -206,6 +243,9 @@ describe('rule-data descriptor binding', () => {
       ['ai-programs', descriptor => { descriptor.dependencies = [{ id: 'data/craft-info', kind: 'data' }]; },
         'logic-reference-mismatch', 'descriptor.dependencies'],
       ['comm-menus', descriptor => { (descriptor.payloadIdentity as Record<string, unknown>).schemaVersion = 2; },
+        'unsupported-payload-schema', 'descriptor.payloadIdentity.schemaVersion'],
+      // Schema 1 had no keyword tables (P3-03 revision 3): such a payload is never read.
+      ['ai-programs', descriptor => { (descriptor.payloadIdentity as Record<string, unknown>).schemaVersion = 1; },
         'unsupported-payload-schema', 'descriptor.payloadIdentity.schemaVersion'],
     ];
     for (const [role, change, code, path] of cases) {

@@ -8,8 +8,10 @@ import { loadMission } from '../mission/load-mission.ts';
 import { createWorld, initialWorldState, instantiableModelIds } from './create-world.ts';
 import { MARKER as CRAFT_INFO_MARKER } from '../../content/rule-data/rule-data.test-support.ts';
 import {
-  asCreateInput, craftInfoContent, craftTypesContent, declaration, eventMission, MARKER, missionFrame, modelOf, originalImportIdentity, playerOnlyMission,
-  reversedKeys, ruleInputs, sliceMission, worldInput, type CraftInfoDraft, type MissionDraft, type RosterDraft, type WorldInputParts,
+  asCreateInput, craftInfoContent, craftTypesContent, declaration, eventMission, mapGeometryContent, MARKER, menuText, missionFrame, modelOf,
+  originalImportIdentity, playerOnlyMission, reversedKeys, ruleInputs, sliceMission, transponderBinding, worldInput, type CraftInfoDraft, type MissionDraft,
+  type RosterDraft,
+  type WorldInputParts,
 } from './create-world.test-support.ts';
 import { setupHash } from './setup-hash.ts';
 import { constructWorld } from './world.ts';
@@ -74,7 +76,7 @@ describe('world creation (P3-02 AC-02, 运行配置与世界创建)', () => {
     });
     const world = constructWorld(state);
     expect(world.projection()).toMatchObject({ clock: { tick: 0, clock: 0, clockUnitsPerTick: 2 }, player: { entityId: null, viewMode: 0xc } });
-    expect(world.renderState()).toEqual({ tick: 0, clock: 0, viewMode: 0xc, observedEntityId: null, entities: [] });
+    expect(world.renderState()).toEqual({ tick: 0, clock: 0, viewMode: 0xc, observedEntityId: null, entities: [], warp: null });
   });
 
   it('draws only the +0x78 defaults: 8 of the 9 section-1 records, 9 with a wingman', () => {
@@ -414,20 +416,22 @@ describe('craft info semantic checks (P3-06 AC-01, D-01)', () => {
   });
 
   it('does not check kinds whose queue entries post no request: no requests, or a template that never fires', () => {
-    // A record of -1 requests, a group of 0, and a group whose template the build does not fill (probability source 0).
+    // A record of -1 requests, a group of 0, and a group whose template the build does not fill (probability source 0);
+    // record 2 binds kind 0x4000 (CR-15) and requests none either.
     const never = withKind(25, { ruleInputs: ruleInputs({ craftCount: 0xffffffff }) });
-    never.declarations.push(declaration(2, { origins: ['group-template'], ruleInputs: ruleInputs({ percentA: 100 }) }));
-    never.declarations.push(declaration(3, { origins: ['group-member'], craftType: 25, memberOf: 0 }));
-    never.declarations.push(declaration(4, { origins: ['group-template'] }));
-    never.declarations.push(declaration(5, { origins: ['group-member'], craftType: 13, memberOf: 1 }));
+    never.declarations.push(transponderBinding(2));
+    never.declarations.push(declaration(3, { origins: ['group-template'], ruleInputs: ruleInputs({ percentA: 100 }) }));
+    never.declarations.push(declaration(4, { origins: ['group-member'], craftType: 25, memberOf: 0 }));
+    never.declarations.push(declaration(5, { origins: ['group-template'] }));
+    never.declarations.push(declaration(6, { origins: ['group-member'], craftType: 13, memberOf: 1 }));
     never.groups = [
-      { template: 2, members: [3], spawnCount: 0, layout: [{ x: 0, y: 0, z: 0 }] },
-      { template: 4, members: [5], spawnCount: 3, layout: [{ x: 0, y: 0, z: 0 }] },
+      { template: 3, members: [4], spawnCount: 0, layout: [{ x: 0, y: 0, z: 0 }] },
+      { template: 5, members: [6], spawnCount: 3, layout: [{ x: 0, y: 0, z: 0 }] },
     ];
     const craftInfo = craftInfoWithContent((info) => void (info.craft[13].at0C = 0));
-    expect(create({ mission: never, craftInfo }).spawn.queue.map(({ requests }) => requests)).toEqual([1, -1, 0, 3]);
+    expect(create({ mission: never, craftInfo }).spawn.queue.map(({ requests }) => requests)).toEqual([1, -1, -1, 0, 3]);
     const fired = structuredClone(never);
-    fired.declarations[4].ruleInputs.percentA = 100;
+    fired.declarations[5].ruleInputs.percentA = 100;
     expectRejected(worldInput({ mission: fired, craftInfo }), `${CRAFT_INFO}.craft[13].at0C`, 'at least 1');
   });
 
@@ -449,9 +453,15 @@ describe('craft info semantic checks (P3-06 AC-01, D-01)', () => {
       for (const kind of [0, 7, 8, 14, 17]) {
         Object.assign(info.craft[kind], { atA0: 0, atA4: 0, atA8: 0, atAC: 0, atB0: 0, atB4: 0, atB8: 0, atBC: 0, atC0: 0 });
       }
-      Object.assign(info.craft[0], { at58: 0, at64: [0, 0, 0, 0], at78: [0, 0, 0, 0] });
+      // Except the AI's divisors (CR-15): the turn rates of opcodes 1001–1003, which kinds 7 and 8 run, and the top
+      // speed of kind 0x4000, which `b` constructs.
+      for (const kind of [7, 8]) Object.assign(info.craft[kind], { atAC: 0.75, atB0: 0.5, atB4: 0.25 });
+      info.craft[14].atB8 = 64;
+      // The player's Warp divides by its +0xA8 and +0xB8 (MW-01 check 4); only the player's are checked.
+      Object.assign(info.craft[0], { atA8: 1, atB8: Math.fround(1e-30), at58: 0, at64: [0, 0, 0, 0], at78: [0, 0, 0, 0] });
     });
-    expect(create({ craftInfo: zeroed }).craftInfo.content.craft[0].atB8).toBe(0);
+    const { craft } = create({ craftInfo: zeroed }).craftInfo.content;
+    expect([craft[0].atA4, craft[7].atA8, craft[7].atB8]).toEqual([0, 0, 0]);
   });
 
   describe('the parked Warp timing of every instantiable kind, in i32 clock units', () => {
@@ -485,7 +495,8 @@ describe('craft info semantic checks (P3-06 AC-01, D-01)', () => {
       expect(create({ craftInfo: craftInfoWithContent((info) => void Object.assign(info.craft[0], { atB8: 65536, at88: -32768 })) }).config).toBeDefined();
       expectRejected(energy({ atB8: 65536, at88: 32768 }), PLAYER, 'threshold');
       expectRejected(energy({ atB8: 2 ** 31 }), PLAYER, 'threshold');
-      expectRejected(energy({ atB8: -(2 ** 32) }), PLAYER, 'threshold');
+      // A non-positive +0xB8 is rejected first by the player's Warp check (MW-01 check 4).
+      expectRejected(energy({ atB8: 2 ** 40 }), PLAYER, 'threshold');
     });
 
     it('bounds the allocations, the energy and the energy × 1000 to i32, also at levels other than the initial 1 and 2', () => {
@@ -502,6 +513,45 @@ describe('craft info semantic checks (P3-06 AC-01, D-01)', () => {
   });
 });
 
+describe('the player\'s Warp fields (P3-09 AC-02, docs/plan/p3/02/spec.md MW-01 check 4)', () => {
+  const PLAYER = `${CRAFT_INFO}.craft[0]`;
+
+  // The content reader already holds +0xA4 to 0–2^31 − 1, so only the upper bound reaches the check.
+  it.each([
+    ['no pair', (info: CraftInfoDraft) => void (info.craft[0].pairs = []), `${PLAYER}.pairs`],
+    ['+0xA8 of 0', (info: CraftInfoDraft) => void (info.craft[0].atA8 = 0), `${PLAYER}.atA8`],
+    ['a negative +0xA8', (info: CraftInfoDraft) => void (info.craft[0].atA8 = -1), `${PLAYER}.atA8`],
+    ['+0xB8 of 0', (info: CraftInfoDraft) => void (info.craft[0].atB8 = 0), `${PLAYER}.atB8`],
+    ['a negative +0xB8', (info: CraftInfoDraft) => void (info.craft[0].atB8 = -0.5), `${PLAYER}.atB8`],
+    // Before the parked Warp's (+0xA8 + +0xA4) × 64 check (P3-06), which would reject it too at +0xA8 ≥ 1.
+    ['+0xA4 of 2^25, whose × 64 leaves i32', (info: CraftInfoDraft) => Object.assign(info.craft[0], { atA4: 2 ** 25, atA8: 1 }), `${PLAYER}.atA4`],
+  ])('rejects %s', (_, change, path) => {
+    expectRejected(craftInfoWith(change), path, 'for the player');
+  });
+
+  it('accepts one pair, the smallest positive values, an +0xA4 of 0 and the largest +0xA8 = 1 allows, and does not check other kinds', () => {
+    const accepted = create({
+      craftInfo: craftInfoWithContent((info) => {
+        Object.assign(info.craft[0], { pairs: [{ at00: 0, at04: 0x7fffffff }], atA8: 1, atB8: 2 ** -149, atA4: 0 });
+        Object.assign(info.craft[7], { pairs: [], atA8: 0, atB8: 0 });
+      }),
+    });
+    expect(accepted.craftInfo.content.craft[0].pairs).toHaveLength(1);
+    expect(create({ craftInfo: craftInfoWithContent((info) => Object.assign(info.craft[0], { atA4: 2 ** 25 - 2, atA8: 1 })) }).config).toBeDefined();
+  });
+
+  it('comes after the map geometry\'s checks and before the other craft info checks', () => {
+    const both = worldInput({
+      craftInfo: craftInfoWithContent((info) => void (info.craft[0].atA8 = 0)),
+      mapGeometry: { ...mapGeometryContent(), redrawInterval: 2 },
+    });
+    expectRejected(both, 'input.mapGeometry.content.redrawInterval');
+    const overflow = craftInfoWithContent((info) => Object.assign(info.craft[0], { atA4: 2 ** 25, atA8: 1 }));
+    expectRejected(worldInput({ craftInfo: overflow, mapGeometry: { ...mapGeometryContent(), redrawInterval: 2 } }), 'input.mapGeometry.content.redrawInterval');
+    expectRejected(craftInfoWith((info) => Object.assign(info.craft[0], { atA8: 0, at0C: 0 })), `${PLAYER}.atA8`);
+  });
+});
+
 describe('spawn expansion budget (P3-02 AC-02, CoreLimits)', () => {
   /** The player and one record of kind bit 7 with `craftCount` requests. */
   const withRecord = (craftCount: number) => {
@@ -509,12 +559,13 @@ describe('spawn expansion budget (P3-02 AC-02, CoreLimits)', () => {
     m.declarations.push(declaration(1, { craftType: 7, ruleInputs: ruleInputs({ craftCount }) }));
     return m;
   };
-  /** The player and a group of `members` copies of a member record, `spawnCount` requests. */
+  /** The player, the binding of kind 0x4000 and a group of `members` copies of a member record, `spawnCount` requests. */
   const withGroup = (spawnCount: number, members: number) => {
     const m = playerOnlyMission();
-    m.declarations.push(declaration(1, { origins: ['group-template'], ruleInputs: ruleInputs({ percentA: 100 }) }));
-    m.declarations.push(declaration(2, { origins: ['group-member'], craftType: 7, memberOf: 0 }));
-    m.groups = [{ template: 1, members: Array(members).fill(2), spawnCount, layout: [{ x: 0, y: 0, z: 0 }] }];
+    m.declarations.push(transponderBinding(1));
+    m.declarations.push(declaration(2, { origins: ['group-template'], ruleInputs: ruleInputs({ percentA: 100 }) }));
+    m.declarations.push(declaration(3, { origins: ['group-member'], craftType: 7, memberOf: 0 }));
+    m.groups = [{ template: 2, members: Array(members).fill(3), spawnCount, layout: [{ x: 0, y: 0, z: 0 }] }];
     if (members === 0) {
       m.declarations.pop();
     }
@@ -522,7 +573,8 @@ describe('spawn expansion budget (P3-02 AC-02, CoreLimits)', () => {
   };
 
   it('takes up to 1024 instances, the player included, and rejects 1025 at the record that passes the limit', () => {
-    expect(create({ mission: withRecord(1023) }).spawn.queue).toHaveLength(2);
+    // The third entry is the binding of kind 0x4000 (transponderBinding), which requests none.
+    expect(create({ mission: withRecord(1023) }).spawn.queue).toHaveLength(3);
     expectRejected(worldInput({ mission: withRecord(1024) }), `${MISSION}.declarations[1].ruleInputs.craftCount`, 'spawnExpansion');
     expect(create({ mission: withRecord(0xffffffff) }).spawn.queue[1].requests).toBe(-1);
   });
@@ -534,18 +586,18 @@ describe('spawn expansion budget (P3-02 AC-02, CoreLimits)', () => {
       m.declarations = [declaration(0, { craftType: 7, ruleInputs: ruleInputs({ craftCount }) }), declaration(1, { craftType: 0 })];
       return m;
     };
-    expect(create({ mission: recordFirst(1022), run: { wingman: 0 } }).spawn.queue).toHaveLength(3);
+    expect(create({ mission: recordFirst(1022), run: { wingman: 0 } }).spawn.queue).toHaveLength(4);
     expectRejected(worldInput({ mission: recordFirst(1023), run: { wingman: 0 } }), 'input.run.wingman', 'spawnExpansion');
     expectRejected(worldInput({ mission: withRecord(1023), run: { wingman: 0 } }), `${MISSION}.declarations[1].ruleInputs.craftCount`, 'spawnExpansion');
   });
 
   it('counts requests × members of a group, an empty group\'s requests once each, without overflowing', () => {
-    expect(create({ mission: withGroup(341, 3) }).spawn.queue).toHaveLength(2);
+    expect(create({ mission: withGroup(341, 3) }).spawn.queue).toHaveLength(3);
     expectRejected(worldInput({ mission: withGroup(342, 3) }), `${MISSION}.groups[0].spawnCount`, 'spawnExpansion');
     expectRejected(worldInput({ mission: withGroup(0x7fffffff, 64) }), `${MISSION}.groups[0].spawnCount`, 'spawnExpansion');
-    expect(create({ mission: withGroup(1023, 0) }).spawn.queue).toHaveLength(2);
+    expect(create({ mission: withGroup(1023, 0) }).spawn.queue).toHaveLength(3);
     expectRejected(worldInput({ mission: withGroup(1024, 0) }), `${MISSION}.groups[0].spawnCount`, 'spawnExpansion');
-    expect(create({ mission: withGroup(0xffffffff, 64) }).spawn.queue[1].requests).toBe(-1);
+    expect(create({ mission: withGroup(0xffffffff, 64) }).spawn.queue[2].requests).toBe(-1);
   });
 });
 
@@ -639,6 +691,9 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
     const records = (input: Record<string, Item>) => input.projectileVisuals.content.records as { selector: number; width: number; length: number; colour: number[] }[];
     const partsOf = (model: Item) => (model.content.partLists as unknown[][])[1];
     const builtIn = (input: Record<string, Item>) => input.aiPrograms.content.builtInPrograms as { at14: number; at24: number; at28: number; at2C: number; handler: { offset: number } }[];
+    const commands = (input: Record<string, Item>, table: string) => input.commMenus.content[table] as { text: string; command: number }[];
+    const faceTables = (input: Record<string, Item>) => input.commMessages.content.faceTables as { present: boolean; frameDurations?: number[] }[][][];
+    const keywordTables = (input: Record<string, Item>) => input.aiPrograms.content.keywordTables as { name: string; value: number }[][];
 
     it('changes with each field CR-01 lists: IDs, debris content, lengths, references, frame counts, part counts and AI programs', () => {
       const hash = hashOf();
@@ -675,7 +730,27 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
         (input) => void builtIn(input).push(structuredClone(builtIn(input)[0])),
         (input) => void ((input.aiPrograms.content.globals as { at24: number }).at24 = 31),
         (input) => void ((input.aiPrograms.content.programs as { kindMask: number | null }[])[1].kindMask = 0x80),
-        (input) => void ((input.aiPrograms.content.entries as { items?: { argument: string | null }[] }[])[3].items![0].argument = 'x'),
+        // A script no reachable program names (CR-15: its semantics are not checked).
+        (input) => void ((input.aiPrograms.content.entries as { items?: { argument: string | null }[] }[])[5].items![0].argument = 'x'),
+        // The keyword tables (P3-03 revision 3): a value, a name and the pair order.
+        (input) => void (keywordTables(input)[1][0].value = 9),
+        (input) => void (keywordTables(input)[3][2].name = `${keywordTables(input)[3][2].name}!`),
+        (input) => void keywordTables(input)[2].reverse(),
+        // The communications inputs (CB-01): the IDs and the complete contents, texts beyond the keys included.
+        (input) => void (input.commMenus.id = 'data/other-comm-menus'),
+        (input) => void (commands(input, 'gatedTargetCommands')[0].text = menuText('2')),
+        (input) => void (commands(input, 'gatedTargetCommands')[0].text = `${menuText('1')}!`),
+        (input) => void (commands(input, 'kind2TargetCommands')[6].command = 0x8000_0000),
+        (input) => void ((input.commMenus.content.categories as { kindMask: number }[])[2].kindMask = 0x80000),
+        (input) => void (input.commMenus.content.objectListLastEntry = menuText('x')),
+        (input) => void (input.baseRepairItems.id = 'data/other-base-repair-items'),
+        (input) => void ((input.baseRepairItems.content.subsystemSelectors as number[])[10] = 10),
+        (input) => void (input.commMessages.id = 'data/other-comm-messages'),
+        (input) => void (faceTables(input)[1][0][1].frameDurations![1] = 2),
+        (input) => void (faceTables(input)[2][0][0] = { present: true, frameDurations: [0] }),
+        (input) => void (input.commMessages.content.direct as unknown[]).pop(),
+        (input) => void ((input.commMessages.content.names2001 as string[])[1] = `${MARKER}-pool-0`),
+        (input) => void (input.commMessages.content.names2011 as string[]).reverse(),
       ];
       const hashes = changes.map((change) => changedHash(change));
       for (const changed of hashes) expect(changed).not.toBe(hash);
@@ -698,7 +773,9 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
 
     it('does not depend on the key order of the rule-data inputs', () => {
       expect(changedHash((input) => {
-        for (const field of ['debrisParameters', 'projectileVisuals', 'explosions', 'aiPrograms'] as const) input[field].content = reversedKeys(input[field].content);
+        for (const field of ['debrisParameters', 'projectileVisuals', 'explosions', 'aiPrograms', 'commMenus', 'baseRepairItems', 'commMessages'] as const) {
+          input[field].content = reversedKeys(input[field].content);
+        }
         input.models = input.models.map(reversedKeys) as never;
       })).toBe(hashOf());
     });

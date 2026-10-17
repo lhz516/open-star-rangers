@@ -4,7 +4,7 @@ import { validateGroup, validatePackage, type GroupCompletenessResult, type Grou
 import { CLASSIC_P2_SLICE } from './slice-definition.ts';
 import {
   diagnosticCodes, kindOf, SYNTHETIC_ASSETS, syntheticBytes, syntheticGroup, syntheticIdentity, syntheticOriginalGroup, syntheticPackage,
-  VERSION_4_ROLES, type SyntheticAssetSpec,
+  P3_ROLES, type SyntheticAssetSpec,
 } from './synthetic-content.test-support.ts';
 
 describe('group completeness', () => {
@@ -79,7 +79,12 @@ describe('group completeness', () => {
     ['a duplicate dependency', input => {
       input.manifest.assets[3].dependencies = [{ id: 'image/synthetic-hull', kind: 'image' }, { id: 'image/synthetic-hull', kind: 'image' }];
     }, ['duplicate-dependency@manifest.assets[3].dependencies[1]']],
-    ['the previous definition version', input => { (input.manifest.identity as { sliceDefinitionVersion: number }).sliceDefinitionVersion = 3; },
+    // Version 5 is either branch's alone, P3-09's map geometry or P3-10's comm-messages, before their merge as 6.
+    ['the previous definition version', input => { (input.manifest.identity as { sliceDefinitionVersion: number }).sliceDefinitionVersion = 5; },
+      ['definition-version-mismatch@manifest.identity.sliceDefinitionVersion']],
+    ['definition version 4', input => { (input.manifest.identity as { sliceDefinitionVersion: number }).sliceDefinitionVersion = 4; },
+      ['definition-version-mismatch@manifest.identity.sliceDefinitionVersion']],
+    ['definition version 3', input => { (input.manifest.identity as { sliceDefinitionVersion: number }).sliceDefinitionVersion = 3; },
       ['definition-version-mismatch@manifest.identity.sliceDefinitionVersion']],
     ['definition version 2', input => { (input.manifest.identity as { sliceDefinitionVersion: number }).sliceDefinitionVersion = 2; },
       ['definition-version-mismatch@manifest.identity.sliceDefinitionVersion']],
@@ -147,6 +152,7 @@ describe('package completeness', () => {
     ['slice definition version 1', { sliceDefinitionVersion: 1 }, 'definition-version-mismatch@groups[2].manifest.identity.sliceDefinitionVersion'],
     ['slice definition version 2', { sliceDefinitionVersion: 2 }, 'definition-version-mismatch@groups[2].manifest.identity.sliceDefinitionVersion'],
     ['slice definition version 3', { sliceDefinitionVersion: 3 }, 'definition-version-mismatch@groups[2].manifest.identity.sliceDefinitionVersion'],
+    ['slice definition version 4', { sliceDefinitionVersion: 4 }, 'definition-version-mismatch@groups[2].manifest.identity.sliceDefinitionVersion'],
     ['content schema', { schemaVersion: 2 }, 'unsupported-schema@groups[2].manifest.identity.schemaVersion'],
     ['slice identity', { sliceId: 'another-slice' }, 'invalid-slice-id@groups[2].manifest.identity.sliceId'],
   ])('rejects groups mixed across %s', (_name, overrides, expected) => {
@@ -155,18 +161,18 @@ describe('package completeness', () => {
     expect(diagnosticCodes(validatePackage(CLASSIC_P2_SLICE, groups))).toEqual([expected]);
   });
 
-  // P3-03 spec AC-12: the version 4 roles and their dependency closure.
+  // P3-03 spec AC-12 and AC-22 and P3-09's map geometry: the version 4 and 6 roles and their dependency closure.
   const groupOf = (role: string): ResourceGroup => CLASSIC_P2_SLICE.roles.find(requirement => requirement.role === role)!.group;
   /** The package with `group`'s Assets replaced by `specs`. */
   const packageWith = (group: ResourceGroup, specs: readonly SyntheticAssetSpec[]) =>
     syntheticPackage().map(input => (input.manifest.group === group ? syntheticGroup(group, specs) : input));
 
-  it('covers every version 4 role in the complete synthetic package', () => {
-    expect(VERSION_4_ROLES).toEqual(CLASSIC_P2_SLICE.roles.slice(15).map(({ role }) => role));
-    for (const role of VERSION_4_ROLES) expect(SYNTHETIC_ASSETS[groupOf(role)].some(spec => spec.role === role), role).toBe(true);
+  it('covers every version 4 and 6 role in the complete synthetic package', () => {
+    expect(P3_ROLES).toEqual(CLASSIC_P2_SLICE.roles.slice(15).map(({ role }) => role));
+    for (const role of P3_ROLES) expect(SYNTHETIC_ASSETS[groupOf(role)].some(spec => spec.role === role), role).toBe(true);
   });
 
-  it.each(VERSION_4_ROLES)('is incomplete without one %s Asset, by its role cardinality', role => {
+  it.each(P3_ROLES)('is incomplete without one %s Asset, by its role cardinality', role => {
     const group = groupOf(role);
     const removed = SYNTHETIC_ASSETS[group].find(spec => spec.role === role)!.id;
     const specs = SYNTHETIC_ASSETS[group].filter(({ id }) => id !== removed)
@@ -205,8 +211,8 @@ describe('package completeness', () => {
     expect(diagnosticCodes(validatePackage(CLASSIC_P2_SLICE, packageWith('audio', specs)))).toEqual([`role-cardinality@groups[3].roles.${role}`]);
   });
 
-  it('reports a whole package of definition version 3 as a definition version mismatch', () => {
-    const groups = CLASSIC_P2_SLICE.groups.map(group => syntheticGroup(group, undefined, { sliceDefinitionVersion: 3 }));
+  it.each([3, 4])('reports a whole package of definition version %i as a definition version mismatch', version => {
+    const groups = CLASSIC_P2_SLICE.groups.map(group => syntheticGroup(group, undefined, { sliceDefinitionVersion: version }));
     const result = validatePackage(CLASSIC_P2_SLICE, groups);
     expect(result.status).toBe('incomplete');
     expect(diagnosticCodes(result)).toEqual(CLASSIC_P2_SLICE.groups.map((_, index) => `definition-version-mismatch@groups[${index}].manifest.identity.sliceDefinitionVersion`));

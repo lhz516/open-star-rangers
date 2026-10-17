@@ -196,6 +196,8 @@ describe('source mapping diagnostics', () => {
       expect(Object.isFrozen(types)).toBe(true);
     }
     expect(Object.isFrozen(SOURCE_ENTRY_TYPES)).toBe(true);
+    // The map geometry reads a CCKD instrument record and font as data (P3-03 spec, P3-09 的修订).
+    expect(SOURCE_ENTRY_TYPES.data).toContain('CCKD');
   });
 });
 

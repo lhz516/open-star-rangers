@@ -38,6 +38,7 @@ describe('production rule-data mappings', () => {
       { asset: { id: 'data/ai-programs', kind: 'data' }, confidence: 'likely', unknowns: ['U-001', 'U-022'], resolution: 'declared' },
       { asset: { id: 'data/base-repair-items', kind: 'data' }, confidence: 'likely', unknowns: ['U-030'], resolution: 'declared' },
       { asset: { id: 'data/comm-menus', kind: 'data' }, confidence: 'likely', unknowns: ['U-001'], resolution: 'declared' },
+      { asset: { id: 'data/comm-messages', kind: 'data' }, confidence: 'confirmed', unknowns: [], resolution: 'declared' },
       { asset: { id: 'data/craft-info', kind: 'data' }, confidence: 'likely', unknowns: ['U-001', 'U-008', 'U-026'], resolution: 'declared' },
       { asset: { id: 'data/debris-parameters', kind: 'data' }, confidence: 'likely', unknowns: ['U-001', 'U-027'], resolution: 'declared' },
       { asset: { id: 'data/flight-messages', kind: 'data' }, confidence: 'confirmed', unknowns: [], resolution: 'declared' },
@@ -63,9 +64,9 @@ describe('production rule-data mappings', () => {
     });
   });
 
-  it('name AICO 6001, TABL 6003 and the 25 entries of the group-0 closure, then the built-in table and its 10 names', () => {
+  it('name AICO 6001, TABL 6003 and the 25 entries of the group-0 closure, the built-in table and its 10 names, and the keyword tables and their 14 names', () => {
     const ai = parts('data/ai-programs');
-    expect(ai).toHaveLength(2 + 25 + 1 + 10);
+    expect(ai).toHaveLength(2 + 25 + 1 + 10 + 4 + 14);
     expect(ai[0]).toBe('MAIN/AISTUFF.NOB#6001.AICO/group-0');
     expect(ai.filter(part => part.endsWith('.DFPG/null'))).toHaveLength(3);
     expect(ai.filter(part => part.endsWith('.TABL/null'))).toHaveLength(23);
@@ -86,6 +87,23 @@ describe('production rule-data mappings', () => {
       expect(length - 1).toBeLessThanOrEqual(Math.min(16, AI_PROGRAMS_LIMITS.programNameBytes));
     }
     names.slice(1).forEach((name, index) => expect(name.offset).toBeGreaterThanOrEqual(names[index].offset + names[index].length));
+
+    // ai.md §5.3: four consecutive tables of 3, 6, 5 and 3 pairs and a null pair each, 0x5ea40–0x5eae7 in object 2, and
+    // 14 names 4-byte aligned from 0x1723a8 to 0x172427 in object 4, 111 bytes with their NULs.
+    expect(regions.keywordTables.map(executableRegion)).toEqual([[0x5_ea40, 4], [0x5_ea60, 7], [0x5_ea98, 6], [0x5_eac8, 4]]
+      .map(([address, pairs]) => ({ ...objectOffset(address), length: pairs * 8 })));
+    expect(objectOffset(0x5_ea40).object).toBe(2);
+    const keywordNames = regions.keywordNames.map(executableRegion);
+    expect(keywordNames).toHaveLength(14);
+    expect(keywordNames.reduce((total, { length }) => total + length, 0)).toBe(111);
+    for (const { object, offset, length } of keywordNames) {
+      expect(object).toBe(4);
+      expect(offset % 4).toBe(0);
+      expect(offset).toBeGreaterThanOrEqual(objectOffset(0x17_23a8).offset);
+      expect(offset + length).toBeLessThanOrEqual(objectOffset(0x17_2428).offset);
+      expect(length - 1).toBeLessThanOrEqual(AI_PROGRAMS_LIMITS.keywordNameBytes);
+    }
+    keywordNames.slice(1).forEach((name, index) => expect(name.offset).toBeGreaterThanOrEqual(keywordNames[index].offset + keywordNames[index].length));
   });
 
   it('name the seven documented flight message regions, each within the text limit', () => {
@@ -99,6 +117,20 @@ describe('production rule-data mappings', () => {
       joystickSensitivity1: 'le/4/0xddc/28', joystickSensitivity2: 'le/4/0xdf8/26', joystickSensitivity0: 'le/4/0xe14/25',
     });
     expect(Object.values(flightMessages).every(locator => executableRegion(locator).length - 1 <= FLIGHT_MESSAGES_LIMITS.textBytes)).toBe(true);
+  });
+
+  it('name the COMM name lists, the four COMMFACE tables, the 13 sub-tables and the 481 CMOVs by their frames, and no COMMFAC2 entry', () => {
+    const comm = parts('data/comm-messages');
+    expect(comm).toHaveLength(2 + 4 + 13 + 481);
+    expect(comm.slice(0, 2)).toEqual(['MAIN/COMM.NOB#2001.TABL/null', 'MAIN/COMM.NOB#2011.TABL/null']);
+    // imfat.md: COMMFACE holds 481 CMOV and 17 TABL entries; the CMOVs take every odd ID from 20021 to 20981.
+    expect(comm.slice(2, 483)).toEqual(Array.from({ length: 481 }, (_, index) => `MAIN/COMMFACE.NOB#${20_021 + index * 2}.CMOV/frames/durations`));
+    expect(comm.slice(483).map(part => part.replace(/^MAIN\/COMMFACE\.NOB#(\d+)\.TABL\/null$/, '$1')).map(Number)).toEqual([
+      20_001, 20_003, 20_005, 20_007, 20_009, 20_011, 20_013, 20_015, 20_017, 20_019, 20_983, 20_985, 20_987, 20_989, 20_991, 20_993, 20_995,
+    ]);
+    expect(table.mappings.flatMap(({ parts: mapped }) => mapped.map(({ alternatives: [first] }) => first.discPath))).not.toContain('MAIN/COMMFAC2.NOB');
+    expect(PRODUCTION_RULE_DATA_SOURCES.commMessages.faceTables).toEqual([20_011, 20_019, 20_985]);
+    expect(PRODUCTION_RULE_DATA_SOURCES.commMessages.direct).toBe(20_983);
   });
 
   it('are built from their sources alone', () => {
@@ -120,10 +152,11 @@ describe('production rule-data sources in the production structure', () => {
     expect(partition.assets.map((descriptor, index) => decodeRuleDataPayload(partition.payloads[index].bytes, descriptor)))
       .toEqual(partition.assets.map(({ role }) => ({ role, content: synthetic.contents[role as keyof typeof synthetic.contents] })));
     expect(partition.sources?.states.every(({ state }) => state === 'verified')).toBe(true);
-    const { aiPrograms, craftInfo, debrisParameters, commMenus, baseRepairItems } = PRODUCTION_RULE_DATA_SOURCES;
+    const { aiPrograms, craftInfo, debrisParameters, commMenus, baseRepairItems, commMessages } = PRODUCTION_RULE_DATA_SOURCES;
     const mapped = [
       craftInfo.table, craftInfo.craftInfo, debrisParameters.table, aiPrograms.globals, aiPrograms.table, ...aiPrograms.parameters, ...aiPrograms.scripts,
-      ...Object.values(commMenus.tables), baseRepairItems.table,
+      ...Object.values(commMenus.tables), baseRepairItems.table, commMessages.names2001, commMessages.names2011, ...commMessages.faceTables,
+      commMessages.direct, ...commMessages.subTables, ...commMessages.messages,
     ];
     expect([...reads.keys()].sort()).toEqual([...mapped].sort());
     expect([...reads.values()].every(count => count === 1)).toBe(true);

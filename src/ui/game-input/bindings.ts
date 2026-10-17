@@ -153,6 +153,8 @@ for (const [code, operation] of [['KeyS', 'shield'], ['KeyG', 'gun']] as const) 
   });
 }
 command('KeyD', { type: 'damage-report' }, { contexts: FLIGHT });
+// P3-08's D-03 (P3-05 绑定表, `KeyB`; P3-02 CR-30): unmodified, flight only, repeatable; no menu of the slice takes it.
+command('KeyB', { type: 'drop-transponder' }, { contexts: FLIGHT, repeatable: true });
 
 command('KeyM', { type: 'toggle-map' }, { contexts: FLIGHT_MAP_BASE });
 command('KeyW', { type: 'request-warp' }, { shift: anyShift, contexts: FLIGHT_MAP });

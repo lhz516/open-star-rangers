@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-13
+updated: 2026-10-16
 ---
 
 # 工具用法
@@ -16,7 +16,7 @@ updated: 2026-10-13
 | `tools/disc-check.ts` | 用 P2-02 的读取链按需读取本地 CloneCD 文件组，按 manifest 游戏文件表逐个解析路径，核对大小与分段流式计算的 SHA-256，并核对读取计量；只输出规范光盘路径、计数与结论 | `node tools/disc-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue} [--manifest docs/original/manifest.md]` |
 | `tools/source-check.ts` | 用 P2-03 的读取链识别本地 CloneCD 文件组的版本（默认生产白名单），再打开每个覆盖范围内的 NOB 与两个通讯头像研究封包，逐条目读取校验；只输出规范光盘路径、版本 ID、指纹、计数与结论 | `node tools/source-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
 | `tools/logic-check.ts` | 用与 Worker 相同的生产导入作业转换本地 CloneCD 文件组的 `logic` 组，再验证组、解码 payload 并在 Core 中载入任务；只输出结论、计数、限值对照、各阶段读取量与哈希（见[逻辑组核对](#逻辑组核对)） | `node tools/logic-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
-| `tools/package-check.ts` | 用与 Worker 相同的生产导入作业转换本地 CloneCD 文件组，按切片定义验证整个包，用各角色的读取器解码 P3-03 新增与扩展角色的全部 Asset，并在 Core 中载入任务；只输出结论、Asset ID、计数、限值对照、各阶段读取量与哈希（见[包核对](#包核对)） | `node tools/package-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
+| `tools/package-check.ts` | 用与 Worker 相同的生产导入作业转换本地 CloneCD 文件组，按切片定义验证整个包，用各角色的读取器解码 P3-03 新增与扩展角色以及 P3-09 地图几何的全部 Asset，并在 Core 中载入任务；只输出结论、Asset ID、计数、限值对照、各阶段读取量与哈希（见[包核对](#包核对)） | `node tools/package-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
 | `tools/replay-check.ts` | 用与 Worker 相同的生产导入作业转换本地 CloneCD 文件组并验证整包，在 Node 中重放开发构建导出的录制并与其结果比较；只输出固定形状的报告（错误码与结构位置、内容身份键、任务 Asset ID、setupHash、计数与 Core 的比较）（见[录制重放核对](#录制重放核对)） | `node tools/replay-check.ts <录制.json> local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
 | `tools/task-state.ts` | 只读任务的 spec/goal/subtasks，确定性地给出工作流图的下一节点（见 [Agent 任务工作流](../engineering/agent-workflow.md#自动编排)）；在 `execute-goal` 节点同时给出按依赖与写入范围计算的并行调度 `schedule`（见[并行执行](../engineering/agent-workflow.md#并行执行)）；`--mark-reviewed` 写入审阅标记 | `node tools/task-state.ts p1/03 [--json] [--mark-reviewed]` |
 | `tools/compliance/cli.ts` | 本地完整文件hash/实际分发许可/声明指纹检查，严格非零失败与机读JSON | `pnpm check:original` / `pnpm check:licenses` / `pnpm check:compliance` |
@@ -70,7 +70,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 - **核对内容：**
   - 经产品入口 `openVerifiedSource` 打开镜像并用生产白名单识别版本；
   - 经已验证来源打开每个覆盖范围内的 `.NOB`，读取并校验全部条目；
-  - 再用同一组输入另开一个底层镜像句柄，以同样方式检查不在白名单中的研究封包 `MAIN/COMMFACE.NOB` 与 `MAIN/COMMFAC2.NOB`；`reads.sourceReadBytes` 是各句柄用量之和，失败时只计入已取得句柄的用量；
+  - 再用同一组输入另开一个底层镜像句柄，以同样方式检查不在白名单中的研究封包 `MAIN/COMMFAC2.NOB`（`MAIN/COMMFACE.NOB` 自 P3-03 修订 2 起在白名单中，只作为覆盖封包检查一次）；`reads.sourceReadBytes` 是各句柄用量之和，失败时只计入已取得句柄的用量；
   - 任何识别、封包或条目失败都结束核对。
 - **输出：** stdout 为一份 `osr-source-check`/1 JSON，包含：
   - `passed`；`error`（结束核对的首个失败，只含 code 与位置）；`closeFailures`；
@@ -107,7 +107,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 
 ## 包核对
 
-`tools/package-check.ts` 在开发者本地的基准镜像上，验证 P3-03 完整生产包的转换、完整性与解码（[P3-03](../plan/p3/03/spec.md) 的 S-16、AC-19）。它只用于本地原版数据，输出与结果只能留在 `local/` 下（例如 `local/research/p3-03/local-check/`）。
+`tools/package-check.ts` 在开发者本地的基准镜像上，验证 P3-03 完整生产包的转换、完整性与解码（[P3-03](../plan/p3/03/spec.md) 的 S-16、AC-19），以及 P3-09 加入的地图几何（[P3-09/11](../plan/p3/09/subtasks/11-map-geometry-import.md)）。它只用于本地原版数据，输出与结果只能留在 `local/` 下（例如 `local/research/p3-03/local-check/`、`local/research/p3-09/import-check/`）。
 
 - **输入：** 与[逻辑组核对](#逻辑组核对)相同，CloneCD 文件组的各个文件经 `fs.openAsBlob` 打开，核对按一次性进程运行。
 - **核对内容：**
@@ -115,6 +115,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
   - 对四组运行 `validatePackage`，不是 `complete` 时报告首个诊断；
   - 用 `decodeLogicPayload` 解码任务、机型表与僚机名册，并用 Core 的 `loadMission` 载入任务；
   - 用各角色的读取器解码 P3-03 新增角色的每个 Asset：规则数据（`decodeRuleDataPayload`）、飞行数据（`decodeFlightDataPayload`）、视角标签、HUD 文字、图像（受击闪烁、爆炸帧、星云、目标显示屏背景及其调色板）与 sound payload（只接受 schema 2）；
+  - 用 `decodeMapGeometryPayload` 解码地图几何，再与一次独立的来源读取比较：工具自己重新打开光盘镜像，读取 `MAIN/SR.NOB` 的 CCKD 10103，按 [cockpit](../original/formats/cockpit.md#instrument-types-per-slot-confirmed-p3-0730) 与 [hud §1](../original/formats/hud.md#1-bitmap-fonts-confirmed) 的布局自行解析布局号 6 的目录槽中类型 10 的唯一仪表记录与字体表 1 的高度字节，不调用转换器的读取器；目录槽数与仪表记录数先按 8 与 32 的上限检查、数组先核对在条目内，再遍历。结构不成立为 `source-unreadable`，与 payload 不同为 `source-mismatch`，位置都是 `roles.map-geometry`，不输出数值；
   - 把结构观测值与各读取器的限值对照，并把包的用量（除来源读取外的十一个预算维度）与 `PRODUCTION_PACKAGE.limits` 对照。
 
   任何作业、验证、解码、载入或限值失败都结束核对。
@@ -122,8 +123,9 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
   - `passed`；`error`（结束核对的首个失败，只含 code 与结构位置；Core 前提失败的 code 为 `core-input`）；
   - `identity`（版本 ID 与指纹）；
   - `package`：状态、切片定义版本、转换器版本、`ManifestIdentity`，以及每组的 Asset 数、依赖边数、payload 字节与摘要；
-  - `roles`：扩展的 `mission` 与 P3-03 新增的各角色（含依赖闭包中的 `explosion-animation`、`explosion-frame` 与 `nebula-background`），各自的组、Asset 数、payload 字节、摘要，以及记录、帧、文字、声音与像素的计数；
-  - `limits`：各项观测值与限值，名称为 `<角色>.<结构>` 或 `package.<预算维度>`；
+  - `roles`：扩展的 `mission`、P3-03 新增的各角色（含依赖闭包中的 `explosion-animation`、`explosion-frame` 与 `nebula-background`）与 `map-geometry`（计数只有 `sourceMatches`），各自的组、Asset 数、payload 字节、摘要，以及记录、帧、文字、声音与像素的计数；修订 2 的 `comm-messages` 按表报告头像数与消息数（`faces20011`、`messages20011`、`faces20019`、`messages20019`、`faces20985`、`messages20985`、`messages20983`），以及存在的消息数、帧数、两份名单的名称数与名称总字节，可直接与 [executable RQ4](../original/formats/executable.md#rq4-speaker-faces-and-message-lookup--confirmed-code) 的计数对照；
+  - P3-08/13 起 `ai-programs` 另报关键字表的计数（`keywordPairs0`–`keywordPairs3`、`keywordNames`、`keywordNameBytes`）与摘要 `digests.keywordTables`（其他角色没有 `digests`）；
+  - `limits`：各项观测值与限值，名称为 `<角色>.<结构>` 或 `package.<预算维度>`（含 `ai-programs.keywordEntries`、`ai-programs.keywordNameBytes`）；
   - `reads`：与逻辑组核对相同的各阶段读取增量与总读取量；失败时保留已发生的读取。
 
   摘要为 `sha256:`，按 Asset ID 顺序覆盖每个 Asset 的 `<Asset ID> <payload 指纹>` 行。不输出名称、文字、字段值、像素、采样、宿主路径或宿主错误文本。测试可注入合成白名单（`runPackageCheck(paths, { catalog })`）。
@@ -135,19 +137,19 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 
 - **用法：** `node tools/replay-check.ts <录制.json> <file.ccd> <file.img> [<file.sub>] [<file.cue>]`。参数少于两个或以 `-` 开头（如 `--help`）时为用法错误，在 stderr 打印用法与上限推导。CLI 始终使用生产导入作业与生产来源白名单，不接受合成光盘，也没有切换白名单的参数；Node 测试与 E2E 调用可导出的 `runReplayCheck(录制路径, 光盘路径, { catalog } 或 { job })` 注入合成白名单或导入作业，从不按录制选择白名单。`exitCode(report)` 给出与 CLI 相同的退出码。
 - **读取录制：** 先以同一个只读句柄 fstat，非普通文件不读（FIFO 以非阻塞方式打开，不等待写入者），大小超过上限为 `file-too-large`，不读取任何字节；之后至多读入“大小 + 1”字节，读取前后的大小、修改时间或状态变更时间（纳秒）任一不同即拒绝（`recording.changed`）。不会先无界读取或解析，也从不改写录制文件。
-- **文件上限：** `RECORDING_MAX_BYTES` 为 427,820,671 字节，是任何 Core 接受、内容身份为生产导入作业形状的录制经 `JSON.stringify` 后 UTF-8 字节数的上界（`recordingSizeBound()` 给出推导，测试把常量钉在推导上，Core 容量或格式变化时须同时更新本节）：
+- **文件上限：** `RECORDING_MAX_BYTES` 为 534,251,135 字节，是任何 Core 接受、内容身份为生产导入作业形状的录制经 `JSON.stringify` 后 UTF-8 字节数的上界（`recordingSizeBound()` 给出推导，测试把常量钉在推导上，Core 容量或格式变化时须同时更新本节）：
 
   | 部分 | 计数 | 每项字节 | 小计 |
   |---|---|---|---|
   | 信封：记录头、空列表与结果的 finalTick | 1 | 1,621 | 1,621 |
   | tick 输入 | 131,072（`recordedTicks`） | 124 | 16,252,928 |
   | 命令 | 262,144（`recordedCommands`） | 107 | 28,049,408 |
-  | 事件 | 524,288（`recordedEvents`） | 721 | 378,011,648 |
+  | 事件 | 524,288（`recordedEvents`） | 924 | 484,442,112 |
   | 检查点 | 131,073（`recordedCheckpoints`） | 42 | 5,505,066 |
-  | 合计 | | | 427,820,671 |
+  | 合计 | | | 534,251,135 |
 
-  每项取最长的条目加一个分隔符，计数即 `CORE_LIMITS` 的录制容量。最长取值：有限数字 25 个字符（符号、`0.`、5 个零与 17 位有效数字），安全整数 16 位，tick 6 位，`producer` 的每个 UTF-16 码元 6 字节（`\u` 转义），任务为最长的 Asset ID，内容身份为生产转换器版本与 SHA-256 的 manifest、来源指纹；命令与事件取全部变体中最长的（新增变体不加样本就不能编译）；最长的事件是 P3-07 的 `hit`（[CR-06](../plan/p3/02/spec.md#cr-06-领域事件与次序d-01)），各字段取 Core 比较器接受的最长形式（i32 取 −2³¹，可空的索引取安全整数或 null 中较长者）。注入其他导入作业时，作业须与生产作业同样转换，否则这一身份假设不成立。上限低于 V8 的最长字符串。
-- **核对顺序：** 读取 → UTF-8 与 JSON 解析，顶层恰为 `{ record, result }` → 以 Core 的公开入口先验证整份记录，再验证期望结果 → 用 [import-job.ts](../../src/workers/import-job.ts) 的生产作业转换整个文件组（与[包核对](#包核对)共用 `importPackage`），保留全部组并 `validatePackage` → 内容身份取自整包验证结果，不从录制构造；解码逻辑组中唯一的任务，按任务引用的 Asset ID 解码机型表与僚机名单，并以 `decodeRuleDataPayload` 解码同组唯一的 craft-info（[P3-06](../plan/p3/06/spec.md#对-p3-02-契约的增量) D-01），再以任务所有者的 [mission-input.ts](../../src/app/resources/mission-input.ts)（`ruleDataInputs`、`runModelInputs`）解码规则数据输入，并按 Core 的 `instantiableModelIds` 为记录中的运行配置解码可实例化机体的模型（[P3-07 CR-01](../plan/p3/02/spec.md#cr-01-世界创建输入与静态规则数据d-01)）；Core 拒绝该运行配置时不解码模型，由重放在记录或内容路径上报告 → `replayRecord` → `compareReplayResults`。版本、规则版本、内容身份、任务或 setupHash 不符都拒绝，不改写记录、忽略差异或选择兼容规则。录制中的运行配置（难度、僚机、种子、步长）只在世界创建时结合内容校验，所以这类错误在导入之后才报告。
+  每项取最长的条目加一个分隔符，计数即 `CORE_LIMITS` 的录制容量。最长取值：有限数字 25 个字符（符号、`0.`、5 个零与 17 位有效数字），安全整数 16 位，tick 6 位，`producer` 的每个 UTF-16 码元 6 字节（`\u` 转义），任务为最长的 Asset ID，内容身份为生产转换器版本与 SHA-256 的 manifest、来源指纹；命令与事件取全部变体中最长的（新增变体不加样本就不能编译）；最长的事件是 P3-09 的 `warp-completed`（[MW-05](../plan/p3/02/spec.md#mw-05-领域事件)，带到达位置、姿态与扣费的完整 `arrival`；此前为 P3-07 的 `hit`；P3-08 的 `drop-transponder` 命令与 `wingman-command-consumed`、`transponder-deployed` 事件都已有样本（位姿取 25 个字符的 f32），都不比它长，所以上限不变），各字段取 Core 比较器接受的最长形式（i32 取 −2³¹，可空的索引取安全整数或 null 中较长者）。注入其他导入作业时，作业须与生产作业同样转换，否则这一身份假设不成立。上限低于 V8 的最长字符串。
+- **核对顺序：** 读取 → UTF-8 与 JSON 解析，顶层恰为 `{ record, result }` → 以 Core 的公开入口先验证整份记录，再验证期望结果 → 用 [import-job.ts](../../src/workers/import-job.ts) 的生产作业转换整个文件组（与[包核对](#包核对)共用 `importPackage`），保留全部组并 `validatePackage` → 内容身份取自整包验证结果，不从录制构造；解码逻辑组中唯一的任务，按任务引用的 Asset ID 解码机型表与僚机名单，并以 `decodeRuleDataPayload` 解码同组唯一的 craft-info（[P3-06](../plan/p3/06/spec.md#对-p3-02-契约的增量) D-01），再以任务所有者的 [mission-input.ts](../../src/app/resources/mission-input.ts)（`ruleDataInputs`、`runModelInputs`）解码规则数据输入（含 `cockpit-hud-map` 组的地图几何，[P3-09 MW-01](../plan/p3/02/spec.md#mw-01-世界创建输入与静态规则数据)），并按 Core 的 `instantiableModelIds` 为记录中的运行配置解码可实例化机体的模型（[P3-07 CR-01](../plan/p3/02/spec.md#cr-01-世界创建输入与静态规则数据d-01)）；Core 拒绝该运行配置时不解码模型，由重放在记录或内容路径上报告 → `replayRecord` → `compareReplayResults`。版本、规则版本、内容身份、任务或 setupHash 不符都拒绝，不改写记录、忽略差异或选择兼容规则。录制中的运行配置（难度、僚机、种子、步长）只在世界创建时结合内容校验，所以这类错误在导入之后才报告。
 - **输出：** stdout 为一份报告 `{ format: 'osr-replay-check', version: 1, passed, error, identity, mission, setupHash, finalTick, events, checkpoints, comparison }`，每次都有全部字段：
   - `error` 为 `{ code, location }` 或 null；`passed` 只在 `comparison.match` 为 true 时为 true；
   - `mission` 与 `setupHash` 在记录通过验证后填入，`finalTick`、`events`、`checkpoints` 在期望结果通过验证后填入，`identity`（`contentIdentityKey`）在整包验证后填入，`comparison` 为 Core 的 `ReplayComparison`（不一致时含首个差异的 tick 与类别）；提前失败而尚未取得的字段为 null，不以 0 或虚构身份代替。
@@ -172,7 +174,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 
 `tools/baseline/measure.py` 在开发者本地的基准环境中运行原版并读取运行时字段（[P3-01](../plan/p3/01/spec.md#运行时测量) 的 S-05）。配方、操作者协议、读数的合格条件、计时、原版文件保护与证据存放见[运行时测量指南](./runtime-measurement.md)，这里只列要点。
 
-- **输入：** `baseline-version` 读取 [manifest](../original/manifest.md) 与基准 EXE，打印配方 `source` 所需的基准版本记号与 EXE 指纹。`run` 读取 `local/` 中的 JSON 配方（`schemaVersion: 1`），在 `--out` 下的新运行目录中建立私有副本与私有配置，启动自有的 DOSBox-X 调试器会话，在暂停点读取配方声明的字段（LE 对象位置，或断点处寄存器值加偏移，均可带指针链；或线性页 0 中的 `low` 地址，不带指针；或较早暂停点的整数读数加偏移，即 `bound` 绑定读数）；断点暂停点可给出 2–4 个备选位置（`offsets`，`stop.json` 记录命中的 `hitOffset`），并可带寄存器停止条件（`when`，值为常数、较早暂停点的读数或较早断点暂停点的寄存器值，可用 `at` 只限定部分备选位置；`bound` 同样可以基于后者）：不满足条件的命中不是暂停点，工具不等确认、直接继续，并记为 `skippedHits`（见[备选位置、停止条件与绑定读数](./runtime-measurement.md#备选位置停止条件与绑定读数)）；暂停点之间由操作者游玩，或由配方的刺激在模拟器内提供游戏输入（BIOS 键盘缓冲中的一个键、BIOS 换档标志位、声明的输入设备字段，每次写入都回读并记录；见[模拟器内输入](./runtime-measurement.md#模拟器内输入)），读字段的暂停点以运行目录中的应答文件确认。不经宿主注入输入。`--smoke` 自动确认各暂停点、不需要操作者，须配合停止点无需操作者即可到达的专门烟测配方；它的报告不是测量证据。
+- **输入：** `baseline-version` 读取 [manifest](../original/manifest.md) 与基准 EXE，打印配方 `source` 所需的基准版本记号与 EXE 指纹。`run` 读取 `local/` 中的 JSON 配方（`schemaVersion: 1`），在 `--out` 下的新运行目录中建立私有副本与私有配置，启动自有的 DOSBox-X 调试器会话，在暂停点读取配方声明的字段（LE 对象位置，或断点处寄存器值加偏移，均可带指针链；或线性页 0 中的 `low` 地址，不带指针；或较早暂停点的整数读数加偏移，即 `bound` 绑定读数）；断点暂停点可给出 2–8 个备选位置（`offsets`，`stop.json` 记录命中的 `hitOffset`），并可带寄存器停止条件（`when`，单个条件或 1–8 个条件的列表，列表中适用于该位置的条件都须满足（P3-08/26），值为常数、较早暂停点的读数或较早断点暂停点的寄存器值，可用 `at` 只限定部分备选位置；`bound` 同样可以基于后者）：不满足条件的命中不是暂停点，工具不等确认、保持断点登记直接继续，并记为 `skippedHits`（见[备选位置、停止条件与绑定读数](./runtime-measurement.md#备选位置停止条件与绑定读数)）；配方还可按本次运行的读数等待与分支（读数检验：断点停止的 `until` 只在探测读数通过比较时才停，刺激的 `if` 只在本暂停点读数通过时施加，否则记为 `condition-false`；见[读数检验](./runtime-measurement.md#读数检验等待与分支)）；暂停点之间由操作者游玩，或由配方的刺激在模拟器内提供游戏输入（BIOS 键盘缓冲中的一个键、BIOS 换档标志位、声明的输入设备字段，每次写入都回读并记录；刺激的 `if` 也可用等值形式 `{pause, field, equals}`，只在本次运行同一暂停点或较早暂停点的整数读数等于给定值时施加，否则记为 `not-selected`，用于按启动布局选择分支（见[条件刺激](./runtime-measurement.md#条件刺激)）；见[模拟器内输入](./runtime-measurement.md#模拟器内输入)），读字段的暂停点以运行目录中的应答文件确认。不经宿主注入输入。`--smoke` 自动确认各暂停点、不需要操作者，须配合停止点无需操作者即可到达的专门烟测配方；它的报告不是测量证据。
 - **输出：** 报告、调试器日志与证明文件都写在 `local/research/` 下的新运行目录中，不覆盖已有文件。运行期间 `local/research/` 的既有文件不得改变；其他会话同时在别处写入时，`--evidence` 把这一检查缩小到包含运行目录的主题目录（保证随之变窄，`local/StarRang/` 的保护不变）。终端只有阶段、原因码、计数与相对路径，不输出读数、原版内容或私人绝对路径。
 - **退出码：** `complete` 为 0；失败为 1；运行前拒绝为 2（什么也不写）；取消为 3。
 - **测试：** `python3 -B -m unittest discover -s tools/baseline -p 'test_*.py'`，不属于 `pnpm check`；测试只用合成数据与临时目录，不读取 `local/` 或原版文件。

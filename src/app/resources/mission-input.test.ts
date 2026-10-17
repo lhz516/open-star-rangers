@@ -4,13 +4,16 @@ import type { AssetId } from '../../content/asset-id.ts';
 import { ContentContractError } from '../../content/contract-validation.ts';
 import type { ExplosionTable } from '../../content/flight/flight-data-content.ts';
 import { LOGIC_IDS, syntheticMission, syntheticRoster } from '../../content/logic/logic-content.test-support.ts';
+import type { AiPrograms } from '../../content/rule-data/ai-programs.ts';
 import { readCraftInfo } from '../../content/rule-data/craft-info.ts';
 import { syntheticCraftInfo } from '../../content/rule-data/rule-data.test-support.ts';
 import { loadMission } from '../../core/mission/load-mission.ts';
 import { thrownBy } from '../../core/world/world.test-support.ts';
 import { missionGroups } from '../mission/mission.test-support.ts';
 import { imported, logicGroupInput, packageCraftTypes } from './resource-holder.test-support.ts';
-import { craftInfoInput, missionInput, modelInputs, ruleDataInputs, type PackageGroup } from './mission-input.ts';
+import { SYNTHETIC_MAP_GEOMETRY } from '../../original-data/conversion/production-graphics.test-support.ts';
+import { productionRuleData } from '../../original-data/conversion/production-rule-data.test-support.ts';
+import { craftInfoInput, mapGeometryInput, missionInput, modelInputs, ruleDataInputs, type PackageGroup } from './mission-input.ts';
 
 // The mission input shared by the mission diagnostics and the mission owner (P3-04 subtask 05): the three logic Assets
 // of a held logic group, decoded as the diagnostics always did; and the craft info (P3-06 D-01, subtask 24) and the
@@ -68,13 +71,22 @@ describe('rule-data inputs and models (P3-07 CR-01)', () => {
       return { ...group, manifest: { ...manifest, assets: change(manifest.assets) } };
     });
 
-  it('decodes the DEBRIS table, the AI programs, the projectile visuals, the explosion table and exactly the animations it names, in ascending ID order', async () => {
+  it('decodes the DEBRIS table, the AI programs, the communications inputs, the projectile visuals, the explosion table and exactly the animations it names, in ascending ID order', async () => {
     const groups = await groupsOf();
     const inputs = ruleDataInputs(groups);
     expect(inputs.debrisParameters?.id).toBe('data/debris-parameters');
     expect(inputs.aiPrograms).toMatchObject({ id: 'data/ai-programs', content: { builtInPrograms: expect.any(Array) } });
+    // The complete content, keyword tables included (P3-03 revision 3): nothing is extracted for Core.
+    expect(inputs.aiPrograms?.content).toEqual(productionRuleData().contents['ai-programs']);
+    expect((inputs.aiPrograms?.content as AiPrograms).keywordTables).toHaveLength(4);
+    expect(inputs.commMenus).toMatchObject({ id: 'data/comm-menus', content: { categories: expect.any(Array) } });
+    expect(inputs.baseRepairItems).toMatchObject({ id: 'data/base-repair-items', content: { subsystemSelectors: expect.any(Array) } });
+    expect(inputs.commMessages).toMatchObject({ id: 'data/comm-messages', content: { names2001: expect.any(Array) } });
     expect(inputs.projectileVisuals).toMatchObject({ id: 'data/projectile-visuals', content: { kind: 'projectile' } });
     expect(inputs.explosions?.id).toBe('data/explosions');
+    // P3-09 (MW-01): the map geometry, as mapGeometryInput decodes it.
+    expect(inputs.mapGeometry).toEqual(mapGeometryInput(groups));
+    expect(inputs.mapGeometry?.id).toBe('data/hud/map-geometry');
     const named = (inputs.explosions!.content as ExplosionTable).lists.flat().map(({ animation }) => animation.id as string);
     const ids = inputs.explosionAnimations.map(({ id }) => id as string);
     expect(ids).toEqual([...new Set(named)].sort());
@@ -86,14 +98,23 @@ describe('rule-data inputs and models (P3-07 CR-01)', () => {
     expect(ruleDataInputs(groups.filter(({ group }) => group !== 'models'))).toEqual({
       debrisParameters: expect.objectContaining({ id: 'data/debris-parameters' }), projectileVisuals: undefined, explosions: undefined, explosionAnimations: [],
       aiPrograms: expect.objectContaining({ id: 'data/ai-programs' }),
+      mapGeometry: expect.objectContaining({ id: 'data/hud/map-geometry' }),
+      commMenus: expect.objectContaining({ id: 'data/comm-menus' }),
+      baseRepairItems: expect.objectContaining({ id: 'data/base-repair-items' }),
+      commMessages: expect.objectContaining({ id: 'data/comm-messages' }),
     });
-    const withoutAi = groups.map((group) => {
+    expect(ruleDataInputs(groups.filter(({ group }) => group !== 'cockpit-hud-map')).mapGeometry).toBeUndefined();
+    const without = (role: string) => groups.map((group) => {
       if (group.group !== 'logic') return group;
       const manifest = group.manifest as { assets: AssetDescriptor[] };
-      return { ...group, manifest: { ...manifest, assets: manifest.assets.filter(({ role }) => role !== 'ai-programs') } };
+      return { ...group, manifest: { ...manifest, assets: manifest.assets.filter((descriptor) => descriptor.role !== role) } };
     });
-    expect(ruleDataInputs(withoutAi).aiPrograms).toBeUndefined();
-    expect(ruleDataInputs(groups.filter(({ group }) => group !== 'logic'))).toMatchObject({ debrisParameters: undefined, aiPrograms: undefined });
+    for (const [role, field] of [['ai-programs', 'aiPrograms'], ['comm-menus', 'commMenus'], ['base-repair-items', 'baseRepairItems'], ['comm-messages', 'commMessages']] as const) {
+      expect(ruleDataInputs(without(role))[field]).toBeUndefined();
+    }
+    expect(ruleDataInputs(groups.filter(({ group }) => group !== 'logic'))).toMatchObject({
+      debrisParameters: undefined, aiPrograms: undefined, commMenus: undefined, baseRepairItems: undefined, commMessages: undefined,
+    });
     const twice = withModelsManifest(groups, (assets) => [...assets, { ...assets.find(({ id }) => id === 'data/projectile-visuals')!, id: 'data/projectile-copy' as AssetId }]
       .sort((left, right) => (left.id < right.id ? -1 : 1)));
     expect(ruleDataInputs(twice).projectileVisuals).toBeUndefined();
@@ -116,5 +137,36 @@ describe('rule-data inputs and models (P3-07 CR-01)', () => {
     expect((table as ContentContractError).path).toBe('models[data/explosions].descriptor.payloadIdentity.schemaVersion');
     const model = thrownBy(() => modelInputs(broken, ['model/player-ship'] as AssetId[]));
     expect((model as ContentContractError).path).toBe('models[model/player-ship].payload.schemaVersion');
+  });
+});
+
+describe('map geometry input (P3-09 MW-01)', () => {
+  const groupsOf = async () => (await missionGroups('mission-startable')).filter(({ group }) => group !== 'audio');
+  /** `groups` with `change` applied to a copy of the cockpit-hud-map group's manifest. */
+  const withCockpitManifest = (groups: readonly PackageGroup[], change: (assets: AssetDescriptor[]) => AssetDescriptor[]): PackageGroup[] =>
+    groups.map((group) => {
+      if (group.group !== 'cockpit-hud-map') return group;
+      const manifest = structuredClone(group.manifest) as { assets: AssetDescriptor[] };
+      return { ...group, manifest: { ...manifest, assets: change(manifest.assets) } };
+    });
+
+  it('decodes the map geometry Asset of the same package, frozen', async () => {
+    const input = mapGeometryInput(await groupsOf());
+    expect(input).toEqual({ id: 'data/hud/map-geometry', content: SYNTHETIC_MAP_GEOMETRY });
+    expect(Object.isFrozen(input?.content)).toBe(true);
+  });
+
+  it('leaves a package without the group or the Asset to world creation', async () => {
+    const groups = await groupsOf();
+    expect(mapGeometryInput(groups.filter(({ group }) => group !== 'cockpit-hud-map'))).toBeUndefined();
+    expect(mapGeometryInput(withCockpitManifest(groups, (assets) => assets.filter(({ role }) => role !== 'map-geometry')))).toBeUndefined();
+  });
+
+  it('places a decoding error under the Asset and group it came from', async () => {
+    const broken = withCockpitManifest(await groupsOf(), (assets) => assets.map((asset) =>
+      (asset.role === 'map-geometry' ? { ...asset, payloadIdentity: { ...asset.payloadIdentity, schemaVersion: 2 } } as AssetDescriptor : asset)));
+    const error = thrownBy(() => mapGeometryInput(broken));
+    expect(error).toBeInstanceOf(ContentContractError);
+    expect((error as ContentContractError).path).toBe('cockpit-hud-map[data/hud/map-geometry].descriptor.payloadIdentity.schemaVersion');
   });
 });

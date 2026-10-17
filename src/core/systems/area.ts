@@ -9,13 +9,17 @@
  *   the world exit, the one true exit, which emits `object-left-world`.
  *
  * None of them bounds an active object: it may fly anywhere, and only parking hands it to the parked update. Until
- * P3-08 the parked travel follows the AI state instantiation wrote; the parked combat (P3-07) follows the travel, and
- * the base reports of P3-10 and the area centre during the player's Warp (P3-09) join at the marked places.
+ * P3-08 the parked travel follows the AI state instantiation wrote; the parked combat (P3-07) follows the travel. A
+ * hostile's position write inside the active area ends with P3-10's report `0x3c3b0` (comm-reactions.ts) and the
+ * wingman's arrival at a base starts with P3-10's full repair (base-interior.ts). The area centre, the Warp destination
+ * while the player is in Warp (P3-09), comes from rules/active-area.ts's activeAreaCentre.
  */
 import type { CraftRecord } from '../../content/rule-data/craft-info.ts';
-import type { ObjectLeftWorldEvent, Vec3 } from '../contracts/domain-events.ts';
+import type { Vec3 } from '../contracts/domain-events.ts';
 import { CoreFaultError } from '../errors.ts';
 import { activeAreaCentre, isOutsideExitBounds, isRemovedOnLeaving, isWithinActiveArea } from '../rules/active-area.ts';
+import { rearm } from '../rules/base-service.ts';
+import { BASE_KINDS, HOSTILE_KINDS } from '../rules/comm-reactions.ts';
 import { initialMovementBlock } from '../rules/flight-state.ts';
 import { RandStream, type RandSource } from '../rules/original-random.ts';
 import {
@@ -37,14 +41,21 @@ import {
   warpJumpLength,
 } from '../rules/parked-travel.ts';
 import { areaPoint } from '../rules/placement.ts';
+import { hasKind } from '../rules/radio.ts';
 import { PLAYER_KIND_BIT, WINGMAN_KIND_BIT } from '../rules/spawn-schedule.ts';
 import { isActiveState, setActivity, ZERO_VECTOR, type Entity, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { fullRepair } from './base-interior.ts';
+import { reportParkedEnemy } from './comm-reactions.ts';
+import { emit, type TickContext } from './pipeline.ts';
 
 /** Kinds the area check walks: every kind but the player's, `0x1fffffe`. */
 const AREA_CHECK_KINDS = 0x1fffffe;
 /** Kinds the parked update walks: every craft kind, `0xfffff`. */
 const PARKED_UPDATE_KINDS = 0xfffff;
+
+/** The wingman's arrival repair waits 0x780 clock units before it repeats (RX6). */
+const WINGMAN_ARRIVAL_REPAIR_INTERVAL = 0x780;
 
 const fault = (site: string): CoreFaultError => new CoreFaultError('invariant-violated', `area.${site}`);
 
@@ -114,10 +125,11 @@ export function checkActiveArea(world: WorldState): void {
   }
 }
 
-/** Writes a parked entity's new position through `0x6a2f8`: a discontinuous move, so its placement serial counts it. */
+/**
+ * Writes a parked entity's new position through `0x6a2f8`: a discontinuous move, so its placement serial counts it.
+ * The per-sector resource test of `0x6a2f8` always passes in Core (P3-02), so the write always happens.
+ */
 function commit(entity: Entity, position: Vec3): void {
-  // The per-sector resource test of 0x6a2f8 always passes in Core (P3-02). P3-10's base-proximity report 0x3c3b0
-  // follows a write inside the active area.
   entity.position = position;
   entity.placementSerial++;
 }
@@ -144,19 +156,33 @@ function recordGoal(world: WorldState, { source }: Entity, rand: RandSource): Ve
 }
 
 /**
- * The arrival branch of `0x2f314`, which writes no position: the entity's own target offset is cleared when there is
- * a target, an entity without a leader in AI mode 4 takes a new goal, it is no longer in Warp, and an entity other than
- * the wingman whose subject stands outside the inset world rectangle leaves the world: pending removal at once and one
- * `object-left-world`; its own update asks for the removal at the next tick.
+ * The first step of the arrival branch (RX6, CB-12): the wingman (kind exactly 2) arriving at a travel target of the
+ * base kinds is fully repaired when the sample is strictly past the one limit all kind-2 objects share, which is then
+ * re-armed 0x780 later. No message and no draw; the repair runs after the message loop, so it announces nothing.
  */
-function arrive(world: WorldState, entity: Entity, subject: Entity, leader: Entity | null, target: Entity | null, rand: RandSource, emit: (event: ObjectLeftWorldEvent) => void): void {
-  // P3-10: the wingman's base-arrival report 0x39820 comes first.
+function repairArrivingWingman(context: TickContext, entity: Entity, target: Entity | null): void {
+  const { limits } = context.world.communications;
+  const { clock } = context.time;
+  if (entity.kindBit !== WINGMAN_KIND_BIT || target === null || !hasKind(BASE_KINDS, target.kindBit) || !(clock > limits.wingmanArrivalRepair)) return;
+  limits.wingmanArrivalRepair = rearm(clock, WINGMAN_ARRIVAL_REPAIR_INTERVAL, 'area.wingman-arrival-repair');
+  fullRepair(context, entity, false);
+}
+
+/**
+ * The arrival branch of `0x2f314`, which writes no position: the wingman's arrival repair first; then the entity's own
+ * target offset is cleared when there is a target, an entity without a leader in AI mode 4 takes a new goal, it is no
+ * longer in Warp, and an entity other than the wingman whose subject stands outside the inset world rectangle leaves the
+ * world: pending removal at once and one `object-left-world`; its own update asks for the removal at the next tick.
+ */
+function arrive(context: TickContext, entity: Entity, subject: Entity, leader: Entity | null, target: Entity | null, rand: RandSource): void {
+  const { world } = context;
+  repairArrivingWingman(context, entity, target);
   if (target !== null) entity.ai.targetOffset = ZERO_VECTOR;
   if (leader === null && entity.ai.mode === 4) entity.ai.goal = recordGoal(world, entity, rand);
   entity.inWarp = false;
   if (entity.kindBit === WINGMAN_KIND_BIT || !isOutsideExitBounds(world.spawn.frame, subject.position)) return;
   entity.state = 'pending-removal';
-  emit({ type: 'object-left-world', tick: world.tick, entityId: entity.id, kindBit: entity.kindBit, source: entity.source });
+  emit(context, { type: 'object-left-world', tick: world.tick, entityId: entity.id, kindBit: entity.kindBit, source: entity.source });
 }
 
 /**
@@ -165,25 +191,26 @@ function arrive(world: WorldState, entity: Entity, subject: Entity, leader: Enti
  * mode 2 a valid object target, otherwise the AI target, plus the subject's offset (a zero one first replaced by a
  * random one, stored in the subject), or without a target the subject's goal point. Modes 1 and 5, a target that no
  * longer resolves and a target in Warp give no motion. Then, by the distance from the subject: the arrival, the Warp
- * jump, the travel step, or the follower's formation snap.
+ * jump, the travel step, or the follower's formation snap. Returns whether it wrote the entity's position.
  */
-function travelParked(world: WorldState, entity: Entity, elapsed: number, rand: RandSource, emit: (event: ObjectLeftWorldEvent) => void): void {
+function travelParked(context: TickContext, entity: Entity, elapsed: number, rand: RandSource): boolean {
+  const { world } = context;
   const { formation } = entity;
   const leader = formation === null ? null : (world.entities.get(formation.leader) ?? null);
   if (formation !== null && leader === null) {
     entity.formation = null;
-    return;
+    return false;
   }
   const subject = leader ?? entity;
   const { ai } = subject;
-  if (ai.mode === 1 || ai.mode === 5) return;
+  if (ai.mode === 1 || ai.mode === 5) return false;
   const objectTarget = ai.mode === 2 && ai.objectTarget !== null ? world.entities.get(ai.objectTarget) : undefined;
   let target: Entity | null = objectTarget ?? null;
   if (target === null && ai.target !== null) {
     target = world.entities.get(ai.target) ?? null;
-    if (target === null) return;
+    if (target === null) return false;
   }
-  if (target?.inWarp) return;
+  if (target?.inWarp) return false;
   let goal = ai.goal;
   if (target !== null) {
     let offset = ai.targetOffset;
@@ -196,8 +223,8 @@ function travelParked(world: WorldState, entity: Entity, elapsed: number, rand: 
   const position = subject.position;
   const distance = goalDistance(goal, position);
   if (hasArrived(distance)) {
-    arrive(world, entity, subject, leader, target, rand, emit);
-    return;
+    arrive(context, entity, subject, leader, target, rand);
+    return false;
   }
   const record = craftRecord(world, subject);
   const warpOutRequested = entity.inWarp && entity.warpClock === 0;
@@ -210,7 +237,7 @@ function travelParked(world: WorldState, entity: Entity, elapsed: number, rand: 
       entity.warpClock = leader.warpClock;
     }
     snapToLeader(entity, leader, formation.offset);
-    return;
+    return true;
   }
   const heading = headingTowards(distance);
   if (jumps) {
@@ -220,6 +247,7 @@ function travelParked(world: WorldState, entity: Entity, elapsed: number, rand: 
   const length = jumps ? warpJumpLength(record, heading.distance) : travelLength(elapsed, record, heading.distance);
   entity.orientation = heading.orientation;
   commit(entity, jittered(advanced(position, heading.forward, length), jumps ? WARP_JUMP_JITTER : TRAVEL_JITTER, rand));
+  return true;
 }
 
 /**
@@ -233,9 +261,11 @@ export type ParkedEngagement = (entity: Entity, elapsed: number) => void;
  * tick, for its due check. A due one first takes the elapsed time and the clock as its last parked update; then one in
  * Warp transit is done, and any other travels and then engages (`engage`), even when its travel has just made it leave
  * the world (E1). The engagement's draws follow the entity's own and precede the next entity's (E4), and an entity it
- * destroys later in the walk is no longer selected.
+ * destroys later in the walk is no longer selected. A hostile whose travel wrote its position inside the active area
+ * reports it (`0x3c3b0`) before the engagement, its draws in between.
  */
-export function updateParked(world: WorldState, emit: (event: ObjectLeftWorldEvent) => void, engage: ParkedEngagement): void {
+export function updateParked(context: TickContext, engage: ParkedEngagement): void {
+  const { world } = context;
   let rand = new RandStream(world.rngState);
   for (const entity of world.entities.walk(PARKED_UPDATE_KINDS)) {
     if (entity.activity !== 'parked' || !isActiveState(entity.state) || entity.destroyed) continue;
@@ -243,8 +273,9 @@ export function updateParked(world: WorldState, emit: (event: ObjectLeftWorldEve
     const elapsed = world.clock - entity.lastParkedUpdateClock;
     entity.lastParkedUpdateClock = world.clock;
     if (checkWarpTransit(world, entity)) continue;
-    travelParked(world, entity, elapsed, rand, emit);
+    const moved = travelParked(context, entity, elapsed, rand);
     world.rngState = rand.state;
+    if (moved && hasKind(HOSTILE_KINDS, entity.kindBit) && isWithinActiveArea(activeAreaCentre(world), entity.position)) reportParkedEnemy(context, entity);
     engage(entity, elapsed);
     rand = new RandStream(world.rngState);
   }

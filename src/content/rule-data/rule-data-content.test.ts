@@ -3,8 +3,8 @@ import { expectContractError } from '../graphics/graphics.test-support.ts';
 import { AI_SCRIPT_END_OPCODE } from './ai-programs.ts';
 import { readRuleDataContent, type RuleDataRole } from './rule-data-payload.ts';
 import {
-  box, builtInProgram, categoryItem, commandItem, craft, F32_DENORMAL, MARKER, mount, parameterEntry, script, scriptItem,
-  SYNTHETIC_RULE_DATA, syntheticCommMenus, syntheticDebrisParameters, type syntheticAiPrograms, type syntheticCraftInfo,
+  absentMessage, box, builtInProgram, categoryItem, commandItem, craft, F32_DENORMAL, MARKER, message, mount, parameterEntry, script,
+  scriptItem, SYNTHETIC_RULE_DATA, syntheticCommMenus, type syntheticCommMessages, syntheticDebrisParameters, type syntheticAiPrograms, type syntheticCraftInfo,
   tableProgram, text,
 } from './rule-data.test-support.ts';
 
@@ -237,6 +237,51 @@ describe('comm-menus content', () => {
     expect(Object.keys(content)).toEqual(['gatedTargetCommands', 'otherTargetCommands', 'categories', 'objectListLastEntry', 'kind2TargetCommands']);
     expect((content.gatedTargetCommands as Content[])[1]).toEqual({ text: text(10), command: 0xffffffff });
     expect(content.objectListLastEntry).toBe(text(8));
+  });
+});
+
+describe('comm-messages content', () => {
+  type Messages = ReturnType<typeof syntheticCommMessages>;
+
+  it('keeps the tables, absent entries, durations and names as stored, in field order', () => {
+    const content = read('comm-messages', () => undefined);
+    expect(Object.keys(content)).toEqual(['faceTables', 'direct', 'names2001', 'names2011']);
+    const faceTables = content.faceTables as Content[][][];
+    expect(faceTables.map(table => table.map(sub => sub.length))).toEqual([[3, 1], [2], [1, 2, 1]]);
+    expect(faceTables[0][0]).toEqual([message(3, 9, 2), absentMessage(), message(0, 1, 7, 0x7fffffff)]);
+    expect(Object.keys(faceTables[0][0][0])).toEqual(['present', 'frameDurations']);
+    expect(content.names2001).toEqual([text(9), text(1), text(32)]);
+  });
+
+  it.each([
+    ['a fourth face table', (messages: Messages) => { messages.faceTables.push([]); }, 'commMessages.faceTables'],
+    ['two face tables', (messages: Messages) => { messages.faceTables.pop(); }, 'commMessages.faceTables'],
+    ['a message without frames', (messages: Messages) => { messages.direct[0] = message(); }, 'commMessages.direct[0].frameDurations'],
+    ['a negative duration', (messages: Messages) => { messages.faceTables[2][2][1] = message(4, -1); }, 'commMessages.faceTables[2][2][1].frameDurations[1]'],
+    ['a duration beyond i32', (messages: Messages) => { messages.direct[2] = message(0x80000000); }, 'commMessages.direct[2].frameDurations[0]'],
+    ['a fractional duration', (messages: Messages) => { messages.direct[2] = message(1.5); }, 'commMessages.direct[2].frameDurations[0]'],
+    ['an absent message with durations', (messages: Messages) => { messages.direct[1] = { present: false, frameDurations: [1] } as never; },
+      'commMessages.direct[1]'],
+    ['a present message without durations', (messages: Messages) => { messages.direct[1] = { present: true } as never; }, 'commMessages.direct[1].frameDurations'],
+    ['a present flag that is no boolean', (messages: Messages) => { messages.direct[1] = { present: 1 } as never; }, 'commMessages.direct[1].present'],
+    ['an unknown message field', (messages: Messages) => { messages.direct[0] = { ...message(1), frames: 1 } as never; }, 'commMessages.direct[0]'],
+    ['a sub-table that is no list', (messages: Messages) => { messages.faceTables[0][1] = {} as never; }, 'commMessages.faceTables[0][1]'],
+    ['an empty name', (messages: Messages) => { messages.names2011[0] = ''; }, 'commMessages.names2011[0]'],
+    ['a name with a NUL', (messages: Messages) => { messages.names2001[1] = 'a\x00'; }, 'commMessages.names2001[1]'],
+    ['a name beyond bytes', (messages: Messages) => { messages.names2001[1] = '\u0100'; }, 'commMessages.names2001[1]'],
+    ['an unknown field', (messages: Messages) => { Object.assign(messages, { names2003: [] }); }, 'commMessages'],
+  ])('rejects %s', (_, change, path) => {
+    expectInvalid('comm-messages', change, path);
+  });
+
+  it('accepts empty tables and lists', () => {
+    const content = read('comm-messages', (messages: Messages) => {
+      messages.faceTables = [[], [[]], []];
+      messages.direct = [];
+      messages.names2001 = [];
+      messages.names2011 = [];
+    });
+    expect(content).toEqual({ faceTables: [[], [[]], []], direct: [], names2001: [], names2011: [] });
   });
 });
 

@@ -7,6 +7,7 @@ import { LOGIC_LIMITS } from '../logic/logic-content.ts';
 import { readAiPrograms, type AiPrograms } from './ai-programs.ts';
 import { readBaseRepairItems, type BaseRepairItems } from './base-repair-items.ts';
 import { readCommMenus, type CommMenus } from './comm-menus.ts';
+import { readCommMessages, type CommMessages } from './comm-messages.ts';
 import { readCraftInfo, type CraftInfo } from './craft-info.ts';
 import { readDebrisParameters, type DebrisParameters } from './debris-parameters.ts';
 import { readFlightMessages, type FlightMessages } from './flight-messages.ts';
@@ -22,7 +23,8 @@ export type RuleDataPayload =
   | { readonly role: 'ai-programs'; readonly content: AiPrograms }
   | { readonly role: 'comm-menus'; readonly content: CommMenus }
   | { readonly role: 'base-repair-items'; readonly content: BaseRepairItems }
-  | { readonly role: 'flight-messages'; readonly content: FlightMessages };
+  | { readonly role: 'flight-messages'; readonly content: FlightMessages }
+  | { readonly role: 'comm-messages'; readonly content: CommMessages };
 
 export type RuleDataRole = RuleDataPayload['role'];
 
@@ -37,10 +39,12 @@ interface RoleFormat<R extends RuleDataRole> {
 const FORMATS: { readonly [R in RuleDataRole]: RoleFormat<R> } = Object.freeze({
   'craft-info': { schemaVersion: 1, read: readCraftInfo },
   'debris-parameters': { schemaVersion: 1, read: readDebrisParameters },
-  'ai-programs': { schemaVersion: 1, read: readAiPrograms },
+  // Schema 2 adds the keyword tables (P3-03 spec, revision 3).
+  'ai-programs': { schemaVersion: 2, read: readAiPrograms },
   'comm-menus': { schemaVersion: 1, read: readCommMenus },
   'base-repair-items': { schemaVersion: 1, read: readBaseRepairItems },
   'flight-messages': { schemaVersion: 1, read: readFlightMessages },
+  'comm-messages': { schemaVersion: 1, read: readCommMessages },
 });
 
 /** The rule-data roles, in the order of the spec. */

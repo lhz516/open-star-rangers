@@ -76,7 +76,7 @@ function craftCombat(kindBit: number): EntityCombat {
   return record === undefined ? blankCraftCombat() : { ...blankCraftCombat(), weapons: buildWeaponBlock(record as unknown as CraftRecord) };
 }
 
-type KindDefaults = Pick<EntityInit, 'combat' | 'presentation' | 'movement'> & Partial<Pick<EntityInit, 'side' | 'ruleInputs' | 'maximumSpeed'>>;
+type KindDefaults = Pick<EntityInit, 'combat' | 'presentation' | 'movement'> & Partial<Pick<EntityInit, 'side' | 'ruleInputs' | 'maximumSpeed' | 'name'>>;
 
 const ZERO_RULE_INPUTS: EntityRuleInputs = Object.freeze({ percentB: 0, percentC: 0, percentD: 0, aiValueA: 0, aiValueB: 0, aiValueC: 0 });
 /** The fields a runtime kind takes from the allocator (CR-02) where entityInit's craft defaults differ. */
@@ -85,7 +85,8 @@ const RUNTIME = { side: null, ruleInputs: ZERO_RULE_INPUTS, maximumSpeed: 0 } as
 /**
  * Combat state, presentation and active movement block of a minimal entity of `kindBit` (CR-02, CR-03): a blank craft,
  * its weapon block its synthetic record's, with its model; or a runtime kind's first record, its variant's block at rest, no references and the allocator's
- * fields (a missile keeps TEST_MAXIMUM_SPEED). Kinds without a combat type get a craft's, which allocation rejects.
+ * fields (a missile keeps TEST_MAXIMUM_SPEED); the map marker with its own name, presentation and block (MW-03). Kinds
+ * without a combat type get a craft's, which allocation rejects.
  */
 export function kindDefaults(kindBit: number): KindDefaults {
   const still = { speed: 0, velocity: { x: 0, y: 0, z: 0 } };
@@ -119,6 +120,14 @@ export function kindDefaults(kindBit: number): KindDefaults {
         combat: { type: 'fragment', sourceKindBit: 7, part: 0, debris: 0, durability: 0, explodeOnExpiry: false, expiry: { type: 'pending' }, handOff: null },
         presentation: { type: 'fragment', model: TEST_MODEL, part: 0, display: 'part' },
         movement: { mode: 'spinning', ...still, spin: 0, spinAxis: 0 },
+      };
+    case 'marker':
+      return {
+        ...RUNTIME,
+        name: { type: 'map-marker' },
+        combat: { type: 'marker' },
+        presentation: { type: 'map-marker' },
+        movement: { mode: 'marker', speed: 0 },
       };
     default:
       return { combat: craftCombat(kindBit), presentation: { type: 'model', model: TEST_MODEL }, movement: steered };
@@ -175,6 +184,8 @@ export function busyCombat(kindBit: number): EntityCombat {
       return { ...combat, source: 3, sourceKindBit: 20, heldSource: 3, activationClock: 6, removalAfterClock: 102 };
     case 'fragment':
       return { ...combat, debris: 2, durability: 1200, explodeOnExpiry: true, expiry: { type: 'at', clock: 1 }, handOff: 3 };
+    case 'marker':
+      return combat;
     case 'craft':
       return {
         ...combat, energy: -5, shield: 3, charge: 2, shieldLevel: 1, chargeLevel: 2, sparePower: 7, fullSpeedPower: 9, lastEnergyClock: 4,

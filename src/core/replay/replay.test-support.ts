@@ -1,5 +1,5 @@
 import type { TickInput } from '../contracts/tick-input.ts';
-import type { CreateWorldInput } from '../world/create-world.ts';
+import { CONTENT_INPUT_FIELDS, type CreateWorldInput } from '../world/create-world.ts';
 import { asCreateInput, worldInput, type WorldInputParts } from '../world/create-world.test-support.ts';
 import { tickInput } from '../world/world.test-support.ts';
 import { createRecordingSession, type Recording } from './recording.ts';
@@ -19,8 +19,7 @@ export function longInput(parts: WorldInputParts = {}): CreateWorldInput {
 
 /** What replay takes: the creation input without its run configuration. */
 export function contentOf(input: CreateWorldInput): ReplayContent {
-  const { mission, craftTypes, wingmanRoster, craftInfo, debrisParameters, projectileVisuals, explosions, explosionAnimations, models, aiPrograms, identity } = input;
-  return { mission, craftTypes, wingmanRoster, craftInfo, debrisParameters, projectileVisuals, explosions, explosionAnimations, models, aiPrograms, identity };
+  return Object.fromEntries(CONTENT_INPUT_FIELDS.map((field) => [field, input[field]])) as unknown as ReplayContent;
 }
 
 /** A fixed input script: commands on some ticks (a speed preset and a digit, which has no effect in flight), steering on others, -0 included. */

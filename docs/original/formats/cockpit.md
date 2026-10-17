@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-10
+updated: 2026-10-14
 related: [U-001, U-006, U-011, U-029]
 ---
 
@@ -37,7 +37,7 @@ Container format: [IMFAT](./imfat.md); images use the [image record](./textures.
 | +0x0C | u32 | Passed to the instrument handlers each frame | Meaning Unconfirmed |
 | +0x10 | u32 ptr | Contiguous array of 52-byte elements | Confirmed |
 | +0x14 | u32 | Element count; zero for empty slots | Confirmed |
-| +0x18 | u32 ptr | Array of 48-byte instrument records: u32 type at +0, a screen rectangle (x0, y0, x1, y1, inclusive) at +4–+16; dispatched by type each frame | Type at +0, the 48-byte stride and the dispatch Confirmed (EXE, [below](#instrument-types-per-slot-confirmed-p3-0730)); rectangle Likely (EXE and screenshot, [below](#front-cockpit-source-r1)); other fields Unconfirmed |
+| +0x18 | u32 ptr | Array of 48-byte instrument records: u32 type at +0, a screen rectangle (x0, y0, x1, y1, inclusive) at +4–+16; dispatched by type each frame | Type at +0, the 48-byte stride and the dispatch Confirmed (EXE, [below](#instrument-types-per-slot-confirmed-p3-0730)); rectangle Likely (EXE and screenshot, [below](#front-cockpit-source-r1)); the scheduler fields +0x18 and +0x1C Confirmed (EXE, [below](#instrument-types-per-slot-confirmed-p3-0730)); other fields Unconfirmed |
 | +0x1C | u32 | Instrument record count | Confirmed (EXE, `0x49b2c`) |
 
 The element pointer/count layout is validated by parsing every non-empty slot in 10097, 10101 and 10103 with the existing image parser. The eight directory slots are not eight non-empty views: slots 1 and 7 are empty in both full sets. Earlier group numbers below used a compact enumeration of non-empty groups; the table now uses actual directory slots. The palette pointer is set on slot 2 of 10101 and 10103 and on slot 0 of 10097, and is 0 on every other slot; its target is in the entry's relocation table. Each slot is selected by the view modes whose layout number it carries (+0x00, above); U-029 remains open for +0x0C and the instrument record fields. **Which set is loaded (Confirmed, EXE, P3-01/10):** TABL 10099 lists 10103, 10097 and 10101, and `0x497a0(n)` loads entry n − 1. The HUD set-up loads 10103 at start-up; entering the base interior (view mode 6) the view switch loads 10097, and leaving it loads 10103 again, or 10101 in LO ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)).
@@ -71,6 +71,7 @@ No type occurs twice in a slot. The ignored script `local/research/p3-07/contrac
 - Types 7 (right display, [T7](./executable.md#t7-right-target-display-confirmed-code)) and 6 (left display, [T8](./executable.md#t8-left-display-no-target-reads-confirmed-code)) occur once each in layouts 0 and 5 and in no other slot. Their handlers therefore run only in view modes 0xC and 1 (layout 0), 6 (layout 0 of 10097) and 0xD (layout 5). The cursor-key views (layouts 1–4) and the external views (layout 8) have only type 8, the message line; the map (layout 6) has types 10 and 8.
 - In every slot that holds them, type 7 comes before type 6. When both are due in the same frame, the right display's target clearing (T7) therefore runs before the left display's page-0 status display ([D9](./executable.md#d9-status-display-writes-subsystem-fields-1-5-and-8--confirmed-code)).
 - The LO set places type 8 differently from the HI set; the order of types 7 and 6 is the same in all three entries.
+- **Record fields read for the map (type 10; Confirmed, EXE, P3-05/03 and P3-09/04):** `0x49b2c` reads every record's +0x18 as a redraw interval in clock units (draw when it is 0, when forced, or when the sample minus +0x1C exceeds it, unsigned) and writes the sample to +0x1C (last draw time, run-time state); it passes +0x14 and +0x24 to the handler. The map's activation `0x49e74` reads only the inclusive rectangle +0x04–+0x10 (main map side = y1 − y0 + 1; the information and zoom strip x0 + side … x1, excluding the last column, each half the side tall), and the map draw `0x49f8c` reads none of +0x14, +0x18 or +0x24 itself ([zoom window](./executable.md#zoom-window-information-window-and-labels-p3-0904)). With the shipped type-10 records the map draws on every frame (data; values not recorded). The map's rule geometry therefore needs only the rectangle, and the interval to confirm every-frame drawing.
 
 ### Element, 52 bytes (Confirmed)
 

@@ -51,6 +51,9 @@ function nameText(setup: MissionSetup, name: NameReference): string {
       return setup.namePool[name.index];
     case 'craft-type':
       throw new CoreFaultError('invariant-violated', 'names.craft-type-text');
+    // No name walk's mask has kind bit 25, the map marker's (MW-03).
+    case 'map-marker':
+      throw new CoreFaultError('invariant-violated', 'names.map-marker-text');
   }
 }
 

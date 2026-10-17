@@ -143,6 +143,8 @@ describe('stored package record reading', () => {
     ['slice definition version 2', record => { groupsOf(record).forEach(group => { at(group, 'manifest', 'identity').sliceDefinitionVersion = 2; }); return record; }, 'record.groups[0].manifest.identity.sliceDefinitionVersion'],
     // P3-03 AC-15: a package of slice definition version 3, stored before P3-03.
     ['slice definition version 3', record => { groupsOf(record).forEach(group => { at(group, 'manifest', 'identity').sliceDefinitionVersion = 3; }); return record; }, 'record.groups[0].manifest.identity.sliceDefinitionVersion'],
+    // The P3-09 revision of P3-03: a package of slice definition version 4, stored before the map geometry.
+    ['slice definition version 4', record => { groupsOf(record).forEach(group => { at(group, 'manifest', 'identity').sliceDefinitionVersion = 4; }); return record; }, 'record.groups[0].manifest.identity.sliceDefinitionVersion'],
   ];
 
   it.each(incompatible)('reads %s as cache-incompatible', (_name, change, location) => {

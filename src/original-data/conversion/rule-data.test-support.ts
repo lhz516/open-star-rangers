@@ -1,4 +1,4 @@
-import type { BuiltInProgram } from '../../content/rule-data/ai-programs.ts';
+import type { AiPrograms } from '../../content/rule-data/ai-programs.ts';
 import { readBaseRepairItems } from '../../content/rule-data/base-repair-items.ts';
 import { readFlightMessages } from '../../content/rule-data/flight-messages.ts';
 import type { RuleDataPayload, RuleDataRole } from '../../content/rule-data/rule-data-payload.ts';
@@ -8,9 +8,11 @@ import {
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import type { DiscPath } from '../disc/disc-path.ts';
 import { AI_LAYOUT } from '../formats/ai.ts';
-import { aiContent, syntheticAiSources, syntheticBuiltIn } from '../formats/ai.test-support.ts';
+import { aiContent, syntheticAiSources, syntheticBuiltIn, syntheticKeywordTables } from '../formats/ai.test-support.ts';
+import type { RegionFixup } from '../formats/le-executable.ts';
 import { BASE_REPAIR_RECORD } from '../formats/base-repair.ts';
 import { COMM_MENU_IDS, COMM_NOB, defaultCommMenus, syntheticCommTables } from '../formats/comm.test-support.ts';
+import { COMMFACE_NOB, defaultCommMessages, syntheticCommFace } from '../formats/comm-face.test-support.ts';
 import { CRAFT_NOB, craftTableCell, defaultCraftInfo, syntheticCraftInfoBlock, syntheticCraftTable } from '../formats/craft.test-support.ts';
 import { DEBRIS_NOB, defaultDebrisParameters, syntheticDebrisBlock } from '../formats/debris.test-support.ts';
 import type { SyntheticBlock } from '../formats/formats.test-support.ts';
@@ -19,16 +21,19 @@ import { buildImfat, syntheticLeExecutable, type SyntheticEntry } from '../synth
 import { PRODUCTION_EXECUTABLE } from './production-executable.ts';
 import type { RuleDataSources } from './production-rule-data.ts';
 
-// Code-generated synthetic archives and an LE executable holding the six rule-data Assets' sources, with the mapping plan
-// that names them, for P3-03 conversion tests. They never hold original data: their entry IDs, offsets and values are
-// arbitrary synthetic ones (only the COMM table IDs are the comm support's), and texts carry the content support's MARKER.
-// Every archive also holds entries no mapping names, which a conversion must never read.
+// Code-generated synthetic archives and an LE executable holding the seven rule-data Assets' sources, with the mapping
+// plan that names them, for P3-03 conversion tests. They never hold original data: their entry IDs, offsets and values are
+// arbitrary synthetic ones (only the COMM menu table IDs are the comm support's), and texts carry the content support's
+// MARKER. Every archive also holds entries no mapping names, and the disc a second face archive, which a conversion must
+// never read.
 
 export { MARKER } from '../../content/rule-data/rule-data.test-support.ts';
 
 export const AISTUFF_NOB = 'MAIN/AISTUFF.NOB' as DiscPath;
 export const SR_NOB = 'MAIN/SR.NOB' as DiscPath;
 export const EXECUTABLE = PRODUCTION_EXECUTABLE as DiscPath;
+/** The second face archive, which the conversion never reads (P3-10 D-03). */
+export const COMMFAC2_NOB = 'MAIN/COMMFAC2.NOB' as DiscPath;
 
 /** Synthetic entry IDs of the mapped entries and of the decoys beside them. */
 export const SYNTHETIC_RULE_DATA_IDS = Object.freeze({
@@ -40,8 +45,11 @@ export const SYNTHETIC_RULE_DATA_IDS = Object.freeze({
   /** A script and a DFPG in the AI archive outside the ID chain. */
   aiDecoyScript: 7_301,
   aiDecoyParameters: 7_303,
-  /** The COMM tables this task does not import (G-03). */
-  commDecoys: Object.freeze([2_001, 2_011]),
+  /** COMM tables no mapping names. */
+  commDecoys: Object.freeze([2_015, 2_017]),
+  /** A COMMFACE TABL and CMOV no table names. */
+  faceDecoyTable: 31_301,
+  faceDecoyMessage: 31_303,
   baseRepair: 11_165,
   srDecoy: 11_167,
 });
@@ -60,6 +68,7 @@ export function defaultRuleDataContents(): RuleDataContents {
     'craft-info': defaultCraftInfo(),
     'debris-parameters': defaultDebrisParameters(),
     'flight-messages': readFlightMessages(syntheticFlightMessages()),
+    'comm-messages': defaultCommMessages(),
   };
 }
 
@@ -110,36 +119,55 @@ function fixupRecord(offset: number, object: number, target: number): number[] {
   return record;
 }
 
+/** Adds the fixup records of `regionFixups`, patching a region at `regionAt` of the object whose first page is `firstPage`. */
+function recordFixups(records: Record<number, number[]>, firstPage: number, regionAt: number, regionFixups: readonly RegionFixup[]): void {
+  for (const { at, object, offset } of regionFixups) {
+    const position = regionAt + at;
+    const page = Math.floor(position / LE_PAGE);
+    for (const recorded of position + 4 > (page + 1) * LE_PAGE ? [page, page + 1] : [page]) {
+      (records[firstPage + recorded] ??= []).push(...fixupRecord(position - recorded * LE_PAGE, object, offset));
+    }
+  }
+}
+
+/** Where the keyword tables start in object 2, after the handler targets, at an odd offset. */
+const KEYWORD_TABLES_AT = 0x31b;
+
 /**
- * The LE file: object 1 the flight messages, object 2 the handler targets, object 3 the built-in names and object 4 the
- * built-in table, placed so that a fixup crosses a page boundary. Objects 1–3 take one page each.
+ * The LE file: object 1 the flight messages, object 2 the handler targets and then the keyword tables, object 3 the
+ * built-in names and object 4 the built-in table, placed so that a fixup crosses a page boundary, followed by the
+ * keyword names. Objects 1–3 take one page each.
  */
-function syntheticExecutable(programs: readonly BuiltInProgram[], messages: readonly string[]) {
+function syntheticExecutable({ builtInPrograms, keywordTables }: AiPrograms, messages: readonly string[]) {
   // The names are consecutive regions in object 3.
-  const builtIn = syntheticBuiltIn(programs);
+  const builtIn = syntheticBuiltIn(builtInPrograms);
   const namesEnd = builtIn.names.reduce((end, { region }) => Math.max(end, region.offset + region.length), 0);
   const names = Uint8Array.from({ length: namesEnd + 5 }, (_, index) => (index % 200) + 3);
   for (const { region, bytes } of builtIn.names) names.set(bytes, region.offset);
   const tableAt = LE_PAGE - AI_LAYOUT.programBytes - 2;
-  const table = Uint8Array.from({ length: tableAt + builtIn.bytes.length + 9 }, (_, index) => (index * 3) & 0xff);
+  const builtInEnd = tableAt + builtIn.bytes.length + 9;
+  const keywords = syntheticKeywordTables(keywordTables, { object: 2, offset: KEYWORD_TABLES_AT }, { object: 4, offset: builtInEnd + 3 });
+  const keywordNamesEnd = keywords.names.reduce((end, { region }) => Math.max(end, region.offset + region.length), 0);
+  const table = Uint8Array.from({ length: keywordNamesEnd + 6 }, (_, index) => ((index * 3) & 0xff) || 1);
   table.set(builtIn.bytes, tableAt);
+  for (const { region, bytes } of keywords.names) table.set(bytes, region.offset);
+  const keywordEnd = keywords.tables.reduce((end, { region }) => Math.max(end, region.offset + region.length), 0);
+  const handlers = new Uint8Array(keywordEnd + 5).fill(0xcc);
+  for (const { region, bytes } of keywords.tables) handlers.set(bytes, region.offset);
   const fixups: Record<number, number[]> = {};
-  for (const { at, object, offset } of builtIn.fixups) {
-    const position = tableAt + at;
-    const page = Math.floor(position / LE_PAGE);
-    for (const recorded of position + 4 > (page + 1) * LE_PAGE ? [page, page + 1] : [page]) {
-      (fixups[4 + recorded] ??= []).push(...fixupRecord(position - recorded * LE_PAGE, object, offset));
-    }
-  }
+  recordFixups(fixups, 4, tableAt, builtIn.fixups);
+  for (const { region, fixups: tableFixups } of keywords.tables) recordFixups(fixups, 2, region.offset, tableFixups);
   const message = messageObject(messages);
   const file = syntheticLeExecutable({
-    objects: [{ bytes: message.bytes }, { bytes: new Uint8Array(0x300).fill(0xcc) }, { bytes: names }, { bytes: table }],
+    objects: [{ bytes: message.bytes }, { bytes: handlers }, { bytes: names }, { bytes: table }],
     fixups,
   });
   return {
     file,
     builtIn: Object.freeze({ object: 4, offset: tableAt, length: builtIn.bytes.length }),
     names: builtIn.names.map(({ region }) => Object.freeze(region)),
+    keywordTables: Object.freeze(keywords.tables.map(({ region }) => Object.freeze(region))) as RuleDataSources['aiPrograms']['keywordTables'],
+    keywordNames: keywords.names.map(({ region }) => Object.freeze(region)),
     messages: message.regions,
   };
 }
@@ -157,9 +185,10 @@ export function syntheticRuleData(contents: RuleDataContents = defaultRuleDataCo
   const decoyParameters = ai.entries.find(({ type }) => type === 'DFPG')!.block;
 
   const commTables = syntheticCommTables(contents['comm-menus']);
+  const face = syntheticCommFace(contents['comm-messages']);
   const messages = contents['flight-messages'];
   const messageKeys = Object.keys(messages) as (keyof typeof messages)[];
-  const executable = syntheticExecutable(contents['ai-programs'].builtInPrograms, messageKeys.map(key => messages[key]));
+  const executable = syntheticExecutable(contents['ai-programs'], messageKeys.map(key => messages[key]));
 
   const sources: RuleDataSources = {
     candidate: CLASSIC_P2_SLICE.candidate,
@@ -173,11 +202,24 @@ export function syntheticRuleData(contents: RuleDataContents = defaultRuleDataCo
       scripts: ai.entries.filter(({ type }) => type === 'TABL').map(({ id }) => id),
       builtIn: executable.builtIn,
       builtInNames: executable.names,
+      keywordTables: executable.keywordTables,
+      keywordNames: executable.keywordNames,
     },
     commMenus: { archive: COMM_NOB, tables: COMM_MENU_IDS },
     baseRepairItems: { archive: SR_NOB, table: ids.baseRepair },
     flightMessages: Object.fromEntries(messageKeys.map((key, index) => [key, executable.messages[index]])) as RuleDataSources['flightMessages'],
+    commMessages: {
+      archive: COMMFACE_NOB,
+      faceTables: face.ids.faceTables,
+      direct: face.ids.direct,
+      subTables: face.ids.subTables,
+      messages: face.ids.messages,
+      namesArchive: COMM_NOB,
+      names2001: face.ids.names2001,
+      names2011: face.ids.names2011,
+    },
   };
+  const faceEntries = [...face.faceTables, face.direct, ...face.subTables, ...face.messages];
   const archives: Record<string, SyntheticEntry[]> = {
     [CRAFT_NOB]: [
       entryOf(ids.craftTable, 'TABL', craftTable), entryOf(ids.craftInfo, 'CINF', craftInfo), entryOf(ids.otherCraftInfo, 'CINF', craftInfo),
@@ -191,7 +233,14 @@ export function syntheticRuleData(contents: RuleDataContents = defaultRuleDataCo
     [COMM_NOB]: [
       ...(Object.keys(COMM_MENU_IDS) as (keyof typeof COMM_MENU_IDS)[]).map(key => entryOf(COMM_MENU_IDS[key], 'TABL', commTables[key])),
       ...ids.commDecoys.map(id => entryOf(id, 'TABL', commTables.categories)),
+      face.names2001, face.names2011,
     ],
+    [COMMFACE_NOB]: [
+      ...faceEntries,
+      { ...face.subTables[0], id: ids.faceDecoyTable }, { ...face.messages[0], id: ids.faceDecoyMessage },
+    ],
+    // Every entry of the face archive again: a conversion that read it would find the same structure.
+    [COMMFAC2_NOB]: faceEntries.map(entry => ({ ...entry })),
     [SR_NOB]: [
       entryOf(ids.baseRepair, 'TABL', baseRepairBlock(contents['base-repair-items'].subsystemSelectors)),
       entryOf(ids.srDecoy, 'TABL', baseRepairBlock([1, 2, 3])),

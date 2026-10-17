@@ -1,30 +1,40 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import type { AssetReference } from '../src/content/asset-contract.ts';
 import { BUDGET_DIMENSIONS } from '../src/content/budget.ts';
 import type { GroupInput } from '../src/content/completeness.ts';
 import type { GroupManifest } from '../src/content/manifest.ts';
 import { HUD_TEXT_FORMATS, HUD_TEXT_KEYS } from '../src/content/hud/hud-text-payload.ts';
+import { encodeMapGeometryPayload } from '../src/content/hud/map-geometry-payload.ts';
+import type { PayloadRecord } from '../src/content/payload.ts';
+import { sha256Fingerprint } from '../src/content/sha256.ts';
 import { MARKER as RULE_DATA_MARKER } from '../src/content/rule-data/rule-data.test-support.ts';
 import { PRODUCTION_LISTS } from '../src/original-data/conversion/flight-data.test-support.ts';
 import {
   SYNTHETIC_HIT_SHIMMER, SYNTHETIC_TARGET_DISPLAY, SYNTHETIC_VIEW_LABEL,
 } from '../src/original-data/conversion/production-flight-graphics.test-support.ts';
+import { instrumentRecord } from '../src/original-data/conversion/conversion.test-support.ts';
+import {
+  PRODUCTION_COCKPIT_INSTRUMENTS, productionCockpitBlock, SYNTHETIC_MAP_GEOMETRY,
+} from '../src/original-data/conversion/production-graphics.test-support.ts';
+import { productionSliceEntries } from '../src/original-data/conversion/production-models.test-support.ts';
 import { SYNTHETIC_HUD_TEXT } from '../src/original-data/conversion/production-hud-text.test-support.ts';
 import { productionRuleData } from '../src/original-data/conversion/production-rule-data.test-support.ts';
 import { openDiscImage } from '../src/original-data/disc/disc-image.ts';
 import { syntheticFileDisc, type SyntheticFileContent } from '../src/original-data/disc/disc.test-support.ts';
 import { MARKER } from '../src/original-data/formats/formats.test-support.ts';
 import { identifySource } from '../src/original-data/source/identify-source.ts';
+import { buildImfat } from '../src/original-data/synthetic.test-support.ts';
+import { BlobByteSource } from '../src/platform/files/blob-byte-source.ts';
 import { catalogFor } from '../src/original-data/source/source.test-support.ts';
 import type { ImportJob } from '../src/workers/import-host.ts';
 import { createImportJob } from '../src/workers/import-job.ts';
 import { IMPORT_STAGES } from '../src/workers/import-protocol.ts';
 import { PRODUCTION_PACKAGE } from '../src/workers/production-package.ts';
-import { sliceCoveredFiles } from '../src/workers/synthetic-import.test-support.ts';
-import { main, runPackageCheck, type PackageCheckReport } from './package-check.ts';
+import { PADDING, sliceCoveredFiles } from '../src/workers/synthetic-import.test-support.ts';
+import { keywordTablesDigest, main, runPackageCheck, type PackageCheckReport } from './package-check.ts';
 
 const DIRECTORY_MARKER = 'PRIVATE-MARKER-package-check';
 const directory = mkdtempSync(join(tmpdir(), `osr-package-check-${DIRECTORY_MARKER}-`));
@@ -33,7 +43,7 @@ afterEach(() => { vi.restoreAllMocks(); });
 
 /** Writes a disc of `files` plus unread padding as a CloneCD file set and returns its paths and whitelist. */
 async function writeDisc(name: string, files: Record<string, SyntheticFileContent>) {
-  const disc = syntheticFileDisc({ ...files, 'PAD/PAD.DAT': { byteLength: 1 << 20, read: (_, length) => new Uint8Array(length) } });
+  const disc = syntheticFileDisc({ ...files, 'PAD/PAD.DAT': PADDING });
   const paths = [join(directory, `${name}-${MARKER}.ccd`), join(directory, `${name}-${MARKER}.img`)];
   writeFileSync(paths[0], await disc.descriptor.read(0, disc.descriptor.byteLength));
   writeFileSync(paths[1], await disc.image.read(0, disc.image.byteLength));
@@ -68,19 +78,19 @@ describe('package check', () => {
     expect(report).toMatchObject({ format: 'osr-package-check', version: 1, passed: true, error: null });
     expect(report.identity).toEqual({ versionId: 'synthetic-test', fingerprint: expect.stringMatching(/^source:sha256:[0-9a-f]{64}$/) });
     expect(report.package).toMatchObject({
-      status: 'complete', sliceDefinitionVersion: 4, converterVersion: PRODUCTION_PACKAGE.converterVersion, manifestIdentity: expect.stringMatching(/^manifest:sha256:[0-9a-f]{64}$/),
+      status: 'complete', sliceDefinitionVersion: 6, converterVersion: PRODUCTION_PACKAGE.converterVersion, manifestIdentity: expect.stringMatching(/^manifest:sha256:[0-9a-f]{64}$/),
     });
-    expect(report.package!.groups.map(({ group, assets }) => [group, assets])).toEqual([['logic', 9], ['models', 266], ['cockpit-hud-map', 104], ['audio', 29]]);
+    expect(report.package!.groups.map(({ group, assets }) => [group, assets])).toEqual([['logic', 10], ['models', 266], ['cockpit-hud-map', 105], ['audio', 29]]);
     expect(report.package!.groups.every(({ digest, payloadBytes }) => HASH.test(digest) && payloadBytes > 0)).toBe(true);
 
     const roles = new Map(report.roles.map(role => [role.role, role]));
     expect(report.roles.map(({ role, group, assets }) => [role, group, assets])).toEqual([
       ['mission', 'logic', 1], ['craft-info', 'logic', 1], ['debris-parameters', 'logic', 1], ['ai-programs', 'logic', 1], ['comm-menus', 'logic', 1],
-      ['base-repair-items', 'logic', 1], ['flight-messages', 'logic', 1],
+      ['base-repair-items', 'logic', 1], ['flight-messages', 'logic', 1], ['comm-messages', 'logic', 1],
       ['scene-settings', 'models', 1], ['explosion-table', 'models', 1], ['explosion-animation', 'models', 17], ['explosion-frame', 'models', 186],
       ['nebula-backgrounds', 'models', 1], ['nebula-background', 'models', 15], ['hit-shimmer', 'models', 1],
       ['target-display', 'cockpit-hud-map', 1], ['view-labels', 'cockpit-hud-map', 1], ['hud-text', 'cockpit-hud-map', 1],
-      ['event-sound', 'audio', 8], ['hud-sound', 'audio', 3],
+      ['map-geometry', 'cockpit-hud-map', 1], ['event-sound', 'audio', 8], ['hud-sound', 'audio', 3],
     ]);
     expect(report.roles.every(({ digest, payloadBytes }) => HASH.test(digest) && payloadBytes > 0)).toBe(true);
     expect(new Set(report.roles.map(({ digest }) => digest)).size).toBe(report.roles.length);
@@ -103,10 +113,25 @@ describe('package check', () => {
     const ai = contents['ai-programs'];
     expect(roles.get('ai-programs')!.counts).toMatchObject({
       programs: ai.programs.length, builtInPrograms: 10, entries: 25, parameterEntries: 3, scriptEntries: 22, globalElements: ai.globals.elements.length,
+      // The production structure: 3, 6, 5 and 3 pairs naming 14 distinct names of 111 bytes with their NULs (ai.md §5.3).
+      keywordPairs0: 3, keywordPairs1: 6, keywordPairs2: 5, keywordPairs3: 3, keywordNames: 14, keywordNameBytes: 111,
     });
+    // Only the ai-programs role reports a digest of its keyword tables, the one an independent read reproduces.
+    expect(report.roles.filter(({ digests }) => digests !== undefined).map(({ role }) => role)).toEqual(['ai-programs']);
+    expect(roles.get('ai-programs')!.digests).toEqual({ keywordTables: keywordTablesDigest(ai.keywordTables) });
+    expect(keywordTablesDigest([[{ name: '\x80a', value: -1 }]])).toBe(sha256Fingerprint(new TextEncoder().encode('0 0 -1 8061\n')));
     expect(roles.get('comm-menus')!.counts).toMatchObject({ menus: 5 });
     expect(roles.get('base-repair-items')!.counts).toEqual({ selectors: 11 });
     expect(roles.get('flight-messages')!.counts).toEqual({ texts: 7, textBytes: sum(Object.values(contents['flight-messages']).map(text => text.length)) });
+    const comm = contents['comm-messages'];
+    const tableCounts = comm.faceTables.map(table => [table.length, sum(table.map(sub => sub.length))]);
+    const present = [...comm.faceTables.flat(2), ...comm.direct].flatMap(item => (item.present ? [item.frameDurations.length] : []));
+    expect(roles.get('comm-messages')!.counts).toEqual({
+      faces20011: tableCounts[0][0], messages20011: tableCounts[0][1], faces20019: tableCounts[1][0], messages20019: tableCounts[1][1],
+      faces20985: tableCounts[2][0], messages20985: tableCounts[2][1], messages20983: comm.direct.length, present: 481, frames: sum(present),
+      names2001: comm.names2001.length, names2011: comm.names2011.length, nameBytes: sum([...comm.names2001, ...comm.names2011].map(name => name.length)),
+    });
+    expect(tableCounts.map(([faces]) => faces)).toEqual([4, 4, 5]);
     expect(roles.get('scene-settings')!.counts).toEqual({ screenFlashes: 3 });
     expect(roles.get('explosion-table')!.counts).toEqual({ lists: 3, entries: PRODUCTION_LISTS.flat().length });
     expect(roles.get('explosion-animation')!.counts).toEqual({ frames: roles.get('explosion-frame')!.assets });
@@ -120,6 +145,8 @@ describe('package check', () => {
       texts: HUD_TEXT_KEYS.length, formatted: HUD_TEXT_KEYS.filter(key => HUD_TEXT_FORMATS[key] !== null).length,
       textBytes: sum(Object.values(SYNTHETIC_HUD_TEXT.entries).map(text => text.length)),
     });
+    // The map geometry equals the independent read of its CCKD record and font.
+    expect(roles.get('map-geometry')!.counts).toEqual({ sourceMatches: 1 });
     // The production SND rules turn the warp arrival's flags into a repeated sound.
     expect(roles.get('event-sound')!.counts).toMatchObject({ none: 7, whole: 0, repeat: 1 });
     expect(roles.get('hud-sound')!.counts).toMatchObject({ none: 1, whole: 2, repeat: 0 });
@@ -175,6 +202,45 @@ describe('package check', () => {
       expect(report).toMatchObject({ passed: false, error: { code: 'binding-mismatch', location: `assets.${rebound[index][0]}.dependencies` } });
       expect(report.package).toMatchObject({ status: 'complete' });
     });
+  });
+
+  it('compares the map geometry with the independent read of its source and reports a difference without values', async () => {
+    const { paths, catalog } = await sliceDisc();
+    // The production job with the map geometry's x0 moved by one pixel in a consistently described payload.
+    const moved = encodeMapGeometryPayload({ ...SYNTHETIC_MAP_GEOMETRY, rectangle: { ...SYNTHETIC_MAP_GEOMETRY.rectangle, x0: SYNTHETIC_MAP_GEOMETRY.rectangle.x0 + 1 } });
+    const job: ImportJob = (files, report) => createImportJob(async inputs => identifySource(await openDiscImage(inputs), catalog))(files, {
+      ...report,
+      group: (name, input: GroupInput) => {
+        const manifest = input.manifest as GroupManifest;
+        const assets = manifest.assets.map(asset => (asset.role === 'map-geometry'
+          ? { ...asset, payloadIdentity: { ...asset.payloadIdentity, byteLength: moved.length, fingerprint: sha256Fingerprint(moved) } } : asset));
+        const payloads = (input.payloads as PayloadRecord[]).map(payload => (payload.id === 'data/hud/map-geometry' ? { ...payload, bytes: moved } : payload));
+        report.group(name, { ...input, manifest: { ...manifest, assets }, payloads });
+      },
+    });
+    const report = await runPackageCheck(paths, { job });
+    printed(report);
+    expect(report).toMatchObject({ passed: false, error: { code: 'source-mismatch', location: 'roles.map-geometry' }, package: { status: 'complete' } });
+  });
+
+  it('stops at an independent source whose map slot holds more instrument records than the cap, before reading them', async () => {
+    const good = await sliceDisc();
+    // The tool reads a disc whose layout-6 slot lists the good map record and 32 others, which would match without the
+    // cap; the job converts the good disc.
+    const [front, empty, map] = PRODUCTION_COCKPIT_INSTRUMENTS;
+    const others = Array.from({ length: 32 }, () => instrumentRecord(8, [1, 1, 9, 9]));
+    const crowded = productionCockpitBlock(undefined, undefined, [front, empty, { layout: 6, records: [map.records[0], ...others] }]);
+    const files = sliceCoveredFiles();
+    const bad = await writeDisc('crowded', {
+      ...files, 'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries().map(entry => (entry.id === 10_103 ? { ...entry, data: crowded } : entry))),
+    });
+    const goodFiles = good.paths.map(path => ({ name: basename(path), blob: new Blob([readFileSync(path)]) }));
+    const job: ImportJob = (_files, report) => createImportJob(async () => identifySource(
+      await openDiscImage(goodFiles.map(({ name, blob }) => ({ name, source: new BlobByteSource(blob) }))), good.catalog,
+    ))(goodFiles, report);
+    const report = await runPackageCheck(bad.paths, { job });
+    printed(report);
+    expect(report).toMatchObject({ passed: false, error: { code: 'source-unreadable', location: 'roles.map-geometry' }, package: { status: 'complete' } });
   });
 
   it('identifies with the production whitelist by default, which rejects a synthetic disc', async () => {

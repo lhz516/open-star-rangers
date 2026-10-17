@@ -78,7 +78,8 @@ const TICKS = 120;
 const PLAYER = 1;
 const FIRST = 2;
 
-const INPUT = combatInput();
+/** Seed 12: the fragments of the first kill strike the player (P3-08's selection and interpreter draws moved others' away). */
+const INPUT = combatInput({ run: { seed: 12 } });
 const CONTENT = contentOf(INPUT);
 
 /** The run with a checkpoint every tick, reading projection, Render State and snapshot after every step. */
@@ -143,7 +144,9 @@ describe('combat replay (P3-07 AC-13, CR-14)', () => {
     const causes = new Set(of('hit').map(({ cause }: HitEvent) => cause));
     expect(causes).toEqual(new Set(['projectile', 'missile', 'collision']));
     // Only fragments touch the player: the other craft stand far ahead.
-    expect(of('hit').filter(({ cause }) => cause === 'collision').map(({ victimEntityId }) => victimEntityId)).toEqual([PLAYER]);
+    const collisions = of('hit').filter(({ cause }) => cause === 'collision');
+    expect(collisions.length).toBeGreaterThan(0);
+    expect(new Set(collisions.map(({ victimEntityId }) => victimEntityId))).toEqual(new Set([PLAYER]));
     expect(READ.snapshots.at(-1)?.state.player.kills[7]).toBe(1);
   });
 

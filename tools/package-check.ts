@@ -11,6 +11,7 @@ import { checkGraphicsBinding } from '../src/content/graphics/graphics-binding.t
 import { isOpaque, readImagePayload } from '../src/content/graphics/image-payload.ts';
 import { readPalettePayload } from '../src/content/graphics/palette-payload.ts';
 import { decodeHudTextPayload, HUD_TEXT_FORMATS, HUD_TEXT_KEYS, HUD_TEXT_LIMITS } from '../src/content/hud/hud-text-payload.ts';
+import { decodeMapGeometryPayload, MAP_GEOMETRY_LIMITS, type MapGeometry } from '../src/content/hud/map-geometry-payload.ts';
 import { decodeViewLabelsPayload, VIEW_LABELS_LIMITS } from '../src/content/hud/view-labels-payload.ts';
 import { LOGIC_LIMITS, type LogicPayload } from '../src/content/logic/logic-content.ts';
 import { decodeLogicPayload } from '../src/content/logic/logic-payload.ts';
@@ -18,6 +19,7 @@ import { readGroupManifest, type GroupManifest } from '../src/content/manifest.t
 import { readPayloadRecords, type PayloadRecord } from '../src/content/payload.ts';
 import { AI_PROGRAMS_LIMITS } from '../src/content/rule-data/ai-programs.ts';
 import { COMM_MENUS_LIMITS } from '../src/content/rule-data/comm-menus.ts';
+import { COMM_MESSAGES_LIMITS } from '../src/content/rule-data/comm-messages.ts';
 import { CRAFT_INFO_LIMITS } from '../src/content/rule-data/craft-info.ts';
 import { DEBRIS_PARAMETERS_LIMITS } from '../src/content/rule-data/debris-parameters.ts';
 import { FLIGHT_MESSAGES_LIMITS } from '../src/content/rule-data/flight-messages.ts';
@@ -27,10 +29,12 @@ import { CLASSIC_P2_SLICE } from '../src/content/slice-definition.ts';
 import { readSoundPayload, SOUND_PAYLOAD_SCHEMA_VERSION } from '../src/content/sound-payload.ts';
 import { CoreInputError } from '../src/core/errors.ts';
 import { loadMission } from '../src/core/mission/load-mission.ts';
+import { openImfatArchive } from '../src/original-data/archive/archive-reader.ts';
 import { DiscReadError } from '../src/original-data/disc/disc-error.ts';
 import { openDiscImage } from '../src/original-data/disc/disc-image.ts';
 import { SourceError } from '../src/original-data/source-error.ts';
 import { identifySource } from '../src/original-data/source/identify-source.ts';
+import { BlobByteSource } from '../src/platform/files/blob-byte-source.ts';
 import type { ImportJob, ImportReporter } from '../src/workers/import-host.ts';
 import { createImportJob, type OpenSource } from '../src/workers/import-job.ts';
 import { IMPORT_STAGES, type ImportFile, type ImportStage } from '../src/workers/import-protocol.ts';
@@ -38,8 +42,11 @@ import { PRODUCTION_PACKAGE } from '../src/workers/production-package.ts';
 
 // Local package check (P3-03 S-16, AC-19): runs the production import job the Worker runs on a CloneCD file set,
 // validates the whole package against the slice definition, decodes every Asset of the roles P3-03 added or extended with
-// its role's reader and loads the mission in Core. Output holds only verdicts, Asset IDs, counts, limits, read amounts and
-// hashes: never names, texts, field values, pixels, samples, host paths or host error text.
+// its role's reader and loads the mission in Core. The P3-09 map geometry is also compared with an independent read of
+// its source record (`mapGeometrySource`), which shares no code with the converter. The P3-08 keyword tables of
+// `ai-programs` are reported as counts and a digest (`keywordTablesDigest`) for comparison with an independent local read.
+// Output holds only verdicts, Asset IDs, counts, limits, read amounts and hashes: never names, texts, field values,
+// pixels, samples, host paths or host error text.
 
 export interface PackageCheckOptions {
   /** A synthetic whitelist for tests; otherwise the product entry identifies the source. */
@@ -70,6 +77,8 @@ export interface RoleReport {
   readonly digest: string;
   /** Records, frames, texts, sounds and pixels; never a value. */
   readonly counts: Readonly<Record<string, number>>;
+  /** `sha256:` digests of parts of the content that an independent read can compare, by name; only roles that have them. */
+  readonly digests?: Readonly<Record<string, string>>;
 }
 
 export interface GroupReport {
@@ -142,9 +151,16 @@ interface PackageAsset {
 interface Measured {
   readonly counts: Readonly<Record<string, number>>;
   readonly limits: readonly LimitCheck[];
+  readonly digests?: Readonly<Record<string, string>>;
 }
 
-type Measure = (asset: PackageAsset, find: (id: string) => PackageAsset) => Measured;
+/** What a measure may consult besides its Asset: other Assets by ID, and the map geometry read independently from the disc. */
+interface MeasureContext {
+  readonly find: (id: string) => PackageAsset;
+  readonly mapGeometrySource: () => Promise<MapGeometry>;
+}
+
+type Measure = (asset: PackageAsset, context: MeasureContext) => Measured | Promise<Measured>;
 
 const sum = (values: readonly number[]): number => values.reduce((total, value) => total + value, 0);
 const largest = (values: readonly number[]): number => values.reduce((most, value) => Math.max(most, value), 0);
@@ -169,12 +185,21 @@ function decoded<P extends { readonly role: string; readonly content: unknown }>
   return <R extends P['role']>(role: R, measure: (content: ContentOf<P, R>) => Measured): Measure => ({ descriptor, bytes }) => {
     const payload = decode(bytes, descriptor);
     if (payload.role !== role) throw new CheckStop('role-mismatch', `roles.${role}`);
-    const { counts, limits } = measure(payload.content as ContentOf<P, R>);
-    return { counts, limits: [...limits, limit(`${role}.payloadBytes`, bytes.length, payloadBytes)] };
+    const { counts, limits, digests } = measure(payload.content as ContentOf<P, R>);
+    return { counts, limits: [...limits, limit(`${role}.payloadBytes`, bytes.length, payloadBytes)], ...(digests && { digests }) };
   };
 }
 
 const ruleData = decoded<RuleDataPayload>(decodeRuleDataPayload, LOGIC_LIMITS.payloadBytes);
+
+/**
+ * `sha256:` of the keyword tables as lines `<table> <pair> <i32 value> <name bytes in hex>` in table and pair order, the
+ * form an independent read of the executable regions can reproduce without printing a name or a value.
+ */
+export function keywordTablesDigest(tables: readonly (readonly { readonly name: string; readonly value: number }[])[]): string {
+  const hex = (name: string) => Array.from(name, character => character.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+  return sha256Fingerprint(new TextEncoder().encode(tables.flatMap((pairs, table) => pairs.map(({ name, value }, index) => `${table} ${index} ${value} ${hex(name)}\n`)).join('')));
+}
 const flightData = decoded<FlightDataPayload>(decodeFlightDataPayload, FLIGHT_DATA_LIMITS.payloadBytes);
 
 /**
@@ -182,7 +207,7 @@ const flightData = decoded<FlightDataPayload>(decodeFlightDataPayload, FLIGHT_DA
  * descriptor dependencies must be exactly the palettes it references, which package validation does not check.
  */
 function image(withPalette = false): Measure {
-  return ({ descriptor, bytes }, find) => {
+  return ({ descriptor, bytes }, { find }) => {
     const payload = readImagePayload(bytes, descriptor.payloadIdentity.schemaVersion);
     checkGraphicsBinding(descriptor, payload, `assets.${descriptor.id}`);
     const counts: Record<string, number> = { pixels: payload.width * payload.height, opaquePixels: opaquePixels(payload) };
@@ -205,8 +230,9 @@ const sound: Measure = ({ descriptor, bytes }) => {
 };
 
 /**
- * The roles P3-03 added, with the mission it extended, in group order: required roles and the roles their dependencies
- * close over. The target display's palette is an Asset of a P2 role, read through its image.
+ * The roles P3-03 added, with the mission it extended, and the map geometry P3-09 added, in group order: required roles
+ * and the roles their dependencies close over. The target display's palette is an Asset of a P2 role, read through its
+ * image.
  */
 const ROLES: readonly { readonly role: string; readonly group: ResourceGroup; readonly measure: Measure }[] = [
   { role: 'craft-info', group: 'logic', measure: ruleData('craft-info', info => {
@@ -248,12 +274,17 @@ const ROLES: readonly { readonly role: string; readonly group: ResourceGroup; re
     const stateLists = ai.entries.flatMap(entry => (entry.kind === 'parameters' ? Object.values(entry.stateScripts) : []));
     const names = [...ai.programs, ...ai.builtInPrograms].map(({ name }) => name.length);
     const argumentBytes = scripts.flat().flatMap(({ argument }) => (argument === null ? [] : [argument.length]));
+    const keywordNames = [...new Set(ai.keywordTables.flat().map(({ name }) => name))].map(name => name.length);
+    const keywordPairs = ai.keywordTables.map(table => table.length);
     return {
       counts: {
         programs: ai.programs.length, builtInPrograms: ai.builtInPrograms.length, entries: ai.entries.length,
         parameterEntries: ai.entries.length - scripts.length, scriptEntries: scripts.length, scriptItems: sum(scripts.map(items => items.length)),
         globalElements: ai.globals.elements.length, texts: names.length + argumentBytes.length, textBytes: sum([...names, ...argumentBytes]),
+        ...Object.fromEntries(keywordPairs.map((pairs, table) => [`keywordPairs${table}`, pairs])),
+        keywordNames: keywordNames.length, keywordNameBytes: sum(keywordNames.map(length => length + 1)),
       },
+      digests: { keywordTables: keywordTablesDigest(ai.keywordTables) },
       limits: [
         limit('ai-programs.programRecords', largest([ai.programs.length, ai.builtInPrograms.length]), AI_PROGRAMS_LIMITS.programRecords),
         limit('ai-programs.programNameBytes', largest(names), AI_PROGRAMS_LIMITS.programNameBytes),
@@ -262,6 +293,8 @@ const ROLES: readonly { readonly role: string; readonly group: ResourceGroup; re
         limit('ai-programs.stateScriptItems', largest(stateLists.map(list => list.length)), AI_PROGRAMS_LIMITS.stateScriptItems),
         limit('ai-programs.scriptItems', largest(scripts.map(items => items.length)), AI_PROGRAMS_LIMITS.scriptItems),
         limit('ai-programs.scriptTextBytes', largest(argumentBytes), AI_PROGRAMS_LIMITS.scriptTextBytes),
+        limit('ai-programs.keywordEntries', largest(keywordPairs), AI_PROGRAMS_LIMITS.keywordEntries),
+        limit('ai-programs.keywordNameBytes', largest(keywordNames), AI_PROGRAMS_LIMITS.keywordNameBytes),
       ],
     };
   }) },
@@ -280,6 +313,28 @@ const ROLES: readonly { readonly role: string; readonly group: ResourceGroup; re
   { role: 'flight-messages', group: 'logic', measure: ruleData('flight-messages', messages => {
     const texts = Object.values(messages).map(text => text.length);
     return { counts: { texts: texts.length, textBytes: sum(texts) }, limits: [limit('flight-messages.textBytes', largest(texts), FLIGHT_MESSAGES_LIMITS.textBytes)] };
+  }) },
+  { role: 'comm-messages', group: 'logic', measure: ruleData('comm-messages', ({ faceTables, direct, names2001, names2011 }) => {
+    // Face tables 20011, 20019 and 20985 in content order, then the direct list 20983 (executable.md RQ4).
+    const [first, second, third] = faceTables.map(table => ({ faces: table.length, messages: sum(table.map(sub => sub.length)) }));
+    const messages = [...faceTables.flat(2), ...direct];
+    const frames = messages.flatMap(item => (item.present ? [item.frameDurations.length] : []));
+    const names = [...names2001, ...names2011].map(name => name.length);
+    return {
+      counts: {
+        faces20011: first.faces, messages20011: first.messages, faces20019: second.faces, messages20019: second.messages,
+        faces20985: third.faces, messages20985: third.messages, messages20983: direct.length, present: frames.length, frames: sum(frames),
+        names2001: names2001.length, names2011: names2011.length, nameBytes: sum(names),
+      },
+      limits: [
+        limit('comm-messages.faces', largest(faceTables.map(table => table.length)), COMM_MESSAGES_LIMITS.faces),
+        limit('comm-messages.faceMessages', largest(faceTables.flat().map(sub => sub.length)), COMM_MESSAGES_LIMITS.faceMessages),
+        limit('comm-messages.directMessages', direct.length, COMM_MESSAGES_LIMITS.directMessages),
+        limit('comm-messages.frames', largest(frames), COMM_MESSAGES_LIMITS.frames),
+        limit('comm-messages.names', largest([names2001.length, names2011.length]), COMM_MESSAGES_LIMITS.names),
+        limit('comm-messages.nameBytes', largest(names), COMM_MESSAGES_LIMITS.nameBytes),
+      ],
+    };
   }) },
   { role: 'scene-settings', group: 'models', measure: flightData('scene-settings', ({ screenFlashes }) => ({ counts: { screenFlashes: screenFlashes.length }, limits: [] })) },
   { role: 'explosion-table', group: 'models', measure: flightData('explosion-table', ({ lists }) => ({
@@ -311,28 +366,88 @@ const ROLES: readonly { readonly role: string; readonly group: ResourceGroup; re
       limits: [limit('hud-text.textBytes', largest(texts), HUD_TEXT_LIMITS.textBytes), limit('hud-text.payloadBytes', bytes.length, HUD_TEXT_LIMITS.payloadBytes)],
     };
   } },
+  { role: 'map-geometry', group: 'cockpit-hud-map', measure: async ({ descriptor, bytes }, { mapGeometrySource }) => {
+    // Both are plain records built in the schema's field order.
+    const decoded = decodeMapGeometryPayload(bytes, descriptor);
+    if (JSON.stringify(decoded) !== JSON.stringify(await mapGeometrySource())) throw new CheckStop('source-mismatch', 'roles.map-geometry');
+    return { counts: { sourceMatches: 1 }, limits: [limit('map-geometry.payloadBytes', bytes.length, MAP_GEOMETRY_LIMITS.payloadBytes)] };
+  } },
   { role: 'event-sound', group: 'audio', measure: sound },
   { role: 'hud-sound', group: 'audio', measure: sound },
 ];
+
+/**
+ * The map geometry's source as recorded in docs/original/formats/cockpit.md (instrument types per slot) and hud.md §1,
+ * read here without the converter's readers: CCKD 10103 of `MAIN/SR.NOB`, the directory slot whose +0x00 is layout 6,
+ * its one 48-byte instrument record of type 10 (rectangle +0x04–+0x10, redraw interval +0x18), and the height byte (+3)
+ * of font table 1. Counts are checked against their caps and arrays against the entry before anything is iterated; any
+ * structure that does not hold is `source-unreadable`, without values.
+ */
+const MAP_SOURCE = Object.freeze({
+  archive: 'MAIN/SR.NOB', entry: 10_103, type: 'CCKD', layout: 6, instrumentType: 10, font: 1,
+  /** Counts beyond the approved caps are not read: 8 directory slots, 32 instrument records per slot. */
+  slots: 8, instruments: 32,
+});
+
+async function readMapGeometrySource(files: readonly ImportFile[]): Promise<MapGeometry> {
+  const disc = await openDiscImage(files.map(({ name, blob }) => ({ name, source: new BlobByteSource(blob) })));
+  const archive = await openImfatArchive(await disc.openFile(MAP_SOURCE.archive));
+  const { bytes } = await archive.read(MAP_SOURCE.entry, MAP_SOURCE.type);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const unreadable = (): never => { throw new CheckStop('source-unreadable', 'roles.map-geometry'); };
+  const word = (offset: number, signed = false): number => {
+    if (offset < 0 || offset + 4 > bytes.length) unreadable();
+    return signed ? view.getInt32(offset, true) : view.getUint32(offset, true);
+  };
+  const fontEntry = word(0) + MAP_SOURCE.font * 8;
+  if (MAP_SOURCE.font >= word(4)) unreadable();
+  const fontAt = word(fontEntry);
+  if (word(fontEntry + 4) < 4 || fontAt + 4 > bytes.length) unreadable();
+  /** The offsets of the `count` items of `size` bytes from `start` whose `matches`, after the array is checked to fit. */
+  const matching = (start: number, count: number, cap: number, size: number, matches: (at: number) => boolean): number[] => {
+    if (count > cap || start + count * size > bytes.length) unreadable();
+    const found: number[] = [];
+    for (let at = start; at < start + count * size; at += size) if (matches(at)) found.push(at);
+    return found;
+  };
+  const slots = matching(word(8), word(12), MAP_SOURCE.slots, 32, at => word(at, true) === MAP_SOURCE.layout);
+  if (slots.length !== 1) unreadable();
+  const records = matching(word(slots[0] + 0x18), word(slots[0] + 0x1c), MAP_SOURCE.instruments, 48, at => word(at) === MAP_SOURCE.instrumentType);
+  if (records.length !== 1) unreadable();
+  const [record] = records;
+  return {
+    rectangle: { x0: word(record + 4, true), y0: word(record + 8, true), x1: word(record + 12, true), y1: word(record + 16, true) },
+    redrawInterval: word(record + 0x18),
+    informationLineHeight: bytes[fontAt + 3],
+  };
+}
 
 /** Adds the counts of each Asset and keeps the largest observation of each limit, in first-seen order. */
 function combine(measured: readonly Measured[]): Measured {
   const counts: Record<string, number> = {};
   const limits = new Map<string, LimitCheck>();
+  const digests: Record<string, string> = {};
   for (const item of measured) {
     for (const [name, value] of Object.entries(item.counts)) counts[name] = (counts[name] ?? 0) + value;
+    // Only single-Asset roles report digests.
+    Object.assign(digests, item.digests);
     for (const check of item.limits) {
       const seen = limits.get(check.name);
       if (!seen || check.observed > seen.observed) limits.set(check.name, check);
     }
   }
-  return { counts, limits: [...limits.values()] };
+  return { counts, limits: [...limits.values()], ...(Object.keys(digests).length > 0 && { digests }) };
 }
 
-/** A role's report from its Assets and their summed counts. */
-function roleReport(role: string, group: ResourceGroup, members: readonly PackageAsset[], counts: Readonly<Record<string, number>>): RoleReport {
+/** A role's report from its Assets, their summed counts and their digests, if any. */
+function roleReport(
+  role: string, group: ResourceGroup, members: readonly PackageAsset[], counts: Readonly<Record<string, number>>, digests?: Readonly<Record<string, string>>,
+): RoleReport {
   const descriptors = members.map(({ descriptor }) => descriptor);
-  return { role, group, assets: members.length, payloadBytes: sum(descriptors.map(({ payloadIdentity }) => payloadIdentity.byteLength)), digest: digestOf(descriptors), counts };
+  return {
+    role, group, assets: members.length, payloadBytes: sum(descriptors.map(({ payloadIdentity }) => payloadIdentity.byteLength)), digest: digestOf(descriptors), counts,
+    ...(digests && { digests }),
+  };
 }
 
 /** The only Asset of logic role `role`, decoded with the logic payload reader. */
@@ -375,8 +490,12 @@ const budgetLimits = (usage: BudgetRecord): LimitCheck[] => BUDGET_DIMENSIONS
   .filter(dimension => dimension !== 'sourceReadBytes')
   .map(dimension => limit(`package.${dimension}`, usage[dimension], PRODUCTION_PACKAGE.limits[dimension]));
 
-/** What a whole-package import gives: the job's usage, every group it sent in send order, and their package validation. */
+/**
+ * What a whole-package import gives: the job's usage, every group it sent in send order, their package validation, and
+ * the input files, which a check may read again on its own.
+ */
 export interface ImportedPackage {
+  readonly files: readonly ImportFile[];
   readonly usage: BudgetRecord;
   readonly groups: readonly GroupInput[];
   readonly validation: PackageCompletenessResult;
@@ -408,7 +527,7 @@ export async function importPackage(
     identified: identity => { report.identified(identity); },
     group: (_name, input) => { groups.push(input); },
   });
-  return { usage, groups, validation: validatePackage(CLASSIC_P2_SLICE, groups) };
+  return { files, usage, groups, validation: validatePackage(CLASSIC_P2_SLICE, groups) };
 }
 
 /**
@@ -426,7 +545,7 @@ export async function runPackageCheck(paths: readonly string[], options: Package
   /** The bytes read when each stage started: a stage reports its first progress with the bytes read so far. */
   const starts: Partial<Record<ImportStage, number>> = {};
   try {
-    const { usage, groups: sent, validation } = await importPackage(paths, options, {
+    const { files, usage, groups: sent, validation } = await importPackage(paths, options, {
       progress: (stage, bytes) => {
         starts[stage] ??= bytes;
         reads[stage] = bytes - starts[stage];
@@ -455,6 +574,7 @@ export async function runPackageCheck(paths: readonly string[], options: Package
     }
     const find = (id: string): PackageAsset => assets.get(id) ?? (() => { throw new CheckStop('missing-asset', `assets.${id}`); })();
     const roleAssets = (role: string): readonly PackageAsset[] => byRole.get(role) ?? [];
+    const context: MeasureContext = { find, mapGeometrySource: () => readMapGeometrySource(files) };
     const [{ manifest: first }] = groups;
     const groupReport = ({ group, assets: descriptors }: GroupManifest): GroupReport => ({
       group,
@@ -478,8 +598,8 @@ export async function runPackageCheck(paths: readonly string[], options: Package
       const members = roleAssets(role);
       if (members.length === 0) throw new CheckStop('missing-asset', `roles.${role}`);
       if (members.some(({ descriptor }) => descriptor.group !== group)) throw new CheckStop('group-mismatch', `roles.${role}`);
-      const measured = combine(members.map(asset => measure(asset, find)));
-      roles.push(roleReport(role, group, members, measured.counts));
+      const measured = combine(await Promise.all(members.map(asset => measure(asset, context))));
+      roles.push(roleReport(role, group, members, measured.counts, measured.digests));
       limits.push(...measured.limits);
     }
     limits.push(...budgetLimits(usage));

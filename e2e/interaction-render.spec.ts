@@ -17,8 +17,8 @@ import { viewerDiagnostics } from './support/viewer-observations.ts';
 // into the test's own context and restored first.
 
 const RESTORED = ['Complete resources, viewable', /^Saved in this browser \(restored and verified in \d+(?: ms|\.\d\d s)\)$/, 'Mission loads into Core'];
-/** Keys that are not in P3-05's production binding table. */
-const UNBOUND = ['b', 'h', 'i', 'n', 'o', 'v'];
+/** Keys that are not in P3-05's production binding table (`b` joined it with P3-08's drop-transponder). */
+const UNBOUND = ['h', 'i', 'n', 'o', 'v'];
 
 /** Moves focus with Tab (or Shift+Tab) until `target` has it; fails after `limit` presses. */
 async function tabTo(page: Page, target: Locator, key: 'Tab' | 'Shift+Tab' = 'Tab', limit = 20): Promise<void> {

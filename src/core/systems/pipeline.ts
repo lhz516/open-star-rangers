@@ -19,20 +19,31 @@ import { advanceTime, type MissionTime } from '../contracts/time.ts';
 import { CoreFaultError, CoreInputError } from '../errors.ts';
 import { ALL_KINDS, type Entity, type EntityId, type Matrix3, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
+import type { DispatchCount } from '../rules/ai-interpreter.ts';
+import { applyWarpDeparture, updateController } from './ai.ts';
 import { checkActiveArea, isHeldInWarpTransit, switchParking, updateParked } from './area.ts';
 import { collisionStage } from './collision.ts';
+import { confirmBase, navigateBase, serviceBase } from './base-interior.ts';
+import { answerCommand } from './base-response.ts';
 import { judgeCommand } from './commands.ts';
+import { deliverCommand } from './communications.ts';
+import { checkDockingWait, depart, dock } from './docking.ts';
 import { delayedPlayerExplosionStage, expireFragment, handOff, releaseHeld, setExplosionState, updateExplosion, updateFragment } from './destruction.ts';
 import { frameEndStage } from './displays.ts';
 import { energyStage } from './energy.ts';
-import { applyControlRequest, applyMatchRequest, updatePlayer, type ControlRequest, type MatchSpeedRequest } from './flight-control.ts';
+import { applyAiMatchRequest, applyControlRequest, applyMatchRequest, updatePlayer, type ControlRequest, type MatchSpeedRequest } from './flight-control.ts';
+import { applyMapPoint, applyMapToggle, runMapStep, type MapPointRequest, type MapToggleRequest } from './map.ts';
 import { applySteer, expireMissile, updateMissile } from './missiles.ts';
 import { moveEntities } from './movement.ts';
+import { updateObjectSets } from './object-sets.ts';
 import { engageParked } from './parked-engagement.ts';
 import { expireProjectile, hitTestProjectile, updateProjectile } from './projectiles.ts';
 import { checkSpawnQueue, dispatchSpawn, type SpawnRequest } from './spawn.ts';
+import { takeRadio } from './radio.ts';
 import { applySelectTarget, selectAutomaticTarget } from './targeting.ts';
+import { applyWarpStart, completeWarp, runWarpStep, type WarpStartRequest } from './warp.ts';
 import { applyLaunch, updateMissileLock } from './weapons.ts';
+import { createTransponder, updateTransponder } from './xpon.ts';
 
 /** One axis of a control block: cleared, set to `value` (f32, read only when `set`), or neither. */
 export interface AxisControl {
@@ -63,6 +74,12 @@ export type Request =
   | ControlRequest
   /** Message 0x80000: a speed match, posted by the player's manual match (flight-control.ts). */
   | MatchSpeedRequest
+  /** Message 0x400 sub-command 8 or 9: the map's opening or closing, posted by an accepted `toggle-map` (map.ts; MW-04). */
+  | MapToggleRequest
+  /** Message 0x1000: a hover or select at a quantised cursor pixel, posted by an accepted `map-point` (map.ts; MW-04). */
+  | MapPointRequest
+  /** Message 0x400 sub-command 0: the player's Warp start, posted by an accepted `request-warp` (warp.ts; MW-04). */
+  | WarpStartRequest
   // P3-07's requests (docs/plan/p3/02/spec.md, CR-05).
   /** Message 2: the player's (`entityId`) new target, applied without checking it again. */
   | {
@@ -85,14 +102,44 @@ export type Request =
     readonly type: 'launch'; readonly family: 'missile'; readonly shooter: EntityId; readonly missile: number; readonly mount: number;
     readonly offset: Vec3; readonly launchByte: 0 | 1 | 2 | 3 | 4; readonly target: EntityId | null; readonly trigger: ShotTrigger;
   }
-  /** Message 0x40000: applied in request handling through P3-06's `0x21fd8`. */
+  /**
+   * Message 0x40000: applied in request handling through P3-06's `0x21fd8`. The subject is a missile (P3-07's homing)
+   * or, from P3-08's AI movement helpers, a craft (CR-21).
+   */
   | { readonly type: 'steer'; readonly entityId: EntityId; readonly control: ControlBlock }
   /** Message 0x10000: a projectile's `0x25f48`, a missile's `0x2b408` or a fragment's `0x256e4`. */
   | { readonly type: 'expire'; readonly entityId: EntityId }
   /** Message 0x40 (`0x24424`): the held source becomes pending removal. */
   | { readonly type: 'release-held'; readonly entityId: EntityId }
   /** Message 0x2000000 (`0x2574c`): `entityId` is the source a part-0 fragment hands off. */
-  | { readonly type: 'hand-off'; readonly entityId: EntityId; readonly fragment: EntityId };
+  | { readonly type: 'hand-off'; readonly entityId: EntityId; readonly fragment: EntityId }
+  // P3-10's requests (docs/plan/p3/02/spec.md, CB-08); request handling takes them in posting order.
+  /** Message 0x100 (CD1, CD2): the communications menu delivers a command; `code` is a u32 from 1. */
+  | {
+    readonly type: 'deliver-command'; readonly receiver: EntityId; readonly code: number; readonly sender: EntityId; readonly commandIndex: number;
+  }
+  /** Message 0x400000 sub-command 0: sub-state 4's countdown docks the player (`entityId`). */
+  | { readonly type: 'dock'; readonly entityId: EntityId }
+  /** Sub-command 4: the player's launch command, or sub-state 5's automatic launch, which has no command. */
+  | { readonly type: 'depart'; readonly entityId: EntityId; readonly origin: 'command'; readonly commandIndex: number }
+  | { readonly type: 'depart'; readonly entityId: EntityId; readonly origin: 'automatic'; readonly commandIndex: null }
+  /** Sub-commands 1 and 2: the base page's cursor. */
+  | { readonly type: 'base-navigate'; readonly entityId: EntityId; readonly direction: 'previous' | 'next'; readonly commandIndex: number }
+  /** Sub-command 3: the base page's confirmation. */
+  | { readonly type: 'base-confirm'; readonly entityId: EntityId; readonly commandIndex: number }
+  // P3-08's requests (docs/plan/p3/02/spec.md, CR-21); the AI posts them in object updates.
+  /**
+   * Message 0x80000 in its AI form (`0x5d090`, `0x5d080`): P3-06's speed match generalised to f32 (a, lo, hi); no
+   * event. Not posted without a target.
+   */
+  | {
+    readonly type: 'ai-match-speed'; readonly entityId: EntityId; readonly targetEntityId: EntityId;
+    readonly a: number; readonly lo: number; readonly hi: number;
+  }
+  /** Message 0x800000 (`0x5e6cc`, D6): the poster's own Warp departure, checked again in full when handled. */
+  | { readonly type: 'warp-departure'; readonly entityId: EntityId }
+  /** Message 0x200000 (X1): an accepted `drop-transponder` constructs a transponder (`0x38780`) at the player (`entityId`). */
+  | { readonly type: 'create-transponder'; readonly entityId: EntityId };
 
 /** The request variants of one type. */
 export type RequestOf<Type extends Request['type']> = Extract<Request, { readonly type: Type }>;
@@ -108,8 +155,8 @@ export type RequestOf<Type extends Request['type']> = Extract<Request, { readonl
  * in its lifetime; the player's update posts at most one request per speed command and two more (the speed assist's
  * restoring request and one carrying only the axes), and an available player posts no lifecycle request
  * (docs/plan/p3/06/spec.md, 容量核算): entities + spawn expansion + commands + 2, 3,138 at the limits. CR-14's bound
- * covers it together with P3-07's requests. A rule whose requests fan out further derives its own bound and revises
- * CoreLimits.
+ * covers it together with P3-07's requests, and CR-25's together with P3-08's AI requests. A rule whose requests fan
+ * out further derives its own bound and revises CoreLimits.
  */
 export class RequestQueue {
   readonly #requests: Request[] = [];
@@ -127,7 +174,9 @@ export class RequestQueue {
 
   /**
    * Holds `request` until release(), counting it now: the launches of the player's fire commands, which the original
-   * posts after message 0x20000 (T3), so after P3-06's control and match requests (docs/plan/p3/02/spec.md, CR-07).
+   * posts after message 0x20000 (T3), so after P3-06's control and match requests (docs/plan/p3/02/spec.md, CR-07), and
+   * an accepted `request-warp`'s `warp-start`, which follows them and the launches judged before it (MW-04, MW-12
+   * difference 9). Commands after a `request-warp` are judged in the Warp context, so no launch follows it.
    */
   defer(request: Request): void {
     this.#count();
@@ -165,6 +214,21 @@ export class RequestQueue {
   }
 }
 
+/**
+ * The view the tick's commands are judged in (docs/plan/p3/02/spec.md, MW-04; P3-10's effective view, CB-07): the
+ * committed view mode and previous view mode at the start of the command batch, which each accepted view command
+ * (`toggle-map`, `request-warp`, `launch`) moves on at once while its request commits the change only in request
+ * handling. Every command's interaction context derives from it, and the player's axes from its value after the last
+ * command. Its destination is the point of the batch's last accepted select, or the committed destination before one,
+ * which `request-warp` is judged on. Nothing else reads it: the automatic target selection and every later stage read
+ * the committed view.
+ */
+export interface CommandView {
+  viewMode: number;
+  previousViewMode: number;
+  destination: Vec3 | null;
+}
+
 /** Everything one step's stages share. */
 export interface TickContext {
   readonly world: WorldState;
@@ -174,7 +238,15 @@ export interface TickContext {
   /** Emitted with emit(); frozen by the commit stage. */
   readonly events: DomainEvent[];
   readonly requests: RequestQueue;
+  /** The committed view until the player's update starts the command batch from it again. */
+  readonly commandView: CommandView;
+  /** The AI interpreter's item dispatches in this tick so far (CORE_LIMITS.aiDispatchesPerTick, CR-25; ai.ts). */
+  readonly aiDispatches: DispatchCount;
 }
+
+/** The view mode and previous view mode the player state holds now. */
+export const committedView = ({ player }: WorldState): CommandView =>
+  ({ viewMode: player.viewMode, previousViewMode: player.previousViewMode, destination: player.map.destination });
 
 /**
  * Stage 1, input registration, up to the first change: given the validated tick input, checks everything else that
@@ -187,7 +259,7 @@ export function registerTick(world: WorldState, input: TickInput): TickContext {
   if (!Number.isSafeInteger(world.entities.nextId + CORE_LIMITS.entities)) {
     throw new CoreInputError('tickInput', 'would allocate entity IDs past the safe integer range');
   }
-  return { world, time, input, events: [], requests: new RequestQueue() };
+  return { world, time, input, events: [], requests: new RequestQueue(), commandView: committedView(world), aiDispatches: { dispatches: 0 } };
 }
 
 /** A deeply frozen copy of plain data, so that no later change to what an event was built from reaches it. */
@@ -220,20 +292,23 @@ function advanceClock(context: TickContext): void {
  * the walk, so that is the start of the stage. It judges every command in array order, each with exactly one result:
  * P3-06's throttle, speed match and speed assist commands itself, every other command through judgeCommand
  * (commands.ts), which routes P3-07's to their rule modules and gives every command no rule handles yet
- * rejected/not-implemented. With an available player it runs P3-07's missile lock after the invalid-target drop and
- * consumes the axes, and the automatic target selection ends it (CR-07). The rule tasks add their commands and steps
- * there.
+ * rejected/not-implemented. Every command is judged in the command view, which starts from the committed view and
+ * which an accepted `toggle-map` or `request-warp` moves on (map.ts, warp.ts; MW-04). With an available player it runs P3-07's missile lock after
+ * the invalid-target drop and consumes the axes, and the automatic target selection, which reads the committed view,
+ * ends it (CR-07). The rule tasks add their commands and steps there.
  */
 function updatePlayerControls(context: TickContext): void {
-  const { world, input, time, requests } = context;
+  const { world, input, time, requests, commandView } = context;
+  // The command batch starts from the committed view (MW-04).
+  Object.assign(commandView, committedView(world));
   const player = updatePlayer(world, input, time.tick, {
     emit: (event) => emit(context, event),
     post: (request) => requests.post(request),
-    judge: (command, commandIndex) => judgeCommand(context, command, commandIndex),
+    judge: (command, commandIndex, view) => judgeCommand(context, command, commandIndex, view),
     lockMissiles: (entity) => updateMissileLock(context, entity),
-  });
-  // The fire commands' launches follow the player's own requests, as the original's triggers follow message 0x20000;
-  // the automatic selection follows them (T3).
+  }, commandView);
+  // The fire commands' launches follow the player's own requests, as the original's triggers follow message 0x20000,
+  // and a Warp start follows both (MW-04); the automatic selection follows them (T3).
   requests.release();
   if (player !== null) selectAutomaticTarget(context, player);
 }
@@ -246,7 +321,11 @@ function updatePlayerControls(context: TickContext): void {
  * it.
  */
 export function updateLifecycle(context: TickContext, entity: Entity): void {
-  if (isHeldInWarpTransit(context.world, entity)) return;
+  if (!isHeldInWarpTransit(context.world, entity)) requestNextState(context, entity);
+}
+
+/** The generic part `0x20ae4` after the Warp-transit check: the request for the entity's next state, if any. */
+function requestNextState(context: TickContext, entity: Entity): void {
   switch (entity.state) {
     case 'new':
       // Only a parked entity has no presentation; an active one counted its presentation ready when it got it.
@@ -267,13 +346,26 @@ export function updateLifecycle(context: TickContext, entity: Entity): void {
 
 /**
  * An entity's own update: the kind callbacks of P3-07's runtime kinds (docs/plan/p3/02/spec.md, CR-07: missiles
- * `0x2aa40`/`0x2ab00`, projectiles `0x259b0`, explosions `0x23838`, fragments `0x24ac4`) replace the generic part.
+ * `0x2aa40`/`0x2ab00`, projectiles `0x259b0`, explosions `0x23838`, fragments `0x24ac4`) replace the generic part. A
+ * craft's callback `0x20c18` stops for a Warp transit in states 0–3; otherwise P3-08's controller part (ai.ts: the
+ * install, the removal or the AI step, CR-23) precedes the generic part, and in state 7 P3-10's answer to a delivered
+ * command (`0x3bed0`, base-response.ts) follows the AI step (CB-12). Kind 0x4000's callback `0x3897c` (xpon.ts, CR-20)
+ * replaces `0x20c18`: no Warp-transit check and no AI, then the generic part.
  */
 function updateObject(context: TickContext, entity: Entity): void {
-  const { combat } = entity;
+  const { combat, transponder } = entity;
   switch (combat.type) {
     case 'craft':
-      updateLifecycle(context, entity);
+    case 'marker':
+      if (transponder !== null) {
+        updateTransponder(context, entity, transponder);
+        requestNextState(context, entity);
+        return;
+      }
+      if (isHeldInWarpTransit(context.world, entity)) return;
+      updateController(context, entity);
+      requestNextState(context, entity);
+      answerCommand(context, entity);
       return;
     case 'missile':
       updateMissile(context, entity, combat);
@@ -307,16 +399,22 @@ function updateObjects(context: TickContext): void {
  * those of the kinds removed on leaving included, is removed. Removal of the player's entity clears the player-state
  * reference to it (the original clears it for kind 1, the player's) together with the player's target and control
  * state, which exist only with a player entity (P3-06 D-03), and its targeting state, which goes with the player's
- * entity (CR-04). Removal makes the ID unresolvable; holders of the ID find nothing. Nothing else changes: spawn counts
- * keep counting spawns, and a name becomes free because no entity holds it any more (Q-08).
+ * entity (CR-04), and P3-10's docking object, menu, communications partner and menu's saved page (CB-02, CB-03).
+ * Removal makes the ID unresolvable; holders of the ID find nothing. Nothing else changes: spawn counts keep counting
+ * spawns, and a name becomes free because no entity holds it any more (Q-08).
  */
 function leave(world: WorldState, entity: Entity): void {
   if (switchParking(world, entity)) return;
-  if (world.player.entityId === entity.id) {
-    world.player.entityId = null;
-    world.player.target = null;
-    world.player.control = null;
-    world.player.targeting = null;
+  const { player } = world;
+  if (player.entityId === entity.id) {
+    player.entityId = null;
+    player.target = null;
+    player.control = null;
+    player.targeting = null;
+    player.dockingObject = null;
+    player.communications.menu = null;
+    player.communications.partner = null;
+    player.communications.menuSavedPage = 0;
   }
   world.entities.remove(entity);
 }
@@ -341,13 +439,48 @@ function expire(context: TickContext, entity: Entity, request: RequestOf<'expire
 
 function handleRequest(context: TickContext, request: Request): void {
   const { world } = context;
+  if (request.type === 'deliver-command') {
+    deliverCommand(context, request);
+    return;
+  }
+  // Sub-commands 0 and 4 read the player's entity, not the request's subject (DK2, DK3).
+  if (request.type === 'dock') {
+    dock(context);
+    return;
+  }
+  if (request.type === 'depart') {
+    depart(context, request);
+    return;
+  }
+  // Sub-commands 1–3 read the player's entity and the base service (BS4).
+  if (request.type === 'base-navigate') {
+    navigateBase(context, request);
+    return;
+  }
+  if (request.type === 'base-confirm') {
+    confirmBase(context, request);
+    return;
+  }
   if (request.type === 'spawn') {
-    dispatchSpawn(world, request, (event) => emit(context, event));
+    dispatchSpawn(context, request);
     return;
   }
   // The launch's constructors themselves handle a shooter that is no longer valid (W11).
   if (request.type === 'launch') {
     applyLaunch(context, request);
+    return;
+  }
+  // The map's toggle has no subject: it switches the player state's view (MW-04).
+  if (request.type === 'map-toggle') {
+    applyMapToggle(context, request);
+    return;
+  }
+  if (request.type === 'map-point') {
+    applyMapPoint(context, request);
+    return;
+  }
+  if (request.type === 'warp-start') {
+    applyWarpStart(context, request);
     return;
   }
   const entity = world.entities.get(request.entityId);
@@ -368,6 +501,9 @@ function handleRequest(context: TickContext, request: Request): void {
     case 'match-speed':
       applyMatchRequest(world, entity, request, context.time.tick, (event) => emit(context, event));
       return;
+    case 'ai-match-speed':
+      applyAiMatchRequest(world, entity, request);
+      return;
     case 'select-target':
       applySelectTarget(context, entity, request);
       return;
@@ -382,6 +518,12 @@ function handleRequest(context: TickContext, request: Request): void {
       return;
     case 'hand-off':
       handOff(context, entity, request);
+      return;
+    case 'create-transponder':
+      createTransponder(context, entity);
+      return;
+    case 'warp-departure':
+      applyWarpDeparture(world, entity);
       return;
   }
 }
@@ -406,12 +548,22 @@ function move(context: TickContext): void {
  * parked engagement after each object's parked travel (CR-09).
  */
 function updateParkedObjects(context: TickContext): void {
-  updateParked(context.world, (event) => emit(context, event), (entity, elapsed) => engageParked(context, entity, elapsed));
+  updateParked(context, (entity, elapsed) => engageParked(context, entity, elapsed));
 }
 
 /** Stage `area-check` (`0x3a468`, area.ts). */
 function checkArea(context: TickContext): void {
   checkActiveArea(context.world);
+}
+
+/**
+ * The `frame-end` stage (MW-07): P3-09's map step (view 8) or Warp step (view 1, warp.ts), then the cockpit display
+ * step (CR-10).
+ */
+function runFrameEnd(context: TickContext): void {
+  runMapStep(context);
+  runWarpStep(context);
+  frameEndStage?.(context);
 }
 
 /** Stage 7 (project boundary): seals the tick's events; requests posted since request handling were dropped. */
@@ -446,12 +598,12 @@ const ruleStage = (id: string, run: () => PipelineStage['run']): PipelineStage =
  */
 export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   stage('input-registration', registerInput),
-  // 0x3266c, reading the previous clock: P3-11 (flow, result, rescue), P3-10 (docking sub-states).
-  stage('mission-flow', null),
+  // 0x3266c, reading the previous clock: P3-10's docking sub-states (docking.ts); P3-11 adds flow, result and rescue.
+  stage('mission-flow', checkDockingWait),
   stage('clock', advanceClock),
   stage('object-update', updateObjects),
-  // Dispatcher 0x20d10. A due communications reply (0x2cd60): P3-10.
-  stage('communications-reply', null),
+  // Dispatcher 0x20d10. A due communications reply (0x2cd60, radio.ts; P3-10).
+  stage('communications-reply', takeRadio),
   stage('spawn-queue-check', checkSpawns),
   stage('request-handling', handleRequests),
   // After the message loop, each once: 0x221fc movement, then its collision passes 0x29670 and 0x29934 (P3-07).
@@ -461,20 +613,21 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   ruleStage('delayed-player-explosion', () => delayedPlayerExplosionStage),
   // 0x30590 (P3-07).
   ruleStage('energy', () => energyStage),
-  // 0x2ede0 rebuilds the friendly and hostile craft sets through 0x2f028 and the map visibility flag, for the map
-  // (P3-09, P3-13) and the parked AI handler (P3-08, the suggested owner); no P3-06 rule reads them.
-  stage('object-sets', null),
+  // 0x2ede0 (object-sets.ts): rebuilds the friendly and hostile craft sets and the map visibility flags, then reveals
+  // in the map, for the map step and P3-08's wingman AI; no other rule reads them.
+  stage('object-sets', updateObjectSets),
   stage('parked-update', updateParkedObjects),
-  // 0x2bf08 (P3-09).
-  stage('warp-completion', null),
-  // 0x398ec, view mode 6 (P3-10).
-  stage('base-interior', null),
+  // 0x2bf08 (warp.ts).
+  stage('warp-completion', completeWarp),
+  // 0x398ec, view mode 6 (P3-10, base-interior.ts).
+  stage('base-interior', serviceBase),
   // 0x334bc, main-flow state 0, which retires every object (P3-11).
   stage('mission-teardown', null),
   stage('area-check', checkArea),
-  // Rule progress the original makes in its frame render, such as 0x50508 (P3-09) and P3-07's cockpit display step
-  // (CR-10); never waits for a rendered frame.
-  ruleStage('frame-end', () => frameEndStage),
+  // Rule progress the original makes in its camera step and frame render: P3-09's map step (0x2b8ec, 0x49f8c) or
+  // Warp step (0x50508), then P3-07's cockpit display step (CR-10) and P3-10's communications presentation sub-step
+  // (CB-09); never waits for a rendered frame.
+  stage('frame-end', runFrameEnd),
   stage('commit', commit),
 ]);
 
