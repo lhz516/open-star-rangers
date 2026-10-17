@@ -101,9 +101,9 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [10-core-presentation-facts.md](./subtasks/10-core-presentation-facts.md) | 09 | completed |
 | [11-runtime-tick-batches.md](./subtasks/11-runtime-tick-batches.md) | 09 | completed |
 | [12-presentation-foundation.md](./subtasks/12-presentation-foundation.md) | 10, 11 | completed |
-| [13-presentation-effects.md](./subtasks/13-presentation-effects.md) | 01, 05, 12 | pending |
-| [14-destruction-camera.md](./subtasks/14-destruction-camera.md) | 01, 12 | pending |
-| [15-renderer-lifecycle.md](./subtasks/15-renderer-lifecycle.md) | 11, 12 | pending |
+| [13-presentation-effects.md](./subtasks/13-presentation-effects.md) | 01, 05, 12 | in-progress |
+| [14-destruction-camera.md](./subtasks/14-destruction-camera.md) | 01, 12 | in-progress |
+| [15-renderer-lifecycle.md](./subtasks/15-renderer-lifecycle.md) | 11, 12 | in-progress |
 | [16-scene-camera-composition.md](./subtasks/16-scene-camera-composition.md) | 01, 03, 10, 14, 15 | pending |
 | [17-model-lighting.md](./subtasks/17-model-lighting.md) | 02, 16 | pending |
 | [18-hit-shimmer.md](./subtasks/18-hit-shimmer.md) | 05, 10, 17 | pending |
