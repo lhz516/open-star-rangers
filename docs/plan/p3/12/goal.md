@@ -95,7 +95,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [06-warp-tunnel-research.md](./subtasks/06-warp-tunnel-research.md) | — | completed |
 | [07-evidence-gap-supplement.md](./subtasks/07-evidence-gap-supplement.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-original-records-comparison-plan.md](./subtasks/08-original-records-comparison-plan.md) | 01, 02, 03, 04, 05, 06, 07 | in-progress |
-| [09-d01-contract-gate.md](./subtasks/09-d01-contract-gate.md) | 01, 05, 07 | in-progress |
+| [09-d01-contract-gate.md](./subtasks/09-d01-contract-gate.md) | 01, 05, 07 | blocked |
 | [10-core-presentation-facts.md](./subtasks/10-core-presentation-facts.md) | 09 | pending |
 | [11-runtime-tick-batches.md](./subtasks/11-runtime-tick-batches.md) | 09 | pending |
 | [12-presentation-foundation.md](./subtasks/12-presentation-foundation.md) | 10, 11 | pending |
@@ -127,6 +127,10 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 - **2026-10-16 — 04 提出的 spec 层面事项（待用户决定）：** 第 0、1 类屏幕闪光还会经 CRTC 起始地址把画面上下平移（写入值已确认，代码；可见行数高概率，04 的 G-04-1），而 S-10/AC-14 与 21 只写了调色板；星云只在设置 BACKGROUND DETAIL 开启时绘制（原版缺省为开），spec 按总是绘制。04 建议按开处理。
 - **2026-10-16 — P3-09 前提已满足：** 目标分支已变基到 main `31abeb71`，P3-09 经 `3b1bfcd8`（并入 P3-08）与 `61694e3b` 合入 main；本分支已含 `RenderState.warp`（`src/core/projections/render-state.ts`）、`map-marker` 表现与 `src/core/systems/view-switch.ts`。10 与 22 不再因 P3-09 阻塞；P3-08、P3-10 也已在 main 上。
 - **2026-10-16 — 07 结果与协调者决定：** 舍入缺口（01 G-01、02 L-G6、04 G-04-3、06 W-G2）已静态闭合：基准 DOSBox-X（`4f19017`，arm64）的 FPU 运算与 f32 存储忽略 RC/PC 按就近偶数，只有 FIST/FRNDINT 遵循 RC，这就是 U-009 矛盾的原因（`local/research/p3-12/supplementary/findings.md` §B1）。真实 x87 硬件在首次渲染后会截断（例如顶点行为向下取整而非就近偶数）；按此前 P3 各任务的先例，协调者决定以基准环境的语义为准，由 08 在 U-009 记录与硬件的差异。按用户“尽量少用 DOSBox-X”的指示，协调者在 5 次运行（全部用于 G-05a，超出方案原定的一次纠正重跑，偏差见运行笔记）后停止补采：G-05a 点阵外观为高概率（满足 Q-05），其中后段覆盖与 G-05b 接缝外观（Q-07 外观所需的高概率尚未达到）作为残余外观缺口交 26/27，附恢复条件；26/27 若仍无法取得，按 spec 记为外观证据缺口，不判为一致。
+- **2026-10-16 — Subtask 09 blocked:** D-01 定稿草稿已完成（未提交，保存在 worker worktree `jubilant-fortnight` 的分支 `exec-p3-12-09`），按本 goal 的审批记录须由用户批准；协调者已提交批准请求，用户当时无法回复。
+  Evidence: 草稿改动 `docs/plan/p3/02/spec.md`（P3-12 的契约修订 FS-01–FS-11）、`docs/plan/p3/04/spec.md`（帧后逐 tick 输出）、`docs/engineering/modules/core.md`、`docs/engineering/modules/app.md`；要点与开放选择 A–F 的推荐见 09 worker 报告（Render State 增量、`PlayerState.modelShown`、`explosion-created`/`view-switched`/`warp-wall-contact` 三个事件、`FrameReport.outputs`、预算、RULES_VERSION 7→8 与快照格式 6→7、两项新差异）。
+  Affected acceptance: AC-01 及 09 的全部验收；10 至 29 都直接或间接依赖 09。
+  Resume when: 用户批准 D-01 定稿（或给出修改意见），或授权 agent 按推荐方案定稿；协调者把批准原话转给 09 worker，由其写入批准记录并提交。
 
 ## 审批
 
