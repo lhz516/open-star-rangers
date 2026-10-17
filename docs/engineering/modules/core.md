@@ -931,7 +931,7 @@ P3-02 只交付共同契约与接入位置；P3-06 交付飞行运动、操纵�
     - 按住 `+`/`−` 如何产生命令由 P3-05 决定：Core 每 tick 处理收到的每条命令，不按 DOS 轮询丢弃；同 tick 多条命令的读回依次累计。
     - 地图与基地中的手动轴归零已在 Core 中实现；P3-05 自己的地图模式清键仍按其范围进行。
   - **来自 P3-07：**
-    - 现在判定的命令与原版键（绑定归 P3-05，物理键研究 U-011）：`target` 的 `enemy`、`friendly`、`next`、`previous`、`forward` 对应 `t`、`f`、`r`、`y`、`u`（T3 的原生比较，`u` 已确认，[键位表](../../original/input/key-map.md#目标模式代码确认)已由 P3-05 对齐）；`cycle-main-weapon` 为 `/`，`select-missile` 的 `next` 为 `.` 与 `>`、`previous` 为 `,` 与 `<`（W3；手册的 `?` 即 Shift+`/`，飞行处理中无作用，P3-05/01 已确认）；`energy` 的 `open` 为 `e`，`shield-increase`、`shield-decrease`、`gun-increase`、`gun-decrease` 为 `S`、`s`、`G`、`g`（只在能量页有效，D10），`damage-report` 为 `d`（D15）；`fire` 的 `primary` 为 Alt 或摇杆按钮的电平（列表 0），`secondary` 为空格或按钮的单次请求（列表 1，W2、Q-10）。大写 `T`（消息 0x800）是仅作弊的击杀事件（P3-05/01），不是 P3-07 的命令。
+    - 现在判定的命令与原版键（绑定归 P3-05，物理键研究 U-011）：`target` 的 `enemy`、`friendly`、`next`、`previous`、`forward` 对应 `t`、`f`、`r`、`y`、`u`（T3 的原生比较，`u` 已确认，[键位表](../../original/input/key-map.md#目标模式代码确认)已由 P3-05 对齐）；`cycle-main-weapon` 为 `/`，`select-missile` 的 `next` 为 `.` 与 `>`、`previous` 为 `,` 与 `<`（W3；README 所记的 `?` 已由 P3-05/01 更正，见[键位表](../../original/input/key-map.md)）；`energy` 的 `open` 为 `e`，`shield-increase`、`shield-decrease`、`gun-increase`、`gun-decrease` 为 `S`、`s`、`G`、`g`（只在能量页有效，D10），`damage-report` 为 `d`（D15）；`fire` 的 `primary` 为 Alt 或摇杆按钮的电平（列表 0），`secondary` 为空格或按钮的单次请求（列表 1，W2、Q-10）。大写 `T`（消息 0x800）是仅作弊的击杀事件（P3-05/01），不是 P3-07 的命令。
     - 开火采样：按住主炮期间每个采样的 tick 一个 `fire primary`（Runtime 的 `primaryFire` 意图已送达 Core），两次采样之间的短按也保留一次；`secondary` 每次按下一个命令。Core 不保存跨 tick 的扳机电平，射速由挂点的冷却决定，冷却未到为 `cooldown` 且不累积。
     - 非飞行上下文中的开火屏蔽（CR-11 的差异 8）：Core 在地图、Warp 与基地上下文中把开火、选目标、选武器与能量命令判为 `wrong-context`，原版在这些上下文中仍按最后读到的主扳机电平开火。P3-05 不必在这些上下文中送出开火命令；送出时只得到 `wrong-context`。
     - 通讯菜单与对象列表菜单在飞行键上下文中先于这些键得到按键，并可能占用 `f`、`r`、`t`、`u`、`y` 等字母（T3）；这一优先级已由 P3-10 在命令判定中加入，所选内容的菜单只占用数字与 `x`，不占用这些字母（CB-01 检查 1）。
@@ -939,7 +939,7 @@ P3-02 只交付共同契约与接入位置；P3-06 交付飞行运动、操纵�
   - **来自 P3-09**（MW-04、MW-11、MW-16；项目绑定与输入边界见[键盘输入指南](../keyboard-input.md#地图与-warp-上下文中的命令结果)）：
     - `toggle-map`、`map-point` 与 `request-warp` 现在由 Core 判定，结果表见[地图与 Warp](#地图与-warpp3-09)；地图上下文中的数字、Enter 与菜单导航为 `wrong-context`，Warp 上下文中三种地图与 Warp 命令为 `wrong-context`。同一批次中被接受的 `toggle-map`、`request-warp` 之后的命令按新上下文判定，输入层不需要自己推断上下文的切换。
     - `map-point` 的 `{ right, down }` 由 Core 按导入的地图几何量化为光标像素；打开地图时 Core 的光标在 `startPixel`，与 P3-05 的起点公式落在同一整数像素。
-    - 右键的编号开关与去抖没有规则读者，归 P3-13 的呈现状态，不需要 Core 命令（P3-05 审批节的交接已按此同步）。
+    - 右键的距离标签开关与去抖没有规则读者，归 P3-13 的呈现状态，不需要 Core 命令（P3-05 审批节的交接已按此同步）。
   - **来自 P3-08**（CR-30）：`KeyB` 已由 P3-08/22 加入 P3-05 的[绑定表](../../plan/p3/05/spec.md#绑定表)，提交 `drop-transponder`（飞行上下文、无 Shift 与 Ctrl、按项目节奏重复、切片的菜单不占用；通讯菜单打开时仍投放），[键位文档](../keyboard-input.md)已同步。Core 在非飞行上下文中判为 `wrong-context`。实机键盘与系统快捷键拦截的证据仍归 P3-05 与 P3-15。
 - **P3-06（已交付）：** `movement`、`parked-update`（含离开世界）与 `area-check` 阶段；`speed` 与 `speed-preset` 命令（`speed-preset` 由 P3-05 从 `select-number` 改接）、普通飞行的 `confirm-selection`，以及轴的效果；`flight` 分区的运动组；玩家起飞初始状态；实例化扩展点中的最高速度、AI 初态、两个计时与初始移动块。自动驾驶 `a` 不进入 P3（G-09）。见上文各节与 [P3-06 goal](../../plan/p3/06/goal.md)。
   - **来自 P3-07**（CR-03、CR-09）：
@@ -1044,7 +1044,7 @@ P3-02 只交付共同契约与接入位置；P3-06 交付飞行运动、操纵�
     - 一次性提示来自事件：`target-cleared`（`warp` 对应原版右显示屏的离开提示）、`weapon-selected`、`energy-allocation-changed`、`left-page-changed` 与 `energy-depleted` 等。状态显示的闪烁相位与字段 1、5、8 由 Core 的显示步写入，P3-13 只绘制；能量页的重绘标志 +0x44 与非玩家的 +0xF0 只供显示，不在 Core（CR-02）。
   - **来自 P3-09，给 P3-12**（MW-03、MW-11）：隧道效果由 Render State 的 `warp`（序号、进度、n、u、L 与 15 个控制点）驱动，用表现层自己的随机源（原版开始时的 40 次表现抽取与效果例程不在 Core 中）；`warp-started` 与 `warp-completed` 以 `serial` 关联开始与结束。玩家位姿在 Warp 中由 Core 写入，Warp 开始与到达、标记移动使放置序号加 1，Warp 步的位姿连续。地图标记以 `map-marker` 表现列出，不绘制 3D 对象。
   - **来自 P3-09，给 P3-13**（MW-11、MW-16 的 P3-13 一行）：
-    - 地图画面只消费 `map` 分区（几何、光标、接触点与覆盖、放大窗口、信息行、标签、连线、目的地与读数、`warpRequest`），几何与 Core 来自同一 `data/hud/map-geometry` payload；放大窗口内按 HUD 图标尺寸的错开 `0x4b56c`、右键编号的开关与去抖、信息行百分比的 `%.0f` 格式与容量 0、E = 0 时读数（`percent` 为 null）的显示与颜色阈值都归 P3-13。
+    - 地图画面只消费 `map` 分区（几何、光标、接触点与覆盖、放大窗口、信息行、标签、连线、目的地与读数、`warpRequest`），几何与 Core 来自同一 `data/hud/map-geometry` payload；放大窗口内按 HUD 图标尺寸的错开 `0x4b56c`、右键距离标签的开关与去抖、信息行百分比的 `%.0f` 格式与容量 0、E = 0 时读数（`percent` 为 null）的显示与颜色阈值都归 P3-13。
     - 驾驶舱：`flight.combat.warp` 的 12 型指示灯与页 6 的三条读数（轨迹的历史与刷新周期 0x10 归 P3-13）；标记作为目标时 T7 的标记分支（名称取 `hud-text` 的 `mapMarkerName`）。
     - 一次性提示：`map-toggled`、`warp-destination-set`、`warp-started`、`warp-completed` 与没有命令的 `left-page-changed`。
   - **来自 P3-08，给 P3-12**（CR-20、CR-22、CR-24 决定 11）：

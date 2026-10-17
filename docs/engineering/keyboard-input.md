@@ -106,7 +106,7 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 
 - 输入位置为主地图内归一化的 `{ right, down }`，几何由呈现所有者经 [map-input-geometry.ts](../../src/render/map/map-input-geometry.ts) 提供；屏幕像素、主地图边界与逻辑画面在容器 content-box 中的 CSS 像素 frame 共用同一只读几何。零尺寸/缺几何为未就绪，非法几何显式报错。
 - 锁定态用平台相对移动，乘注入的 `movementScale` 转成 CSS 像素后钳制到主地图；非锁定态在支持或申请失败时用地图内的绝对位置回退，区域外/黑边不选取并显示系统指针。`movementScale` 依据引擎报告单位选择（CSS px 时为 1，device px 时为 1/devicePixelRatio）。
-- 合格时如仍有用户激活则申请 Pointer Lock，否则提示点击锁定。普通移动只保留最新 hover，每个 running 帧至多提交一次；左键新按下先补同点 hover 再 select，按住按策略间隔重复，每帧至多一次且不追赶。锁定/聚焦点击只建立锁，不选目标；右键无项目动作（原版右键的编号开关归 P3-13 的呈现，见下节）。
+- 合格时如仍有用户激活则申请 Pointer Lock，否则提示点击锁定。普通移动只保留最新 hover，每个 running 帧至多提交一次；左键新按下先补同点 hover 再 select，按住按策略间隔重复，每帧至多一次且不追赶。锁定/聚焦点击只建立锁，不选目标；右键无项目动作（原版右键的距离标签开关归 P3-13 的呈现，见下节）。
 - [map-cursor.ts](../../src/render/map/map-cursor.ts) 绘制本项目的十字光标，只绘制、不持有规则或调度；这不是原版选取框外观。几何测量容器必须与 Pointer Lock 目标一致。
 
 ### 地图与 Warp 上下文中的命令结果
@@ -118,7 +118,7 @@ P3-09 起 `toggle-map`、`map-point` 与 `request-warp` 由 Core 判定（门禁
 - `w`：依次为玩家不可用（`player-unavailable`）、Warp 或基地上下文与从基地打开的地图（`wrong-context`）、尚未选过目的地（`no-destination`）、Warp 间隔未到（`cooldown`）与能量不足（`insufficient-energy`）。
 - 同一批次中被接受的 `m` 或 `w` 之后的命令按新的上下文判定：开图之后的速度、开火、目标与能量命令为 `wrong-context`，`w` 之后的第二个 `w` 与 `map-point` 为 `wrong-context`；本 tick 的手动轴按批次结束时的上下文处理（地图中为 0）。与原版每次轮询一键的差异见 MW-12 的差异 1。
 - 地图上下文中的数字、Enter、菜单导航、通讯（`c`、`x`）与离港（`l`）在玩家不可用时为 `player-unavailable`，否则为 `wrong-context`（后两类由 P3-10 的 CB-07 判定）。Warp 上下文中速度、档位、目标、开火、能量、数字与 Enter 为 `wrong-context`，操纵轴照常进入 Warp 中的积分。
-- 原版的右键在地图中切换放大窗口的编号显示并去抖，没有规则读者：它是 P3-13 的呈现状态，不需要 Core 命令（P3-02 spec 的 MW-11、MW-16；P3-05 审批节的交接已按此同步）。项目当前不为它绑定动作。
+- 原版的右键在地图中切换放大窗口的距离标签显示并去抖，没有规则读者：它是 P3-13 的呈现状态，不需要 Core 命令（P3-02 spec 的 MW-11、MW-16；P3-05 审批节的交接已按此同步）。项目当前不为它绑定动作。
 
 ### 对照差异与下游责任
 

@@ -430,7 +430,7 @@ Static closure of the original data the selected mission's loop loads, for the [
 | `0x3a850` | SCENARIO TABL 3015, 3011, 3017, 3013 | 3015 and 3011 only by the statistics formatters `0x3bc04` and `0x3bc28`; 3017 and 3013 by the statistics row and promotion `0x3b8dc`, 3013 also by its reset `0x3b7b8` |
 | `0x30ec0` | TABL 11375 | External-view cameras (below) |
 
-Within `0x3ec70`: `0x3cfbb` loads RENS 10751, TEX 10377 (`0x444ac`), TEX 11069 with MESH 11065, 10375, 10311, 10745 and 10397 (`0x41c00`), and TEX 10151 with MODL 10383 (`0x3e430`). `0x49440` loads TABL 10099 and the cockpit set it names (`0x497a0` → `0x49694`), the HUD set (`0x4ca80`), SND 10409 (`0x4eaa0`, the initialiser of instrument type 9, the strip above the navigation display; [hud](./hud.md#sources-of-the-unidentified-elements-p2-1227)) and TABL 10461 and 11401 (`0x49e00`). `0x45420` loads SND 10457 and 10455 and TABL 10399 (view labels, [automatic views](#automatic-views-and-cameras-p3-0109)); `0x484f0` loads NEBC 10661.
+Within `0x3ec70`: `0x3cfbb` loads RENS 10751, TEX 10377 (`0x444ac`), TEX 11069 with MESH 11065, 10375, 10311, 10745 and 10397 (`0x41c00`), and TEX 10151 with MODL 10383 (`0x3e430`). `0x49440` loads TABL 10099 and the cockpit set it names (`0x497a0` → `0x49694`), the HUD set (`0x4ca80`), SND 10409 (`0x4eaa0`, the initialiser of instrument type 9, the strip above the target display; [hud](./hud.md#sources-of-the-unidentified-elements-p2-1227)) and TABL 10461 and 11401 (`0x49e00`). `0x45420` loads SND 10457 and 10455 and TABL 10399 (view labels, [automatic views](#automatic-views-and-cameras-p3-0109)); `0x484f0` loads NEBC 10661.
 
 **Confirmed (mission start and flight):**
 
@@ -1535,7 +1535,7 @@ Static answers to Q-01–Q-12 of the [P3-09 spec](../../plan/p3/09/spec.md#原�
 | ps +0x28 / +0x29 | 8 / previous mode | swapped back | [automatic views](#automatic-views-and-cameras-p3-0109) |
 | `0x1747dc` (map reads enabled) | 1 | 0 | none (only reader `0x27804`) |
 | Mouse block `0x1a98ec` | reset to the start point by `0x49e3c` → `0x65350` | kept | the map reads |
-| Number toggle `0x18649c` | 0 (`0x49e43`) | kept | right button; 0 at the mission set-up |
+| Distance-label toggle `0x18649c` | 0 (`0x49e43`) | kept | right button; 0 at the mission set-up |
 | Right-button debounce `0x1864c4` | **kept** | kept | 20 on a toggle, −1 per `0x2b9bc` call while positive, 0 at the mission set-up |
 | Cursor world point, zoom bounds | written by the opening frame's render (the map draw calls `0x2b9bc` at the start point, buttons 0) | kept (stale) | every map read and map frame |
 | Destination, ps +0x00, marker | kept | kept | [left-button select](#cursor-destination-and-marker-p3-0902) |
@@ -1585,7 +1585,7 @@ Readers of ps +0x00: the map draw, the flight and map `w` leaves (`0x26f77`, `0x
 1. Stores the screen point (`0x1864a0`/`0x1864a2`, i16) and classifies it: main map (flag 1), info window (4), zoom window (2), each `left ≤ x < left + width` and `top ≤ y < top + height` (signed), later matches overwriting earlier ones; the rectangles are disjoint.
 2. Main map: cursor world point := `0x4c4c0`(point), then the zoom bounds `0x2bc30`.
 3. Left button (bit 0) and main map: destination := the same point, `0x2bc30` again (same result), nearest icon `0x4c310`, z `0x2bd74`, then the marker: if ps +0x00 = 0, set it to 1 and call `0x3cb80` with a copy of the destination (return not tested); otherwise take the first object of kind `0x2000000` from `0x5261c` and, when one exists, overwrite its position +0x6C–+0x74 with the destination (no state, validity or activity test). Then, when sample > `0x174b38` (unsigned), `0x174b38` := sample + 4 and post presentation item type 2 with sound 10463. Reads are at least 8 units apart, so every left-button read posts the sound.
-4. Right button: the number toggle ([zoom window](#zoom-window-information-window-and-labels-p3-0904)).
+4. Right button: the distance-label toggle ([zoom window](#zoom-window-information-window-and-labels-p3-0904)).
 
 A read with the button down and an unchanged point still rewrites the destination, recomputes the nearest icon and z from the current icon list (z can change while the point does not), rewrites the marker's position and posts the sound.
 
@@ -2950,8 +2950,10 @@ counted reference but has no rule effect.)
 - **Keys (flight key context `0x264a0`, compare chain on the translated key code):** 0x2F `/` → `0x2d6dc(·, 0)`
   (next main weapon); 0x2E `.` and 0x3E `>` → `0x2d6dc(·, 1)` (next missile); 0x2C `,` and 0x3C `<` →
   `0x2d6f0(·, 1)` (previous missile). There is no case for 0x3F `?`; the key read `0x3c970` swaps case only for
-  letters (Caps Lock, BIOS flag bit 0x40), so a shifted `/` does not select. The manual's `?` is Likely the key's
-  shifted legend; which key code a DOS read returns for that key is a P3-05 (U-011) question. The context serves
+  letters (Caps Lock, BIOS flag bit 0x40), so a shifted `/` does not select. The `?` attribution came from the
+  README, not the printed manual, which lists `/` (PDF pages 5 and 32;
+  [manual source](../../guides/original-evidence.md#印刷手册)). P3-05/01 confirmed that Shift+`/` yields `?`
+  and has no effect in flight ([key map](../input/key-map.md#修饰键与大小写p3-0501)). The context serves
   every view mode except Warp (0–3), base (6) and map (8)
   ([view keys](#automatic-views-and-cameras-p3-0109)), so selection
   works only in flight modes.

@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "05"
 subtask: "01"
-updated: 2026-10-10
+updated: 2026-10-16
 ---
 
 # 01 — 飞行上下文按键研究（Q-01 飞行部分、Q-02 飞行部分、Q-04 通讯与能量页）
@@ -86,7 +86,7 @@ updated: 2026-10-10
 - Shift+字母为大写（与 CapsLock 无关）。Ctrl 或 Ctrl+Shift+字母得到控制字符：Ctrl+H 同 Backspace，Ctrl+J 同 Ctrl+Enter，Ctrl+M 同 Enter，Ctrl+[ 同 Esc，其余 Ctrl+字母无作用。
 - Alt：主键盘的全部 Alt+字母/数字/标点得到无人处理的码，Alt+空格即空格，Alt+Enter 不产生键，Alt+F1–F11 无作用（所以 README 的 Alt+F4 并不切换视角）。故按住 Alt（主炮）期间，飞行中只有空格仍立即起作用（另有作弊的 Alt+F12）；Alt 加小键盘数字是 DOS 十进制字符输入，在松开 Alt 时才送出一个字符。这是与项目“Alt 不抑制其他绑定”的差异。
 - Shift+数字为十档；Shift+`/` 得到 `?`，无作用；Shift 与 `,` `.` `=` `\` 分别为上一导弹、下一导弹、加速、截图；Shift 不改变 Backspace、Enter、Esc、空格。Ctrl+数字无作用。
-- 小键盘：NumLock 与 Shift 同为关或同为开时，7/8/9/4/5/6/2 分别为 Home（F2 别名）、上（前视 F1 别名）、PgUp、左、中键、右、下视角，1/3/0/. 无作用；恰有一个为开时为数字（飞行中无作用，在通讯菜单中与主键盘数字一样选项），`.` 为下一导弹。Ctrl 下 7/9/4/6 仍为相同视角，其余无作用；Alt 下为 DOS 十进制字符输入。小键盘 `+`、`-`、`*`、`/`、Enter 不受 NumLock 与 Shift 影响，分别为加速、减速、Shift+8 档、下一主武器、手动匹配；其 Ctrl 形式除 Ctrl+小键盘 Enter（辅助开关）外无作用。灰色导航键不受 Shift 与 NumLock 影响。
+- 小键盘：NumLock 与 Shift 同为关或同为开时，7/8/9/4/5/6/2 分别为 Home（F2 别名）、上（前视 F1 别名）、PgUp、左、中键、右、后视角（2026-10-16 更正旧称“下视角”：下是方向键名，不是观察方向，见[键位表](../../../../original/input/key-map.md#小键盘p3-0501)），1/3/0/. 无作用；恰有一个为开时为数字（飞行中无作用，在通讯菜单中与主键盘数字一样选项），`.` 为下一导弹。Ctrl 下 7/9/4/6 仍为相同视角，其余无作用；Alt 下为 DOS 十进制字符输入。小键盘 `+`、`-`、`*`、`/`、Enter 不受 NumLock 与 Shift 影响，分别为加速、减速、Shift+8 档、下一主武器、手动匹配；其 Ctrl 形式除 Ctrl+小键盘 Enter（辅助开关）外无作用。灰色导航键不受 Shift 与 NumLock 影响。
 
 **`I`/`J`/`K`/`L`（K 规则 1 的输入；已确认，代码与模拟器源码）**
 
