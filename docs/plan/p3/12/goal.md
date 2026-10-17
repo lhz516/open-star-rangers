@@ -101,7 +101,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [10-core-presentation-facts.md](./subtasks/10-core-presentation-facts.md) | 09 | completed |
 | [11-runtime-tick-batches.md](./subtasks/11-runtime-tick-batches.md) | 09 | completed |
 | [12-presentation-foundation.md](./subtasks/12-presentation-foundation.md) | 10, 11 | completed |
-| [13-presentation-effects.md](./subtasks/13-presentation-effects.md) | 01, 05, 12 | in-progress |
+| [13-presentation-effects.md](./subtasks/13-presentation-effects.md) | 01, 05, 12 | completed |
 | [14-destruction-camera.md](./subtasks/14-destruction-camera.md) | 01, 12 | completed |
 | [15-renderer-lifecycle.md](./subtasks/15-renderer-lifecycle.md) | 11, 12 | in-progress |
 | [16-scene-camera-composition.md](./subtasks/16-scene-camera-composition.md) | 01, 03, 10, 14, 15 | pending |
@@ -141,6 +141,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 - **2026-10-17 — 30 的更正：** 30 的已确认结论更正了 spec 修订中协调者写的三处事实（速度份额决定整层跳过与近处亮度而非粒子数；被毁视角爆炸前的 30 是速度；跟随实体离表后份额为 0）。协调者据此更正 spec 的[星点与速度尘埃](./spec.md#星点与速度尘埃)与 AC-23，以及 31、32；FS-12 由当前状态推导，不进快照、不再递增版本。星点表用默认 `rand` 序列的第 1–1000 次抽取（不是 1001–1128）。对照方案附录 `addendum-q14.md` 已冻结（SHA-256 `34c4c430…23c3b6`），`plan.md` 不变。
 - **2026-10-17 — FS-12 定稿：** 协调者按用户授权接受 30 的推荐定稿并由 32 写入 P3-02：`RenderState.speedShare` 按原版 i32/i16 存储建模（常规取值 0–100，极端输入可回绕超过 100，31 按原版夹取亮度与颜色）；MW-01 校验 4 收紧为玩家记录 trunc(+0xB8) ≥ 1，comm-replay 与 worker 停靠夹具相应调整，comm 摘要在 `3be64fe4` 重新取基线且不变。
 - **2026-10-17 — 14 的原版文档补充（交 27）：** 14 实现时核实了被毁相机的 f32 细节（进入角为 f32 `0x3F0EFA35` = Math.fround(32° 弧度)；爆炸前每个分量为 F(P + F(R2 × s))；首次跟随距离的求和顺序为 (y² + z²) + x²；跟随位置为 F(F + F(R2 × −d))；两个缓动分支得到相同的 double），由 27（写入范围含 `docs/original/**`）并入 executable 的自动视角/PV8 段落。在 `clock` 之前阶段发生的进入 `view-switched` 使用上一 tick 的时钟（与 `0x18641c` 一致；按 FS-03 不可达）。
+- **2026-10-17 — 13 的实现取舍：** `explosion-created` 带速度而不带速度标量 s；带标志的判别值 2 碎片再爆炸漂移所需的 s 由 Core 爆炸的行恢复为 F(R2·v / R2·R2)，在 f32 舍入内精确（若要求逐位一致，须另行修订 FS-03 加入 s；目前不改契约）。闪光检查按 X4 用激活 tick 移动之后的位置与 beforeStep(A+1)（PV7 表格行写作“激活时的 P”，由 27 核对文字）。其余取舍见 13 的完成证据。
 
 ## 审批
 
