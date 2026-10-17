@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "12"
 subtask: "15"
-updated: 2026-10-15
+updated: 2026-10-17
 ---
 
 # 15 — 飞行渲染器的生命周期、接线与失败分类
@@ -46,6 +46,7 @@ updated: 2026-10-15
 - `src/ui/mission/**`：飞行区域与提示。
 - `src/ui/dev/**`：开发诊断。
 - `src/app/app.css`：飞行区域样式。
+- `e2e/base-interaction.development.spec.ts`、`e2e/webgl-unavailable.spec.ts`：随飞行区域文字与 WebGL 表面变化更新既有断言与注释。
 
 ## 验收标准
 
