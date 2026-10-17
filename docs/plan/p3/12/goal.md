@@ -106,7 +106,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [15-renderer-lifecycle.md](./subtasks/15-renderer-lifecycle.md) | 11, 12 | completed |
 | [16-scene-camera-composition.md](./subtasks/16-scene-camera-composition.md) | 01, 03, 10, 14, 15 | completed |
 | [17-model-lighting.md](./subtasks/17-model-lighting.md) | 02, 16 | completed |
-| [18-hit-shimmer.md](./subtasks/18-hit-shimmer.md) | 05, 10, 17 | pending |
+| [18-hit-shimmer.md](./subtasks/18-hit-shimmer.md) | 05, 10, 17 | in-progress |
 | [19-nebula-background.md](./subtasks/19-nebula-background.md) | 04, 16 | completed |
 | [20-projectile-missile-fragment-render.md](./subtasks/20-projectile-missile-fragment-render.md) | 05, 13, 17 | pending |
 | [21-sprites-screen-flash.md](./subtasks/21-sprites-screen-flash.md) | 03, 04, 13, 16 | in-progress |
