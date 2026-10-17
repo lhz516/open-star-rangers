@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "12"
-updated: 2026-10-16
+updated: 2026-10-17
 related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-018, U-021, U-027, U-028]
 ---
 
@@ -95,7 +95,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [06-warp-tunnel-research.md](./subtasks/06-warp-tunnel-research.md) | — | completed |
 | [07-evidence-gap-supplement.md](./subtasks/07-evidence-gap-supplement.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-original-records-comparison-plan.md](./subtasks/08-original-records-comparison-plan.md) | 01, 02, 03, 04, 05, 06, 07 | completed |
-| [09-d01-contract-gate.md](./subtasks/09-d01-contract-gate.md) | 01, 05, 07 | in-progress |
+| [09-d01-contract-gate.md](./subtasks/09-d01-contract-gate.md) | 01, 05, 07 | completed |
 | [10-core-presentation-facts.md](./subtasks/10-core-presentation-facts.md) | 09 | pending |
 | [11-runtime-tick-batches.md](./subtasks/11-runtime-tick-batches.md) | 09 | pending |
 | [12-presentation-foundation.md](./subtasks/12-presentation-foundation.md) | 10, 11 | pending |

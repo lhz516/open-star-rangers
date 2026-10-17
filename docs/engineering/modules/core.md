@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-16
+updated: 2026-10-17
 related: [ADR-0004, ADR-0006, ADR-0015, B-001, B-004, B-006, B-007, B-008, B-009, B-011, U-008, U-009, U-010, U-011, U-021, U-022, U-026, U-030]
 ---
 
@@ -202,6 +202,10 @@ related: [ADR-0004, ADR-0006, ADR-0015, B-001, B-004, B-006, B-007, B-008, B-009
     - `transponder-deployed`：`{ entityId, creatorEntityId, position, orientation }`，`create-transponder` 构造出**活动**的 Xpon 时（请求处理中），位姿为 f32；僚机投放的停放 Xpon 没有它（原版只在活动创建时投递创建表现项与 SND 10055）。
     - 不加事件的事实：AI 的速度匹配、AI 的 Warp 离场（表现差异见 CR-24 决定 11）、控制器的安装、移除与状态机转换（经快照读取）。AI 的开火仍是 P3-07 的 `shot-fired`，`trigger` 为 `{ type: 'ai', channel }` 或 `{ type: 'automatic' }`，没有 `commandIndex`。`hit` 的 `cause: 'area'` 与 AI 自爆 `0x6313c` 属于内置记录 9 的处理器，在切片中不可达（[ai §10.3](../../original/formats/ai.md#103-built-in-handlers)），P3-08 未实现，Core 不产生它们。
 
+  - **P3-12 的事件**（[FS-03](../../plan/p3/02/spec.md#fs-03-领域事件)，D-01 已于 2026-10-17 经用户批准，由 P3-12/10 实现；在此之前代码中没有）沿用 CR-06 的通则：
+    - `explosion-created`：`{ entityId, sourceEntityId, sourceKindBit, variant, stage, position, velocity }`，`constructExplosion` 实际分配爆炸时（来源成为被毁源之后、产生碎片之前），每个爆炸一次；玩家只布设或等待延迟时不发。`stage` 是构造所在的阶段（`PipelineStageName` 的子集：`object-update`、`request-handling`、`movement`、`collision`、`delayed-player-explosion`），决定首次回调在同一 tick 还是下一 tick（X9）；位置与线速度是构造时的值（爆炸的行没有表现读者，不给出）。
+    - `view-switched`：`{ fromViewMode, fromSubMode, viewMode, subMode, stage, player }`，每次规则切换视角（共同的切换函数）在写入两个模式之后立即发出，先于调用者自己的事件与切换返回的 `left-page-changed`；`stage` 为 `PipelineStageName`（`PIPELINE` 阶段 ID 的封闭联合，定义在契约中）；`player` 是写入时玩家实体的位姿或 null。
+    - `warp-wall-contact`：`{ serial }`，`frame-end` 的 Warp 步中玩家在误差窗口内碰到隧道壁时（误差加 0.01 的同一分支），每步至多一次。
   一个 tick 内的次序：玩家更新中先是速度辅助的事件（`speed-matched` assist 或 `speed-assist-released`，至多一个），再按索引发出命令结果，`speed-assist-toggled`、`weapon-selected`、`energy-allocation-changed` 与 `left-page-changed` 紧随所属命令的结果；请求处理中按请求的处理次序发出手动匹配的 `speed-matched`、`target-changed`、`shot-fired`、`missile-ended`（起爆时随后按遍历次序为每个受击者发出 `hit` 与可能的 `object-destroyed`）、`explosion-started`、`fragment-expired` 与 `source-released`，以及 P3-09 的 `map-toggled`、`warp-destination-set` 与 `warp-started`（随后是其 `left-page-changed`）和 P3-08 的 `transponder-deployed`；对象更新中 P3-08 的 `wingman-command-consumed` 按走查次序，同一僚机的回复 `radio-queued`（P3-10）紧在其前；移动阶段按弹丸的遍历次序发出弹丸命中的事件，碰撞阶段按两遍的对次序发出；能量阶段按遍历次序发出 `energy-depleted`；`object-left-world` 在停放更新阶段发出，同一对象的停放交战事件在它之后；`warp-completed`（随后是其 `left-page-changed`）在 `warp-completion` 阶段，每 tick 至多一个；`target-cleared` 在帧尾，每 tick 至多一个。同一次伤害中 `hit` 先于 `object-destroyed`。`object-instantiated` 不与它们排序。P3-10 的事件（CB-13）：`mission-flow` 的 `docking-cancelled` 与清空的 `radio-flushed`（及其页事件）最先；命令的 `left-page-changed`、`docking-requested` 紧随所属结果；`0x3bed0` 与实例化的 `radio-queued` 按遍历次序；`communications-reply` 的 `radio-taken`；请求处理按请求次序发出 `command-delivered`、`docked`/`departed` 与其 `transition`、基地键事件与门禁的 `docking-cancelled`；伤害与停放阶段的 `radio-queued`；帧尾依次为左显示屏处理器的页事件、尾随警告的 `radio-queued` 与通讯呈现子步的页事件、`incoming-started`/`incoming-ended`。比较按此校验（[快照、录制、replay 与比较](#快照录制replay-与比较)）。
 - **规范文本**（[canonical-text.ts](../../../src/core/contracts/canonical-text.ts)）：`canonicalObject(members)` 以显式次序列出对象成员（复制并冻结），`canonicalText(value, path)` 写出紧凑 JSON，`canonicalHash(value, path)` 为其 fnv1a64（16 位小写十六进制）。类型化写出器 `canonicalMembers`（映射类型要求每个成员恰好写一次）、`canonicalList`、`canonicalNullable`、`canonicalScalar` 与类型 `CanonicalWriter`、`CanonicalMembers` 由快照与 setupHash 共用（P3-06 从快照移到这里）。规则：不接受普通对象，键的插入次序因此不会进入文本；−0 写为 0；非 ASCII 码元一律转义为 `\uXXXX`；非有限值、非规范值、重复成员与超过 `canonicalTextLength` 的文本以 `CoreInputError` 拒绝，由调用者决定是否转为故障。字符串在编码前精确计算转义后的长度，超长时不分配。哈希只是同一版本、同一运行时内的一致性诊断，不证明来源、防篡改或无碰撞。
 - **校验读取器**（[validation.ts](../../../src/core/contracts/validation.ts)）：`readDataRecord`、`requireExactFields`、`readExactRecord`、`readList`、`readNumber`（−0 变为 0）、`readChoice`，以及数值规则 `NumberRule`、`numberIn`、`integerIn`。只接受纯数据，每个值经描述符读一次，错误不回显未知键或值。
@@ -679,6 +683,7 @@ P3-08 的系统在 [systems/ai.ts](../../../src/core/systems/ai.ts)（控制器�
   - 停放的实体不呈现（原版不为停放对象保留渲染对象）。被毁的实体在移除前仍列出；移除后消失。
   - 新 ID 只用当前位姿；同一 ID 的放置序号变化表示非连续移动（Warp 开始与到达、标记移动、救援、离港放置，以及停放期间的行进、跳跃与编队跟随），渲染器不跨此插值；Warp 步的位姿连续，不改放置序号。P3-10 没有改变 Render State 的形状：离港放置使玩家的放置序号加 1，停靠的实体照常列出，视角 6 中不绘制三维世界归 P3-12（CB-14）。
   - 渲染器之外的消费者不得从 Render State 推导规则信息（地图标记、目标列表等）。两帧保留与跨运行折叠归 P3-04。
+  - **P3-12 的增量**（[FS-01、FS-02](../../plan/p3/02/spec.md#p3-12-的契约修订d-01)，D-01 已于 2026-10-17 经用户批准，由 P3-12/10 实现；在此之前代码中没有）：`RenderState` 增加 `subMode`、`followedEntityId`（所指实体离表后照样给出）与 `activeAreaCentre`（`activeAreaCentre(world)`，没有玩家实体时 null；范围与形状由表现层调用 `isWithinActiveArea`）；`RenderEntity` 增加 `inWarp`、`sourceKindBit`（爆炸与碎片的来源种类，其他为 null；远平面按碎片的来源种类计数）与 `display`：`released`（状态 `area-switch`/`pending-removal`）、`pending`（`new`/`presentation-ready`/`awaiting-presentation`）、`hidden`（玩家实体且 `PlayerState.modelShown` 为假）、`shown`（其余），按此次序取第一个成立的。新的持久字段 `PlayerState.modelShown`（原版玩家视觉的“在场景中”标志）在实例化、经 `0x216d4` 的切换（新视角为 0x11 时为真）、种类 1 的交接与救援处写入。实现时 `RULES_VERSION` 与快照格式版本相对实际集成基线各递增一次，replay 格式不变（FS-08）。
 
 ### 快照、录制、replay 与比较
 
@@ -1049,7 +1054,7 @@ P3-02 只交付共同契约与接入位置；P3-06 交付飞行运动、操纵�
     - 一次性提示：`map-toggled`、`warp-destination-set`、`warp-started`、`warp-completed` 与没有命令的 `left-page-changed`。
   - **来自 P3-08，给 P3-12**（CR-20、CR-22、CR-24 决定 11）：
     - Xpon（种类 14）的模型来自其机型绑定（M2ID 槽 14），`transponder-deployed` 是 `b` 的活动创建表现项的依据；僚机投放的停放 Xpon 不呈现、没有事件。原版回调 `0x3897c` 在保持与稳定时写的表现标志（visual +0x1C）归表现层，Core 只写运动（翻滚、保持、稳定的转向块）。
-    - AI 的 Warp 离场没有事件：原版在处理离场时投递移除表现项，Core 的实体在下一 tick 停放后才从 Render State 消失，多列出一个 tick（已批准的表现差异，决定 11）；P3-12 若需要在离场 tick 隐去，须按[扩展规则](#扩展规则)提出事件或读模型。
+    - AI 的 Warp 离场没有事件：原版在处理离场时投递移除表现项，Core 的实体在下一 tick 停放后才从 Render State 消失，多列出一个 tick（已批准的表现差异，决定 11）；P3-12 若需要在离场 tick 隐去，须按[扩展规则](#扩展规则)提出事件或读模型。（P3-12 的 D-01 以 `display: 'released'` 标出该 tick，见 [FS-01](../../plan/p3/02/spec.md#fs-01-render-state-的增量)。）
     - AI 机体与基地的开火、导弹与命中照常经 P3-07 的事件与 Render State；AI 驾驶只经 `steer` 与 `ai-match-speed` 改变运动，位姿连续，不改放置序号（停放、恢复与停放 Warp 跳跃照 P3-06 的规则改放置序号）。
   - **来自 P3-08，给 P3-13**（CR-22）：`wingman-command-consumed` 是僚机命令被消费的事实（诊断与菜单呈现可用），回复文字与头像来自同一 tick 的 P3-10 `radio-queued`；AI 的控制器、状态机与执行状态没有 projection，只经快照供开发诊断读取。地图上 Xpon 作为友方接触点与揭示来源由 P3-09 的 `map` 分区给出；僚机停放步的自身揭示只影响它自己的搜索，在下一次 `object-sets` 重建时被覆盖，不出现在地图中。
   - **来自 P3-10，给 P3-12**（CB-14）：离港放置使玩家的放置序号加 1，渲染器不跨此插值；视角 6 中不绘制三维世界；停靠的实体照常在 Render State 中。

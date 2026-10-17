@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "02"
-updated: 2026-10-16
+updated: 2026-10-17
 related: [ADR-0004, ADR-0006, ADR-0015, B-003, B-004, B-006, U-008, U-009, U-010, U-011, U-021, U-022, U-023]
 ---
 
@@ -2270,6 +2270,238 @@ CR-20 的命令不变。物理绑定由 [P3-05 绑定表](../05/spec.md#绑定�
 
 **对前文的修订（只列变化，均随本节获批）：** CR-13 的 `0x3c208` 行（CR-27）；P3-08 的 D-01 一节开头的“不在本节”段、“与 P3-10 的 D-01 对齐”段、对齐表的“友伤累计”行、“依赖”段与“与 P3-09 的 D-01”段（CR-26 至 CR-30）；CR-15 的“输入”一条（CR-26、CR-29）；CR-18 中基地单槽的引用（CR-28）；CR-19 的开头、代码块（删去 `objectSets` 与 `mapVisible`）、“友伤累计”“对象集合与 +0xD4”与“快照”三条（CR-27、CR-29）；CR-20 的绑定与轮询两句（CR-30）；CR-21 的 `deliver-command` 行（CR-28）；CR-23 的对象集合一条（CR-29）；CR-25 的“快照”一条与“对前文各节的修订”中的对象集合一项（CR-29）。
 
+### P3-12 的契约修订（D-01）
+
+本节由 P3-12 的子任务 09 加入（2026-10-16），定稿 [P3-12 spec 的共享契约修订（D-01）](../12/spec.md#共享契约修订d-01)中属于本 spec 的部分；Runtime 与会话的帧后输出在 [P3-04 的帧后逐 tick 输出](../04/spec.md#帧后逐-tick-输出p3-12-的修订)。它建立在前文各节与 P3-05 至 P3-10 的修订之上，那些修订已定的项不变；前文与本节不一致时以本节为准。编号 FS-01 至 FS-11 只供引用本节。
+
+**批准状态：** 用户于 2026-10-17 明确批准（见[审批](#审批)）。
+
+原版事实只记在 executable 的 [C1](../../../original/formats/executable.md#c1-the-3d-camera-and-its-readers--confirmed-code)、[X2](../../../original/formats/executable.md#x2-explosion-constructor-0x23ac8h--confirmed-code) 至 [X9](../../../original/formats/executable.md#x9-timing-of-directly-created-objects--confirmed-code)、[自动视角](../../../original/formats/executable.md#automatic-views-and-cameras-p3-0109)与 P3-12 研究写入的各节（由 P3-12 的子任务 08 写入）。定稿依据是 P3-12 子任务 [01](../12/subtasks/01-camera-visibility-research.md#完成证据)（下文“01 的 A6”等指其研究的节号）、[05](../12/subtasks/05-shimmer-effect-geometry-research.md#完成证据)、[06](../12/subtasks/06-warp-tunnel-research.md#完成证据) 与 [07](../12/subtasks/07-evidence-gap-supplement.md#完成证据) 的完成证据，尤其是 01 与 05 交 09 的 D-01 字段摘要。
+
+**记法与通则：** 沿用 [P3-07 的修订](#p3-07-的契约修订d-01d-03)的记法。新增的持久状态由 Core 拥有，进入快照规范文本与状态哈希；Render State 的新字段是读模型，读取不改状态、不抽取随机数，输出深度冻结并与世界脱离。没有开放字段、万能载荷或“其他表现字段”：表现层需要的其他量都由本节列出的事实与既有输出推导（FS-05）。
+
+#### FS-01 Render State 的增量
+
+```ts
+interface RenderState {
+  // 既有：tick、clock、viewMode、observedEntityId、entities、warp（不变）
+  readonly subMode: number;                    // 玩家状态的子模式（ps +0x2A）
+  readonly followedEntityId: EntityId | null;  // 玩家状态的 followedEntity（ps +0x90）；所指实体已离表时照样给出
+  readonly activeAreaCentre: Vec3 | null;      // activeAreaCentre(world)：区域检查用的中心；没有玩家实体时 null
+}
+interface RenderEntity {
+  // 既有字段不变
+  readonly inWarp: boolean;                    // 实体的 inWarp（+0xCC），所有种类都给出
+  readonly sourceKindBit: number | null;       // 爆炸与碎片战斗状态的 sourceKindBit（mb +0x104、+0xF0），其他种类 null
+  readonly display: RenderDisplay;
+}
+type RenderDisplay = 'pending' | 'shown' | 'hidden' | 'released';
+```
+
+- **`display`**（01 的 A4、A6）：原版视觉对象在本 tick 结束时的阶段，按下列次序取第一个成立的：
+  1. `released`：状态为 `area-switch` 或 `pending-removal`。原版在这一 tick 已处理移除项（`0x21650`、区域检查 `0x3a4b0`、Warp 离场消息 0x800000），实体下一 tick 才离表；本 tick 的画面不再绘制它。
+  2. `pending`：状态为 `new`、`presentation-ready` 或 `awaiting-presentation`。原版已处理创建项（计入远平面的计数），还没有第一个位姿项，不绘制。
+  3. `hidden`：是玩家实体且 `PlayerState.modelShown` 为假（FS-02）。视觉对象存在、照常有位姿项，模型不在场景中。
+  4. `shown`：其余（`destroyed-source`、`active`、`projectile-hit`）。
+
+  因此 `display` 为 `shown` 或 `hidden` 恰好对应原版投递位姿项的条件（活动 ≠ 0 且状态为 4 或 ≥ 7；停放的实体本来不列出）。P3-08 CR-24 决定 11 的 AI Warp 离场在 Render State 中多列出的那个 tick 为 `released`，渲染器不绘制它。
+- **`sourceKindBit`：** 远平面按判别值 3 碎片的来源种类计数（01 的 A4），`fragment` 表现选择器只有模型与部件，不能可靠地反推种类；爆炸的来源种类同样给出，使 Render State 中爆炸的来源种类无需事件历史。
+- **`followedEntityId`：** 区分“未跟随”（null）与“跟随的实体已不存在”（非 null 而不在 `entities` 中，被毁相机冻结，01 的 A8）。
+- **`activeAreaCentre`：** 与 `area-check` 阶段所用的中心相同（`activeAreaCentre` 在两处的输入在该阶段之后不再改变：Warp 中心是目的地，`frame-end` 的 Warp 步不改它）。范围与形状不是字段：表现层调用 Core 的纯函数 `isWithinActiveArea`（严格二维，`ACTIVE_AREA_RADIUS_SQUARED`），不复制常量。以后改变区域判定的规则（例如 P3-11 的波次模式）须同步修订本字段。
+- `subMode` 与 projection 的 `player.subMode` 相同；放进 Render State 是为了让逐 tick 的输出自成一体，渲染器不读 projection 来判视角。
+- 读取时 `activeAreaCentre` 的故障（Warp 中没有目的地）与规则路径相同，为 `invariant-violated`。
+
+#### FS-02 玩家状态：模型显示
+
+`PlayerState.modelShown: boolean`：原版玩家视觉对象的“在场景中”标志（visual +0x20，表现项 (2, 5)，01 的 A6）。没有规则读取它，它只决定 `display` 的 `hidden`。
+
+| 写入点 | 值 |
+|---|---|
+| 世界创建、玩家的实例化（`0x67938`） | false |
+| 原版经 `0x216d4` 的每次视角切换：P3-10 的停靠与离港（`0x391af`、`0x39320`），P3-11 的被毁进入（`0x32d74`）与其他经 `0x216d4` 的切换 | 新视角为 0x11 时 true，否则 false |
+| 种类 1 的交接（`handOff`，`0x2574c`，即 `source-released` 的 `removed: false`） | false |
+| 救援（`0x67b98`，P3-11） | false |
+
+地图开关、Warp 开始与完成不经 `0x216d4`，不写它。它进入快照（FS-08）。选择持久字段而不是由表现层从事件折叠：交接发生在逃生舱首次进入状态 7 的回调（N+2），`followedEntityId` 与只存在一个 tick 的 `source-released` 都不能在之后的任意 tick 给出这一状态（01 的 F1）。
+
+#### FS-03 领域事件
+
+三个新事件沿用 CR-06 的通则：脱离世界的事实快照，不带时钟（时钟恒为 tick × `clockUnitsPerTick`），位置与姿态为 f32 的有限运行时值。`explosion-created` 与 `warp-wall-contact` 只在 `clock` 阶段之后发出，构造的时钟就是该 tick 的时钟；`view-switched` 也可以在 `mission-flow`（`clock` 之前，世界时钟仍是上一 tick 的值）发出，没有读者需要它的时钟：被毁视角的进入总在伤害所在的阶段（`clock` 之后），其进入时刻就是该 tick 的时钟。
+
+```ts
+type PipelineStageName =                // PIPELINE 的阶段名，封闭联合；新增或改名阶段即修订本条
+  | 'input-registration' | 'mission-flow' | 'clock' | 'object-update' | 'communications-reply'
+  | 'spawn-queue-check' | 'request-handling' | 'movement' | 'collision' | 'delayed-player-explosion'
+  | 'energy' | 'object-sets' | 'parked-update' | 'warp-completion' | 'base-interior'
+  | 'mission-teardown' | 'area-check' | 'frame-end' | 'commit';
+type ExplosionConstructionStage = Extract<PipelineStageName,
+  'object-update' | 'request-handling' | 'movement' | 'collision' | 'delayed-player-explosion'>;
+interface ExplosionCreatedEvent extends DomainEventBase<'explosion-created'> {
+  readonly entityId: EntityId;          // 新爆炸
+  readonly sourceEntityId: EntityId;
+  readonly sourceKindBit: number;       // mb +0x104：机体位 0–19、导弹 20 或碎片 24（同 ExplosionCombat）
+  readonly variant: ExplosionVariant;
+  readonly stage: ExplosionConstructionStage;
+  readonly position: Vec3;              // 构造位置，即调用时来源的位置
+  readonly velocity: Vec3;              // 爆炸的线速度 F(R2 × 来源速度)，运行时单位/秒（0x218e8：mode-2 来源先以其速度方向补全 R2）
+}
+interface ViewSwitchedEvent extends DomainEventBase<'view-switched'> {
+  readonly fromViewMode: number;
+  readonly fromSubMode: number;
+  readonly viewMode: number;
+  readonly subMode: number;
+  readonly stage: PipelineStageName;    // 写入视角的阶段
+  readonly player: { readonly entityId: EntityId; readonly position: Vec3; readonly orientation: Matrix3 } | null; // 写入时玩家实体的位姿；没有玩家实体时 null
+}
+interface WarpWallContactEvent extends DomainEventBase<'warp-wall-contact'> {
+  readonly serial: number;              // 该 Warp 的序号（RenderWarp.serial）
+}
+```
+
+`PipelineStageName` 放在 Core 的契约中，`PIPELINE` 的阶段 ID 以它为类型，二者由类型检查保持一致。
+
+- **`explosion-created`**（X2，01 的 F3）：`constructExplosion` 实际分配爆炸时，在来源成为被毁源之后、产生碎片之前发出，每个爆炸恰一次（包括带标志碎片到期与碎片被击落的爆炸）。玩家只布设或等待延迟、来源已移除或没有移动块时不发。它在同一来源的 `object-destroyed`、碎片的 `fragment-expired` 或导弹的 `missile-ended` 之后。`stage` 是调用 `constructExplosion` 的阶段：对象更新中构造的爆炸在同一 tick 首次回调并激活，其余在下一 tick（X9）；`explosion-started` 的 tick 应与此一致，表现层可据此核对。构造不选 EXPL，不提前给出激活。
+- **`view-switched`**（01 的 A2、A7、F2）：每次由规则写入视角模式或子模式（经 [MW-09](#mw-09-视角切换与其他写入者) 的共同切换），在写入两个模式并执行 `switchView` 的规则效果之后立即发出，先于调用者自己的事件（`map-toggled`、`warp-started`、`warp-completed`、`docked`、`departed` 与 P3-11 以后的事件）与切换返回的 `left-page-changed`。每次切换一个；世界创建与实例化的初值不是切换。`player` 是写入时的玩家位姿，不是该 tick 结束时的位姿：请求处理中的击毁先于玩家本 tick 的移动（01 的 A7）。`stage` 为 `mission-flow` 的切换（P3-11 的主流程切换）在对象更新之前，因而被同 tick 的事件 `0x10` 门禁看到；其他阶段的切换只在下一 tick 起生效于门禁（01 的 F3）。
+- **`warp-wall-contact`**（P3-12/06，P3-09 Warp 过程的步骤 7）：`frame-end` 的 Warp 步中，玩家碰到隧道壁（d² > 2500）且 (n + u) ÷ L 在误差窗口内（即误差加 0.01 的同一分支）时发出，每个 Warp 步至多一次，在本阶段 CR-10 的显示步事件之前。它是原版第 0 种屏幕闪光（`0x48d64`）在 Warp 中的触发者；闪光开关不在 Core。
+- **对既有次序的修订：** MW-05、CB-13 与 CR-06 描述的同 tick 次序中，在每次视角切换处插入 `view-switched`，在每个爆炸的构造处插入 `explosion-created`；其他事件的相对次序不变。
+
+#### FS-04 取样点、写入与复位
+
+| 事实 | 类型与单位 | 取样或发出点 | 写入者与复位 | 快照 |
+|---|---|---|---|---|
+| `subMode` | 整数 | tick 结束 | P3-11 的切换；世界创建为 0 | 既有状态 |
+| `followedEntityId` | `EntityId \| null` | tick 结束 | 玩家第 0 部件碎片构造时写入（`shedFragments`），逃生舱到期清除（`expireFragment`）；新世界为 null | 既有状态 |
+| `activeAreaCentre` | `Vec3 \| null`，运行时单位 | tick 结束（等于 `area-check` 的中心） | 由玩家位置、`inWarp` 与目的地派生 | 不持久 |
+| `RenderEntity.inWarp` | 布尔 | tick 结束 | P3-09 的 Warp 开始与完成、P3-08 的 Warp 离场 | 既有状态 |
+| `RenderEntity.sourceKindBit` | 位序号或 null | tick 结束 | 构造时写入战斗状态，此后不变 | 既有状态 |
+| `RenderEntity.display` | `RenderDisplay` | tick 结束 | 由状态与 `modelShown` 派生 | 不持久 |
+| `modelShown` | 布尔 | — | FS-02 的表；新世界为 false | 新增 |
+| `explosion-created` | 事件 | 构造处 | — | 录制的事件 |
+| `view-switched` | 事件 | 切换处 | — | 录制的事件 |
+| `warp-wall-contact` | 事件 | `frame-end` 的 Warp 步 | — | 录制的事件 |
+
+每个新运行是一个新世界，全部从创建值开始；重试不继承。同一 ID 的新销毁序列（不同实体）与救援由上述写入点自然复位，不需要额外标志。
+
+#### FS-05 不新增的事实（可推导性）
+
+| 候选 | 不新增的依据 |
+|---|---|
+| 被毁相机的进入位置、进入时刻、首次跟随距离 | 爆炸之前相机每 tick 取座机的当前位置；进入时刻是进入 tick 的时钟（`0x18641c` 每遍取样一次）；`0x31094` 总把距离设为未设定（01 的 F2、A8） |
+| 构造时与激活时的相机、门禁所用的视口 | 爆炸位置、门禁、选择与闪光都读上一 tick 的相机，由表现层保留（C1，01 的 A7）；视口是视角模式的纯函数（01 的 A2），门禁所见的视角是上一 tick 结束时的视角，除非同 tick 有 `stage` 为 `mission-flow` 的 `view-switched` |
+| 首次回调所属 tick | 由 `explosion-created.stage` 与 X9 给出，`explosion-started` 的 tick 可核对 |
+| Render State 中爆炸的来源 ID | 来源种类已在 `sourceKindBit`；来源 ID 在 `explosion-created`、`explosion-started` 中，表现模块从 tick 0 起接线并保留；迟加入的 GPU 消费者读表现模块，不读 Core |
+| 爆炸构造时的行 | 没有表现读者：爆炸精灵不定向；额外爆炸的运动只用线速度（X2 第 5 步、X3）；判别值 1/2 碎片的行被启动旋转表取代，基础速度就是爆炸的线速度（X5）。爆炸 R2 对表现的作用全部包含在 `velocity` 中 |
+| 视角切换的序号 | 每次切换的事件在 P3-04 的逐 tick 输出中恰交付一次且有序，(tick, 事件下标) 唯一；插值以“本 tick 有任何 `view-switched`”折叠，覆盖同一 tick 内往返的切换 |
+| 受击闪烁的历史 | 由每个 `hit` 的 `victimEntityId`、`cause`、`shieldWasEmpty`、`impact` 与 tick 结束时的视角、`inWarp`、`display` 推导；原版在一遍之后处理受击项（05 的 A1、H）。`hitShimmerStart` 不能代替（每个实体只有一个时钟、不区分 `shieldWasEmpty`、没有命中点） |
+| 碎片、导弹与弹丸的显示 | `EntityPresentation` 已给出；位姿即实体位姿，视觉不加偏移（05 的 A7、A9） |
+| Warp 隧道的其他输入 | `RenderWarp` 与观察实体的位姿；开始闪光由新 `serial`，结束闪光由 `segments`、`fraction`、`length` 判定（06） |
+| 远平面的计数 | 由 `display` 为 `pending`、`shown` 或 `hidden` 的实体种类与判别值 3 碎片的来源种类推导（01 的 F5） |
+| 视觉载入完成的时刻 | 项目同步载入：实例化的实体在下一 tick 进入 `active` 前为 `pending`（FS-10 决定 7） |
+
+#### FS-06 Runtime 的帧后输出
+
+Core 的 `step()` 返回类型不变。Runtime 在帧后交付本帧每个成功 tick 的 `{ tick, clock, render, events }`，形状、故障与内存边界见 [P3-04 的帧后逐 tick 输出](../04/spec.md#帧后逐-tick-输出p3-12-的修订)。
+
+#### FS-07 表现层的只读接口（`render/flight`，不在 Core）
+
+[P3-12 spec 的表现层契约](../12/spec.md#表现层契约计划新增)中的 `PresentationCamera`、`ExplosionActivation` 与 `PresentationTick` 由下列定义取代，并新增当前爆炸的查询；该节的字段约束、单一性、选择不变与生命周期规则照旧。它们与 [CR-11](#cr-11-表现层的归属与已批准的差异d-01) 的单次选择一样是 P3-12 与 P3-14 之间的契约，不进入 Core、快照或 replay。
+
+```ts
+type ExplosionSelection = { readonly list: 1 | 2 | 3; readonly item: number };
+type CoreExplosionKey = `core:${number}`;               // Core 爆炸的 EntityId
+type ExtraExplosionKey = `extra:${number}`;              // 运行内从 1 起的序号
+type FragmentExplosionKey = `fragment-explosion:${number}`;
+type FragmentKey = `fragment:${number}`;                 // 判别值 1/2 碎片，运行内从 1 起
+type ExplosionKey = CoreExplosionKey | ExtraExplosionKey | FragmentExplosionKey;
+type ExplosionOrigin =
+  | { readonly type: 'core'; readonly entityId: EntityId; readonly eventIndex: number } // 其 explosion-started 在该 tick 的 TickOutput.events 中的下标
+  | { readonly type: 'extra'; readonly parentExplosionKey: CoreExplosionKey; readonly ordinal: 0 | 1 | 2 | 3 | 4 }
+  | { readonly type: 'fragment'; readonly fragmentKey: FragmentKey };
+
+interface PresentationCamera {
+  readonly tick: number;
+  readonly position: Vec3;
+  readonly rows: Matrix3;
+  readonly viewMode: number;
+  readonly subMode: number;
+  readonly viewport: { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number };
+}
+interface ExplosionActivation {
+  readonly key: ExplosionKey;
+  readonly origin: ExplosionOrigin;
+  readonly sourceKindBit: number | null;   // 额外爆炸为 null
+  readonly variant: 'large' | 'other' | 'missile';
+  readonly selection: ExplosionSelection;
+  readonly tick: number;
+  readonly clock: number;
+  readonly position: Vec3;                 // 激活时、移动之前的位置
+}
+interface PresentationTick {
+  readonly ownerId: number;
+  readonly runId: number;
+  readonly tick: number;
+  readonly clock: number;
+  readonly beforeStep: PresentationCamera;
+  readonly afterStep: PresentationCamera;
+  readonly activations: readonly ExplosionActivation[];
+}
+interface PresentationExplosion {          // 当前爆炸查询的一项
+  readonly key: ExplosionKey;
+  readonly origin: ExplosionOrigin;
+  readonly sourceKindBit: number | null;
+  readonly variant: 'large' | 'other' | 'missile';
+  readonly selection: ExplosionSelection;
+  readonly activationTick: number;
+  readonly activationClock: number;
+  readonly position: Vec3;                 // 最近一个已处理 tick 结束时的位置
+}
+```
+
+- **`PresentationCamera` 的值：** `afterStep` 是原版每遍相机步写入的相机（C1），按 tick 结束时的视角：0xC 与 1 为观察实体的位姿（视角 1 中即 `frame-end` 的 Warp 步写入的隧道位姿）；0x11/8 为被毁相机（01 的 A8，退化时行可以为零向量，原样给出，不输出 NaN）；6、8、0x13 没有相机函数，为座机位姿。没有观察实体时保留最后的相机；每个新运行先以原点与单位行初始化，再由 tick 0 的 Render State 算出 tick 0 的相机。`beforeStep` 是上一 tick 的 `afterStep`。`rows` 是 Core 的行矩阵（行 0 向右、行 1 向上、行 2 向前）。`viewport` 是 `0x175200` 的含端点逻辑像素矩形：left = top = 0，right = 639，bottom 在 0xC、1、6 为 315，在 8、0x11、0x13 为 479（01 的 A2）。接口不输出投影后的屏幕坐标。
+- **键与序号：** 键中的数都是非负安全整数，永不解析为别的命名空间；同一运行内每个键只出现一次激活。`ordinal` 是额外爆炸在其主爆炸中的序号（X2：至多 5 个）。
+- **次序：** `activations` 中先按 `explosion-started` 的次序列出 Core 爆炸，再按产生次序列出表现层爆炸（FS-10 决定 8）。
+- **当前爆炸查询：** 表现模块提供无副作用的 `explosions(): readonly PresentationExplosion[]`，列出已激活且尚未结束的爆炸（Core 爆炸到离开 Render State 为止，表现层爆炸到其移除为止），按激活的 tick 与上述次序排列，至多为选择缓存的上限；读取不推进、不抽取、不重放。
+- **预算**（全部在分配前核对，超出为生产可见的 `presentation-capacity` 消费者故障，测试覆盖 limit 与 limit + 1；运算用安全整数，乘法先核对不溢出）：
+  - **表现对象**（额外爆炸、判别值 1/2 碎片、碎片到期的再爆炸，含等待激活者）`objects` = 4,096。依据：每个机体主爆炸至多 5 个额外爆炸（X2）、13 个判别值 1 碎片与 4 个判别值 2 碎片（X5），后者各至多一次再爆炸，共 26；寿命最长的是判别值 2 碎片，到期在首次回调后至多 0x2BF 单位（352 tick），其再爆炸再存在约 50 tick，窗口约 405 tick（约 12.7 秒）。按 CR-14 的宽松切片规模（32 个机体）全部在一个窗口内被毁，加上玩家两次（只有额外爆炸），约 842 个；上限约为其 4.9 倍。在 `spawnExpansion` 的规模下没有固定上界，超出即故障，与 CR-14 的做法相同。
+  - **选择缓存** 至多 `CORE_LIMITS.entities` + `objects` = 6,144 项（列出的 Core 爆炸加表现层爆炸），按此核对。
+  - **帧内通知：** 每个 `PresentationTick` 的激活数不超过本 tick 的 `explosion-started` 数加 `objects`；每帧至多 `MAX_TICKS_PER_FRAME` 个 `PresentationTick`。这是推导的上界，不另设检查；P3-14 的帧内缓存按 5 × (`eventsPerTick` + `objects`) 计。
+  - **受击闪烁记录** 每个实体 1 个（`0x383`）或至多 16 个（`0xf9c7c`，05 的 A3），受实体上限约束，不另设检查。屏幕闪光只有一个全局状态（P3-12/04），没有队列。
+  - **GPU 资源** `FLIGHT_GPU_LIMITS`：纹理 2²⁵ 纹素（RGBA8 时 128 MiB）、几何顶点 2¹⁸、索引 2¹⁸、渲染目标 4 个且每个不超过绘制缓冲（受 `MAX_PIXEL_RATIO` 约束）。依据：生产包的全部图形都在 `SR.NOB`，按 `tools/nob-check.ts` 的计数（只记计数与尺寸），TEX 59 张至多 256 × 256（≤ 3,866,624 纹素）、ANIM 186 帧共 1,611,264 像素、星云 15 张 128 × 128（245,760）共 5,723,648 纹素；MESH 共 13,285 个三角形，平面着色按面展开至多 39,855 个顶点与索引。一个运行的引用闭包是其子集；上限取 4 倍后的 2 的幂。程序生成的几何（隧道、弹丸、碎片形状、精灵四边形）在余量之内。每个运行开始、分配之前由已校验的 payload 精确算出闭包所需并核对；受击闪烁按对象的不透明度由共享的阈值纹理与对象参数在着色时计算，不为每个对象分配纹理（否则须修订本预算）。
+
+#### FS-08 容量、快照与版本
+
+- **事件：** 按 CR-14 的切片规模，每 tick 新增至多：`explosion-created` 353（与 `explosion-started` 的产生者相同）；`view-switched` 69（`map-toggle` 每条命令一次 64，Warp 开始与完成各 1，停靠 1，离港 2），P3-11 的切换由其修订计入；`warp-wall-contact` 1。与 CR-25 之后的 9,064 合计 9,487，仍在 `eventsPerTick`（32,768）之内。`CORE_LIMITS` 的取值不变，注释随实现更新。录制的事件预算（`recordedEvents`）不变：它按“平均每 tick 4 个、每个约 120 字符”估计容量，不是逐字节的上界；新事件的数量与 `explosion-started` 相当（`explosion-created`），或只在视角切换与 Warp 撞壁时出现，单个大小（至多约 300 至 400 字符）与既有的 `hit`、`missile-ended`、`warp-completed` 同类，不改变这一估计的性质。录制的最坏字节数本来就不由事件个数约束，这一既有性质不在本修订内改变。
+- **快照：** 覆盖 `PlayerState.modelShown`（约 20 个字符）；Render State 的新字段是派生读模型，不进快照。
+- **版本：** 新增领域事件与持久状态：`RULES_VERSION` 与快照格式版本相对实现时的实际集成基线各递增一次（当前基线为 7 与 6，即递增为 8 与 7），由首个实现共享形状的子任务（P3-12/10）递增，此后本 goal 内不再递增。replay 记录的形状不变（新事件不改变记录字段，与 CR-14、MW-14 的先例相同），replay 格式版本不变（3）。旧规则版本的录制与快照一律拒绝，不迁移。若 P3-11、P3-13 或 P3-14 先于本任务递增，合入时按“相对实际集成基线各递增一次”重新核对。
+
+#### FS-09 同步与消费者接线
+
+随实现同步更新：比较器的事件字段表（三个新事件）、Event Bus 的 `EVENT_TYPES`、快照的显式字段写入器（`modelShown`）、`budget.test.ts` 的最坏情形、开发事件日志的摘要、Runtime 与会话测试中的合成生产者，以及断言整份事件序列的既有测试（地图、Warp、停靠与离港的序列中出现 `view-switched`）。P3-14 按其“保留每个 `DomainEvent` 变体的明确处理分类”给三个新事件分类。纯读取不回写世界。
+
+#### FS-10 定稿的决定与被排除的方案
+
+1. **视角切换用一个通用事件 `view-switched`。** 所有切换走同一个切换函数，事件同时给出被毁相机的进入位姿与门禁需要的阶段，P3-11 不必另立契约。被排除：只为被毁进入定义事件（地图、停靠的切换没有阶段，P3-11 须再加一种）；在玩家状态中持久保存“最近一次切换”（一 tick 的事实进入快照）。
+2. **爆炸构造用事件 `explosion-created`，只带位置与线速度。** 构造只是一 tick 的事实；行没有表现读者（FS-05），省去 9 个数也减小录制。被排除：每个爆炸实体持久保存构造位姿（快照变大，来源可能已离表）；从帧末集合或 `object-destroyed` 推断（P3-12 spec 明确禁止，不能覆盖玩家延迟、碎片爆炸、AI 自爆与同 tick 移动）。
+3. **模型显示是 Core 的持久字段（FS-02）。** Render State 在任何 tick 都自成一体。被排除：由表现模块从 `view-switched`、`source-released` 与救援事件折叠（任何一次漏读都无法恢复，P3-12 spec 要求 Core 持有）。
+4. **每个实体给出封闭的 `display`，不公开原始状态与活动。** 被排除：公开 `ObjectState`、`Activity`（规则细节越过信息边界，消费者各自重写判定）；两值标志（丢失 `pending`，远平面计数错误，01 的 F1）。
+5. **Warp 撞壁用事件。** 被排除：在 `WarpTransit` 中保存一 tick 的布尔值（进入快照，Warp 步不运行时变为陈旧值）；由误差的增量推导（误差在 1 处钳位，且有舍入，不精确）。
+6. **活动区域的中心进入 Render State，形状调用 Core 的纯函数。** 被排除：渲染器自行由玩家位置、`inWarp` 与目的地计算（复制 MW-10 的规则）。
+7. **视觉载入在构造所在的 tick 同步完成（已批准的差异）。** 原版的载入请求在渲染之后按时间预算服务，载入慢时完成可能晚于一遍（P3-12/07 的 B3）；项目取原版最早的情形：实例化或恢复的实体只在进入 `active` 之前的那个 tick 为 `pending`。这只影响首个可见帧，不影响规则。
+8. **同一 tick 中表现层爆炸的激活排在 Core 爆炸之后（已批准的差异，扩展 CR-11 差异 1）。** 原版中二者都是对象表中的对象，按遍历与消息次序交错；表现层对象不在 Core 的对象表中，交错无法复现。P3-14 若需原版的抢占次序，按 `eventIndex` 与此规则处理。
+9. **构造与切换的时钟不进入事件。** 二者都在 `clock` 阶段之后，时钟就是该 tick 的时钟（CR-06 的通则）。
+
+#### FS-11 交接
+
+| 任务 | 交接 |
+|---|---|
+| P3-12/10 | FS-01 至 FS-05、FS-08、FS-09 的 Core 部分 |
+| P3-12/11 | [P3-04 的帧后逐 tick 输出](../04/spec.md#帧后逐-tick-输出p3-12-的修订) |
+| P3-12/12 至 16 | FS-07 的表现模块与预算；门禁视口、首次回调与被毁相机按 FS-03、FS-05 推导 |
+| P3-10 | 停靠与离港的切换经共同的切换函数发出 `view-switched` 并把 `modelShown` 写为 false（P3-12/10 随之实现，P3-10 的行为不变） |
+| P3-11 | 被毁进入、救援、拆除与其他视角写入经同一切换函数发出 `view-switched`（阶段如实给出）；`modelShown` 按 FS-02 写入；以后改变区域判定时修订 FS-01 的 `activeAreaCentre` |
+| P3-13 | projection 不变；可以用 `view-switched` 作为视角切换的一次性提示 |
+| P3-14 | 三个新事件的处理分类；`display` 可作为 A-01 的位姿门禁；听者用 `afterStep`（所有视角都有）；对齐差异记在 [P3-12/09 的完成证据](../12/subtasks/09-d01-contract-gate.md#完成证据)，交其 D-02 |
+
 ### 原版研究
 
 执行时以只读静态分析为主，必要时用运行时读数。事实写入 executable 或 scenario（英文），带置信度与证据，不含原版内容或反编译输出。
@@ -2526,3 +2758,8 @@ CR-20 的命令不变。物理绑定由 [P3-05 绑定表](../05/spec.md#绑定�
 
 - CB-09 尾随警告的攻击者条件：CR-16 的只读查询 `isClosingMissileLock` 未实现；其谓词（锁定等级为 3 或 4）与 CB-09 的条件（攻击航线字节为 3 或 4）不一致，须先修订统一，接入时递增 `RULES_VERSION`。在此之前 `attackerOnTail` 恒为假。
 - 地图标签的威胁闪烁：MW-16 与 CB-19 都指向对方，`MapLabel` 尚无该状态，须按扩展规则修订 MW-11 后加入，供 P3-13。
+
+**2026-10-16/17 修订（P3-12 的 D-01，经用户明确批准）：** 由 P3-12 的子任务 09 起草（2026-10-16），新增“[P3-12 的契约修订（D-01）](#p3-12-的契约修订d-01)”一节（FS-01 至 FS-11）与本条记录，并改了 front matter 的日期；Runtime 与会话的部分记在 [P3-04 的帧后逐 tick 输出](../04/spec.md#帧后逐-tick-输出p3-12-的修订)。前文各节与各任务的修订已定的项不变，只在 FS-03 所列处插入新事件；本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。
+
+- **批准与用户原话：** 用户于 2026-10-17 经协调者提问（“是否批准 09 的 D-01 共享契约定稿？”）选择“批准，全部按推荐方案 (Recommended)”。这是用户本人的批准（P3-12 goal 的审批没有授权 agent 定稿 D-01），范围是本节 FS-01 至 FS-11 的全部内容与子任务 09 所列开放选择的推荐方案：通用的 `view-switched`、`warp-wall-contact` 事件、由 Core 持有的 `modelShown`、不带行矩阵的 `explosion-created`、现在按本地计数定值的 GPU 预算，以及 FS-10 决定 7、8 两项新的已批准差异。不涵盖总计划与 ADR 中的冻结决定，本修订不涉及它们（插值所用的两份 Render State 不变）。
+- **所选方案与被排除的方案：** 见 [FS-10](#fs-10-定稿的决定与被排除的方案)，此处不重复；其中决定 7、8 为新的已批准差异。
