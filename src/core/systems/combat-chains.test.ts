@@ -200,7 +200,8 @@ describe('one death per object (H4, CR-06, AC-13)', () => {
     const [first, second] = [projectileAt(state, at(0, 0, -10), at(0, 0, 640), shooter), projectileAt(state, at(0.5, 0, -10), at(0, 0, 640), shooter)];
     const world = constructWorld(state);
     const events = world.step(tickInput());
-    expect(types(events)).toEqual(['missile-ended', 'hit', 'hit', 'hit', 'object-destroyed', 'hit']);
+    // The player's destruction is delayed: only the missile's explosion is built in the tick (P3-12 FS-03).
+    expect(types(events)).toEqual(['missile-ended', 'explosion-created', 'hit', 'hit', 'hit', 'object-destroyed', 'hit']);
     expect(ofType(events, 'hit').map(({ victimEntityId, cause, damage }) => [victimEntityId, cause, damage])).toEqual([
       [player.id, 'missile', BLAST], [contact.id, 'missile', 630], [player.id, 'projectile', GUN_DAMAGE], [contact.id, 'collision', expect.any(Number)],
     ]);
@@ -228,7 +229,7 @@ describe('one death per object (H4, CR-06, AC-13)', () => {
     const victim = craftAt(state, 7, at(0, 50, 0), { shield: 0, hull: 1 });
     const [first, second] = [projectileAt(state, at(0, 50, -10), at(0, 0, 640), player), projectileAt(state, at(0.5, 50, -10), at(0, 0, 640), player)];
     const events = constructWorld(state).step(tickInput());
-    expect(types(events)).toEqual(['hit', 'object-destroyed']);
+    expect(types(events)).toEqual(['hit', 'object-destroyed', 'explosion-created']);
     expect(ofType(events, 'object-destroyed')[0]).toMatchObject({ entityId: victim.id, outcome: 'explodes', eventClass: 0 });
     expect([victim.state, first.state, second.state]).toEqual(['destroyed-source', 'pending-removal', 'active']);
     expect(state.player.kills[7]).toBe(1);
@@ -248,7 +249,7 @@ describe('attribution once the shooter is gone (H4, CR-06)', () => {
     const kills = state.player.kills;
     const events = constructWorld(state).step(tickInput());
     expect(state.entities.get(shooter.id)).toBeUndefined();
-    expect(types(events)).toEqual(['missile-ended', 'hit', 'object-destroyed', 'hit', 'object-destroyed']);
+    expect(types(events)).toEqual(['missile-ended', 'explosion-created', 'hit', 'object-destroyed', 'explosion-created', 'hit', 'object-destroyed', 'explosion-created']);
     expect(events[0]).toMatchObject({ entityId: missile.id, shooterEntityId: null, outcome: 'detonated' });
     expect(ofType(events, 'hit').map(({ victimEntityId, attacker }) => [victimEntityId, attacker])).toEqual([
       [struck.id, { type: 'lost-shooter' }], [shot.id, { type: 'lost-shooter' }],
@@ -289,7 +290,8 @@ describe('the hand-offs to P3-11 without P3-11 (CR-13, X2, X7, D14)', () => {
     const victim = craftAt(state, 7, at(0, 50, 0), { shield: 0, hull: 1 });
     projectileAt(state, at(0, 50, -10), at(0, 0, 640), player);
     until(101);
-    expect(log.at(-1)).toMatchObject({ type: 'object-destroyed', entityId: victim.id, attacker: { type: 'shooter', entityId: player.id, kindBit: 0 }, eventClass: 0 });
+    expect(log.at(-1)).toMatchObject({ type: 'explosion-created', sourceEntityId: victim.id });
+    expect(log.at(-2)).toMatchObject({ type: 'object-destroyed', entityId: victim.id, attacker: { type: 'shooter', entityId: player.id, kindBit: 0 }, eventClass: 0 });
     expect(state.player.kills[7]).toBe(1);
     // The pod expires at clock 518 (tick 259), ends the follow and leaves; nothing stands in for P3-11's rescue.
     const before = log.length;
@@ -343,7 +345,7 @@ describe('the order of a tick\'s events (CR-06)', () => {
     const events = constructWorld(state).step(tickInput([{ type: 'energy', operation: 'open' }, FIRE_PRIMARY]));
     expect(types(events)).toEqual([
       'command-result', 'left-page-changed', 'command-result',
-      'shot-fired', 'missile-ended', 'hit', 'object-destroyed', 'explosion-started', 'source-released', 'fragment-expired',
+      'shot-fired', 'missile-ended', 'explosion-created', 'hit', 'object-destroyed', 'explosion-created', 'explosion-started', 'source-released', 'fragment-expired',
       'hit',
       'hit', 'hit',
       'energy-depleted',
@@ -352,7 +354,9 @@ describe('the order of a tick\'s events (CR-06)', () => {
     ]);
     expect(victims(events)).toEqual([[struck.id, 'missile'], [shotAt.id, 'projectile'], [player.id, 'collision'], [contact.id, 'collision'], [target.id, 'parked']]);
     expect(events.filter(({ type }) => type !== 'hit' && type !== 'command-result' && type !== 'left-page-changed' && type !== 'shot-fired' && type !== 'target-cleared')
-      .map((event) => ('entityId' in event ? event.entityId : null))).toEqual([expect.any(Number), struck.id, explosion.id, source.id, fragment.id, depleted.id, engaging.id]);
+      .map((event) => ('entityId' in event ? event.entityId : null))).toEqual([
+      expect.any(Number), expect.any(Number), struck.id, expect.any(Number), explosion.id, source.id, fragment.id, depleted.id, engaging.id,
+    ]);
     expect(events.at(-1)).toMatchObject({ previousTarget: leaving.id, cause: 'invalid' });
     expect(inContractOrder(events)).toBe(true);
   });
@@ -420,12 +424,13 @@ describe('per-tick budgets (CR-14)', () => {
   }
 
   it(`takes ${eventsPerTick} events in a tick, and faults at one more without publishing any, latched (detonations)`, () => {
-    // 32 detonations, each `missile-ended` and a `hit` on each of 1023 craft at distance 0: 32 × 1024.
-    const full = constructWorld(blastScene(1023, 32, 0)).step(tickInput());
+    // 32 detonations, each `missile-ended`, its `explosion-created` (P3-12) and a `hit` on each of 1022 craft at
+    // distance 0: 32 × 1024.
+    const full = constructWorld(blastScene(1022, 32, 0)).step(tickInput());
     expect(full).toHaveLength(eventsPerTick);
-    expect([ofType(full, 'missile-ended').length, ofType(full, 'hit').length]).toEqual([32, 32 * 1023]);
+    expect([ofType(full, 'missile-ended').length, ofType(full, 'explosion-created').length, ofType(full, 'hit').length]).toEqual([32, 32, 32 * 1022]);
     // A fizzle handled after them is the one event more.
-    const world = constructWorld(blastScene(1023, 32, 1));
+    const world = constructWorld(blastScene(1022, 32, 1));
     expectLatched(world, expectFault(() => world.step(tickInput()), 'budget-exhausted', 'pipeline.events'));
   });
 

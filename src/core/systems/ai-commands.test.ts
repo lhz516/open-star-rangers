@@ -98,6 +98,7 @@ function stepToConsumption(world: World, limit = 200): DomainEvent[] {
 function stepDelivering(state: WorldState, deliveries: readonly Omit<RequestOf<'deliver-command'>, 'type'>[]): readonly DomainEvent[] {
   const context = registerTick(state, readTickInput(tickInput()));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     if (stage.id === 'request-handling') for (const delivery of deliveries) context.requests.post({ type: 'deliver-command', ...delivery });
     stage.run?.(context);
   }

@@ -5,6 +5,7 @@ import type { DomainEvent, HitEvent, ShotFiredEvent, Vec3 } from '../contracts/d
 import { readTickInput, type Command } from '../contracts/tick-input.ts';
 import type { CollisionShape, ShapeBox } from '../rules/collision-shapes.ts';
 import { buildWeaponBlock, type CraftEntity } from '../rules/combat-init.ts';
+import { explosionVariant } from '../rules/explosions.ts';
 import { motionStep } from '../rules/flight-motion.ts';
 import { referenceFrame } from '../rules/flight-motion.test-support.ts';
 import { craftMovementBlock } from '../rules/flight-state.ts';
@@ -305,9 +306,14 @@ describe('explosions and fragments (CR-03, CR-08, X9)', () => {
     const shot = projectileAt(state, at(0, 50, -10), at(0, 0, 640));
     const world = constructWorld(state);
     const events = world.step(tickInput());
-    expect(types(events)).toEqual(['hit', 'object-destroyed']);
+    expect(types(events)).toEqual(['hit', 'object-destroyed', 'explosion-created']);
     expect([victim.position, victim.state, shot.state]).toEqual([at(0, 50, 1.5), 'destroyed-source', 'pending-removal']);
     const [explosion] = state.entities.walk(1 << 22);
+    // P3-12 FS-03: the construction in the movement stage, at the source's moved position, with the drift velocity.
+    expect(events[2]).toEqual({
+      type: 'explosion-created', tick: 1, entityId: explosion.id, sourceEntityId: victim.id, sourceKindBit: SHEDDING, variant: explosionVariant(SHEDDING),
+      stage: 'movement', position: at(0, 50, 1.5), velocity: at(0, 0, 48),
+    });
     const parts = [...state.entities.walk(1 << 24)];
     // Made at the source's position after its move, and left there by this tick's walk, which met them after the hit.
     expect([explosion, ...parts].map(({ position, state: objectState }) => [position, objectState])).toEqual(
@@ -430,6 +436,7 @@ function parkedAt(state: WorldState, kindBit: number, { position = at(0, 0, 0), 
 function stepWith(state: WorldState, before: Readonly<Record<string, (context: TickContext) => void>> = {}): readonly DomainEvent[] {
   const context = registerTick(state, readTickInput(tickInput()));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     before[stage.id]?.(context);
     stage.run?.(context);
   }

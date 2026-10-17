@@ -150,6 +150,7 @@ function step(state: WorldState, commands: readonly Command[] = [], watched: Ent
   const context: TickContext = registerTick(state, readTickInput(tickInput(commands)));
   let atMovement: Frame['atMovement'] = null;
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     if (stage.id === 'movement' && watched !== null && state.entities.get(watched.id) !== undefined) {
       const { state: objectState, position, orientation, movement } = watched;
       atMovement = structuredClone({ state: objectState, position, orientation, block: movement as SteeredMovementBlock });
@@ -274,7 +275,8 @@ describe('the fuse and the detonation in the pipeline (H5)', () => {
     // Tick 2 (clock 4): its update posts the expiry, request handling detonates it where tick 1 left it (5.5 from the
     // victim, whose blast damage is 700 × (1 − 3.5 ÷ 10) = 455; from where the move would take it, 7.5, it would be 315).
     const detonated = step(state, [], victim);
-    expect(types(detonated.events)).toEqual(['missile-ended', 'hit']);
+    expect(types(detonated.events)).toEqual(['missile-ended', 'explosion-created', 'hit']);
+    expect(detonated.events[1]).toMatchObject({ sourceEntityId: missile.id, sourceKindBit: 20, variant: 'missile', stage: 'request-handling', position: at(0, 0, 2) });
     expect(detonated.events[0]).toMatchObject({ entityId: missile.id, outcome: 'detonated', position: at(0, 0, 2) });
     expect(hits(detonated.events)).toMatchObject([{ victimEntityId: victim.id, sourceEntityId: missile.id, cause: 'missile', damage: 455 }]);
     expect(blast(distance(at(0, 0, 2), at(0, 0, -3.5)))).toBe(455);

@@ -10,7 +10,7 @@ import { thrownBy, tickInput } from '../world/world.test-support.ts';
 import { compareReplayResults } from './compare.ts';
 import { createRecordingSession, GAME_REPLAY_VERSION, type Recording } from './recording.ts';
 import { replayRecord } from './replay.ts';
-import { contentOf, PRODUCER, recordScript, roundTrip } from './replay.test-support.ts';
+import { contentOf, gameplayDigest, PRODUCER, recordScript, roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
 import { snapshotHash, type GameSnapshot } from './snapshot.ts';
 
@@ -117,6 +117,12 @@ function recordWith(change: (record: Mutable & { ticks: Mutable[] }) => void): u
 }
 
 describe('combat replay (P3-07 AC-13, CR-14)', () => {
+  // P3-12/10 (docs/plan/p3/02/spec.md, FS-08): the presentation facts change no rule outcome or draw; the digest is the
+  // one this run had before them (replay.test-support.ts).
+  it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
+    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('fba1bd8161cf249f');
+  });
+
   it('reproduces every event and the snapshot at every checkpoint after a JSON round trip', () => {
     const { record, result } = roundTrip(RECORDING) as Recording;
     const replayed = replayRecord(record, CONTENT);

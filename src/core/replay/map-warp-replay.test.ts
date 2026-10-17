@@ -11,7 +11,7 @@ import {
 } from './map-warp.test-support.ts';
 import { createRecordingSession, GAME_REPLAY_VERSION, type Recording } from './recording.ts';
 import { replayRecord } from './replay.ts';
-import { contentOf, PRODUCER, recordScript, roundTrip } from './replay.test-support.ts';
+import { contentOf, gameplayDigest, PRODUCER, recordScript, roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
 import { snapshotHash, snapshotText, type GameSnapshot } from './snapshot.ts';
 
@@ -60,14 +60,20 @@ const typesOf = (recording: Recording) => new Set(recording.result.events.map(({
 
 // Whole runs recorded and replayed: 0.5–1.7 s per case alone, up to 6.8 s in full runs at load 50.
 describe('map and Warp replay (P3-09 AC-11; MW-14)', { timeout: 30_000 }, () => {
+  // P3-12/10 (docs/plan/p3/02/spec.md, FS-08): the presentation facts change no rule outcome or draw; the digest is the
+  // one this run had before them (replay.test-support.ts).
+  it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
+    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('8231182cf57bf5fc');
+  });
+
   it('has the whole chain in the recorded run', () => {
-    for (const type of ['map-toggled', 'warp-destination-set', 'target-changed', 'warp-started', 'left-page-changed', 'warp-completed', 'object-destroyed'] as const) {
+    for (const type of ['map-toggled', 'warp-destination-set', 'target-changed', 'warp-started', 'left-page-changed', 'warp-completed', 'object-destroyed', 'view-switched'] as const) {
       expect(typesOf(RECORDING).has(type), type).toBe(true);
     }
     expect(RECORDING.record).toMatchObject({ version: GAME_REPLAY_VERSION, rulesVersion: RULES_VERSION });
     // Merged with P3-10, whose own increment also took 5 (CB-16): the merge took 6, and P3-08/12 7 (CR-25); P3-08's
-    // drop-transponder took the replay format to 3.
-    expect([GAME_REPLAY_VERSION, RULES_VERSION]).toEqual([3, 7]);
+    // drop-transponder took the replay format to 3; P3-12/10's presentation facts took the rules to 8 (FS-08).
+    expect([GAME_REPLAY_VERSION, RULES_VERSION]).toEqual([3, 8]);
   });
 
   it('reproduces every event and the snapshot at every checkpoint after a JSON round trip', () => {
@@ -136,6 +142,8 @@ describe('map and Warp replay (P3-09 AC-11; MW-14)', { timeout: 30_000 }, () => 
       ['an unknown version', (record: Mutable) => { record.version = GAME_REPLAY_VERSION + 1; }, 'record.version'],
       ['the rules version before P3-09', (record: Mutable) => { record.rulesVersion = 4; }, 'record.rulesVersion'],
       ['a later rules version', (record: Mutable) => { record.rulesVersion = RULES_VERSION + 1; }, 'record.rulesVersion'],
+      // P3-12/10's increment (FS-08): records of the rules before it are not migrated.
+      ['the rules version before P3-12/10', (record: Mutable) => { record.rulesVersion = 7; }, 'record.rulesVersion'],
       ['a select beyond the right edge', at(5, { ...select, right: 1.5 }), 'record.ticks[5].commands[0].right'],
       ['a select above the top edge', at(5, { ...select, down: -0.25 }), 'record.ticks[5].commands[0].down'],
       ['a select at NaN', at(5, { ...select, right: Number.NaN }), 'record.ticks[5].commands[0].right'],

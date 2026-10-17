@@ -9,7 +9,8 @@
  * original's is a value pending for one frame, and the commanded speed of the movement block persists instead. P3-07
  * adds the targeting, combat records and cockpit display state (docs/plan/p3/02/spec.md, CR-04). P3-09 adds the map
  * cursor and destination, the saved left page and the Warp transit (docs/plan/p3/02/spec.md, MW-02); P3-10 the docking
- * object, the communications state and the saved docking pose (CB-02, CB-03).
+ * object, the communications state and the saved docking pose (CB-02, CB-03); P3-12 whether the player's model is shown
+ * (docs/plan/p3/02/spec.md, FS-02).
  */
 import type { Vec3 } from '../contracts/domain-events.ts';
 import type { EntityId, Matrix3, NameReference, RotationAxis } from './entity-table.ts';
@@ -90,6 +91,13 @@ export interface PlayerState {
   readonly communications: PlayerCommunications;
   /** `0x186af0`–`0x186b1c`: written at docking and launch (CB-10), null before the first docking. */
   readonly docking: { savedPose: Pose | null };
+  /**
+   * P3-12's player state (FS-02): the player visual's in-scene flag (visual +0x20), read by no rule, only by Render
+   * State's `display`. False at creation and at the player's instantiation; every `0x216d4` view switch writes whether
+   * the new view is 0x11 (view-switch.ts's switchPlayerView; not the map toggle nor the Warp start and completion); the
+   * player's hand-off and P3-11's rescue clear it.
+   */
+  modelShown: boolean;
 }
 
 /** The map part of the player state (MW-02). */
@@ -227,7 +235,8 @@ export interface ShotCounts {
  * launch, the end of a Warp), which needs the instantiated player, and the player's instantiation writes it too; the
  * sub-mode is read only in view mode 0x11, whose entry from another mode clears it. Neither creation value is
  * therefore observable by a rule; they are 0xC and 0. P3-07's and P3-10's fields take their creation values (CR-04,
- * CB-02, CB-03), and P3-09's (MW-02): the cursor at `startPixel`, no destination, saved page 0 and no Warp transit.
+ * CB-02, CB-03), and P3-09's (MW-02): the cursor at `startPixel`, no destination, saved page 0 and no Warp transit;
+ * P3-12's model not shown (FS-02).
  */
 export function createPlayerState(startPixel: MapPixel): PlayerState {
   return {
@@ -258,6 +267,7 @@ export function createPlayerState(startPixel: MapPixel): PlayerState {
       thanks: 0,
     },
     docking: { savedPose: null },
+    modelShown: false,
   };
 }
 

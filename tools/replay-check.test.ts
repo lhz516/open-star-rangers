@@ -428,6 +428,8 @@ describe('recording size limit', () => {
       'incoming-started', 'radio-flushed', 'radio-queued', 'radio-taken', 'transition',
       // P3-08's.
       'transponder-deployed', 'wingman-command-consumed',
+      // P3-12's.
+      'explosion-created', 'view-switched', 'warp-wall-contact',
     ].sort());
     // P3-09's arrival is the longest event (docs/plan/p3/02/spec.md, MW-05).
     expect(Math.max(...Object.values(events).map((event) => JSON.stringify(event).length))).toBe(JSON.stringify(events['warp-completed']).length);
@@ -435,7 +437,8 @@ describe('recording size limit', () => {
     // command's, then request handling, the hit and destruction, the energy, parked and frame-end stages; the selection and
     // page changes without a command anywhere; P3-09's toggle, select and Warp start in request handling as the one
     // additional event of three other commands, and the completion in its stage before the frame end; P3-08's wingman
-    // consumption in the object updates and a transponder deployment in request handling. The other speed
+    // consumption in the object updates and a transponder deployment in request handling; P3-12's construction and
+    // switch in the delayed player explosion's stage and the wall contact at the frame end. The other speed
     // assist event and the level change of the last command, which may follow its result alone, go in the tick before.
     const before = (event: (typeof events)[keyof typeof events], ticks = 1) => ({ ...event, tick: checkpoint.tick - ticks });
     // P3-10's (CB-13) in two earlier ticks: the message starts three ticks before; two ticks before, the flush and its
@@ -459,7 +462,8 @@ describe('recording size limit', () => {
         events['weapon-selected'], events['left-page-changed'], events['wingman-command-consumed'], events['target-changed'],
         { ...events['map-toggled'], commandIndex: 60 }, { ...events['warp-destination-set'], commandIndex: 61 }, { ...events['warp-started'], commandIndex: 62 },
         events['transponder-deployed'], events['shot-fired'], events['missile-ended'], events['explosion-started'], events['fragment-expired'], events['source-released'], events.hit,
-        events['object-destroyed'], events['energy-depleted'], events['object-left-world'], events['warp-completed'], events['target-cleared'],
+        events['object-destroyed'], events['explosion-created'], events['view-switched'], events['energy-depleted'], events['object-left-world'], events['warp-completed'],
+        events['warp-wall-contact'], events['target-cleared'],
       ],
       checkpoints: [{ tick: 0, hash: checkpoint.hash }, checkpoint],
       finalTick: checkpoint.tick,

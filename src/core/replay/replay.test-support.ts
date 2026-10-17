@@ -1,5 +1,6 @@
 import type { TickInput } from '../contracts/tick-input.ts';
-import { CONTENT_INPUT_FIELDS, type CreateWorldInput } from '../world/create-world.ts';
+import { fnv1a64 } from '../determinism/fnv1a64.ts';
+import { CONTENT_INPUT_FIELDS, createWorld, type CreateWorldInput } from '../world/create-world.ts';
 import { asCreateInput, worldInput, type WorldInputParts } from '../world/create-world.test-support.ts';
 import { tickInput } from '../world/world.test-support.ts';
 import { createRecordingSession, type Recording } from './recording.ts';
@@ -41,3 +42,24 @@ export function recordScript(input: CreateWorldInput, ticks: number, checkpointI
 
 /** Plain data after a JSON round trip, as a record or result read back from a file. */
 export const roundTrip = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
+
+/** P3-12/10's presentation facts (docs/plan/p3/02/spec.md, FS-03, FS-02), which no rule reads. */
+const PRESENTATION_EVENTS: ReadonlySet<string> = new Set(['explosion-created', 'view-switched', 'warp-wall-contact']);
+const PRESENTATION_STATE = 'modelShown';
+
+/**
+ * The gameplay digest of a run from `input` through `ticks`: fnv1a64 of every tick's events without P3-12/10's
+ * presentation facts, and of the snapshot state after it without the player's model flag. It was computed for the
+ * same runs before P3-12/10 (at 8b6113b6), so an unchanged digest shows that the facts change no rule outcome and no
+ * RNG draw (the state holds the RNG state).
+ */
+export function gameplayDigest(input: CreateWorldInput, ticks: readonly TickInput[]): string {
+  const world = createWorld(input);
+  const parts: string[] = [];
+  const withoutFlag = (key: string, value: unknown) => (key === PRESENTATION_STATE ? undefined : value);
+  for (const tick of ticks) {
+    const events = world.step(tick).filter(({ type }) => !PRESENTATION_EVENTS.has(type));
+    parts.push(JSON.stringify(events), JSON.stringify(world.snapshot().state, withoutFlag));
+  }
+  return fnv1a64(parts.join('\n'));
+}

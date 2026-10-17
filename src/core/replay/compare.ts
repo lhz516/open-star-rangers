@@ -23,6 +23,8 @@ import {
   type DockingRequestedEvent,
   type DomainEvent,
   type EntitySource,
+  EXPLOSION_CONSTRUCTION_STAGES,
+  type ExplosionCreatedEvent,
   type GroupMembership,
   type HitEvent,
   type IncomingEndedEvent,
@@ -30,6 +32,8 @@ import {
   type MapToggledEvent,
   type ObjectInstantiatedEvent,
   type ObjectLeftWorldEvent,
+  PIPELINE_STAGE_NAMES,
+  type PipelineStageName,
   type RadioFlushedEvent,
   type RadioQueuedEvent,
   type RadioTakenEvent,
@@ -41,11 +45,13 @@ import {
   type TransitionEvent,
   type TransponderDeployedEvent,
   type Vec3,
+  type ViewSwitchedEvent,
   type WarpArrival,
   type WarpCompletedEvent,
   type WarpDestinationSetEvent,
   type WarpMarkerChange,
   type WarpStartedEvent,
+  type WarpWallContactEvent,
   isWingmanCommandReply,
   type WingmanCommandConsumedEvent,
   WINGMAN_COMMAND_OUTCOMES,
@@ -65,7 +71,7 @@ import {
 } from '../contracts/validation.ts';
 import { CoreInputError } from '../errors.ts';
 import { isFiniteFloat32 } from '../rules/float32.ts';
-import type { Level, Matrix3, NameReference } from '../world/entity-table.ts';
+import { EXPLOSION_VARIANTS, type Level, type Matrix3, type NameReference } from '../world/entity-table.ts';
 import { MAP_SIDE_LIMIT, type MapPixel } from '../world/map-rule-data.ts';
 import type { LeftPage } from '../world/player-state.ts';
 import type { MessageIdentity, MissionSubState, SpeakerSnapshot } from '../world/world-state.ts';
@@ -82,6 +88,9 @@ type CommunicationsEvent =
 /** P3-08's events (docs/plan/p3/02/spec.md, CR-22). */
 type AiEvent = WingmanCommandConsumedEvent | TransponderDeployedEvent;
 
+/** P3-12's presentation facts (docs/plan/p3/02/spec.md, FS-03). */
+type PresentationEvent = ExplosionCreatedEvent | ViewSwitchedEvent | WarpWallContactEvent;
+
 /** P3-07's events (docs/plan/p3/02/spec.md, CR-06). */
 type CombatEvent = Exclude<
   DomainEvent,
@@ -89,6 +98,7 @@ type CombatEvent = Exclude<
   | MapWarpEvent
   | CommunicationsEvent
   | AiEvent
+  | PresentationEvent
 >;
 
 /** Difference data, not an error. */
@@ -141,6 +151,9 @@ const EVENT_FIELDS = {
   'base-confirmed': ['type', 'tick', 'row', 'record', 'moved', 'commandIndex'],
   'wingman-command-consumed': ['type', 'tick', 'wingmanEntityId', 'code', 'issuedTick', 'path', 'outcome', 'replyLine'],
   'transponder-deployed': ['type', 'tick', 'entityId', 'creatorEntityId', 'position', 'orientation'],
+  'explosion-created': ['type', 'tick', 'entityId', 'sourceEntityId', 'sourceKindBit', 'variant', 'stage', 'position', 'velocity'],
+  'view-switched': ['type', 'tick', 'fromViewMode', 'fromSubMode', 'viewMode', 'subMode', 'stage', 'player'],
+  'warp-wall-contact': ['type', 'tick', 'serial'],
 } as const satisfies { readonly [Type in Exclude<DomainEvent['type'], 'speed-matched'>]: readonly (keyof Extract<DomainEvent, { type: Type }>)[] };
 const SPEED_MATCHED_FIELDS = {
   command: ['type', 'tick', 'targetEntityId', 'origin', 'commandIndex'],
@@ -155,7 +168,7 @@ const ENTITY_ID = integerIn(1, Number.MAX_SAFE_INTEGER);
 const KIND_BIT = integerIn(0, 31);
 const COMMAND_INDEX = integerIn(0, CORE_LIMITS.commandsPerTick - 1);
 const COORDINATE: NumberRule = [Number.isFinite, 'must be a finite number'];
-/** P3-08's transponder pose (CR-22) is f32. */
+/** P3-08's transponder pose (CR-22) and P3-12's construction and switch poses (FS-03) are f32. */
 const F32: NumberRule = [isFiniteFloat32, 'must be a finite f32'];
 const INT32 = integerIn(-0x80000000, 0x7fffffff);
 const LEVEL = integerIn(0, 3);
@@ -165,8 +178,9 @@ const AI_CHANNEL = integerIn(0, 2);
 const FACE = integerIn(0, 5);
 /** A list's index: −1 for an empty list. */
 const LIST_INDEX = integerIn(-1, 0x7fffffff);
-/** View modes are the original's byte ps +0x28. */
+/** View modes are the original's byte ps +0x28, sub-modes its byte ps +0x2A. */
 const VIEW_MODE = integerIn(0, 0xff);
+const SUB_MODE = integerIn(0, 0xff);
 /** A cursor pixel lies in the main map. */
 const MAP_PIXEL = integerIn(0, MAP_SIDE_LIMIT - 1);
 const SERIAL = integerIn(1, Number.MAX_SAFE_INTEGER);
@@ -511,7 +525,7 @@ function readCombatEvent(event: Record<string, unknown>, path: string, tick: num
         entityId: readEntityId(event.entityId, at('entityId')),
         sourceEntityId: readEntityId(event.sourceEntityId, at('sourceEntityId')),
         sourceKindBit: readKindBit(event.sourceKindBit, at('sourceKindBit')),
-        variant: readChoice(event.variant, at('variant'), ['large', 'other', 'missile']),
+        variant: readChoice(event.variant, at('variant'), EXPLOSION_VARIANTS),
         position: readVector(event.position, at('position')),
         activationClock: readNumber(event.activationClock, at('activationClock'), INDEX),
       };
@@ -792,6 +806,48 @@ function readAiEvent(event: Record<string, unknown>, path: string, tick: number,
   }
 }
 
+/** Reads the fields of a P3-12 event (docs/plan/p3/02/spec.md, FS-03) after its type and field list. */
+function readPresentationEvent(event: Record<string, unknown>, path: string, tick: number, type: PresentationEvent['type']): PresentationEvent {
+  const at = (field: string): string => `${path}.${field}`;
+  switch (type) {
+    case 'explosion-created':
+      return {
+        type,
+        tick,
+        entityId: readEntityId(event.entityId, at('entityId')),
+        sourceEntityId: readEntityId(event.sourceEntityId, at('sourceEntityId')),
+        sourceKindBit: readKindBit(event.sourceKindBit, at('sourceKindBit')),
+        variant: readChoice(event.variant, at('variant'), EXPLOSION_VARIANTS),
+        stage: readChoice(event.stage, at('stage'), EXPLOSION_CONSTRUCTION_STAGES),
+        position: readVector(event.position, at('position'), F32),
+        velocity: readVector(event.velocity, at('velocity'), F32),
+      };
+    case 'view-switched': {
+      let player: ViewSwitchedEvent['player'] = null;
+      if (event.player !== null) {
+        const fields = readExactRecord(event.player, at('player'), ['entityId', 'position', 'orientation']);
+        player = {
+          entityId: readEntityId(fields.entityId, at('player.entityId')),
+          position: readVector(fields.position, at('player.position'), F32),
+          orientation: readMatrix(fields.orientation, at('player.orientation'), F32),
+        };
+      }
+      return {
+        type,
+        tick,
+        fromViewMode: readNumber(event.fromViewMode, at('fromViewMode'), VIEW_MODE),
+        fromSubMode: readNumber(event.fromSubMode, at('fromSubMode'), SUB_MODE),
+        viewMode: readNumber(event.viewMode, at('viewMode'), VIEW_MODE),
+        subMode: readNumber(event.subMode, at('subMode'), SUB_MODE),
+        stage: readChoice(event.stage, at('stage'), PIPELINE_STAGE_NAMES),
+        player,
+      };
+    }
+    case 'warp-wall-contact':
+      return { type, tick, serial: readNumber(event.serial, at('serial'), SERIAL) };
+  }
+}
+
 /** Validates one event against the DomainEvent union, reading each field once, and returns a detached, unfrozen copy. */
 function readEvent(value: unknown, path: string, tickRule: NumberRule): DomainEvent {
   const event = readDataRecord(value, path, MAX_EVENT_FIELDS);
@@ -837,6 +893,10 @@ function readEvent(value: unknown, path: string, tickRule: NumberRule): DomainEv
     case 'wingman-command-consumed':
     case 'transponder-deployed':
       return readAiEvent(event, path, tick, type);
+    case 'explosion-created':
+    case 'view-switched':
+    case 'warp-wall-contact':
+      return readPresentationEvent(event, path, tick, type);
     default:
       return readCombatEvent(event, path, tick, type);
   }
@@ -859,8 +919,34 @@ const STAGE = Object.freeze({
   missionFlow: 0, assist: 1, commands: 2, objects: 3, reply: 4, requests: 5, energy: 6, parked: 7, warpCompletion: 8, frameEnd: 9, presentation: 10,
 });
 
-/** What TickOrder counts: P3-10's event types, and the two places a docking is cancelled. */
-type CountedEvent = CommunicationsEvent['type'] | 'gate' | 'flow-cancellation';
+/** What TickOrder counts: P3-10's event types, the two places a docking is cancelled, and P3-12's wall contact. */
+type CountedEvent = CommunicationsEvent['type'] | 'gate' | 'flow-cancellation' | 'warp-wall-contact';
+
+/**
+ * The STAGE a P3-12 event reports by its pipeline stage (FS-03): the order checks of the stages it falls between. The
+ * stages of request handling to the delayed player explosion share `requests`, as `hit` does.
+ */
+const STAGE_OF: { readonly [Stage in PipelineStageName]: number } = Object.freeze({
+  'input-registration': STAGE.missionFlow,
+  'mission-flow': STAGE.missionFlow,
+  clock: STAGE.missionFlow,
+  'object-update': STAGE.objects,
+  'communications-reply': STAGE.reply,
+  'spawn-queue-check': STAGE.reply,
+  'request-handling': STAGE.requests,
+  movement: STAGE.requests,
+  collision: STAGE.requests,
+  'delayed-player-explosion': STAGE.requests,
+  energy: STAGE.energy,
+  'object-sets': STAGE.energy,
+  'parked-update': STAGE.parked,
+  'warp-completion': STAGE.warpCompletion,
+  'base-interior': STAGE.warpCompletion,
+  'mission-teardown': STAGE.warpCompletion,
+  'area-check': STAGE.warpCompletion,
+  'frame-end': STAGE.frameEnd,
+  commit: STAGE.presentation,
+});
 
 /** A docking or launch whose `transition` must come next. */
 interface PendingTransition {
@@ -883,6 +969,8 @@ interface PendingTransition {
  * message that starts and ends in one tick has frames of no time; the invalid-object cancellation right after a flush,
  * of which there are at most two; at most one cancellation in the mission flow and one at the docking gate. P3-08's
  * (CR-22): at most one consumed command per wingman, and no more transponder deployments than command results before.
+ * P3-12's (FS-03): `explosion-created` and `view-switched` in the order of the stage they report, and at most one
+ * `warp-wall-contact`, at the frame end.
  */
 class TickOrder {
   #previous: DomainEvent | null = null;
@@ -1029,6 +1117,14 @@ class TickOrder {
         this.#enter(STAGE.requests, path);
         // Each comes from an accepted drop-transponder command of the tick, so no more than its command results.
         if (++this.#deployed > this.#commands) throw new CoreInputError(path, 'must not outnumber the command results before it');
+        return false;
+      case 'explosion-created':
+      case 'view-switched':
+        this.#enter(STAGE_OF[event.stage], `${path}.stage`);
+        return false;
+      case 'warp-wall-contact':
+        this.#enter(STAGE.frameEnd, path);
+        this.#count(event.type, 1, path);
         return false;
       default:
         this.#readCommunications(event, previous, path);

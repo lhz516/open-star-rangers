@@ -162,6 +162,21 @@ describe('GameEventBus', () => {
     expect(calls).toEqual(['wingman-command-consumed:null', 'transponder-deployed:null']);
   });
 
+  it('accepts P3-12\'s presentation fact types and filters by each (FS-03)', () => {
+    const bus = new GameEventBus(), calls: string[] = [];
+    const events: DomainEvent[] = [
+      {
+        type: 'explosion-created', tick: 6, entityId: 9, sourceEntityId: 4, sourceKindBit: 7, variant: 'other', stage: 'collision',
+        position: { x: 1, y: -2, z: 3 }, velocity: { x: 0, y: 0, z: 48 },
+      },
+      { type: 'view-switched', tick: 6, fromViewMode: 12, fromSubMode: 0, viewMode: 8, subMode: 0, stage: 'request-handling', player: null },
+      { type: 'warp-wall-contact', tick: 6, serial: 1 },
+    ];
+    for (const { type } of events) bus.on(type, (event, delivery) => { calls.push(`${event.type}:${delivery.commandId}`); });
+    bus.dispatch([...COMBAT_EVENTS, ...events].map((event) => ({ event, commandId: null })));
+    expect(calls).toEqual(['explosion-created:null', 'view-switched:null', 'warp-wall-contact:null']);
+  });
+
   it('clears every subscription, and rejects unknown types and non-function receivers', () => {
     const bus = new GameEventBus();
     let calls = 0;

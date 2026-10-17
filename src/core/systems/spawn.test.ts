@@ -166,6 +166,7 @@ describe('instantiation of the slice-shaped mission (P3-02 AC-05, R-02 schedulin
     const context = registerTick(state, readTickInput(tickInput()));
     const seen: Record<string, number> = {};
     for (const stage of PIPELINE) {
+      context.stage = stage.id;
       if (stage.id === 'request-handling') seen.before = state.entities.size;
       stage.run?.(context);
       if (stage.id === 'request-handling') seen.after = state.entities.size;
@@ -424,12 +425,15 @@ describe('activity and the player at instantiation (P3-02 AC-05, Q-07)', () => {
     const { state, world } = setUp({ mission: m });
     state.player.viewMode = 3;
     state.player.previousViewMode = 5;
-    world.step(tickInput());
+    state.player.modelShown = true;
+    const events = world.step(tickInput());
     const [player, other] = entities(state);
     expect(player.orientation).toEqual([1, 0, 0, 0, 1, 0, 0, 0, 1]);
     // x < 0 and y ≥ 0: forward (−c, +c, 0), up (0, 0, 1), first row (−c, −c, 0).
     expect(other.orientation).toEqual([-C, -C, 0, 0, 0, 1, -C, C, 0]);
-    expect(state.player).toMatchObject({ entityId: player.id, viewMode: 0xc, previousViewMode: 0xc });
+    // `0x67938` hides the new player visual (P3-12 FS-02); the instantiation's view is no switch (FS-03).
+    expect(state.player).toMatchObject({ entityId: player.id, viewMode: 0xc, previousViewMode: 0xc, modelShown: false });
+    expect(events.map(({ type }) => type)).not.toContain('view-switched');
     expect(world.projection().player).toMatchObject({ entityId: player.id, viewMode: 0xc, previousViewMode: 0xc });
   });
 });
@@ -477,7 +481,7 @@ describe('the wingman (P3-02 AC-08, R-03, Q-06)', () => {
     expect(world.projection().mission.wingman).toBe(index);
     expect(world.renderState().entities[1]).toEqual({
       id: 2, kindBit: 1, presentation: { type: 'model', model: modelOf(1) }, position: wingman.position, orientation: wingman.orientation, placementSerial: 0,
-      hitShimmerStart: null, explosionStart: null,
+      hitShimmerStart: null, explosionStart: null, inWarp: false, sourceKindBit: null, display: 'shown',
     });
   });
 });

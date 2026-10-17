@@ -229,7 +229,7 @@ describe('the full repair entry (CB-10, CB-12; BS9)', () => {
     Object.assign(state.flow, { subState: 4, dockingDeadline: 0 });
     state.player.dockingObject = base.id;
     const events = constructWorld(state).step(tickInput());
-    expect(events.map(({ type }) => type)).toEqual(['docked', 'transition']);
+    expect(events.map(({ type }) => type)).toEqual(['view-switched', 'docked', 'transition']);
     expect([wingman.activity, wingman.combat.hull, wingman.combat.energy]).toEqual(['docked', 12, 1000]);
   });
 });

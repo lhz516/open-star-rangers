@@ -15,7 +15,7 @@ import type { WorldState } from '../world/world-state.ts';
 import { compareReplayResults } from './compare.ts';
 import { createRecordingSession, GAME_REPLAY_VERSION, type Recording, type RecordingSession } from './recording.ts';
 import { replayRecord } from './replay.ts';
-import { contentOf, PRODUCER, roundTrip } from './replay.test-support.ts';
+import { contentOf, gameplayDigest, PRODUCER, roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
 import { snapshotHash, type GameSnapshot } from './snapshot.ts';
 
@@ -208,6 +208,12 @@ function rerun(inputs: readonly TickInput[], read: Reader, group: number, hold: 
 
 // Whole runs of several hundred ticks: like the other limit-sized replay tests, longer than the default timeout under load.
 describe('communications replay (P3-10 AC-12, CB-16)', { timeout: 60_000 }, () => {
+  // P3-12/10 (docs/plan/p3/02/spec.md, FS-08): the presentation facts change no rule outcome or draw; the digest is the
+  // one this run had before them (replay.test-support.ts).
+  it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
+    expect(gameplayDigest(DOCKING_INPUT, RECORDING.record.ticks)).toBe('adb682ae070f7653');
+  });
+
   it('runs the docking chain twice in one world: wait, reply, countdown, docking, base keys and launch', () => {
     expect(of('docking-requested').map(({ tick, dockingObject, previousSubState }) => [tick, dockingObject, previousSubState])).toEqual([
       [62, BASE_A, 0], [ticksOf('departed')[0] + 3, BASE_B, 0],

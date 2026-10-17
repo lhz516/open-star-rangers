@@ -25,6 +25,8 @@ describe('player state (P3-02 S-05, 实体与生命周期)', () => {
       dockingObject: null,
       communications: { menu: null, partner: null, menuSavedPage: 0, incomingSavedPage: 0, limits: { friendlyHit: null, friendlyKill: null }, thanks: 0 },
       docking: { savedPose: null },
+      // P3-12 FS-02: the player's model not shown.
+      modelShown: false,
     });
     expect(state.map.cursor).not.toBe(START);
     expect(Object.keys(state.kills).map(Number)).toEqual([...KILL_KIND_BITS]);

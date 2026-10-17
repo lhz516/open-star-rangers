@@ -113,6 +113,7 @@ describe('delivery, reply and callback are separate facts (AC-04, AC-05; CB-07, 
     const { state, base } = baseScene();
     const context = registerTick(state, readTickInput(tickInput(STATUS_KEYS)));
     for (const stage of PIPELINE) {
+      context.stage = stage.id;
       if (stage.id === 'request-handling') state.entities.remove(base);
       stage.run?.(context);
     }

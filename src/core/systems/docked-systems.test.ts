@@ -107,6 +107,7 @@ function craftAt({ state }: DockedScene, kindBit: number, position: Vec3): Craft
 function tickWith(state: WorldState, post: (context: TickContext) => void): readonly DomainEvent[] {
   const context = registerTick(state, readTickInput(tickInput()));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     if (stage.id === 'mission-flow') post(context);
     stage.run?.(context);
   }

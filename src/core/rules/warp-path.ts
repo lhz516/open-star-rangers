@@ -196,6 +196,8 @@ export interface TunnelPose extends WarpPathPose {
   readonly centring: number;
   /** s, f32 in [0, 1]. */
   readonly error: number;
+  /** Step 7 pulled the player back from the wall inside the error's window, the branch that adds 0.01 (FS-03). */
+  readonly wallContact: boolean;
 }
 
 /**
@@ -286,7 +288,8 @@ export function steerInTunnel(player: WarpPathPose, path: WarpPathPose, previous
 
   // 7. The wall: Q″ := N + e × (50 ÷ √d²), from the f32 offsets.
   let position = vec(x, y, Math.fround(zUnrounded));
-  if (squared > TUBE_RADIUS_SQUARED) {
+  const wall = squared > TUBE_RADIUS_SQUARED;
+  if (wall) {
     const pull = TUBE_RADIUS / Math.sqrt(squared);
     position = vec(
       Math.fround(n.x + Math.fround(offset.x * pull)),
@@ -300,16 +303,17 @@ export function steerInTunnel(player: WarpPathPose, path: WarpPathPose, previous
   s = Math.fround(1 > s ? s : 1);
   const orientation = rowsOf(r0, r1, r2);
   if (!(Number.isFinite(position.x) && Number.isFinite(position.y) && Number.isFinite(position.z) && orientation.every(Number.isFinite))) throw new CoreFaultError('invariant-violated', 'warp-path.pose');
-  return Object.freeze({ position, orientation, angle, centring, error: s });
+  return Object.freeze({ position, orientation, angle, centring, error: s, wallContact: wall && inWindow });
 }
 
 /** The transit's fields the Warp step writes. */
 export type WarpStepTransit = Pick<WarpTransit, 'segments' | 'fraction' | 'error' | 'angle' | 'centring' | 'frame' | 'path'>;
 
-/** One Warp step's result: the player's new pose and the transit's new fields. */
+/** One Warp step's result: the player's new pose, the transit's new fields and whether it touched the wall in the window. */
 export interface WarpStep {
   readonly pose: WarpPathPose;
   readonly transit: WarpStepTransit;
+  readonly wallContact: boolean;
 }
 
 /**
@@ -331,9 +335,10 @@ export function stepWarp(transit: WarpTransit, player: WarpPathPose, speed: numb
   const frame = evaluateWarpPath(path, fraction);
   const ratio = (segments + fraction) / transit.length;
   const steered = steerInTunnel(player, frame, transit.frame, Math.fround(travelled), ratio > WINDOW_START && ratio < WINDOW_END, transit.error);
-  const { angle, centring, error } = steered;
+  const { angle, centring, error, wallContact } = steered;
   return Object.freeze({
     pose: Object.freeze({ position: steered.position, orientation: steered.orientation }),
     transit: Object.freeze({ segments, fraction, error, angle, centring, frame, path }),
+    wallContact,
   });
 }

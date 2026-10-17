@@ -11,9 +11,15 @@
  *   incoming-message page) as 0.
  * - A switch from or to the base interior (6) also runs `0x4cd68`, which sets `statusDisplay.redraw`; the page stays
  *   (P3-10, CB-10; comm §7.6).
+ *
+ * commitViewSwitch is the shared switch every such rule goes through (P3-12, docs/plan/p3/02/spec.md, FS-03): it writes
+ * the modes, runs switchView and emits `view-switched`. switchPlayerView is the original's `0x216d4` on top of it, which
+ * also writes whether the player's model is shown (FS-02); the map toggle and the Warp start and completion do not go
+ * through `0x216d4` and leave that flag.
  */
 import type { LeftPage } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { emit, type TickContext } from './pipeline.ts';
 
 /** The Warp view. */
 export const WARP_VIEW_MODE = 1;
@@ -21,6 +27,8 @@ export const WARP_VIEW_MODE = 1;
 export const BASE_VIEW_MODE = 6;
 /** The strategic map. */
 export const MAP_VIEW_MODE = 8;
+/** The view mode in which the player's model is shown (`0x216d4`; FS-02). */
+const MODEL_VIEW_MODE = 0x11;
 
 /** The page the Warp view shows. */
 const WARP_PAGE: LeftPage = 6;
@@ -49,4 +57,44 @@ export function switchView(world: WorldState, newMode: number, oldMode: number):
   }
   if (newMode === BASE_VIEW_MODE || oldMode === BASE_VIEW_MODE) player.statusDisplay.redraw = true;
   return leftDisplay.page === previousPage ? null : { page: leftDisplay.page, previousPage };
+}
+
+/**
+ * A rule's view switch: stores `viewMode`, `previousViewMode` and `subMode` (unchanged by default: only P3-11's switches
+ * write it), runs switchView from the old mode and emits `view-switched` with the old and new modes, the stage and the
+ * player entity's pose at the write (FS-03). Returns switchView's page change, which the caller emits after its own
+ * events.
+ */
+export function commitViewSwitch(context: TickContext, viewMode: number, previousViewMode: number, subMode = context.world.player.subMode): LeftPageChange | null {
+  const { world } = context;
+  const { player } = world;
+  const fromViewMode = player.viewMode;
+  const fromSubMode = player.subMode;
+  player.viewMode = viewMode;
+  player.previousViewMode = previousViewMode;
+  player.subMode = subMode;
+  const page = switchView(world, viewMode, fromViewMode);
+  const entity = player.entityId === null ? undefined : world.entities.get(player.entityId);
+  emit(context, {
+    type: 'view-switched',
+    tick: context.time.tick,
+    fromViewMode,
+    fromSubMode,
+    viewMode,
+    subMode,
+    stage: context.stage,
+    player: entity === undefined ? null : { entityId: entity.id, position: entity.position, orientation: entity.orientation },
+  });
+  return page;
+}
+
+/**
+ * `0x216d4`: the previous view is the old one, then the shared switch; the player's model is shown only in the new view
+ * 0x11 (FS-02). P3-10's docking and launch use it; P3-11's destruction view, rescue and other `0x216d4` callers will.
+ */
+export function switchPlayerView(context: TickContext, viewMode: number, subMode?: number): LeftPageChange | null {
+  const { player } = context.world;
+  const page = commitViewSwitch(context, viewMode, player.viewMode, subMode);
+  player.modelShown = viewMode === MODEL_VIEW_MODE;
+  return page;
 }

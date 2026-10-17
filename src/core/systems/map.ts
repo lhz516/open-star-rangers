@@ -22,7 +22,7 @@ import type { MapIcon, WorldState } from '../world/world-state.ts';
 import { emitCommandResult, type CommandOf } from './commands.ts';
 import { availablePlayer } from './flight-control.ts';
 import { emit, type CommandView, type TickContext } from './pipeline.ts';
-import { MAP_VIEW_MODE, switchView } from './view-switch.ts';
+import { commitViewSwitch, MAP_VIEW_MODE } from './view-switch.ts';
 
 /** Message 0x400 sub-command 8 (opening) or 9 (closing), whichever the committed view calls for when it is applied. */
 export interface MapToggleRequest {
@@ -65,18 +65,16 @@ export function judgeToggleMap(context: TickContext, command: CommandOf<'toggle-
  * Request handling of a `map-toggle`, without judging it again: closes the map when the committed view mode is 8,
  * otherwise opens it and puts the cursor at its start pixel. Neither writes the left display, the status display's
  * redraw or the player's target, so closing into the base keeps the target. The switch has no rule effect of its own
- * (view-switch.ts); emits `map-toggled`.
+ * (view-switch.ts), whose `view-switched` precedes `map-toggled`.
  */
 export function applyMapToggle(context: TickContext, { commandIndex }: MapToggleRequest): void {
   const { world } = context;
   const { player } = world;
-  const oldMode = player.viewMode;
   const next = toggledView(player);
-  Object.assign(player, next);
+  // A map toggle never enters or leaves the Warp view, the only switch that changes the page.
+  if (commitViewSwitch(context, next.viewMode, next.previousViewMode) !== null) throw new CoreFaultError('invariant-violated', 'map.view-switch');
   const open = next.viewMode === MAP_VIEW_MODE;
   if (open) player.map.cursor = world.ruleData.map.startPixel;
-  // A map toggle never enters or leaves the Warp view, the only switch that changes the page.
-  if (switchView(world, next.viewMode, oldMode) !== null) throw new CoreFaultError('invariant-violated', 'map.view-switch');
   emit(context, { type: 'map-toggled', tick: context.time.tick, open, viewMode: next.viewMode, previousViewMode: next.previousViewMode, commandIndex });
 }
 

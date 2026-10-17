@@ -179,6 +179,8 @@ function instantiate(context: TickContext, record: RuntimeRecord, source: Entity
     world.player.control = initialPlayerControl(world.config.group);
     world.player.targeting = initialPlayerTargeting();
     world.player.statusDisplay.redraw = true;
+    // `0x67938` hides the new player visual (FS-02).
+    world.player.modelShown = false;
   }
   emit(context, { type: 'object-instantiated', tick: world.tick, entityId: entity.id, kindBit, source: entity.source as EntitySource, position: entity.position });
   return entity;

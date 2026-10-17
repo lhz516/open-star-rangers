@@ -5,7 +5,7 @@ import { compareReplayResults } from '../replay/compare.ts';
 import type { CraftEntity } from '../rules/combat-init.ts';
 import { shootDown } from '../rules/fragments.ts';
 import { randValues, rngStateAfter } from '../rules/rand.test-support.ts';
-import type { Entity, ExplosionCombat, FragmentCombat } from '../world/entity-table.ts';
+import type { Entity, ExplosionCombat, FragmentCombat, LinearMovementBlock } from '../world/entity-table.ts';
 import { addPlayerEntity, entityInit, expectFault, stillEntityInit, testState, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { applyContactDamage } from './damage.ts';
@@ -28,6 +28,7 @@ type Hooks = Readonly<Record<string, (context: TickContext) => void>>;
 function tick(state: WorldState, hooks: Hooks = {}): readonly DomainEvent[] {
   const context = registerTick(state, readTickInput(tickInput()));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     hooks[stage.id]?.(context);
     stage.run?.(context);
   }
@@ -80,6 +81,7 @@ function craftIn(state: WorldState, kindBit: number): CraftEntity {
 /** The entities of `kindBit`, in allocation order. */
 const ofKind = (state: WorldState, kindBit: number): Entity[] => [...state.entities.walk(1 << kindBit)];
 const explosionOf = (entity: Entity): ExplosionCombat => entity.combat as ExplosionCombat;
+const linearOf = (entity: Entity): LinearMovementBlock => entity.movement as LinearMovementBlock;
 const fragmentOf = (entity: Entity): FragmentCombat => entity.combat as FragmentCombat;
 
 /** Sets the world RNG to the first state whose next `count` rand values `accept` takes. */
@@ -99,9 +101,14 @@ describe('a craft destroyed outside object update (X1, X2, X9, CR-08, AC-12)', (
     tick(state);
     // Tick N = 2: destroyed in the collision stage, as P3-07/19's contacts do.
     const destroyedAt = tick(state, { collision: (context) => applyContactDamage(context, enemy, 5, 'collision') });
-    expect(types(destroyedAt)).toEqual(['hit', 'object-destroyed']);
+    expect(types(destroyedAt)).toEqual(['hit', 'object-destroyed', 'explosion-created']);
     expect(destroyedAt[1]).toMatchObject({ entityId: enemy.id, outcome: 'explodes' });
     const [explosion] = ofKind(state, 22);
+    // P3-12 FS-03: the construction's facts, in the stage that called the constructor; it activates in the next tick.
+    expect(destroyedAt[2]).toEqual({
+      type: 'explosion-created', tick: 2, entityId: explosion.id, sourceEntityId: enemy.id, sourceKindBit: SMALL, variant: 'other', stage: 'collision',
+      position: enemy.position, velocity: linearOf(explosion).velocity,
+    });
     const [part0, part1] = ofKind(state, 24);
     // Allocated in the constructor's order: the explosion, then the parts.
     expect([explosion.id, part0.id, part1.id]).toEqual([enemy.id + 1, enemy.id + 2, enemy.id + 3]);
@@ -265,7 +272,9 @@ describe('objects made in object update (X9, CR-08, CR-11 difference 5)', () => 
     const events = tick(state, { 'object-update': (context) => constructExplosion(context, enemy) });
     const [explosion] = ofKind(state, 22);
     const parts = ofKind(state, 24);
-    expect(types(events)).toEqual(['explosion-started']);
+    // Constructed in object update, it activates in the same tick (X9; FS-03).
+    expect(types(events)).toEqual(['explosion-created', 'explosion-started']);
+    expect(events[0]).toMatchObject({ entityId: explosion.id, stage: 'object-update' });
     expect([explosion.state, ...parts.map(({ state: partState }) => partState)]).toEqual(['active', 'active', 'active']);
     expect(types(tick(state))).toEqual(['source-released']);
     tick(state);
@@ -284,9 +293,13 @@ describe('the player\'s delayed explosion and escape pod (X2, X7, CR-04, AC-12)'
     runTo(state, destruction + 96);
     expect([ofKind(state, 22), player.state]).toEqual([[], 'active']);
 
-    expect(tick(state)).toEqual([]);
+    const exploded = tick(state);
     expect(state.tick - destruction).toBe(97);
     const [explosion] = ofKind(state, 22);
+    expect(exploded).toEqual([{
+      type: 'explosion-created', tick: state.tick, entityId: explosion.id, sourceEntityId: player.id, sourceKindBit: 0, variant: 'other',
+      stage: 'delayed-player-explosion', position: player.position, velocity: linearOf(explosion).velocity,
+    }]);
     const [pod, part3] = ofKind(state, 24);
     expect([player.state, state.player.delayedExplosionClock, state.player.followedEntity]).toEqual(['destroyed-source', null, pod.id]);
     expect(explosionOf(explosion)).toMatchObject({ source: player.id, sourceKindBit: 0, variant: 'other', heldSource: null });
@@ -298,8 +311,10 @@ describe('the player\'s delayed explosion and escape pod (X2, X7, CR-04, AC-12)'
     expect(types(tick(state))).toEqual(['explosion-started']);
     const podFirstCallback = state.clock;
     expect(fragmentOf(pod).expiry).toEqual({ type: 'at', clock: podFirstCallback + 0x140 });
+    state.player.modelShown = true;
     expect(tick(state)).toEqual([{ type: 'source-released', tick: state.tick, entityId: player.id, kindBit: 0, fragmentEntityId: pod.id, removed: false }]);
-    expect(player.state).toBe('destroyed-source');
+    // The hand-off hides the player's model (FS-02).
+    expect([player.state, state.player.modelShown]).toEqual(['destroyed-source', false]);
 
     const firstCallbackTick = state.tick - 1;
     const quiet = runTo(state, firstCallbackTick + 159).flat().filter(({ type }) => type === 'fragment-expired');
@@ -316,6 +331,7 @@ describe('the player\'s delayed explosion and escape pod (X2, X7, CR-04, AC-12)'
     const { state, player } = world();
     state.player.delayedExplosionClock = 500;
     const context = registerTick(state, readTickInput(tickInput()));
+    context.stage = 'collision';
     state.clock = context.time.clock;
     destroyEntity(context, player);
     expect([ofKind(state, 22), player.state, state.player.delayedExplosionClock]).toEqual([[], 'presentation-ready', 500]);
@@ -334,6 +350,7 @@ describe('the player\'s delayed explosion and escape pod (X2, X7, CR-04, AC-12)'
     const { state, player } = world();
     state.player.delayedExplosionClock = 0;
     const context = registerTick(state, readTickInput(tickInput()));
+    context.stage = 'delayed-player-explosion';
     state.clock = context.time.clock;
     delayedPlayerExplosionStage!(context);
     expect([ofKind(state, 22).length, player.state, state.player.delayedExplosionClock]).toEqual([1, 'destroyed-source', null]);
@@ -371,8 +388,14 @@ describe('a fragment shot down (H4, X7, CR-08)', () => {
     // It expires in request handling, before this tick's movement, which still moves it as a destroyed source (X9).
     const before = part1.position;
     const expired = tick(state);
-    expect(expired).toEqual([{ type: 'fragment-expired', tick: state.tick, entityId: part1.id, sourceKindBit: SMALL, part: 1, position: before, outcome: 'explodes' }]);
     const [, second] = ofKind(state, 22);
+    expect(expired).toEqual([
+      { type: 'fragment-expired', tick: state.tick, entityId: part1.id, sourceKindBit: SMALL, part: 1, position: before, outcome: 'explodes' },
+      {
+        type: 'explosion-created', tick: state.tick, entityId: second.id, sourceEntityId: part1.id, sourceKindBit: 24, variant: 'other',
+        stage: 'request-handling', position: before, velocity: linearOf(second).velocity,
+      },
+    ]);
     expect(explosionOf(second)).toMatchObject({ source: part1.id, sourceKindBit: 24, variant: 'other', heldSource: part1.id });
     expect(part1.state).toBe('destroyed-source');
     expect(part1.position).not.toEqual(before);
@@ -405,7 +428,7 @@ describe('the events (CR-06)', () => {
     const { state } = world();
     const enemy = craftIn(state, SMALL);
     const events = [tick(state, { collision: (context) => destroyEntity(context, enemy) }), tick(state), tick(state)];
-    expect(events.flat().map(({ type }) => type)).toEqual(['explosion-started', 'source-released']);
+    expect(events.flat().map(({ type }) => type)).toEqual(['explosion-created', 'explosion-started', 'source-released']);
     const result = { events: events.flat(), checkpoints: [{ tick: 0, hash: '0'.repeat(16) }, { tick: 3, hash: '1'.repeat(16) }], finalTick: 3 };
     expect(compareReplayResults(result, result)).toEqual({ match: true });
   });

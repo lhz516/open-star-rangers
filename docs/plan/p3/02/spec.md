@@ -2335,7 +2335,7 @@ type PipelineStageName =                // PIPELINE 的阶段名，封闭联合�
   | 'energy' | 'object-sets' | 'parked-update' | 'warp-completion' | 'base-interior'
   | 'mission-teardown' | 'area-check' | 'frame-end' | 'commit';
 type ExplosionConstructionStage = Extract<PipelineStageName,
-  'object-update' | 'request-handling' | 'movement' | 'collision' | 'delayed-player-explosion'>;
+  'object-update' | 'request-handling' | 'movement' | 'collision' | 'delayed-player-explosion' | 'parked-update'>;
 interface ExplosionCreatedEvent extends DomainEventBase<'explosion-created'> {
   readonly entityId: EntityId;          // 新爆炸
   readonly sourceEntityId: EntityId;
@@ -2763,3 +2763,5 @@ interface PresentationExplosion {          // 当前爆炸查询的一项
 
 - **批准与用户原话：** 用户于 2026-10-17 经协调者提问（“是否批准 09 的 D-01 共享契约定稿？”）选择“批准，全部按推荐方案 (Recommended)”。这是用户本人的批准（P3-12 goal 的审批没有授权 agent 定稿 D-01），范围是本节 FS-01 至 FS-11 的全部内容与子任务 09 所列开放选择的推荐方案：通用的 `view-switched`、`warp-wall-contact` 事件、由 Core 持有的 `modelShown`、不带行矩阵的 `explosion-created`、现在按本地计数定值的 GPU 预算，以及 FS-10 决定 7、8 两项新的已批准差异。不涵盖总计划与 ADR 中的冻结决定，本修订不涉及它们（插值所用的两份 Render State 不变）。
 - **所选方案与被排除的方案：** 见 [FS-10](#fs-10-定稿的决定与被排除的方案)，此处不重复；其中决定 7、8 为新的已批准差异。
+
+**2026-10-17 勘误：** FS-03 的构造阶段补 `parked-update`（停放交战可在 parked-update 中摧毁活动目标；已批准 D-01 语义下的遗漏，不改变行为），由 P3-12/10 实现时发现。

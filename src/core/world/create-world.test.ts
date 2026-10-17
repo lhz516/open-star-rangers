@@ -76,7 +76,9 @@ describe('world creation (P3-02 AC-02, 运行配置与世界创建)', () => {
     });
     const world = constructWorld(state);
     expect(world.projection()).toMatchObject({ clock: { tick: 0, clock: 0, clockUnitsPerTick: 2 }, player: { entityId: null, viewMode: 0xc } });
-    expect(world.renderState()).toEqual({ tick: 0, clock: 0, viewMode: 0xc, observedEntityId: null, entities: [], warp: null });
+    expect(world.renderState()).toEqual({
+      tick: 0, clock: 0, viewMode: 0xc, observedEntityId: null, entities: [], warp: null, subMode: 0, followedEntityId: null, activeAreaCentre: null,
+    });
   });
 
   it('draws only the +0x78 defaults: 8 of the 9 section-1 records, 9 with a wingman', () => {

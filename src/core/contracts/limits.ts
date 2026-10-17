@@ -33,8 +33,10 @@ export const CORE_LIMITS = Object.freeze({
    * `left-page-changed` 64 each, 8 page changes without a command, one each of `radio-taken`, `incoming-started`,
    * `incoming-ended` and `docked`, and two each of `departed`, `transition`, `docking-cancelled` and `radio-flushed`:
    * 640, 8,968 in all. P3-08 (CR-25) adds at most one `wingman-command-consumed` per wingman (32) and one
-   * `transponder-deployed` per command (64): 9,064, which this is about 3.6 times. At the entity limit the quadratic
-   * terms have no fixed bound, and exceeding the budget is a fault.
+   * `transponder-deployed` per command (64): 9,064. P3-12 (FS-08) adds `explosion-created` 353 (as many as
+   * `explosion-started`), `view-switched` 69 (one per `map-toggle` command, the Warp start and completion, a docking
+   * and two launches) and one `warp-wall-contact`: 9,487, which this is about 3.5 times. At the entity limit the
+   * quadratic terms have no fixed bound, and exceeding the budget is a fault.
    */
   eventsPerTick: 32_768,
   /**

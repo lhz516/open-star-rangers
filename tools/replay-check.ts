@@ -13,7 +13,9 @@ import { decodeLogicPayload } from '../src/content/logic/logic-payload.ts';
 import { readGroupManifest } from '../src/content/manifest.ts';
 import { readPayloadRecords } from '../src/content/payload.ts';
 import { decodeRuleDataPayload } from '../src/content/rule-data/rule-data-payload.ts';
-import { COMMAND_OUTCOMES, COMMAND_RESULT_REASONS, type CommandOutcome, type DomainEvent } from '../src/core/contracts/domain-events.ts';
+import {
+  COMMAND_OUTCOMES, COMMAND_RESULT_REASONS, EXPLOSION_CONSTRUCTION_STAGES, PIPELINE_STAGE_NAMES, type CommandOutcome, type DomainEvent,
+} from '../src/core/contracts/domain-events.ts';
 import { CORE_LIMITS } from '../src/core/contracts/limits.ts';
 import { COMMAND_TYPES, type Command, type CommandType, type TickInput } from '../src/core/contracts/tick-input.ts';
 import { CoreFaultError, CoreInputError } from '../src/core/errors.ts';
@@ -269,6 +271,18 @@ const LONGEST_EVENTS: { readonly [Type in DomainEvent['type']]: Extract<DomainEv
     type: 'transponder-deployed', tick: LAST_TICK, entityId: SAFE, creatorEntityId: SAFE, position: { x: LONGEST_F32, y: LONGEST_F32, z: LONGEST_F32 },
     orientation: Array.from({ length: 9 }, () => LONGEST_F32) as unknown as Matrix3,
   },
+  // P3-12's (docs/plan/p3/02/spec.md, FS-03): f32 poses, the longest stage names and a switch with the player's pose.
+  'explosion-created': {
+    type: 'explosion-created', tick: LAST_TICK, entityId: SAFE, sourceEntityId: SAFE, sourceKindBit: 31, variant: 'missile',
+    stage: longestOf(EXPLOSION_CONSTRUCTION_STAGES), position: { x: LONGEST_F32, y: LONGEST_F32, z: LONGEST_F32 },
+    velocity: { x: LONGEST_F32, y: LONGEST_F32, z: LONGEST_F32 },
+  },
+  'view-switched': {
+    type: 'view-switched', tick: LAST_TICK, fromViewMode: LONGEST_VIEW_MODE, fromSubMode: 0xff, viewMode: LONGEST_VIEW_MODE, subMode: 0xff,
+    stage: longestOf(PIPELINE_STAGE_NAMES),
+    player: { entityId: SAFE, position: { x: LONGEST_F32, y: LONGEST_F32, z: LONGEST_F32 }, orientation: Array.from({ length: 9 }, () => LONGEST_F32) as unknown as Matrix3 },
+  },
+  'warp-wall-contact': { type: 'warp-wall-contact', tick: LAST_TICK, serial: SAFE },
 };
 
 /** The content identity of every package the production import job converts. */

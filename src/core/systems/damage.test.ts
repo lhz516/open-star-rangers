@@ -19,6 +19,12 @@ const CLOCK = 640;
 const IMPACT: HitImpact = Object.freeze({ point: Object.freeze({ x: 1, y: 2, z: 3 }), local: Object.freeze({ x: 0, y: 0, z: -1 }), face: 4 });
 const at = (x: number, y: number, z: number) => ({ x, y, z });
 
+/** A context in the collision stage, one of those that destroy (`explosion-created` reports it). */
+function atCollision(context: TickContext): TickContext {
+  context.stage = 'collision';
+  return context;
+}
+
 interface Scene {
   readonly state: WorldState;
   readonly context: TickContext;
@@ -37,7 +43,7 @@ function scene(config: Partial<WorldConfig> = {}): Scene {
   state.clock = CLOCK;
   const player = addPlayerEntity(state) as CraftEntity;
   arm(player, 50, 100);
-  return { state, context: registerTick(state, readTickInput(tickInput())), player };
+  return { state, context: atCollision(registerTick(state, readTickInput(tickInput()))), player };
 }
 
 function arm(entity: Entity, shield: number, hull: number, states: Readonly<Record<number, SubsystemState>> = {}): CraftEntity {
@@ -408,7 +414,7 @@ describe('the communications reactions at their call points (CR-13; P3-10 CB-12;
     const messages = { ...communications.messages, direct: Object.freeze(Array.from({ length: 70 }, () => Object.freeze([1]))) };
     const nameIndexes = { ...communications.nameIndexes, pool: Object.freeze([{ in2001: 2, in2011: null }]) };
     const state: WorldState = { ...sc.state, ruleData: { ...sc.state.ruleData, communications: { ...communications, messages, nameIndexes } } };
-    return { state, context: registerTick(state, readTickInput(tickInput())), player: sc.player };
+    return { state, context: atCollision(registerTick(state, readTickInput(tickInput()))), player: sc.player };
   }
   const radioMessages = (context: TickContext) => context.events.flatMap((event) => (event.type === 'radio-queued' ? [event.message.index] : []));
 

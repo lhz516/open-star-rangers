@@ -7,8 +7,8 @@
  * after its command's result, request handling a manual match's `speed-matched`, and the parked update
  * `object-left-world`. P3-07's combat events and reasons follow (docs/plan/p3/02/spec.md, CR-05, CR-06), then P3-09's
  * map and Warp events and reasons (MW-04, MW-05), then P3-10's communications, docking and base events and reason
- * (CB-07, CB-13), then P3-08's wingman command and transponder events (CR-22). New event types or reasons are added by
- * revising the spec, not by consumers.
+ * (CB-07, CB-13), then P3-08's wingman command and transponder events (CR-22), then P3-12's presentation facts (FS-03).
+ * New event types or reasons are added by revising the spec, not by consumers.
  */
 import type { Activity, EntityId, ExplosionVariant, Level, Matrix3 } from '../world/entity-table.ts';
 import type { MapPixel } from '../world/map-rule-data.ts';
@@ -566,6 +566,64 @@ export interface TransponderDeployedEvent extends DomainEventBase<'transponder-d
   readonly orientation: Matrix3;
 }
 
+// P3-12's presentation facts (docs/plan/p3/02/spec.md, FS-03): detached fact snapshots like P3-07's, without a clock.
+
+/** The stage names of PIPELINE (pipeline.ts) in pipeline order, a closed list: a new or renamed stage revises it. */
+export const PIPELINE_STAGE_NAMES = Object.freeze([
+  'input-registration', 'mission-flow', 'clock', 'object-update', 'communications-reply',
+  'spawn-queue-check', 'request-handling', 'movement', 'collision', 'delayed-player-explosion',
+  'energy', 'object-sets', 'parked-update', 'warp-completion', 'base-interior',
+  'mission-teardown', 'area-check', 'frame-end', 'commit',
+] as const);
+export type PipelineStageName = (typeof PIPELINE_STAGE_NAMES)[number];
+
+/**
+ * The stages that construct explosions: FS-03's list, plus `parked-update`, where the parked engagement can destroy an
+ * active target (an amendment the contract lacks; see the P3-12/10 evidence).
+ */
+export const EXPLOSION_CONSTRUCTION_STAGES = Object.freeze([
+  'object-update', 'request-handling', 'movement', 'collision', 'delayed-player-explosion', 'parked-update',
+] as const satisfies readonly PipelineStageName[]);
+export type ExplosionConstructionStage = (typeof EXPLOSION_CONSTRUCTION_STAGES)[number];
+
+/**
+ * `constructExplosion` allocated an explosion (X2), once per explosion: after its source became a destroyed source,
+ * before the fragments, and after the source's `object-destroyed`, `fragment-expired` or `missile-ended`. One made in
+ * object update first calls back and activates in the same tick, any other in the next (X9).
+ */
+export interface ExplosionCreatedEvent extends DomainEventBase<'explosion-created'> {
+  readonly entityId: EntityId;
+  readonly sourceEntityId: EntityId;
+  /** mb +0x104: a craft bit 0–19, missile 20 or fragment 24. */
+  readonly sourceKindBit: number;
+  readonly variant: ExplosionVariant;
+  readonly stage: ExplosionConstructionStage;
+  /** The source's position at the call. */
+  readonly position: Vec3;
+  /** The explosion's linear velocity F(R2 × the source's speed), runtime units per second. */
+  readonly velocity: Vec3;
+}
+
+/**
+ * A rule wrote the view mode or sub-mode (view-switch.ts), right after the write and its rule effects, before the
+ * caller's own events and the switch's `left-page-changed`. `player` is the player entity's pose at the write, null
+ * without one. Creation and instantiation values are not switches.
+ */
+export interface ViewSwitchedEvent extends DomainEventBase<'view-switched'> {
+  readonly fromViewMode: number;
+  readonly fromSubMode: number;
+  readonly viewMode: number;
+  readonly subMode: number;
+  readonly stage: PipelineStageName;
+  readonly player: { readonly entityId: EntityId; readonly position: Vec3; readonly orientation: Matrix3 } | null;
+}
+
+/** The frame end's Warp step put the player against the tunnel wall inside the error window, at most once per step. */
+export interface WarpWallContactEvent extends DomainEventBase<'warp-wall-contact'> {
+  /** The Warp's serial (RenderWarp.serial). */
+  readonly serial: number;
+}
+
 export type DomainEvent =
   | CommandResultEvent
   | ObjectInstantiatedEvent
@@ -604,4 +662,7 @@ export type DomainEvent =
   | BaseNavigatedEvent
   | BaseConfirmedEvent
   | WingmanCommandConsumedEvent
-  | TransponderDeployedEvent;
+  | TransponderDeployedEvent
+  | ExplosionCreatedEvent
+  | ViewSwitchedEvent
+  | WarpWallContactEvent;

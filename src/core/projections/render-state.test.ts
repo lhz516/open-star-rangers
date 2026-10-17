@@ -4,7 +4,8 @@ import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
 import { initialPlayerControl, initialPlayerTargeting } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
-import { addPlayerEntity, busyCombat, entityInit, stillEntityInit, TEST_MODEL, TEST_ORIENTATION, testState, tickInput } from '../world/world.test-support.ts';
+import type { ObjectState } from '../world/entity-table.ts';
+import { addPlayerEntity, busyCombat, entityInit, expectFault, stateText, stillEntityInit, TEST_MODEL, TEST_ORIENTATION, testState, tickInput } from '../world/world.test-support.ts';
 import { renderWorld, type RenderState } from './render-state.ts';
 
 const lerp = (from: Vec3, to: Vec3, alpha: number): Vec3 => ({
@@ -38,7 +39,8 @@ describe('Render State (P3-02 AC-10, Projection 与 Render State)', () => {
     first.placementSerial = 2;
     state.clock = 6;
     const render = renderWorld(state);
-    const unlit = { hitShimmerStart: null, explosionStart: null };
+    // P3-12 (FS-01): new entities are pending, out of Warp, with no source kind.
+    const unlit = { hitShimmerStart: null, explosionStart: null, inWarp: false, sourceKindBit: null, display: 'pending' };
     expect(render).toEqual({
       tick: 0,
       clock: 6,
@@ -49,6 +51,9 @@ describe('Render State (P3-02 AC-10, Projection 与 Render State)', () => {
         { id: player.id, kindBit: 0, presentation: { type: 'model', model: TEST_MODEL }, position: { x: 0, y: 2, z: 3 }, orientation: TEST_ORIENTATION, placementSerial: 0, ...unlit },
       ],
       warp: null,
+      subMode: 0,
+      followedEntityId: null,
+      activeAreaCentre: { x: 0, y: 2, z: 3 },
     });
     expect(deepFrozen(render)).toBe(true);
   });
@@ -157,5 +162,82 @@ describe('Render State (P3-02 AC-10, Projection 与 Render State)', () => {
     const resumed = after.entities.find(({ id }) => id === craft.id)!;
     expect(resumed).toMatchObject({ position: craft.position, placementSerial: 1 });
     expect(drawBetween(before, after, 0.5).find(({ id }) => id === craft.id)).toEqual({ id: craft.id, position: craft.position });
+  });
+});
+
+// P3-12 (docs/plan/p3/02/spec.md, FS-01, FS-04): the observation facts, sampled at the tick's end.
+describe('Render State\'s presentation facts (P3-12 FS-01)', () => {
+  const STAGES: readonly (readonly [ObjectState, string])[] = [
+    ['new', 'pending'], ['presentation-ready', 'pending'], ['awaiting-presentation', 'pending'],
+    ['area-switch', 'released'], ['pending-removal', 'released'],
+    ['destroyed-source', 'shown'], ['active', 'shown'], ['projectile-hit', 'shown'],
+  ];
+
+  it.each(STAGES)('gives an entity in state %s the display %s', (objectState, display) => {
+    const state = testState();
+    const entity = state.entities.allocate(entityInit(7));
+    entity.state = objectState;
+    expect(renderWorld(state).entities[0].display).toBe(display);
+  });
+
+  it('hides the player\'s entity while its model is not shown, and releases it first', () => {
+    const state = testState();
+    const player = addPlayerEntity(state);
+    const other = state.entities.allocate(entityInit(7));
+    for (const entity of [player, other]) entity.state = 'active';
+    const displays = () => renderWorld(state).entities.map(({ display }) => display);
+    expect(state.player.modelShown).toBe(false);
+    expect(displays()).toEqual(['hidden', 'shown']);
+    state.player.modelShown = true;
+    expect(displays()).toEqual(['shown', 'shown']);
+    player.state = 'destroyed-source';
+    expect(displays()).toEqual(['shown', 'shown']);
+    player.state = 'pending-removal';
+    expect(displays()).toEqual(['released', 'shown']);
+    player.state = 'presentation-ready';
+    expect(displays()).toEqual(['pending', 'shown']);
+  });
+
+  it('gives every kind its inWarp, and an explosion\'s or fragment\'s source kind bit only', () => {
+    const state = testState();
+    for (const kindBit of [7, 20, 21, 22, 24, 25]) state.entities.allocate(entityInit(kindBit, { combat: busyCombat(kindBit) }));
+    const warped = state.entities.allocate(entityInit(8));
+    warped.inWarp = true;
+    const render = renderWorld(state);
+    expect(render.entities.map(({ kindBit, sourceKindBit, inWarp }) => [kindBit, sourceKindBit, inWarp])).toEqual([
+      [7, null, false], [20, null, false], [21, null, false], [22, 20, false], [24, 7, false], [25, null, false], [8, null, true],
+    ]);
+  });
+
+  it('gives the sub-mode, the followed entity even once it is gone, and the area centre the area check uses', () => {
+    const state = testState();
+    const player = addPlayerEntity(state, { position: { x: 5, y: 6, z: 7 } });
+    Object.assign(state.player, { subMode: 8, followedEntity: 99 });
+    let render = renderWorld(state);
+    expect([render.subMode, render.followedEntityId, render.activeAreaCentre]).toEqual([8, 99, { x: 5, y: 6, z: 7 }]);
+    expect(render.activeAreaCentre).not.toBe(player.position);
+    expect(deepFrozen(render)).toBe(true);
+    // In Warp the centre is the destination (MW-10); without a player entity there is none.
+    player.inWarp = true;
+    state.player.map.destination = { x: -1, y: -2, z: -3 };
+    render = renderWorld(state);
+    expect(render.activeAreaCentre).toEqual({ x: -1, y: -2, z: -3 });
+    expect(render.activeAreaCentre).not.toBe(state.player.map.destination);
+    state.player.entityId = null;
+    expect(renderWorld(state).activeAreaCentre).toBeNull();
+  });
+
+  it('faults as the area check does on a Warp without a destination', () => {
+    const state = testState();
+    addPlayerEntity(state).inWarp = true;
+    expectFault(() => renderWorld(state), 'invariant-violated', 'active-area.warp-destination');
+  });
+
+  it('reads without changing the world', () => {
+    const state = testState();
+    addPlayerEntity(state);
+    const before = stateText(state);
+    renderWorld(state);
+    expect(stateText(state)).toBe(before);
   });
 });

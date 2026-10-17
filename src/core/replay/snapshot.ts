@@ -1,6 +1,6 @@
 /**
  * The formal Core snapshot (docs/plan/p3/02/spec.md, 快照、哈希与 replay; 技术决定 9):
- * `{ format: 'osr-game-snapshot', version: 6, rulesVersion, state }`, deeply frozen and detached from the world. The
+ * `{ format: 'osr-game-snapshot', version: 7, rulesVersion, state }`, deeply frozen and detached from the world. The
  * state is every piece of the world's authoritative state that can affect a later result: the configuration with the
  * full content identity and setupHash, tick, clock, RNG state, the next entity ID, the entities and the order of the
  * kind lists with each entity's flight state (maximum speed, timers, movement block, AI state, formation) and combat
@@ -12,9 +12,9 @@
  * state and saved docking pose, each entity's communications fields and pending command, and the world's
  * communications, friendly-fire and base service state (CB-16). P3-08 adds each entity's AI program slot with its
  * controller and the handler's private state, the transponder state, and the world's parse cache (CR-25); the static AI
- * data is not copied. Names are held by the entities that carry them. The
- * static MissionSetup and rule data are not copied: setupHash binds them. A snapshot is a diagnostic and a checkpoint
- * source, not a save: Core restores no world from one.
+ * data is not copied. P3-12 adds whether the player's model is shown (FS-08). Names are held by the entities that
+ * carry them. The static MissionSetup and rule data are not copied: setupHash binds them. A snapshot is a diagnostic
+ * and a checkpoint source, not a save: Core restores no world from one.
  *
  * The canonical text writes every object's members in the order listed here, never in an object's own key order; the
  * entities are a set written in ascending ID order, every other list keeps its order. The state hash is fnv1a64 of the
@@ -130,7 +130,7 @@ import type {
 import { RULES_VERSION } from './rules-version.ts';
 
 export const GAME_SNAPSHOT_FORMAT = 'osr-game-snapshot';
-export const GAME_SNAPSHOT_VERSION = 6;
+export const GAME_SNAPSHOT_VERSION = 7;
 
 export type SnapshotEntity = Readonly<Entity>;
 export type SnapshotRecord = Readonly<RuntimeRecord>;
@@ -747,6 +747,7 @@ const state = object<SnapshotState>({
     dockingObject: scalar,
     communications: playerCommunications,
     docking: object<PlayerState['docking']>({ savedPose: nullable(pose) }),
+    modelShown: scalar,
   }),
   objectSets: object<ObjectSets>({ friendly: list(scalar), hostile: list(scalar) }),
   mapIcons: list(mapIcon),

@@ -60,8 +60,20 @@ const step = (world: World, commands: readonly Command[] = [], axes: TickAxes = 
 const results = (events: readonly DomainEvent[]) => events.flatMap((event) => (event.type === 'command-result' ? [[event.commandIndex, event.commandType, event.outcome, event.reason]] : []));
 const others = (events: readonly DomainEvent[]) => events.filter(({ type }) => type !== 'command-result');
 const view = ({ player }: WorldState) => [player.viewMode, player.previousViewMode];
-const toggled = (tick: number, open: boolean, viewMode: number, previousViewMode: number, commandIndex: number): DomainEvent =>
-  ({ type: 'map-toggled', tick, open, viewMode, previousViewMode, commandIndex });
+/**
+ * A committed toggle's events: P3-12's `view-switched` in request handling at the player entity's pose (FS-03; the
+ * player stands, so its pose now), then `map-toggled`.
+ */
+function toggled(state: WorldState, tick: number, open: boolean, viewMode: number, previousViewMode: number, commandIndex: number): DomainEvent[] {
+  const player = state.player.entityId === null ? undefined : state.entities.get(state.player.entityId);
+  return [
+    {
+      type: 'view-switched', tick, fromViewMode: open ? previousViewMode : MAP, fromSubMode: 0, viewMode, subMode: 0, stage: 'request-handling',
+      player: player === undefined ? null : { entityId: player.id, position: player.position, orientation: player.orientation },
+    },
+    { type: 'map-toggled', tick, open, viewMode, previousViewMode, commandIndex },
+  ];
+}
 const block = (player: Entity) => player.movement as SteeredMovementBlock;
 
 describe('opening and closing the map (MW-04, MW-05, MW-09)', () => {
@@ -74,9 +86,10 @@ describe('opening and closing the map (MW-04, MW-05, MW-09)', () => {
     state.player.leftDisplay.page = 1;
     const destination = { x: 1, y: 2, z: 3 };
     state.player.map.destination = destination;
+    state.player.modelShown = true;
     const events = step(world, [toggle]);
     expect(results(events)).toEqual([[0, 'toggle-map', 'accepted', null]]);
-    expect(others(events)).toEqual([toggled(1, true, MAP, FLIGHT, 0)]);
+    expect(others(events)).toEqual(toggled(state, 1, true, MAP, FLIGHT, 0));
     expect(view(state)).toEqual([MAP, FLIGHT]);
     expect(state.player.map.cursor).toEqual(START);
     expect(mapPixelToWorld(state.ruleData.map, state.player.map.cursor)).toEqual({ x: -4950, y: -10350, z: 0 });
@@ -85,6 +98,8 @@ describe('opening and closing the map (MW-04, MW-05, MW-09)', () => {
     expect([state.player.leftDisplay.page, state.player.statusDisplay.redraw, state.player.target, state.player.map.destination]).toEqual([1, false, target.id, destination]);
     expect(state.player.savedLeftPage).toBe(0);
     expect(player.state).toBe('active');
+    // The toggle is no `0x216d4` switch: the player's model flag stays (P3-12 FS-02).
+    expect(state.player.modelShown).toBe(true);
   });
 
   it('closes back to the saved view, keeping the cursor, page, redraw and target', () => {
@@ -97,7 +112,7 @@ describe('opening and closing the map (MW-04, MW-05, MW-09)', () => {
     state.player.leftDisplay.page = 1;
     const events = step(world, [toggle]);
     expect(results(events)).toEqual([[0, 'toggle-map', 'accepted', null]]);
-    expect(others(events)).toEqual([toggled(2, false, FLIGHT, MAP, 0)]);
+    expect(others(events)).toEqual(toggled(state, 2, false, FLIGHT, MAP, 0));
     expect(view(state)).toEqual([FLIGHT, MAP]);
     expect([state.player.map.cursor, state.player.leftDisplay.page, state.player.statusDisplay.redraw, state.player.target]).toEqual([{ column: 5, row: 6 }, 1, false, target.id]);
   });
@@ -117,7 +132,7 @@ describe('opening and closing the map (MW-04, MW-05, MW-09)', () => {
     state.player.statusDisplay.redraw = false;
     let events = step(world, [toggle]);
     expect(results(events)).toEqual([[0, 'toggle-map', 'accepted', null]]);
-    expect(others(events)).toEqual([toggled(1, true, MAP, BASE, 0)]);
+    expect(others(events)).toEqual(toggled(state, 1, true, MAP, BASE, 0));
     expect(view(state)).toEqual([MAP, BASE]);
     expect(state.player.map.cursor).toEqual(START);
     // Leaving or entering view 6 runs 0x4cd68 in the view switch (P3-10, CB-10): the redraw flag, the page unchanged.
@@ -126,7 +141,7 @@ describe('opening and closing the map (MW-04, MW-05, MW-09)', () => {
     // From the base, P3-06's commands are wrong-context after the close as before the open.
     events = step(world, [toggle, zero]);
     expect(results(events)).toEqual([[0, 'toggle-map', 'accepted', null], [1, 'speed', 'ignored', 'wrong-context']]);
-    expect(others(events)).toEqual([toggled(2, false, BASE, MAP, 0)]);
+    expect(others(events)).toEqual(toggled(state, 2, false, BASE, MAP, 0));
     expect(view(state)).toEqual([BASE, MAP]);
   });
 
@@ -159,7 +174,7 @@ describe('the player gate of toggle-map (MW-04, MW-12 difference 8)', () => {
     make(state, player);
     const events = step(world, [toggle, toggle]);
     expect(results(events)).toEqual([[0, 'toggle-map', 'accepted', null], [1, 'toggle-map', 'ignored', 'player-unavailable']]);
-    expect(others(events)).toEqual([toggled(2, false, FLIGHT, MAP, 0)]);
+    expect(others(events)).toEqual(toggled(state, 2, false, FLIGHT, MAP, 0));
     expect(view(state)).toEqual([FLIGHT, MAP]);
   });
 });
@@ -179,7 +194,7 @@ describe('ordered command gates in one tick (MW-04)', () => {
       [7, 'select-number', 'ignored', 'wrong-context'],
       [8, 'navigate-selection', 'ignored', 'wrong-context'],
     ]);
-    expect(others(events)).toEqual([toggled(1, true, MAP, FLIGHT, 1)]);
+    expect(others(events)).toEqual(toggled(state, 1, true, MAP, FLIGHT, 1));
     // The throttle accepted before the opening is applied in request handling after it, with the value it was posted with.
     expect(block(player).commandedSpeed).toBe(0);
     expect(state.player.leftDisplay.page).toBe(0);
@@ -198,7 +213,7 @@ describe('ordered command gates in one tick (MW-04)', () => {
     // The energy page is written at its judgement, and the map closes in request handling.
     expect(others(events)).toEqual([
       { type: 'left-page-changed', tick: 2, page: 1, previousPage: 0, commandIndex: 3 },
-      toggled(2, false, FLIGHT, MAP, 1),
+      ...toggled(state, 2, false, FLIGHT, MAP, 1),
     ]);
     expect(block(player).commandedSpeed).toBe(0);
     expect(view(state)).toEqual([FLIGHT, MAP]);
@@ -214,7 +229,7 @@ describe('ordered command gates in one tick (MW-04)', () => {
       [2, 'toggle-map', 'accepted', null],
       [3, 'speed', 'accepted', null],
     ]);
-    expect(others(events)).toEqual([toggled(1, true, MAP, FLIGHT, 0), toggled(1, false, FLIGHT, MAP, 2)]);
+    expect(others(events)).toEqual([...toggled(state, 1, true, MAP, FLIGHT, 0), ...toggled(state, 1, false, FLIGHT, MAP, 2)]);
     expect(view(state)).toEqual([FLIGHT, MAP]);
     // The opening reset the cursor.
     expect(state.player.map.cursor).toEqual(START);
@@ -226,7 +241,7 @@ describe('ordered command gates in one tick (MW-04)', () => {
     step(world, [toggle]);
     const events = step(world, [toggle, toggle, zero]);
     expect(results(events)).toEqual([[0, 'toggle-map', 'accepted', null], [1, 'toggle-map', 'accepted', null], [2, 'speed', 'ignored', 'wrong-context']]);
-    expect(others(events)).toEqual([toggled(2, false, 0x0d, MAP, 0), toggled(2, true, MAP, 0x0d, 1)]);
+    expect(others(events)).toEqual([...toggled(state, 2, false, 0x0d, MAP, 0), ...toggled(state, 2, true, MAP, 0x0d, 1)]);
     expect(view(state)).toEqual([MAP, 0x0d]);
   });
 
@@ -238,7 +253,7 @@ describe('ordered command gates in one tick (MW-04)', () => {
     expect(results(events)).toEqual([[0, 'target', 'accepted', null], [1, 'toggle-map', 'accepted', null]]);
     expect(others(events)).toEqual([
       { type: 'target-changed', tick: 1, playerEntityId: player.id, previousTarget: null, target: near.id, targetKindBit: 7, mode: 'enemy', origin: 'command', commandIndex: 0 },
-      toggled(1, true, MAP, FLIGHT, 1),
+      ...toggled(state, 1, true, MAP, FLIGHT, 1),
     ]);
 
     // The automatic selection (due now, no target) posts after the command batch, so after the map's request.
@@ -248,7 +263,7 @@ describe('ordered command gates in one tick (MW-04)', () => {
     second.state.player.targeting!.autoTargetDueClock = 0;
     events = step(second.world, [toggle]);
     expect(others(events)).toEqual([
-      toggled(1, true, MAP, FLIGHT, 0),
+      ...toggled(second.state, 1, true, MAP, FLIGHT, 0),
       { type: 'target-changed', tick: 1, playerEntityId: second.player.id, previousTarget: null, target: other.id, targetKindBit: 7, mode: 'enemy', origin: 'automatic', commandIndex: null },
     ]);
   });
@@ -261,7 +276,7 @@ describe('ordered command gates in one tick (MW-04)', () => {
     near.state = 'active';
     state.player.targeting!.autoTargetDueClock = 0;
     let events = step(world, [toggle]);
-    expect(others(events)).toEqual([toggled(1, true, MAP, BASE, 0)]);
+    expect(others(events)).toEqual(toggled(state, 1, true, MAP, BASE, 0));
     expect(state.player.target).toBeNull();
     state.player.targeting!.autoTargetDueClock = 0;
     events = step(world);
@@ -289,7 +304,7 @@ describe('ordered command gates in one tick (MW-04)', () => {
     expect(block(player).commandedSpeed).toBe(0);
     events = step(world, [toggle, confirm]);
     expect(results(events)).toEqual([[0, 'toggle-map', 'accepted', null], [1, 'confirm-selection', 'accepted', null]]);
-    expect(others(events)).toEqual([toggled(3, false, FLIGHT, MAP, 0), { type: 'speed-matched', tick: 3, targetEntityId: target.id, origin: 'command', commandIndex: 1 }]);
+    expect(others(events)).toEqual([...toggled(state, 3, false, FLIGHT, MAP, 0), { type: 'speed-matched', tick: 3, targetEntityId: target.id, origin: 'command', commandIndex: 1 }]);
     expect(block(player).commandedSpeed).toBe(30);
   });
 
@@ -596,7 +611,7 @@ describe('the icon list and the pick (MW-02, MW-07)', () => {
     expect(state.mapIcons).toEqual([]);
     const events = step(world, [toggle, select(10, 20)]);
     expect(results(events)).toEqual([[0, 'toggle-map', 'accepted', null], [1, 'map-point', 'accepted', null]]);
-    expect(others(events)).toMatchObject([{ type: 'map-toggled' }, { icon: null, destination: worldOf(10, 20) }]);
+    expect(others(events)).toMatchObject([{ type: 'view-switched' }, { type: 'map-toggled' }, { icon: null, destination: worldOf(10, 20) }]);
     expect(state.mapIcons.map(({ entityId }) => entityId)).toContain(craft.id);
   });
 
@@ -621,7 +636,7 @@ describe('select in ordered commands (MW-04, MW-12 difference 1)', () => {
     const { state, world, player } = setUp(MAP);
     const events = step(world, [select(1, 2), toggle, select(3, 4)]);
     expect(results(events)).toEqual([[0, 'map-point', 'accepted', null], [1, 'toggle-map', 'accepted', null], [2, 'map-point', 'ignored', 'wrong-context']]);
-    expect(others(events)).toMatchObject([{ type: 'warp-destination-set', playerEntityId: player.id, pixel: { column: 1, row: 2 } }, { type: 'map-toggled', open: false }]);
+    expect(others(events)).toMatchObject([{ type: 'warp-destination-set', playerEntityId: player.id, pixel: { column: 1, row: 2 } }, { type: 'view-switched' }, { type: 'map-toggled', open: false }]);
     expect(state.player.map.destination).toEqual(worldOf(1, 2));
   });
 
@@ -630,6 +645,7 @@ describe('select in ordered commands (MW-04, MW-12 difference 1)', () => {
     const context = registerTick(state, readTickInput({ axes: { ...NEUTRAL }, commands: [select(10, 20), hover(5, 5), select(7, 8)] }));
     expect(context.commandView.destination).toBeNull();
     for (const { id, run } of PIPELINE) {
+      context.stage = id;
       run?.(context);
       if (id === 'object-update') break;
     }

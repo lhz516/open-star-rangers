@@ -842,6 +842,7 @@ function parkedOf(entity: Entity): Extract<AiController, { handler: 'parked' }> 
 function runStages(state: WorldState, input = tickInput(), after: Partial<Record<string, (context: TickContext) => void>> = {}) {
   const context = registerTick(state, readTickInput(input));
   for (const { id, run } of PIPELINE) {
+    context.stage = id;
     run?.(context);
     after[id]?.(context);
   }

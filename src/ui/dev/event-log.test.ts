@@ -164,6 +164,33 @@ describe('event log', () => {
     ]);
   });
 
+  it('summarizes P3-12\'s presentation facts by their own scalar fields, in a fixed order', () => {
+    const summary = (event: DomainEvent) => summarizeEvent(event, NO_COMMAND, 1).fields;
+    expect(([
+      {
+        type: 'explosion-created', tick: 6, entityId: 9, sourceEntityId: 4, sourceKindBit: 7, variant: 'other', stage: 'collision',
+        position: { x: 1, y: -2, z: 3 }, velocity: { x: 0, y: 0, z: 48 },
+      },
+      {
+        type: 'view-switched', tick: 6, fromViewMode: 12, fromSubMode: 0, viewMode: 1, subMode: 0, stage: 'request-handling',
+        player: { entityId: 1, position: { x: 5, y: 6, z: 7 }, orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
+      },
+      { type: 'view-switched', tick: 7, fromViewMode: 1, fromSubMode: 0, viewMode: 12, subMode: 0, stage: 'warp-completion', player: null },
+      { type: 'warp-wall-contact', tick: 6, serial: 2 },
+    ] as const).map((event) => summary(event as DomainEvent))).toEqual([
+      [
+        ['entityId', 9], ['sourceEntityId', 4], ['sourceKindBit', 7], ['variant', 'other'], ['stage', 'collision'], ['x', 1], ['y', -2], ['z', 3],
+        ['velocityX', 0], ['velocityY', 0], ['velocityZ', 48],
+      ],
+      [
+        ['fromViewMode', 12], ['fromSubMode', 0], ['viewMode', 1], ['subMode', 0], ['stage', 'request-handling'], ['playerEntityId', 1],
+        ['playerX', 5], ['playerY', 6], ['playerZ', 7],
+      ],
+      [['fromViewMode', 1], ['fromSubMode', 0], ['viewMode', 12], ['subMode', 0], ['stage', 'warp-completion'], ['playerEntityId', null]],
+      [['serial', 2]],
+    ]);
+  });
+
   it('keeps 500 events untruncated and drops the oldest of 501', () => {
     const log = new EventLog();
     for (let tick = 1; tick <= EVENT_LOG_LIMIT; tick++) log.append(result(tick), NO_COMMAND);

@@ -889,4 +889,75 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
       expectInvalidOnEitherSide(aiRun, change, path);
     });
   });
+
+  describe('P3-12 presentation facts (docs/plan/p3/02/spec.md, FS-03)', () => {
+    const IDENTITY = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    const switched = (tick: number, stage: string, overrides: Mutable = {}): Mutable => ({
+      type: 'view-switched', tick, fromViewMode: 0xc, fromSubMode: 0, viewMode: 8, subMode: 0, stage,
+      player: { entityId: 1, position: { x: 1, y: 2, z: 3 }, orientation: [...IDENTITY] }, ...overrides,
+    });
+    const created = (tick: number, stage: string, overrides: Mutable = {}): Mutable => ({
+      type: 'explosion-created', tick, entityId: 9, sourceEntityId: 4, sourceKindBit: 7, variant: 'other', stage,
+      position: { x: 1, y: -2, z: 0.5 }, velocity: { x: 0, y: 0, z: 48 }, ...overrides,
+    });
+    const wall = (tick: number): Mutable => ({ type: 'warp-wall-contact', tick, serial: 1 });
+
+    /**
+     * Tick 1: an explosion built in object update after the player's results; a toggle's switch in request handling
+     * before its `map-toggled`; explosions built in request handling, movement, collision, the delayed player explosion
+     * and the parked update, each in its stage's place.
+     * Tick 2: a Warp completion's switch without a player, then a wall contact at the frame end.
+     */
+    function presentationRun(): Result {
+      const events = [
+        commandResult(1, 0, { commandType: 'toggle-map', outcome: 'accepted', reason: null }),
+        created(1, 'object-update'),
+        switched(1, 'request-handling'),
+        { type: 'map-toggled', tick: 1, open: true, viewMode: 8, previousViewMode: 0xc, commandIndex: 0 },
+        created(1, 'request-handling', { entityId: 10, sourceKindBit: 20, variant: 'missile' }),
+        created(1, 'movement', { entityId: 11 }),
+        created(1, 'collision', { entityId: 12, sourceKindBit: 24 }),
+        created(1, 'delayed-player-explosion', { entityId: 13, sourceKindBit: 0 }),
+        created(1, 'parked-update', { entityId: 14, variant: 'large', sourceKindBit: 16 }),
+        switched(2, 'warp-completion', { fromViewMode: 1, viewMode: 0xc, player: null }),
+        wall(2),
+      ];
+      return { events, checkpoints: [{ tick: 0, hash: hashOf(0) }, { tick: 2, hash: hashOf(2) }], finalTick: 2 };
+    }
+
+    it('accepts and matches every type in the order of the stages it reports, after a JSON round trip', () => {
+      expect(compareReplayResults(presentationRun(), JSON.parse(JSON.stringify(presentationRun())))).toEqual({ match: true });
+    });
+
+    it.each([
+      ['construction stage', 4, (event: Mutable) => { event.stage = 'movement'; }],
+      ['construction velocity', 5, (event: Mutable) => { (event.velocity as Mutable).z = 47; }],
+      ['switch pose', 2, (event: Mutable) => { ((event.player as Mutable).orientation as number[])[0] = -1; }],
+      ['switch sub-mode', 9, (event: Mutable) => { event.subMode = 8; }],
+      ['wall contact serial', 10, (event: Mutable) => { event.serial = 2; }],
+    ])('reports a different %s at its tick', (_, index, change) => {
+      const actual = presentationRun();
+      change(actual.events[index]);
+      expect(compareReplayResults(presentationRun(), actual)).toEqual({ match: false, tick: actual.events[index].tick, kind: 'events' });
+    });
+
+    const invalid: [string, (result: Result) => void, string][] = [
+      ['a construction in a stage that builds none', (result) => { result.events[5].stage = 'energy'; }, '.events[5].stage'],
+      ['a switch in an unknown stage', (result) => { result.events[2].stage = 'render'; }, '.events[2].stage'],
+      ['a construction without its velocity', (result) => { delete result.events[5].velocity; }, '.events[5].velocity'],
+      ['a sub-mode beyond a byte', (result) => { result.events[9].fromSubMode = 0x100; }, '.events[9].fromSubMode'],
+      ['a switch pose with an extra field', (result) => { (result.events[2].player as Mutable).kindBit = 0; }, '.events[2].player'],
+      ['a wall contact of serial 0', (result) => { result.events[10].serial = 0; }, '.events[10].serial'],
+      ['a construction velocity that is not an f32', (result) => { (result.events[5].velocity as Mutable).x = 0.1; }, '.events[5].velocity.x'],
+      ['a switch orientation that is not an f32', (result) => { ((result.events[2].player as Mutable).orientation as number[])[4] = 0.1; }, '.events[2].player.orientation[4]'],
+      ['a construction stage earlier than the event before', (result) => { result.events[8].stage = 'object-update'; }, '.events[8].stage'],
+      ['a switch in mission flow after request handling', (result) => void result.events.splice(3, 0, switched(1, 'mission-flow')), '.events[3].stage'],
+      ['a wall contact before the completion', (result) => void result.events.splice(9, 2, result.events[10], result.events[9]), '.events[10].stage'],
+      ['a second wall contact', (result) => void result.events.push(wall(2)), '.events[11]'],
+    ];
+
+    it.each(invalid)('rejects %s on either side', (_, change, path) => {
+      expectInvalidOnEitherSide(presentationRun, change, path);
+    });
+  });
 });

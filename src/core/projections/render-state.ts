@@ -13,8 +13,14 @@
  * completed segments n, fraction u, length L and the tunnel path's 15 control points, for P3-12's tunnel effect; it is
  * null in every other view (and in the unreachable view 1 without a transit). The placement serial grows at a Warp
  * start, an arrival and a marker move.
+ *
+ * P3-12 (docs/plan/p3/02/spec.md, FS-01, FS-04): the player state's sub-mode and followed entity, the active area's
+ * centre, and per entity its `inWarp`, an explosion's or fragment's source kind bit and its closed display stage, all
+ * sampled at the tick's end. Renderers test the area with rules/active-area.ts's isWithinActiveArea and read no
+ * projection to judge the view.
  */
 import type { Vec3 } from '../contracts/domain-events.ts';
+import { activeAreaCentre } from '../rules/active-area.ts';
 import { warpProgress } from '../rules/warp-path.ts';
 import { WARP_VIEW_MODE } from '../systems/view-switch.ts';
 import { frozenVec, type Entity, type EntityId, type EntityPresentation, type Matrix3 } from '../world/entity-table.ts';
@@ -32,7 +38,20 @@ export interface RenderEntity {
   readonly hitShimmerStart: number | null;
   /** An explosion's activation clock (CR-12); null for every other kind and before activation. */
   readonly explosionStart: number | null;
+  /** The entity's +0xCC, for every kind. */
+  readonly inWarp: boolean;
+  /** An explosion's or a fragment's source kind bit (mb +0x104, +0xF0); null for every other kind. */
+  readonly sourceKindBit: number | null;
+  readonly display: RenderDisplay;
 }
+
+/**
+ * The original visual's stage at the tick's end (FS-01), the first that holds: `released` in area-switch or pending
+ * removal (the original has handled its removal; it leaves the table next tick); `pending` before its first pose item
+ * (new, presentation-ready, awaiting-presentation); `hidden` for the player's entity while its model is not shown;
+ * `shown` otherwise. Only `shown` and `hidden` entities get a pose item in the original.
+ */
+export type RenderDisplay = 'pending' | 'shown' | 'hidden' | 'released';
 
 export interface RenderState {
   readonly tick: number;
@@ -45,6 +64,12 @@ export interface RenderState {
   readonly entities: readonly RenderEntity[];
   /** The Warp transit in view mode 1, null otherwise. */
   readonly warp: RenderWarp | null;
+  /** The player state's sub-mode (ps +0x2A). */
+  readonly subMode: number;
+  /** ps +0x90, the player's escape pod while it lasts; given even once that entity has left the table. */
+  readonly followedEntityId: EntityId | null;
+  /** rules/active-area.ts's activeAreaCentre, the area check's centre; null without a player entity. */
+  readonly activeAreaCentre: Vec3 | null;
 }
 
 /** The Warp transit's presentation inputs (MW-11). */
@@ -67,7 +92,23 @@ function renderWarp(world: WorldState): RenderWarp | null {
   return Object.freeze({ serial, progress: warpProgress(transit), segments, fraction, length, path: Object.freeze(path.map(frozenVec)) });
 }
 
-function renderEntity({ id, kindBit, presentation, position: { x, y, z }, orientation, placementSerial, combat }: Entity): RenderEntity {
+function renderDisplay({ id, state }: Entity, hiddenId: EntityId | null): RenderDisplay {
+  switch (state) {
+    case 'area-switch':
+    case 'pending-removal':
+      return 'released';
+    case 'new':
+    case 'presentation-ready':
+    case 'awaiting-presentation':
+      return 'pending';
+    default:
+      return id === hiddenId ? 'hidden' : 'shown';
+  }
+}
+
+/** `hiddenId` is the player's entity while its model is not shown (FS-02), otherwise null. */
+function renderEntity(entity: Entity, hiddenId: EntityId | null): RenderEntity {
+  const { id, kindBit, presentation, position: { x, y, z }, orientation, placementSerial, combat, inWarp } = entity;
   return Object.freeze({
     id,
     kindBit,
@@ -78,20 +119,29 @@ function renderEntity({ id, kindBit, presentation, position: { x, y, z }, orient
     placementSerial,
     hitShimmerStart: combat.type === 'craft' ? combat.hitFeedbackClock : null,
     explosionStart: combat.type === 'explosion' ? combat.activationClock : null,
+    inWarp,
+    sourceKindBit: combat.type === 'explosion' || combat.type === 'fragment' ? combat.sourceKindBit : null,
+    display: renderDisplay(entity, hiddenId),
   });
 }
 
 export function renderWorld(world: WorldState): RenderState {
   const entities: RenderEntity[] = [];
+  const { player } = world;
+  const hiddenId = player.modelShown ? null : player.entityId;
   for (const entity of world.entities.byId()) {
-    if (entity.activity !== 'parked') entities.push(renderEntity(entity));
+    if (entity.activity !== 'parked') entities.push(renderEntity(entity, hiddenId));
   }
+  const centre = activeAreaCentre(world);
   return Object.freeze({
     tick: world.tick,
     clock: world.clock,
-    viewMode: world.player.viewMode,
-    observedEntityId: world.player.entityId,
+    viewMode: player.viewMode,
+    observedEntityId: player.entityId,
     entities: Object.freeze(entities),
     warp: renderWarp(world),
+    subMode: player.subMode,
+    followedEntityId: player.followedEntity,
+    activeAreaCentre: centre === null ? null : frozenVec(centre),
   });
 }
