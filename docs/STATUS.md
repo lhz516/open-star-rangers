@@ -2,12 +2,12 @@
 type: status
 status: active
 phase: all
-updated: 2026-10-14
+updated: 2026-10-16
 ---
 
 # 项目进度
 
-**当前阶段：P3 完整玩法切片**（任务拆分已于 2026-10-08 批准；P3-01 至 P3-07 已完成。P2 退出评审与 P1 本地退出评审已通过，P0 其余项目并行收尾）
+**当前阶段：P3 完整玩法切片**（任务拆分已于 2026-10-08 批准；P3-01 至 P3-07 与 P3-10 已完成。P2 退出评审与 P1 本地退出评审已通过，P0 其余项目并行收尾）
 
 本文件是项目总进度入口，只记录当前阶段、阶段状态摘要、任务索引入口、下一步与项目级阻塞，不跟踪阶段退出条件或任务执行状态。阶段范围和退出条件由[总计划 §12](./plan/master-plan.md#12-开发阶段与验收条件)定义，任务状态见各 goal，验收证据见 subtask 文档，最终退出判定见[阶段评审](./reviews/)。
 
@@ -18,7 +18,7 @@ updated: 2026-10-14
 | P0 基准与可行性 | 可行性评审已通过，其余项目并行收尾 | —（未设置任务索引） | [P0-feasibility](./reviews/P0-feasibility.md) |
 | P1 工程与运行骨架 | 本地退出评审已通过 | [P1 tasks](./plan/p1/tasks.md) | [P1-exit](./reviews/P1-exit.md) |
 | P2 玩法所需资源管线 | 退出评审已通过 | [P2 tasks](./plan/p2/tasks.md) | [P2-exit](./reviews/P2-exit.md) |
-| P3 完整玩法切片 | 进行中：P3-01 至 P3-07 已完成 | [P3 tasks](./plan/p3/tasks.md) | — |
+| P3 完整玩法切片 | 进行中：P3-01 至 P3-07 与 P3-10 已完成 | [P3 tasks](./plan/p3/tasks.md) | — |
 | P4 Classic 内容完成 | 未开始 | [P4 tasks](./plan/p4/tasks.md) | — |
 | P5 Classic 1.0 发布 | 未开始 | [P5 tasks](./plan/p5/tasks.md) | — |
 | P6 Enhanced 美化 | 未开始 | [P6 tasks](./plan/p6/tasks.md) | — |
@@ -38,6 +38,10 @@ updated: 2026-10-14
      - 战斗规则位于 `src/core` 的 `flight.combat` 组，API、已知差异与交接见 [Core 模块说明](./engineering/modules/core.md)。
      - 与原版的对照见[子任务 27](./plan/p3/07/subtasks/27-comparison-conclusions.md)：36 次原版运行（fixed 40000 cycles，受 U-021 约束）；D-02 六类连续行为一致；单次转移没有不一致；未测分支已逐项列出。
      - AI 开火、基地自动挂点的连续节奏与 CR-13 的调用点接入归 P3-08 至 P3-11。
+   - [P3-10](./plan/p3/10/spec.md)（通讯、基地交互与补给）的 goal 已于 2026-10-16 执行完成，结论与证据见 [goal](./plan/p3/10/goal.md) 与各 subtask。
+     - 执行中 spec 经用户选择修订三次：受损服务改为停靠前写入受损字段再实测服务链；五个没有原版样本或操作数的分支改作未运行对照或限定结论。
+     - 与原版的对照见[子任务 26](./plan/p3/10/subtasks/26-comparison-conclusions.md)：25 的 8 次合格原版运行（fixed 40000 cycles，受 U-021 约束），已判定的样本全部一致。
+     - 生产导入白名单加入 `MAIN/COMMFACE.NOB`，切片定义版本 5、`logic-3`：用户须重新导入。种类 `0x4000` 移交 P3-08；交接见 [Core 模块说明](./engineering/modules/core.md)。
 2. P2 已完成：P2-01 至 P2-13 全部完成，[P2 退出评审](./reviews/P2-exit.md)于 2026-10-08 确认通过并冻结（高概率判定与范围例外已逐项披露）。生产 `ConverterVersion` 为 `osr-import.graphics-3.logic-1.audio-1.models-3`，导入协议版本 5；P3 可消费的内容、适配与遗留责任见评审的[对后续阶段的影响](./reviews/P2-exit.md#4-对后续阶段的影响)，各任务的交付见 [P2 tasks](./plan/p2/tasks.md)。
 3. P0 收尾（用户）：试玩回答 U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-011 的飞行键位由 P3-05 自行取证，P3-01 测量时基对 cycles 的依赖，两者的负责阶段仍为 P0。U-015 的剩余部分见 [unknowns](./original/unknowns.md)；U-025 的负责阶段为 P3。
 4. U-022 的剩余字段：规则语义归 P3，其余任务的字段归 P4（负责阶段见 [unknowns](./original/unknowns.md)）；模型槽位选择已确认，见 [executable](./original/formats/executable.md) §4。
