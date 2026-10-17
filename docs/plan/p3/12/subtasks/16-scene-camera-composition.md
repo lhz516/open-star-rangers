@@ -40,6 +40,7 @@ updated: 2026-10-17
 - `src/render/flight/renderer/**`：接入场景与合成。
 - `src/render/scene/render-surface.ts`、`src/render/scene/render-surface.test-support.ts`、`src/render/webgl/webgl-surface.ts`、`src/render/webgl/webgl-surface.test.ts`：多遍绘制的增量端口（渲染目标、清除与裁剪），查看器行为不变。
 - `src/app/mission/flight-content.ts`、`src/app/mission/flight-consumer.ts` 及其测试：解码 `data/scene-settings` 并传入飞行运行。
+- `src/original-data/conversion/flight-data.test-support.ts`：合成生产 RENS 的设备值按原版顺序（+0x1C < +0x20 < +0x24），使运行开始的远平面校验可通过。
 
 ## 验收标准
 
