@@ -105,11 +105,11 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [14-destruction-camera.md](./subtasks/14-destruction-camera.md) | 01, 12 | completed |
 | [15-renderer-lifecycle.md](./subtasks/15-renderer-lifecycle.md) | 11, 12 | completed |
 | [16-scene-camera-composition.md](./subtasks/16-scene-camera-composition.md) | 01, 03, 10, 14, 15 | completed |
-| [17-model-lighting.md](./subtasks/17-model-lighting.md) | 02, 16 | pending |
+| [17-model-lighting.md](./subtasks/17-model-lighting.md) | 02, 16 | in-progress |
 | [18-hit-shimmer.md](./subtasks/18-hit-shimmer.md) | 05, 10, 17 | pending |
-| [19-nebula-background.md](./subtasks/19-nebula-background.md) | 04, 16 | pending |
+| [19-nebula-background.md](./subtasks/19-nebula-background.md) | 04, 16 | in-progress |
 | [20-projectile-missile-fragment-render.md](./subtasks/20-projectile-missile-fragment-render.md) | 05, 13, 17 | pending |
-| [21-sprites-screen-flash.md](./subtasks/21-sprites-screen-flash.md) | 03, 04, 13, 16 | pending |
+| [21-sprites-screen-flash.md](./subtasks/21-sprites-screen-flash.md) | 03, 04, 13, 16 | in-progress |
 | [22-warp-tunnel.md](./subtasks/22-warp-tunnel.md) | 06, 16 | pending |
 | [23-pass-integration.md](./subtasks/23-pass-integration.md) | 17, 18, 19, 20, 21, 22, 31 | pending |
 | [24-rule-independence-replay.md](./subtasks/24-rule-independence-replay.md) | 13, 14, 23 | pending |
