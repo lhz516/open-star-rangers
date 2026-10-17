@@ -130,8 +130,31 @@ const originalDataCapabilities = {
   },
 };
 
+// P3-12 (docs/plan/p3/12/spec.md, 表现层契约): the flight presentation module is free of DOM, Three.js, WebGL and the app
+// layers, so it references only itself, Core and content, by relative paths; computed imports are rejected too.
+// tools/engineering-boundaries.test.ts checks the same over the TypeScript dependency graph, through those modules.
+const presentationTargets = /^src\/(?:core|content|render\/flight\/presentation)\//;
+const flightPresentationImports = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: { restricted: 'The flight presentation module imports only itself, Core and content, by relative paths.' },
+  },
+  create(context) {
+    const check = (node, specifier) => {
+      const target = relativeTarget(context.filename, specifier);
+      if (target === undefined || !presentationTargets.test(target)) context.report({ node, messageId: 'restricted' });
+    };
+    return moduleReferenceVisitors(check, () => false);
+  },
+};
+const hostMessage = 'The flight presentation module reads no DOM, host time, host randomness or host scheduling.';
+
 // One plugin object, so every config entry that uses it refers to the same plugin.
-const osrPlugin = { meta: osrMeta, rules: { 'original-data-capabilities': originalDataCapabilities } };
+const osrPlugin = {
+  meta: osrMeta,
+  rules: { 'original-data-capabilities': originalDataCapabilities, 'flight-presentation-imports': flightPresentationImports },
+};
 
 export default tseslint.config(
   { ignores: ['dist', 'local', 'node_modules', 'coverage', 'test-results', 'playwright-report'] },
@@ -229,6 +252,28 @@ export default tseslint.config(
     rules: {
       'no-restricted-globals': ['error', ...networkApis.map(name => ({ name, message: networkMessage }))],
       'no-restricted-properties': ['error', ...[...networkApis, 'sendBeacon'].map(property => ({ property, message: networkMessage }))],
+    },
+  },
+  {
+    // The flight presentation module: no DOM, Three.js, WebGL or app layer, and no host time, randomness or scheduling
+    // (its random source is injected and its time is the mission clock).
+    files: ['src/render/flight/presentation/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/*.test-support.{ts,tsx}'],
+    plugins: { osr: osrPlugin },
+    rules: {
+      'osr/flight-presentation-imports': 'error',
+      'no-restricted-properties': ['error', ...[
+        { object: 'Math', property: 'random' }, { object: 'Date', property: 'now' }, { object: 'performance', property: 'now' },
+        { property: 'getRandomValues' }, { property: 'randomUUID' },
+      ].map((restriction) => ({ ...restriction, message: hostMessage }))],
+      'no-restricted-globals': ['error', ...[
+        'window', 'document', 'navigator', 'self', 'globalThis', 'localStorage', 'indexedDB', 'fetch', 'HTMLCanvasElement',
+        'OffscreenCanvas', 'WebGLRenderingContext', 'WebGL2RenderingContext', 'Date', 'performance', 'setTimeout',
+        'setInterval', 'queueMicrotask', 'requestAnimationFrame', 'requestIdleCallback', 'crypto',
+      ].map((name) => ({ name, message: hostMessage }))],
+      // Each tick is processed synchronously, its seams included.
+      'no-restricted-syntax': ['error', ...['AwaitExpression', ':function[async=true]']
+        .map((selector) => ({ selector, message: 'The flight presentation module is synchronous.' }))],
     },
   },
   {
