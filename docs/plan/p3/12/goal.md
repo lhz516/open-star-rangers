@@ -95,7 +95,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [06-warp-tunnel-research.md](./subtasks/06-warp-tunnel-research.md) | — | completed |
 | [07-evidence-gap-supplement.md](./subtasks/07-evidence-gap-supplement.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-original-records-comparison-plan.md](./subtasks/08-original-records-comparison-plan.md) | 01, 02, 03, 04, 05, 06, 07 | completed |
-| [09-d01-contract-gate.md](./subtasks/09-d01-contract-gate.md) | 01, 05, 07 | blocked |
+| [09-d01-contract-gate.md](./subtasks/09-d01-contract-gate.md) | 01, 05, 07 | in-progress |
 | [10-core-presentation-facts.md](./subtasks/10-core-presentation-facts.md) | 09 | pending |
 | [11-runtime-tick-batches.md](./subtasks/11-runtime-tick-batches.md) | 09 | pending |
 | [12-presentation-foundation.md](./subtasks/12-presentation-foundation.md) | 10, 11 | pending |
@@ -131,6 +131,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
   Evidence: 草稿改动 `docs/plan/p3/02/spec.md`（P3-12 的契约修订 FS-01–FS-11）、`docs/plan/p3/04/spec.md`（帧后逐 tick 输出）、`docs/engineering/modules/core.md`、`docs/engineering/modules/app.md`；要点与开放选择 A–F 的推荐见 09 worker 报告（Render State 增量、`PlayerState.modelShown`、`explosion-created`/`view-switched`/`warp-wall-contact` 三个事件、`FrameReport.outputs`、预算、RULES_VERSION 7→8 与快照格式 6→7、两项新差异）。
   Affected acceptance: AC-01 及 09 的全部验收；10 至 29 都直接或间接依赖 09。
   Resume when: 用户批准 D-01 定稿（或给出修改意见），或授权 agent 按推荐方案定稿；协调者把批准原话转给 09 worker，由其写入批准记录并提交。
+- **2026-10-17 — Subtask 09 resumed:** 用户经协调者提问批准 D-01 定稿，选择“批准，全部按推荐方案”（含开放选择 A–F 的推荐：通用 `view-switched`、Warp 撞墙用事件、Core 持有 `modelShown`、`explosion-created` 不带行矩阵、GPU 预算按本地计数定值、接受两项新差异）。协调者把原话转给 09 worker 写入批准记录并提交。
 
 ## 审批
 
