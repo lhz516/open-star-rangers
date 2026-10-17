@@ -36,6 +36,7 @@ updated: 2026-10-17
 - `src/app/viewer/viewer-audio.test.ts`：未启用新门禁时的兼容。
 - `docs/engineering/modules/platform.md`：暂停/中断契约。
 - `src/ui/viewer/ViewerAudioPanel.tsx`：仅在穷举状态文案中加入 `paused`（按 P2-08 修订，文案同 `suspended`；协调者 2026-10-17 扩展）。
+- `src/app/flight-audio/voices.test.ts`：仅为控制器替身补上 `pause`/`resume`（集成 12 后的类型穷举；协调者 2026-10-17 扩展）。
 
 ## 验收标准
 
