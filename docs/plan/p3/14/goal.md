@@ -82,7 +82,7 @@ updated: 2026-10-17
 | [06-shared-contract-approval.md](./subtasks/06-shared-contract-approval.md) | 05 | completed |
 | [07-presentation-contract-approval.md](./subtasks/07-presentation-contract-approval.md) | 06 | blocked |
 | [08-core-audio-read-models.md](./subtasks/08-core-audio-read-models.md) | 06 | in-progress |
-| [09-content-bindings.md](./subtasks/09-content-bindings.md) | 06 | in-progress |
+| [09-content-bindings.md](./subtasks/09-content-bindings.md) | 06 | completed |
 | [10-voice-parameters-progress.md](./subtasks/10-voice-parameters-progress.md) | 06 | completed |
 | [11-audio-pause-lifecycle.md](./subtasks/11-audio-pause-lifecycle.md) | 10 | pending |
 | [12-voice-allocation-ledger.md](./subtasks/12-voice-allocation-ledger.md) | 10 | pending |
