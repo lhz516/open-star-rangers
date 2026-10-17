@@ -119,7 +119,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 09, 23, 24, 25 | pending |
 | [30-stars-speed-dust-research.md](./subtasks/30-stars-speed-dust-research.md) | 08 | completed |
 | [31-stars-speed-dust.md](./subtasks/31-stars-speed-dust.md) | 10, 12, 16, 30, 32 | pending |
-| [32-speed-share-fact.md](./subtasks/32-speed-share-fact.md) | 10, 30 | pending |
+| [32-speed-share-fact.md](./subtasks/32-speed-share-fact.md) | 10, 30 | in-progress |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
