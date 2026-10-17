@@ -106,7 +106,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [15-renderer-lifecycle.md](./subtasks/15-renderer-lifecycle.md) | 11, 12 | completed |
 | [16-scene-camera-composition.md](./subtasks/16-scene-camera-composition.md) | 01, 03, 10, 14, 15 | completed |
 | [17-model-lighting.md](./subtasks/17-model-lighting.md) | 02, 16 | completed |
-| [18-hit-shimmer.md](./subtasks/18-hit-shimmer.md) | 05, 10, 17 | in-progress |
+| [18-hit-shimmer.md](./subtasks/18-hit-shimmer.md) | 05, 10, 17 | completed |
 | [19-nebula-background.md](./subtasks/19-nebula-background.md) | 04, 16 | completed |
 | [20-projectile-missile-fragment-render.md](./subtasks/20-projectile-missile-fragment-render.md) | 05, 13, 17 | pending |
 | [21-sprites-screen-flash.md](./subtasks/21-sprites-screen-flash.md) | 03, 04, 13, 16 | completed |
@@ -151,6 +151,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 - **2026-10-17 — 21 的遮挡取舍与接入说明：** AC-13 按协调者决定采用方案 B：游戏图像的深度改为 24 位 `DepthTexture`（精度不变），经 `CompositionFrame.depth` 暴露；精灵画入自己的渲染目标，在每个块的左上像素做深度测试（FC8），再复制进游戏图像（渲染目标 2/4）。23 的接线：运行前创建 `ExplosionSprites` 并 `addLayer`；每个 tick 输出以 `effects.flashRequests(tick)` 推进 `createScreenFlashes`；以 `setScreen` 安装 `FlashScreenStage`；把 `explosionSpritesGpuPlan` 与 `FLASH_SCREEN_GPU_PLAN` 加入计划；合成生产 RENS 的闪光级别须改到 0–63、持续时间有限且非零。FC8 库排序细节与视角切换后闪光表复位的推断交 27。已知风险：`warp-tunnel-layer.test.ts` 的一个用例在低负载下约 3 秒，机器高负载时会超过 5 秒超时；29 的 `pnpm check` 须在正常负载下确认，必要时由修复子任务处理。
 - **2026-10-17 — 新增修复子任务 33：** 集成 31 时 `warp-tunnel-layer.test.ts` 的该用例再次超时（负载约 8–12），31 的集成暂缓。原因是 640×480 像素数组的深度比较；33 改为等价的高效比较，完成后再集成 31 与后续行。
 - **2026-10-17 — 31 的接入说明（交 23）：** 运行开始时 `createStarFieldLayer({cache, palette})` 与 `createSpeedDustLayer({cache, palette, random})`（random 与星云、Warp 同一表现流），都 `addLayer` 并加入 `STAR_FIELD_GPU_PLAN`、`SPEED_DUST_GPU_PLAN`；绘制前对每个 `report.outputs` 项按次序调用 `dust.step({render: o.render, events: o.events, camera: 该 tick 的 PresentationTick.afterStep})`，静止帧不调用。星点表用独立的 Watcom `rand` 生成器（SHA-256 与 30 的 `1aa3406e…2754` 一致），不触及表现流。
+- **2026-10-17 — 18 的接入说明与取舍：** 23 在运行前调用 `prepareShimmerSurfaces({...ModelLightingContent, thresholds}, settings)`（内容错误拒绝开始）并加入 `surfaces.plan`；创建 `new HitShimmer({models, initial, random})`（random 用同一表现流，每个本方视觉一次抽取）；报告非空时在绘制前 `shimmer.advance(report.outputs)`；在世界槽中于 `ModelLightingLayer` 之后 `addLayer(new HitShimmerLayer(...))`。没有玩家对象时的命中（原版 `0x3d7ff` 读空句柄）按协调者决定取“≠ 1 → 开始”，标为高概率，恢复途径为一次基准环境读数，交 27 记入 U-027。
 
 ## 审批
 
