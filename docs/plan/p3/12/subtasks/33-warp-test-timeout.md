@@ -28,6 +28,7 @@ updated: 2026-10-17
 
 - `src/render/flight/warp/warp-tunnel-layer.test.ts`：比较方式。
 - `src/render/flight/nebula/nebula-blit.test.ts`、`src/render/flight/nebula/nebula-selection.test.ts`：同类慢用例（“diagonal step”与“same number of rand values”）。
+- `src/render/flight/warp/warp-tunnel-image.test.ts`：同类慢用例（“draws the same image again from the same input”）。
 
 ## 验收标准
 
