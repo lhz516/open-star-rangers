@@ -118,7 +118,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [27-presentation-verdicts.md](./subtasks/27-presentation-verdicts.md) | 26 | pending |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 09, 23, 24, 25 | pending |
 | [30-stars-speed-dust-research.md](./subtasks/30-stars-speed-dust-research.md) | 08 | completed |
-| [31-stars-speed-dust.md](./subtasks/31-stars-speed-dust.md) | 10, 12, 16, 30, 32 | in-progress |
+| [31-stars-speed-dust.md](./subtasks/31-stars-speed-dust.md) | 10, 12, 16, 30, 32 | completed |
 | [32-speed-share-fact.md](./subtasks/32-speed-share-fact.md) | 10, 30 | completed |
 | [33-warp-test-timeout.md](./subtasks/33-warp-test-timeout.md) | 22 | completed |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33 | pending |
@@ -150,6 +150,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 - **2026-10-17 — 22 的接入说明（交 23）：** 用运行的表现随机流（与星云、速度尘埃同一流）创建 `createWarpTunnelLayer({cache, random})`，`addLayer` 接入并加入 `WARP_TUNNEL_GPU_PLAN`；绘制前按次序对每个 `report.outputs` 项调用 `layer.step(o.render)`，静止帧不调用。新序号时游标归 0、投影暂存清空，按 pass 的运算改为按 tick（06 推荐的有意差异）。
 - **2026-10-17 — 21 的遮挡取舍与接入说明：** AC-13 按协调者决定采用方案 B：游戏图像的深度改为 24 位 `DepthTexture`（精度不变），经 `CompositionFrame.depth` 暴露；精灵画入自己的渲染目标，在每个块的左上像素做深度测试（FC8），再复制进游戏图像（渲染目标 2/4）。23 的接线：运行前创建 `ExplosionSprites` 并 `addLayer`；每个 tick 输出以 `effects.flashRequests(tick)` 推进 `createScreenFlashes`；以 `setScreen` 安装 `FlashScreenStage`；把 `explosionSpritesGpuPlan` 与 `FLASH_SCREEN_GPU_PLAN` 加入计划；合成生产 RENS 的闪光级别须改到 0–63、持续时间有限且非零。FC8 库排序细节与视角切换后闪光表复位的推断交 27。已知风险：`warp-tunnel-layer.test.ts` 的一个用例在低负载下约 3 秒，机器高负载时会超过 5 秒超时；29 的 `pnpm check` 须在正常负载下确认，必要时由修复子任务处理。
 - **2026-10-17 — 新增修复子任务 33：** 集成 31 时 `warp-tunnel-layer.test.ts` 的该用例再次超时（负载约 8–12），31 的集成暂缓。原因是 640×480 像素数组的深度比较；33 改为等价的高效比较，完成后再集成 31 与后续行。
+- **2026-10-17 — 31 的接入说明（交 23）：** 运行开始时 `createStarFieldLayer({cache, palette})` 与 `createSpeedDustLayer({cache, palette, random})`（random 与星云、Warp 同一表现流），都 `addLayer` 并加入 `STAR_FIELD_GPU_PLAN`、`SPEED_DUST_GPU_PLAN`；绘制前对每个 `report.outputs` 项按次序调用 `dust.step({render: o.render, events: o.events, camera: 该 tick 的 PresentationTick.afterStep})`，静止帧不调用。星点表用独立的 Watcom `rand` 生成器（SHA-256 与 30 的 `1aa3406e…2754` 一致），不触及表现流。
 
 ## 审批
 
