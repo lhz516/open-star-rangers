@@ -104,7 +104,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [13-presentation-effects.md](./subtasks/13-presentation-effects.md) | 01, 05, 12 | completed |
 | [14-destruction-camera.md](./subtasks/14-destruction-camera.md) | 01, 12 | completed |
 | [15-renderer-lifecycle.md](./subtasks/15-renderer-lifecycle.md) | 11, 12 | completed |
-| [16-scene-camera-composition.md](./subtasks/16-scene-camera-composition.md) | 01, 03, 10, 14, 15 | pending |
+| [16-scene-camera-composition.md](./subtasks/16-scene-camera-composition.md) | 01, 03, 10, 14, 15 | in-progress |
 | [17-model-lighting.md](./subtasks/17-model-lighting.md) | 02, 16 | pending |
 | [18-hit-shimmer.md](./subtasks/18-hit-shimmer.md) | 05, 10, 17 | pending |
 | [19-nebula-background.md](./subtasks/19-nebula-background.md) | 04, 16 | pending |
