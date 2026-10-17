@@ -1,5 +1,10 @@
 import { readAssetId, type AssetId } from '../../content/asset-id.ts';
 import { readSoundPayload, soundChannelData, SOUND_PAYLOAD_SCHEMA_VERSION, type SoundPayload } from '../../content/sound-payload.ts';
+import {
+  defaultVoiceParameters, mergeVoiceParameters, RepeatProgress, voiceNodeParameters, type VoiceNodeParameters, type VoiceParameters,
+} from './voice-progress.ts';
+
+export { AUDIO_RATE_LIMIT, type VoiceNodeParameters, type VoiceParameters } from './voice-progress.ts';
 
 // DOM-free Web Audio playback (P2-08 S-08/S-09). The controller owns at most one context, created lazily in
 // `unlock()`; its status follows the context's own state changes and the page's visibility, never awaited promises.
@@ -7,6 +12,9 @@ import { readSoundPayload, soundChannelData, SOUND_PAYLOAD_SCHEMA_VERSION, type 
 
 /** Simultaneous voices at most; a resource guard only, not the original game's mixing channel count. */
 export const AUDIO_VOICE_LIMIT = 8;
+
+/** Ended voices whose end reason `voiceState` still reports, the most recent first; earlier ones are `unknown`. */
+export const AUDIO_ENDED_HISTORY = 256;
 
 /** Opaque buffer the capability creates and later plays; the controller never reads it. */
 export type AudioBufferHandle = object;
@@ -19,6 +27,8 @@ export interface AudioVoicePort {
   disconnect(): void;
   /** Listens for the voice's natural or stopped end; returns the removal. */
   onEnded(listener: () => void): () => void;
+  /** Applies new parameters from context time `when`; only voices created with parameters have it. */
+  setParameters?(parameters: VoiceNodeParameters, when: number): void;
 }
 
 export interface AudioContextPort {
@@ -31,8 +41,11 @@ export interface AudioContextPort {
   resume(): Promise<unknown>;
   suspend(): Promise<unknown>;
   close(): Promise<unknown>;
-  /** A voice playing `buffer` into the output, looping the whole buffer when asked; not yet started. */
-  createVoice(buffer: AudioBufferHandle, loop: boolean): AudioVoicePort;
+  /**
+   * A voice playing `buffer` into the output, looping the whole buffer when asked; not yet started. Only with
+   * `parameters` does it get parameter nodes, set to them before it is returned.
+   */
+  createVoice(buffer: AudioBufferHandle, loop: boolean, parameters?: VoiceNodeParameters): AudioVoicePort;
 }
 
 export interface AudioCapability {
@@ -69,7 +82,10 @@ export type AudioErrorCode =
   | 'duplicate-sound'
   | 'invalid-sound-payload'
   | 'voice-limit'
-  | 'disposed';
+  | 'disposed'
+  | 'invalid-parameters'
+  | 'unknown-voice'
+  | 'fixed-parameters';
 
 export interface AudioSnapshot {
   readonly status: AudioStatus;
@@ -87,7 +103,7 @@ export interface SoundRecord {
 }
 
 export type LoadFailureCode = Extract<AudioErrorCode, 'invalid-sound-payload' | 'duplicate-sound' | 'audio-unavailable' | 'audio-failed' | 'disposed'>;
-export type PlayFailureCode = Exclude<AudioErrorCode, 'duplicate-sound' | 'invalid-sound-payload'>;
+export type PlayFailureCode = Exclude<AudioErrorCode, 'duplicate-sound' | 'invalid-sound-payload' | 'unknown-voice' | 'fixed-parameters'>;
 
 export type LoadResult =
   | { readonly status: 'loaded'; readonly count: number }
@@ -98,14 +114,41 @@ export type PlayResult =
   | { readonly status: 'started'; readonly voice: number }
   | { readonly status: 'rejected'; readonly code: PlayFailureCode };
 
+export type UpdateResult =
+  | { readonly status: 'updated' }
+  | { readonly status: 'rejected'; readonly code: 'unknown-voice' | 'fixed-parameters' | 'invalid-parameters' | 'audio-failed' | 'disposed' };
+
+/**
+ * Why a voice ended: `natural` when it played out (a `repeat` voice's scheduled stop after its last pass too),
+ * `stopped` by `stop` or `stopAll`, `preempted` by `stop(voice, 'preempted')`, and `released` when the controller ended
+ * it itself (hiding, a browser suspension or interruption, a host close or failure, disposal).
+ */
+export type VoiceEnd = 'natural' | 'stopped' | 'preempted' | 'released';
+
+export type VoiceState =
+  | { readonly status: 'playing' }
+  /** Kept while the context does not run. */
+  | { readonly status: 'paused' }
+  | { readonly status: 'ended'; readonly reason: VoiceEnd }
+  /** Never started, or ended before the last `AUDIO_ENDED_HISTORY` ends. */
+  | { readonly status: 'unknown' };
+
 export interface AudioController {
   /** Call from a user gesture handler; returns the status after the call. */
   unlock(): AudioStatus;
   /** Registers the whole batch or nothing. */
   load(sounds: readonly SoundRecord[]): LoadResult;
-  play(id: string): PlayResult;
-  /** Stops one voice; false for an unknown or finished voice. */
-  stop(voice: number): boolean;
+  /**
+   * Without `parameters` the voice is fixed: stored rate, full volume, both channels equal, and no parameter nodes. With
+   * them, absent ones default to volume 127, pan 64 and the stored rate, applied before the voice starts.
+   */
+  play(id: string, parameters?: Partial<VoiceParameters>): PlayResult;
+  /** Applies the given parameters to a live voice started with parameters, all or none. */
+  update(voice: number, parameters: Partial<VoiceParameters>): UpdateResult;
+  /** Reads a voice's state without touching the host. */
+  voiceState(voice: number): VoiceState;
+  /** Stops one voice, recording `reason` (`stopped` by default); false for an unknown or finished voice. */
+  stop(voice: number, reason?: 'stopped' | 'preempted'): boolean;
   stopAll(): void;
   /** Frozen, and the same object until the next change. */
   getSnapshot(): AudioSnapshot;
@@ -117,13 +160,19 @@ export interface AudioController {
 interface Sound {
   readonly buffer: AudioBufferHandle;
   readonly loop: boolean;
-  /** For a `repeat` sound, the seconds its `plays` passes last: its looping voice stops that long after it starts. */
-  readonly repeatFor: number | null;
+  readonly sampleRate: number;
+  /** For a `repeat` sound, the source frames of its `plays` passes: its looping voice stops once it has played them. */
+  readonly repeatFrames: number | null;
 }
 
 interface Voice {
   readonly port: AudioVoicePort;
   readonly removeEnded: () => void;
+  readonly sampleRate: number;
+  /** The parameters last applied, or null for a fixed voice. */
+  parameters: VoiceParameters | null;
+  /** A `repeat` voice's remaining passes, once scheduled. */
+  progress: RepeatProgress | null;
 }
 
 const rejected = (code: PlayFailureCode): PlayResult => Object.freeze({ status: 'rejected', code });
@@ -137,6 +186,27 @@ const REJECTED_IN: Readonly<Record<Exclude<AudioStatus, 'running'>, PlayResult>>
 });
 const UNKNOWN_SOUND = rejected('unknown-sound');
 const VOICE_LIMIT = rejected('voice-limit');
+const INVALID_PARAMETERS = rejected('invalid-parameters');
+
+const UPDATED: UpdateResult = Object.freeze({ status: 'updated' });
+const updateRejected = (code: Extract<UpdateResult, { status: 'rejected' }>['code']): UpdateResult => Object.freeze({ status: 'rejected', code });
+const UPDATE_REJECTED = Object.freeze({
+  unknownVoice: updateRejected('unknown-voice'),
+  fixed: updateRejected('fixed-parameters'),
+  invalid: updateRejected('invalid-parameters'),
+  failed: updateRejected('audio-failed'),
+  disposed: updateRejected('disposed'),
+});
+
+const PLAYING: VoiceState = Object.freeze({ status: 'playing' });
+const PAUSED: VoiceState = Object.freeze({ status: 'paused' });
+const UNKNOWN_VOICE: VoiceState = Object.freeze({ status: 'unknown' });
+const ENDED: Readonly<Record<VoiceEnd, VoiceState>> = Object.freeze({
+  natural: Object.freeze({ status: 'ended', reason: 'natural' }),
+  stopped: Object.freeze({ status: 'ended', reason: 'stopped' }),
+  preempted: Object.freeze({ status: 'ended', reason: 'preempted' }),
+  released: Object.freeze({ status: 'ended', reason: 'released' }),
+});
 
 const loadFailure = (code: LoadFailureCode, assetId: AssetId | null = null): LoadResult => Object.freeze({ status: 'failed', code, assetId });
 
@@ -148,6 +218,8 @@ class Controller implements AudioController {
   readonly #reportError: (error: unknown) => void;
   readonly #sounds = new Map<string, Sound>();
   readonly #voices = new Map<number, Voice>();
+  /** The end reasons of the most recently ended voices, oldest first. */
+  readonly #ended = new Map<number, VoiceEnd>();
   readonly #subscribers = new Set<() => void>();
   readonly #cleanups: (() => void)[] = [];
   #context: AudioContextPort | null = null;
@@ -219,7 +291,8 @@ class Controller implements AudioController {
         batch.set(assetId, {
           buffer: this.#audio.createBuffer(soundChannelData(payload), payload.sampleRate),
           loop: payload.loop !== 'none',
-          repeatFor: payload.loop === 'repeat' ? (payload.plays * payload.frames) / payload.sampleRate : null,
+          sampleRate: payload.sampleRate,
+          repeatFrames: payload.loop === 'repeat' ? payload.plays * payload.frames : null,
         });
       } catch {
         this.#fail();
@@ -231,23 +304,37 @@ class Controller implements AudioController {
     return Object.freeze({ status: 'loaded', count: batch.size });
   }
 
-  play(id: string): PlayResult {
+  play(id: string, parameters?: Partial<VoiceParameters>): PlayResult {
     if (this.#status !== 'running') return REJECTED_IN[this.#status];
     const sound = this.#sounds.get(id);
     if (!sound) return UNKNOWN_SOUND;
+    const initial = parameters === undefined ? null : mergeVoiceParameters(defaultVoiceParameters(sound.sampleRate), parameters);
+    if (parameters !== undefined && initial === null) return INVALID_PARAMETERS;
     if (this.#voices.size >= AUDIO_VOICE_LIMIT) return VOICE_LIMIT;
     const voice = this.#nextVoice++;
     const started = this.#host(context => {
-      const port = context.createVoice(sound.buffer, sound.loop);
-      this.#voices.set(voice, { port, removeEnded: port.onEnded(() => { this.#release(voice, false); this.#publish(); }) });
-      if (sound.repeatFor === null) {
+      // A fixed voice gets no parameters, so the capability creates no parameter nodes for it.
+      const nodes = initial === null ? undefined : voiceNodeParameters(initial, sound.sampleRate);
+      const port = context.createVoice(sound.buffer, sound.loop, nodes);
+      let removeEnded: () => void;
+      try {
+        removeEnded = port.onEnded(() => { this.#end(voice, 'natural'); this.#publish(); });
+      } catch (error) {
+        // Not yet a voice the failure below releases, so its nodes are disconnected here.
+        this.#attempt(() => port.disconnect());
+        throw error;
+      }
+      const entry: Voice = { port, removeEnded, sampleRate: sound.sampleRate, parameters: initial, progress: null };
+      this.#voices.set(voice, entry);
+      if (sound.repeatFrames === null) {
         port.start();
       } else {
         // Start and stop from one context time, so the looping voice ends after exactly its passes when it starts on
         // time; start()'s duration argument is not used, since engines disagree on it for a looping source.
         const when = context.currentTime;
+        entry.progress = new RepeatProgress(sound.repeatFrames, sound.sampleRate, when, nodes?.playbackRate ?? 1);
         port.start(when);
-        port.stop(when + sound.repeatFor);
+        port.stop(entry.progress.stopTime());
       }
     });
     if (!started) return REJECTED_IN.failed;
@@ -255,15 +342,44 @@ class Controller implements AudioController {
     return Object.freeze({ status: 'started', voice });
   }
 
-  stop(voice: number): boolean {
+  update(voice: number, parameters: Partial<VoiceParameters>): UpdateResult {
+    if (this.#status === 'disposed') return UPDATE_REJECTED.disposed;
+    const entry = this.#voices.get(voice);
+    if (!entry) return UPDATE_REJECTED.unknownVoice;
+    if (entry.parameters === null) return UPDATE_REJECTED.fixed;
+    const next = mergeVoiceParameters(entry.parameters, parameters);
+    if (next === null) return UPDATE_REJECTED.invalid;
+    const { volume, pan, rate } = entry.parameters;
+    // Unchanged values need no host call, so a per-frame caller adds no automation events.
+    if (next.volume === volume && next.pan === pan && next.rate === rate) return UPDATED;
+    const nodes = voiceNodeParameters(next, entry.sampleRate);
+    const applied = this.#host(context => {
+      const now = context.currentTime;
+      entry.port.setParameters!(nodes, now);
+      // The passes left are counted in source frames, so a new stop replaces the old one at a new rate.
+      const stop = entry.progress?.retarget(now, nodes.playbackRate) ?? null;
+      if (stop !== null) entry.port.stop(stop);
+    });
+    if (!applied) return UPDATE_REJECTED.failed;
+    entry.parameters = next;
+    return UPDATED;
+  }
+
+  voiceState(voice: number): VoiceState {
+    if (this.#voices.has(voice)) return this.#status === 'running' ? PLAYING : PAUSED;
+    const reason = this.#ended.get(voice);
+    return reason === undefined ? UNKNOWN_VOICE : ENDED[reason];
+  }
+
+  stop(voice: number, reason: 'stopped' | 'preempted' = 'stopped'): boolean {
     if (!this.#voices.has(voice)) return false;
-    this.#release(voice, true);
+    this.#end(voice, reason);
     this.#publish();
     return true;
   }
 
   stopAll(): void {
-    this.#releaseAll();
+    this.#endAll('stopped');
     this.#publish();
   }
 
@@ -282,7 +398,7 @@ class Controller implements AudioController {
     if (this.#status === 'disposed') return;
     // The status changes first, so nothing a subscriber or host callback does during disposal can start or re-dispose.
     this.#status = 'disposed';
-    this.#releaseAll();
+    this.#endAll('released');
     this.#removeListeners();
     this.#sounds.clear();
     this.#publish();
@@ -364,20 +480,26 @@ class Controller implements AudioController {
    */
   #leaveRunning(status: 'suspended' | 'failed'): void {
     this.#status = status;
-    this.#releaseAll();
+    this.#endAll('released');
     this.#publish();
   }
 
-  #releaseAll(): void {
-    for (const voice of this.#voices.keys()) this.#release(voice, true);
+  #endAll(reason: VoiceEnd): void {
+    for (const voice of this.#voices.keys()) this.#end(voice, reason);
   }
 
-  /** Stops and disconnects a voice and drops it; the caller publishes the change. */
-  #release(voice: number, stop: boolean): void {
+  /**
+   * Stops (unless it ended by itself) and disconnects a voice, drops it and records its first end reason; the caller
+   * publishes the change.
+   */
+  #end(voice: number, reason: VoiceEnd): void {
     const entry = this.#voices.get(voice);
     if (!entry) return;
     this.#voices.delete(voice);
-    if (stop) this.#attempt(() => entry.port.stop());
+    this.#ended.set(voice, reason);
+    // A handle ends once and maps keep insertion order, so the first key is the oldest end.
+    if (this.#ended.size > AUDIO_ENDED_HISTORY) this.#ended.delete(this.#ended.keys().next().value!);
+    if (reason !== 'natural') this.#attempt(() => entry.port.stop());
     this.#attempt(() => entry.port.disconnect());
     this.#attempt(entry.removeEnded);
   }

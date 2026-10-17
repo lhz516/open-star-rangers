@@ -62,6 +62,14 @@ describe('audition', () => {
     expect(audio.getSnapshot()).toMatchObject({ status: 'running', pending: null, voices: 1 });
   });
 
+  it('plays fixed voices exactly as before voice parameters: no parameter nodes, the stored rate, no settings', () => {
+    const { audio, capability } = setup({ initialState: 'running' });
+    audio.audition(IDS[0]);
+    audio.audition(IDS[1]);
+    const voices = capability.context.voices;
+    expect(voices.map(voice => [voice.initial, 'setParameters' in voice, voice.calls])).toEqual([[null, false, ['start']], [null, false, ['start']]]);
+  });
+
   it('keeps one pending audition through a delayed unlock and plays it exactly once', () => {
     const { audio, capability } = setup();
     expect(audio.audition(IDS[0])).toEqual({ status: 'pending' });
