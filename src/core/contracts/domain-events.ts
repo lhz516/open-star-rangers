@@ -7,10 +7,10 @@
  * after its command's result, request handling a manual match's `speed-matched`, and the parked update
  * `object-left-world`. P3-07's combat events and reasons follow (docs/plan/p3/02/spec.md, CR-05, CR-06), then P3-09's
  * map and Warp events and reasons (MW-04, MW-05), then P3-10's communications, docking and base events and reason
- * (CB-07, CB-13), then P3-08's wingman command and transponder events (CR-22). New event types or reasons are added by
- * revising the spec, not by consumers.
+ * (CB-07, CB-13), then P3-08's wingman command and transponder events (CR-22), then P3-14's retirement event (FA-07).
+ * New event types or reasons are added by revising the spec, not by consumers.
  */
-import type { Activity, EntityId, ExplosionVariant, Level, Matrix3 } from '../world/entity-table.ts';
+import type { Activity, EntityId, ExplosionVariant, Level, Matrix3, ObjectState } from '../world/entity-table.ts';
 import type { MapPixel } from '../world/map-rule-data.ts';
 import type { LeftPage, TargetMode } from '../world/player-state.ts';
 import type { MessageIdentity, MissionSubState, RadioCallback, SpeakerSnapshot } from '../world/world-state.ts';
@@ -198,7 +198,10 @@ export interface WeaponSelectedEvent extends DomainEventBase<'weapon-selected'> 
   readonly index: number;
   readonly mount: number | null;
   readonly changed: boolean;
-  /** Null for a selection without a command (P3-10's base resupply). */
+  /**
+   * Null for the selection without a command the original handles in its message loop: the full repair in request
+   * handling, i.e. P3-11's rescue (docs/plan/p3/02/spec.md, FA-06). The base service's selections emit nothing (CB-11).
+   */
   readonly commandIndex: number | null;
 }
 
@@ -207,6 +210,10 @@ export interface ShotFiredEvent extends DomainEventBase<'shot-fired'> {
   readonly shooterEntityId: EntityId;
   readonly shooterKindBit: number;
   readonly shooterPosition: Vec3;
+  /** P3-14 (FA-05): the shooter's third orientation row (+0x60–+0x68), f32 components. */
+  readonly shooterForward: Vec3;
+  /** P3-14 (FA-05): the shooter's movement block +0x08, f32 runtime units/s; null without a block. */
+  readonly shooterSpeed: number | null;
   /** The new projectile or missile. */
   readonly entityId: EntityId;
   readonly family: 'gun' | 'missile';
@@ -225,6 +232,10 @@ export interface HitEvent extends DomainEventBase<'hit'> {
   readonly victimEntityId: EntityId;
   readonly victimKindBit: number;
   readonly victimPosition: Vec3;
+  /** P3-14 (FA-05): the victim's third orientation row (+0x60–+0x68), f32 components. */
+  readonly victimForward: Vec3;
+  /** P3-14 (FA-05): the victim's movement block +0x08, f32 runtime units/s; null without a block (a parked victim). */
+  readonly victimSpeed: number | null;
   readonly cause: 'projectile' | 'missile' | 'collision' | 'area' | 'parked';
   /** The projectile or missile; null for the other causes. */
   readonly sourceEntityId: EntityId | null;
@@ -566,6 +577,22 @@ export interface TransponderDeployedEvent extends DomainEventBase<'transponder-d
   readonly orientation: Matrix3;
 }
 
+// P3-14's event (docs/plan/p3/02/spec.md, FA-07).
+
+/** The two states whose entry by an active entity is its retirement. */
+export type RetiredState = Extract<ObjectState, 'pending-removal' | 'area-switch'>;
+
+/**
+ * An active entity entered pending removal or the area switch from another state, where the state was written: the
+ * original's removal item. Parked and docked entities, and a rewrite of the same state, emit none.
+ */
+export interface ObjectRetiredEvent extends DomainEventBase<'object-retired'> {
+  readonly entityId: EntityId;
+  readonly kindBit: number;
+  /** The state it entered. */
+  readonly state: RetiredState;
+}
+
 export type DomainEvent =
   | CommandResultEvent
   | ObjectInstantiatedEvent
@@ -604,4 +631,5 @@ export type DomainEvent =
   | BaseNavigatedEvent
   | BaseConfirmedEvent
   | WingmanCommandConsumedEvent
-  | TransponderDeployedEvent;
+  | TransponderDeployedEvent
+  | ObjectRetiredEvent;

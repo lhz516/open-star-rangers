@@ -30,6 +30,7 @@ import { CoreFaultError } from '../errors.ts';
 import type { CraftEntity } from '../rules/combat-init.ts';
 import { attackerKind } from '../rules/comm-reactions.ts';
 import { absorbByShield, damageHull } from '../rules/damage.ts';
+import { rowOf } from '../rules/movement-builders.ts';
 import { RandStream } from '../rules/original-random.ts';
 import { toInt32 } from '../rules/record-defaults.ts';
 import { PLAYER_KIND_BIT, WINGMAN_KIND_BIT } from '../rules/spawn-schedule.ts';
@@ -39,6 +40,7 @@ import { KILL_KIND_BITS, type KillKindBit } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { reactToDestruction, reactToHit } from './comm-reactions.ts';
 import { destroyEntity } from './destruction.ts';
+import { retire } from './object-state.ts';
 import { emit, type TickContext } from './pipeline.ts';
 
 /** Where a projectile struck: the `hit` event's impact. */
@@ -123,7 +125,7 @@ function destroy(context: TickContext, victim: CraftEntity, { attacker, source }
     outcome,
   });
   if (byPlayer && !player && victim.kindBit !== WINGMAN_KIND_BIT) countKill(world, victim.kindBit);
-  if (outcome === 'removed') victim.state = 'pending-removal';
+  if (outcome === 'removed') retire(context, victim, 'pending-removal');
   else destroyEntity(context, victim);
 }
 
@@ -168,6 +170,8 @@ function damageCraft(context: TickContext, victim: CraftEntity, damage: number, 
     victimEntityId: victim.id,
     victimKindBit: victim.kindBit,
     victimPosition: victim.position,
+    victimForward: rowOf(victim.orientation, 2),
+    victimSpeed: victim.movement?.speed ?? null,
     cause: blow.cause,
     sourceEntityId: blow.source?.id ?? null,
     attacker: blow.attacker,

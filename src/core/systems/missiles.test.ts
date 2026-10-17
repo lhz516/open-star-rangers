@@ -406,7 +406,11 @@ describe('the expire request (0x2b408)', () => {
     const rng = state.rngState;
     const context = contextOf(state);
     expire(entity)(context);
-    expect(context.events).toEqual([ended(context, entity, shooter.id, 'fizzled')]);
+    // The fizzle retires it where it writes the state (P3-14 FA-07).
+    expect(context.events).toEqual([
+      ended(context, entity, shooter.id, 'fizzled'),
+      { type: 'object-retired', tick: context.time.tick, entityId: entity.id, kindBit: 20, state: 'pending-removal' },
+    ]);
     expect(entity.state).toBe('pending-removal');
     expect(entity.combat).toMatchObject({ shooter: null, target: null });
     expect(state.entities.size).toBe(count);
@@ -421,7 +425,9 @@ describe('the expire request (0x2b408)', () => {
     state.entities.remove(shooter);
     const context = contextOf(state);
     expire(entity)(context);
-    expect(context.events).toEqual([ended(context, entity, null, 'fizzled')]);
+    expect(context.events).toEqual([
+      ended(context, entity, null, 'fizzled'), { type: 'object-retired', tick: context.time.tick, entityId: entity.id, kindBit: 20, state: 'pending-removal' },
+    ]);
   });
 
   it('detonates: missile-ended, the explosion, then every blast victim in walk order, the docked, the shooter and the player included', () => {

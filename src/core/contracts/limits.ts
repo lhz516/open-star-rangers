@@ -33,8 +33,9 @@ export const CORE_LIMITS = Object.freeze({
    * `left-page-changed` 64 each, 8 page changes without a command, one each of `radio-taken`, `incoming-started`,
    * `incoming-ended` and `docked`, and two each of `departed`, `transition`, `docking-cancelled` and `radio-flushed`:
    * 640, 8,968 in all. P3-08 (CR-25) adds at most one `wingman-command-consumed` per wingman (32) and one
-   * `transponder-deployed` per command (64): 9,064, which this is about 3.6 times. At the entity limit the quadratic
-   * terms have no fixed bound, and exceeding the budget is a fault.
+   * `transponder-deployed` per command (64): 9,064. P3-14 (FA-07) adds at most two `object-retired` per entity and tick
+   * (an area switch, then a pending removal): 2 × entities = 4,096, 13,160 in all, which this is about 2.5 times. At the
+   * entity limit the quadratic terms have no fixed bound, and exceeding the budget is a fault.
    */
   eventsPerTick: 32_768,
   /**
@@ -76,7 +77,10 @@ export const CORE_LIMITS = Object.freeze({
   recordedTicks: 131_072,
   /** Commands of one recording: 2 per tick on average, e.g. fire held every tick plus one more action. */
   recordedCommands: 262_144,
-  /** Events of one recording: 4 per tick on average; at about 120 characters of JSON each, 64 MB at most. */
+  /**
+   * Events of one recording: 4 per tick on average; at about 120 characters of JSON each, 64 MB at most. P3-14's forward
+   * rows and speeds (FA-05) make a `shot-fired` or `hit` about 80 characters longer, and they are a minority of events.
+   */
   recordedEvents: 524_288,
   /** Checkpoints of one recording: tick 0 and one per tick, so an interval of 1 always fits. */
   recordedCheckpoints: 131_073,

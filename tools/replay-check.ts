@@ -107,6 +107,7 @@ const longestOf = <const Value extends string>(values: readonly Value[]): Value 
 const LONGEST_I32 = -(2 ** 31);
 const LONGEST_LIST_INDEX = 2 ** 31 - 1;
 const LONGEST_VECTOR = { x: LONGEST_NUMBER, y: LONGEST_NUMBER, z: LONGEST_NUMBER } as const;
+const LONGEST_F32_VECTOR = { x: LONGEST_F32, y: LONGEST_F32, z: LONGEST_F32 } as const;
 const LONGEST_ATTACKER = { type: 'shooter', entityId: SAFE, kindBit: 31 } as const;
 
 /** The longest entity source: a wingman group member with safe-integer indexes. */
@@ -176,12 +177,15 @@ const LONGEST_EVENTS: { readonly [Type in DomainEvent['type']]: Extract<DomainEv
   },
   'target-cleared': { type: 'target-cleared', tick: LAST_TICK, playerEntityId: SAFE, previousTarget: SAFE, cause: 'base-view' },
   'weapon-selected': { type: 'weapon-selected', tick: LAST_TICK, entityId: SAFE, list: 1, index: LONGEST_LIST_INDEX, mount: SAFE, changed: false, commandIndex: null },
+  // P3-14's forward rows and speeds (FA-05) are f32.
   'shot-fired': {
-    type: 'shot-fired', tick: LAST_TICK, shooterEntityId: SAFE, shooterKindBit: 31, shooterPosition: LONGEST_VECTOR, entityId: SAFE, family: 'missile',
-    weapon: SAFE, mount: SAFE, position: LONGEST_VECTOR, trigger: { type: 'command', channel: 'secondary', commandIndex: CORE_LIMITS.commandsPerTick - 1 },
+    type: 'shot-fired', tick: LAST_TICK, shooterEntityId: SAFE, shooterKindBit: 31, shooterPosition: LONGEST_VECTOR, shooterForward: LONGEST_F32_VECTOR,
+    shooterSpeed: LONGEST_F32, entityId: SAFE, family: 'missile', weapon: SAFE, mount: SAFE, position: LONGEST_VECTOR,
+    trigger: { type: 'command', channel: 'secondary', commandIndex: CORE_LIMITS.commandsPerTick - 1 },
   },
   hit: {
-    type: 'hit', tick: LAST_TICK, victimEntityId: SAFE, victimKindBit: 31, victimPosition: LONGEST_VECTOR, cause: 'projectile', sourceEntityId: SAFE,
+    type: 'hit', tick: LAST_TICK, victimEntityId: SAFE, victimKindBit: 31, victimPosition: LONGEST_VECTOR, victimForward: LONGEST_F32_VECTOR,
+    victimSpeed: LONGEST_F32, cause: 'projectile', sourceEntityId: SAFE,
     attacker: LONGEST_ATTACKER, damage: LONGEST_I32, gated: false, shield: { before: LONGEST_I32, after: LONGEST_I32 },
     hull: { before: LONGEST_I32, after: LONGEST_I32 }, shieldWasEmpty: false, impact: { point: LONGEST_VECTOR, local: LONGEST_VECTOR, face: 5 },
     projectile: 'ricochet',
@@ -269,6 +273,8 @@ const LONGEST_EVENTS: { readonly [Type in DomainEvent['type']]: Extract<DomainEv
     type: 'transponder-deployed', tick: LAST_TICK, entityId: SAFE, creatorEntityId: SAFE, position: { x: LONGEST_F32, y: LONGEST_F32, z: LONGEST_F32 },
     orientation: Array.from({ length: 9 }, () => LONGEST_F32) as unknown as Matrix3,
   },
+  // P3-14's (FA-07): the longer of the two states.
+  'object-retired': { type: 'object-retired', tick: LAST_TICK, entityId: SAFE, kindBit: 31, state: 'pending-removal' },
 };
 
 /** The content identity of every package the production import job converts. */

@@ -201,6 +201,9 @@ function fieldsOf(event: DomainEvent): Fields {
       ];
     case 'transponder-deployed':
       return [['entityId', event.entityId], ['creatorEntityId', event.creatorEntityId], ...positionOf(event.position)];
+    // P3-14's (docs/plan/p3/02/spec.md, FA-07).
+    case 'object-retired':
+      return [['entityId', event.entityId], ['kindBit', event.kindBit], ['state', event.state]];
   }
 }
 

@@ -21,11 +21,11 @@
  *   enemy-appears line, then every active base whose radius holds the position restamps its threat and, when its
  *   stamp was clear or older than 0x2D00 units, speaks.
  *
- * - `checkTail` (`0x4edf4`, the type-9 gauge): `frame-end`, in the cockpit display views (displays.ts), once the clock
- *   is past the check's due clock: an attacker on the player's tail and an incoming missile light the two warnings,
- *   the check is due again 0x40 units later while either is lit and 0x80 otherwise. An attacker on the tail lets W
- *   warn (`warnTail`, `0x38c30`), at most once per 0x640 units, while the two are aligned (CB-09, RX5); before P3-08
- *   there is no such attacker (checkTail).
+ * - `checkTail` (`0x4edf4`, the type-9 gauge): `frame-end`, in the tail check's views (displays.ts), once the clock
+ *   is past the check's due clock: an attacker closing a missile lock on the player and an incoming missile, gated by
+ *   the player's radar, set the two warnings; the check is due again 0x40 units later while either is set and 0x80
+ *   otherwise. An attacker found lets W warn (`warnTail`, `0x38c30`) whatever the radar, at most once per 0x640 units,
+ *   while the two are aligned (CB-09 as FA-01 corrects it, RX5, A-07).
  *
  * Each limit is stamped when its report is due, also when no message resolves. The sample is this tick's clock. A
  * stamp the original takes at sample 0 counts as none; no step runs at clock 0, so Core needs no such case. The
@@ -33,6 +33,7 @@
  */
 import type { Vec3 } from '../contracts/domain-events.ts';
 import { CoreFaultError } from '../errors.ts';
+import { isClosingMissileLock } from '../rules/ai-firing.ts';
 import {
   accumulateFriendlyFire,
   BASE_KINDS,
@@ -55,6 +56,7 @@ import {
   PLAYER_ATTACKER_KIND,
   PLAYER_KILL_KINDS,
   secondUnderAttackIndex,
+  TAIL_ATTACKER_KINDS,
   TAIL_CHECK_DARK,
   TAIL_CHECK_LIT,
   underAttackIndex,
@@ -80,7 +82,7 @@ function wingmanOf(world: WorldState): Entity | undefined {
   return undefined;
 }
 
-/** `0x38bb0`: W is active and in state 7 or above. */
+/** `0x38bb0`: W (or any entity) is active and in state 7 or above. */
 const isReady = (entity: Entity | undefined): entity is Entity => entity !== undefined && entity.activity === 'active' && isActiveState(entity.state);
 
 /** State 4 or 7 and above, as the thanks and the parked report read it. */
@@ -239,7 +241,7 @@ export function clearCommunicationLimits(world: WorldState): void {
   limits.friendlyKill = null;
 }
 
-/** The player's field 12, which the missile warning `0x4f000` needs at 0 or 1. */
+/** The player's field 12 (radar): the attacker flag needs it at 0, the missile flag at 0 or 1. */
 const WARNING_FIELD = 12;
 
 /**
@@ -255,11 +257,27 @@ export function warnTail(context: TickContext, player: Entity, enemy: Entity): v
   limits.tailWarning = stampAfter(time.clock, PERIODS.tailWarning);
 }
 
+/** `0x4ef9c`: the first active object of kinds `0x780` in state 7 or above aiming at `player` and closing a missile lock on it. */
+function tailAttacker(world: WorldState, player: Entity): Entity | undefined {
+  for (const entity of world.entities.walk(TAIL_ATTACKER_KINDS)) {
+    if (isReady(entity) && entity.ai.objectTarget === player.id && isClosingMissileLock(entity)) return entity;
+  }
+  return undefined;
+}
+
+/** `0x4f000`: an active kind-20 missile in state 7 or above whose target is `player`. */
+function isMissileIncoming(world: WorldState, player: Entity): boolean {
+  for (const entity of world.entities.walk(2 ** MISSILE_KIND_BIT)) {
+    if (isReady(entity) && entity.combat.type === 'missile' && entity.combat.target === player.id) return true;
+  }
+  return false;
+}
+
 /**
- * `0x4edf4` for the player entity, in the cockpit display views (module comment). The attacker test `0x4ef9c` also
- * needs an object of kinds `0x780` whose AI byte (+0xF4)+0x24 is 3 or 4; that byte is P3-08's handler state, which no
- * entity has before P3-08, so no attacker is on the tail and `warnTail` is not reached here: the original's result
- * without AI (CB-17 decision 11). P3-08 adds that walk, ahead of the missile's, and calls `warnTail` for its attacker.
+ * `0x4edf4` for the player entity, in the tail check's views (module comment; FA-01): without a player entity, or until
+ * the clock is past the due clock, the flags are kept. Otherwise the attacker walk comes first, and an attacker found
+ * calls `warnTail` before and regardless of the radar s (field 12); then s = 0 keeps the attacker and walks for a
+ * missile, s = 1 clears the attacker and walks for a missile, and s ≥ 2 clears both.
  */
 export function checkTail(context: TickContext): void {
   const { world, time } = context;
@@ -268,17 +286,12 @@ export function checkTail(context: TickContext): void {
   const { tailCheck } = world.communications;
   if (player === undefined || !isDue(time.clock, tailCheck.dueClock)) return;
   if (player.combat.type !== 'craft') throw fault('player');
+  const attacker = tailAttacker(world, player);
+  if (attacker !== undefined) warnTail(context, player, attacker);
   const field = player.combat.subsystems[WARNING_FIELD];
-  let missileIncoming = false;
-  if (field === 0 || field === 1) {
-    for (const entity of world.entities.walk(2 ** MISSILE_KIND_BIT)) {
-      if (entity.activity === 'active' && isActiveState(entity.state) && entity.combat.type === 'missile' && entity.combat.target === player.id) {
-        missileIncoming = true;
-        break;
-      }
-    }
-  }
-  tailCheck.attackerOnTail = false;
+  const attackerOnTail = field === 0 && attacker !== undefined;
+  const missileIncoming = field <= 1 && isMissileIncoming(world, player);
+  tailCheck.attackerOnTail = attackerOnTail;
   tailCheck.missileIncoming = missileIncoming;
-  tailCheck.dueClock = stampAfter(time.clock, missileIncoming ? TAIL_CHECK_LIT : TAIL_CHECK_DARK);
+  tailCheck.dueClock = stampAfter(time.clock, attackerOnTail || missileIncoming ? TAIL_CHECK_LIT : TAIL_CHECK_DARK);
 }

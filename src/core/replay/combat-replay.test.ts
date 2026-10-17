@@ -150,6 +150,20 @@ describe('combat replay (P3-07 AC-13, CR-14)', () => {
     expect(READ.snapshots.at(-1)?.state.player.kills[7]).toBe(1);
   });
 
+  // P3-14 FA-05, FA-07 (docs/plan/p3/02/spec.md): the snapshots of the shooter's and victim's poses and speeds, and the
+  // retirements, in the recorded and replayed run.
+  it('has P3-14\'s shot and hit snapshots and the retirements of the hand-off\'s source and the spent projectile', () => {
+    for (const shot of of('shot-fired')) expect(shot).toMatchObject({ shooterForward: { x: expect.any(Number), y: expect.any(Number), z: expect.any(Number) }, shooterSpeed: expect.any(Number) });
+    for (const hit of of('hit')) expect(Object.keys(hit)).toEqual(expect.arrayContaining(['victimForward', 'victimSpeed']));
+    const retired = of('object-retired');
+    expect(retired).toEqual(expect.arrayContaining([
+      expect.objectContaining({ tick: 5, kindBit: 21, state: 'pending-removal' }),
+      expect.objectContaining({ tick: 7, entityId: FIRST, kindBit: 7, state: 'pending-removal' }),
+    ]));
+    // Each retirement once per entity and state.
+    expect(new Set(retired.map(({ entityId, state }) => `${entityId}:${state}`)).size).toBe(retired.length);
+  });
+
   it('compares the combat state of CR-14 at the checkpoints: every runtime kind, its timers and the player\'s new state', () => {
     const states = READ.snapshots.map(({ state }) => state);
     const entities = states.flatMap(({ entities: list }) => list);

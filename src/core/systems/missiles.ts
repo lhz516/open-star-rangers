@@ -38,6 +38,7 @@ import type { Entity, HomingState, MissileCombat, SteeredMovementBlock } from '.
 import type { WorldState } from '../world/world-state.ts';
 import { applyShotHit } from './damage.ts';
 import { constructExplosion } from './destruction.ts';
+import { retire } from './object-state.ts';
 import { emit, updateLifecycle, type AxisControl, type ControlBlock, type RequestOf, type TickContext } from './pipeline.ts';
 
 const fault = (site: string): CoreFaultError => new CoreFaultError('invariant-violated', `missiles.${site}`);
@@ -247,7 +248,7 @@ export function expireMissile(context: TickContext, entity: Entity, missile: Mis
     detonate(context, self);
     return;
   }
-  entity.state = 'pending-removal';
+  retire(context, entity, 'pending-removal');
   missile.shooter = null;
   missile.target = null;
 }

@@ -85,7 +85,7 @@ const NO_WARNINGS = { attackerOnTail: false, missileIncoming: false };
 describe('communications partition readiness (CB-14)', () => {
   it('is ready with a null player without a player entity, and keeps a destroyed player\'s readings', () => {
     const state = testState();
-    const none: CommunicationsProjection = { readiness: 'ready', player: null };
+    const none: CommunicationsProjection = { readiness: 'ready', player: null, warnings: NO_WARNINGS };
     expect(projectWorld(state).communications).toEqual(none);
     const player = addPlayerEntity(state);
     const live = projectWorld(state).communications;
@@ -102,7 +102,8 @@ describe('communications partition readiness (CB-14)', () => {
     world.step(tickInput());
     expect(world.projection().communications).toEqual({
       readiness: 'ready',
-      player: { entityId: player.id, page: 0, subsystem: 1, menu: null, incoming: null, docking: IDLE_DOCKING, base: null, warnings: NO_WARNINGS },
+      player: { entityId: player.id, page: 0, subsystem: 1, menu: null, incoming: null, docking: IDLE_DOCKING, base: null },
+      warnings: NO_WARNINGS,
     });
   });
 
@@ -287,7 +288,6 @@ describe('docking and the base view (CB-02, CB-10, CB-11, CB-14)', () => {
         cursor: 0,
         flags: { repairsComplete: false, energyAndMissilesFull: false, hullFull: false },
       },
-      warnings: NO_WARNINGS,
     });
     expect(world.projection().player.interactionContext).toBe('base');
   });
@@ -326,13 +326,31 @@ describe('docking and the base view (CB-02, CB-10, CB-11, CB-14)', () => {
   });
 });
 
-describe('the warning lights (CB-09)', () => {
-  it('reads the tail check\'s two indicators as the rules left them', () => {
+describe('the warnings (CB-09, FA-01)', () => {
+  it('reads the tail check\'s two flags as the rules left them, at the partition, frozen and detached', () => {
     const { state } = scene();
     Object.assign(state.communications.tailCheck, { attackerOnTail: true, missileIncoming: false });
-    expect(projectCommunications(state).player?.warnings).toEqual({ attackerOnTail: true, missileIncoming: false });
+    const first = projectCommunications(state);
+    expect(first.warnings).toEqual({ attackerOnTail: true, missileIncoming: false });
+    expect(first.player).not.toHaveProperty('warnings');
     Object.assign(state.communications.tailCheck, { attackerOnTail: false, missileIncoming: true });
-    expect(projectCommunications(state).player?.warnings).toEqual({ attackerOnTail: false, missileIncoming: true });
+    expect(projectCommunications(state).warnings).toEqual({ attackerOnTail: false, missileIncoming: true });
+    expect(first.warnings).toEqual({ attackerOnTail: true, missileIncoming: false });
+    expect(Object.isFrozen(first.warnings)).toBe(true);
+    expect(first.warnings).not.toBe(state.communications.tailCheck);
+  });
+
+  it('keeps the flags without a player entity: set, the player entity gone, then back, the reading never changes', () => {
+    const { state, player } = scene();
+    Object.assign(state.communications.tailCheck, { attackerOnTail: true, missileIncoming: true });
+    const lit = { attackerOnTail: true, missileIncoming: true };
+    expect(projectCommunications(state).warnings).toEqual(lit);
+    state.player.entityId = null;
+    const without = projectCommunications(state);
+    expect(without.player).toBeNull();
+    expect(without.warnings).toEqual(lit);
+    state.player.entityId = player.id;
+    expect(projectCommunications(state).warnings).toEqual(lit);
   });
 });
 

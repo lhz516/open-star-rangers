@@ -197,7 +197,11 @@ describe('the menu levels in one batch (CB-07; comm §7.2, §7.7)', () => {
   it('skips the object list for one object, and picks the wingman\'s table for kind 2', () => {
     const world = scene();
     const wingman = add(world, 1, { position: { x: 0, y: 9000, z: 0 } });
-    expect(constructWorld(world.state).step(tickInput([open, digit(1)]))).toEqual([accepted(0, open), page(0, 2, 0), accepted(1, digit(1)), page(2, 4, 1)]);
+    // The wingman stands outside the active area, which retires it at the end of the tick (P3-14 FA-07).
+    expect(constructWorld(world.state).step(tickInput([open, digit(1)]))).toEqual([
+      accepted(0, open), page(0, 2, 0), accepted(1, digit(1)), page(2, 4, 1),
+      { type: 'object-retired', tick: 1, entityId: wingman.id, kindBit: 1, state: 'area-switch' },
+    ]);
     expect(world.state.player.communications.partner).toBe(wingman.id);
     expect(world.state.player.communications.menu).toMatchObject({ level: 4, table: 'kind2' });
     expect(itemsOf(world.state.player.communications.menu).map(([itemKey]) => itemKey)).toEqual(['1', '2', '3', '4', '5', '6', '7', 'x']);

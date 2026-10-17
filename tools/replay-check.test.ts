@@ -428,6 +428,8 @@ describe('recording size limit', () => {
       'incoming-started', 'radio-flushed', 'radio-queued', 'radio-taken', 'transition',
       // P3-08's.
       'transponder-deployed', 'wingman-command-consumed',
+      // P3-14's.
+      'object-retired',
     ].sort());
     // P3-09's arrival is the longest event (docs/plan/p3/02/spec.md, MW-05).
     expect(Math.max(...Object.values(events).map((event) => JSON.stringify(event).length))).toBe(JSON.stringify(events['warp-completed']).length);

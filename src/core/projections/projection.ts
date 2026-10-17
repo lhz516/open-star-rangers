@@ -25,7 +25,7 @@ import {
   type TargetMode,
 } from '../world/player-state.ts';
 import type { MessageIdentity, MissionStatus, MissionSubState, SpeakerSnapshot, WorldState } from '../world/world-state.ts';
-import { projectCombat } from './combat.ts';
+import { craftRecord, projectCombat } from './combat.ts';
 import { projectCommunications } from './communications.ts';
 import { projectMap } from './map.ts';
 
@@ -91,6 +91,8 @@ export interface CombatTarget {
   readonly speed: number | null;
   /** A craft's shield and its full scale c5C; null for every other kind. */
   readonly shield: ResourceReading | null;
+  /** P3-14 (FA-02): the target's state is active or projectile-hit (the original's state ≥ 7), whatever its activity. */
+  readonly activeState: boolean;
 }
 
 /** A radar contact (T6); P3-13 projects it on the screen with its own camera. */
@@ -177,6 +179,8 @@ export interface MotionPlayer {
   readonly commandedSpeed: number;
   /** Runtime units per second. */
   readonly maximumSpeed: number;
+  /** P3-14 (FA-03): the player craft record's +0xB8, f32 runtime units/s; static, unlike `maximumSpeed` (+0x78). */
+  readonly recordMaximumSpeed: number;
   readonly speedLimitStatus: SpeedLimitStatus;
   /** The speed assist's switch and whether it has matched, readable without the event history. */
   readonly speedAssist: { readonly enabled: boolean; readonly engaged: boolean };
@@ -364,14 +368,23 @@ export interface CommunicationsPlayer {
   /** `docked`: the player's activity is docked. */
   readonly docking: { readonly subState: MissionSubState; readonly dockingObject: EntityId | null; readonly docked: boolean };
   readonly base: BaseServiceView | null;
-  /** The two lights of the type-9 instrument (P3-13). */
-  readonly warnings: { readonly attackerOnTail: boolean; readonly missileIncoming: boolean };
+}
+
+/** The type-9 instrument's two flags, as the tail check last sampled them (FA-01). */
+export interface ThreatWarnings {
+  readonly attackerOnTail: boolean;
+  readonly missileIncoming: boolean;
 }
 
 /** Communications, docking and base data (P3-10): null without a player entity; a destroyed player is still given. */
 export interface CommunicationsProjection {
   readonly readiness: 'ready';
   readonly player: CommunicationsPlayer | null;
+  /**
+   * P3-14 (FA-01): the two flags the instrument's lights (P3-13) and warning sound read, kept between samples and
+   * without a player entity; a null `player` does not mean they are false.
+   */
+  readonly warnings: ThreatWarnings;
 }
 
 /** A final result's rule reason and its content message: P3-11. */
@@ -422,6 +435,7 @@ function motionPlayer(world: WorldState): MotionPlayer | null {
     speed: movement.speed,
     commandedSpeed: movement.commandedSpeed,
     maximumSpeed: entity.maximumSpeed,
+    recordMaximumSpeed: craftRecord(world, entity.kindBit).atB8,
     speedLimitStatus: PLAYER_SPEED_LIMIT_STATUS,
     speedAssist: Object.freeze({ enabled, engaged }),
   });

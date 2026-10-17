@@ -28,6 +28,7 @@ import { toInt32 } from '../rules/record-defaults.ts';
 import type { Entity, LinearMovementBlock, ProjectileCombat } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { applyShotHit } from './damage.ts';
+import { retire } from './object-state.ts';
 import type { RequestOf, TickContext } from './pipeline.ts';
 
 const fault = (site: string): CoreFaultError => new CoreFaultError('invariant-violated', `projectiles.${site}`);
@@ -70,14 +71,14 @@ export function updateProjectile(context: TickContext, entity: Entity, projectil
 }
 
 /** `0x25f48`: the projectile becomes pending removal and lets its shooter go (mb +0xFC := 0). */
-function removeProjectile(entity: Entity, projectile: ProjectileCombat): void {
-  entity.state = 'pending-removal';
+function removeProjectile(context: TickContext, entity: Entity, projectile: ProjectileCombat): void {
+  retire(context, entity, 'pending-removal');
   projectile.shooter = null;
 }
 
 /** Message 0x10000 on a projectile: its expiry, `0x25f48`. */
-export function expireProjectile(_context: TickContext, entity: Entity, projectile: ProjectileCombat, _request: RequestOf<'expire'>): void {
-  removeProjectile(entity, projectile);
+export function expireProjectile(context: TickContext, entity: Entity, projectile: ProjectileCombat, _request: RequestOf<'expire'>): void {
+  removeProjectile(context, entity, projectile);
 }
 
 /** `0x25dc4` off `struck`: state 8 (projectile-hit), then the pose and velocity of the ricochet, five draws. */
@@ -103,7 +104,7 @@ export function hitTestProjectile(context: TickContext, entity: Entity): void {
   const damage = gunOf(world, projectile).at1C;
   if (hit.type === 'craft') {
     const outcome = applyShotHit(context, entity, hit.target, damage, hit.impact);
-    if (outcome?.projectile === 'removed') removeProjectile(entity, projectile);
+    if (outcome?.projectile === 'removed') removeProjectile(context, entity, projectile);
     if (outcome?.projectile !== 'ricochet') return;
     const rand = new RandStream(world.rngState);
     bounce(entity, block, hit.target, hit.impact, rand);
@@ -112,7 +113,7 @@ export function hitTestProjectile(context: TickContext, entity: Entity): void {
   }
   const rand = new RandStream(world.rngState);
   if (deflectsOffFragment(hit.debris, rand)) bounce(entity, block, hit.target, hit.impact, rand);
-  else removeProjectile(entity, projectile);
+  else removeProjectile(context, entity, projectile);
   world.rngState = rand.state;
   const { fragment } = hit;
   fragment.durability = toInt32(fragment.durability - damage);

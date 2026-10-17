@@ -203,7 +203,8 @@ describe('the Warp start (MW-04 warp-start, MW-05, MW-09)', () => {
     state.player.leftDisplay.page = 1;
     const events = step(state, [warp]);
     expect(results(events)).toEqual([[0, 'request-warp', 'accepted', null]]);
-    expect(others(events)).toEqual([
+    // The area now centres on the destination, which retires the old target at the end of the tick (MW-10, P3-14 FA-07).
+    expect(others(events).filter(({ type }) => type !== 'object-retired')).toEqual([
       {
         type: 'warp-started', tick: 1, playerEntityId: player.id, serial: 1, origin: POSITION, destination: DESTINATION,
         distance: 50000, check: { cost: COST, energy: COST }, transitLength: 7, fromViewMode: FLIGHT, commandIndex: 0,

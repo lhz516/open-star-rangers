@@ -75,7 +75,8 @@ describe('event log', () => {
       'left-page-changed': [['page', 1], ['previousPage', 0], ['commandIndex', null]],
     });
     const summary = (event: DomainEvent) => summarizeEvent(event, NO_COMMAND, 1).fields;
-    expect(summary({ type: 'hit', tick: 5, victimEntityId: 3, victimKindBit: 1, victimPosition: { x: 0, y: 0, z: 0 }, cause: 'collision', sourceEntityId: null,
+    expect(summary({ type: 'hit', tick: 5, victimEntityId: 3, victimKindBit: 1, victimPosition: { x: 0, y: 0, z: 0 }, victimForward: { x: 0, y: 0, z: 1 },
+      victimSpeed: null, cause: 'collision', sourceEntityId: null,
       attacker: { type: 'lost-shooter' }, damage: 1, gated: true, shield: { before: 0, after: 0 }, hull: { before: 2, after: 1 }, shieldWasEmpty: true,
       impact: null, projectile: null }).find(([name]) => name === 'attacker')).toEqual(['attacker', 'lost-shooter']);
     expect(summary({ ...(COMBAT_EVENTS[3] as Extract<DomainEvent, { type: 'shot-fired' }>), trigger: { type: 'ai', channel: 2 } })
@@ -162,6 +163,11 @@ describe('event log', () => {
       [['wingmanEntityId', 2], ['code', 3], ['issuedTick', 5], ['path', 'parked'], ['outcome', 'refused'], ['replyLine', null]],
       [['entityId', 9], ['creatorEntityId', 1], ['x', 1], ['y', -15], ['z', 2]],
     ]);
+  });
+
+  it('summarizes P3-14\'s retirement event by its own fields, in a fixed order', () => {
+    expect(summarizeEvent({ type: 'object-retired', tick: 6, entityId: 9, kindBit: 7, state: 'area-switch' }, NO_COMMAND, 1).fields)
+      .toEqual([['entityId', 9], ['kindBit', 7], ['state', 'area-switch']]);
   });
 
   it('keeps 500 events untruncated and drops the oldest of 501', () => {

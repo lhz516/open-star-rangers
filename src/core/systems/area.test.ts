@@ -105,7 +105,13 @@ describe('area check 0x3a468 (P3-06 AC-06, M-08)', () => {
     const playerKind = make(0, 9000, 0);
     const rng = state.rngState;
     const blocks = [outside, hit, dockedOutside].map(({ movement }) => movement);
-    checkActiveArea(state);
+    const context = contextAt(state, 2);
+    checkActiveArea(context);
+    // P3-14 FA-07: each active entity it moves out retires, in walk order (kind bits ascending); parked and docked ones do not.
+    expect(context.events).toEqual([
+      ...[onCircle, outside, hit].map(({ id }) => ({ type: 'object-retired', tick: context.time.tick, entityId: id, kindBit: 7, state: 'area-switch' })),
+      { type: 'object-retired', tick: context.time.tick, entityId: projectile.id, kindBit: 20, state: 'pending-removal' },
+    ]);
     expect([inside, onCircle, outside, hit, projectile, resuming, inWarp, parkedOutside, dockedOutside, dockedInside, notYet, playerKind].map((entity) => entity.state)).toEqual([
       'active', 'area-switch', 'area-switch', 'area-switch', 'pending-removal', 'area-switch', 'active', 'active', 'active', 'active', 'presentation-ready', 'active',
     ]);
@@ -120,7 +126,7 @@ describe('area check 0x3a468 (P3-06 AC-06, M-08)', () => {
     active.state = 'active';
     const resting = parked(state, 7);
     expect(activeAreaCentre(state)).toBeNull();
-    checkActiveArea(state);
+    checkActiveArea(contextAt(state, 2));
     expect([active.state, resting.state]).toEqual(['area-switch', 'active']);
   });
 
@@ -130,7 +136,7 @@ describe('area check 0x3a468 (P3-06 AC-06, M-08)', () => {
     expect(activeAreaCentre(state)).toBe(player.position);
     const near = state.entities.allocate(entityInit(7, { position: { x: -30000 + 7000, y: 20000, z: 0 } }));
     near.state = 'active';
-    checkActiveArea(state);
+    checkActiveArea(contextAt(state, 2));
     expect(near.state).toBe('active');
   });
 
@@ -147,7 +153,7 @@ describe('area check 0x3a468 (P3-06 AC-06, M-08)', () => {
     const nearPlayer = state.entities.allocate(entityInit(7, { position: { x: 0, y: 0, z: 0 } }));
     nearDestination.state = 'active';
     nearPlayer.state = 'active';
-    checkActiveArea(state);
+    checkActiveArea(contextAt(state, 2));
     expect([nearDestination.state, nearPlayer.state]).toEqual(['active', 'area-switch']);
     player.inWarp = false;
     expect(activeAreaCentre(state)).toBe(player.position);
@@ -237,8 +243,8 @@ describe('parking switch, message 0x20 (P3-06 AC-06, D-02, D-03)', () => {
     state.player.target = craft.id;
     world.step(tickInput());
     player.position = { x: 20000, y: 0, z: 0 };
-    // Tick N: the area check marks them.
-    expect(world.step(tickInput())).toEqual([]);
+    // Tick N: the area check marks them, with the craft's retirement (P3-14 FA-07).
+    expect(world.step(tickInput())).toEqual([{ type: 'object-retired', tick: state.tick, entityId: craft.id, kindBit: 7, state: 'area-switch' }]);
     expect([craft.activity, craft.state, craft.movement !== null]).toEqual(['active', 'area-switch', true]);
     // N + 1: request handling parks it; no parked update yet, so no draw.
     const rng = state.rngState;
@@ -754,7 +760,8 @@ describe('the Warp departure: message 0x800000 to the parked Warp jump (P3-08/21
     const events = tickPosting(state, (context) => expect(requestWarpDeparture(context, craft)).toBe(true));
     const departed = state.clock;
     expect(craft).toMatchObject({ state: 'area-switch', activity: 'active', inWarp: true, warpClock: 0, lastParkedUpdateClock: departed - 0x80 });
-    expect(about(events, craft)).toEqual([]);
+    // The original's removal item for the departure (P3-14 FA-07; CR-24 decision 11 no longer holds).
+    expect(about(events, craft)).toEqual([{ type: 'object-retired', tick: state.tick, entityId: craft.id, kindBit: 7, state: 'area-switch' }]);
     // N + 1: the state-5 callback removes the interpreter (releasing its parse) and asks to leave; message 0x20 parks.
     expect(about(world.step(tickInput()), craft)).toEqual([]);
     expect(craft).toMatchObject({ activity: 'parked', state: 'new', inWarp: true, warpClock: 0, ai: { program: { controller: null } } });

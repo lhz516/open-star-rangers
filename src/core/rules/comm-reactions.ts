@@ -60,6 +60,9 @@ export const PERIODS = Object.freeze({
 export const TAIL_CHECK_LIT = 0x40;
 export const TAIL_CHECK_DARK = 0x80;
 
+/** The kinds the attacker test `0x4ef9c` walks, bits 7–10. */
+export const TAIL_ATTACKER_KINDS = 0x780;
+
 /** 3500², the f32 constants `0x171454` and `0x171458`. */
 const WINGMAN_RANGE_SQUARED = 12_250_000;
 /** The f64 constant 0.707 of the tail test (`0x17144c`). */

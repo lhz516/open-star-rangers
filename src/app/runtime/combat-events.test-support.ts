@@ -13,11 +13,11 @@ export const COMBAT_EVENTS: readonly DomainEvent[] = Object.freeze(([
   { type: 'target-cleared', tick: 5, playerEntityId: 1, previousTarget: 14, cause: 'invalid' },
   { type: 'weapon-selected', tick: 5, entityId: 1, list: 1, index: 0, mount: 2, changed: false, commandIndex: null },
   {
-    type: 'shot-fired', tick: 5, shooterEntityId: 1, shooterKindBit: 0, shooterPosition: at(1, 2, 3), entityId: 20, family: 'gun', weapon: 1, mount: 0,
-    position: at(1.5, 2, 3), trigger: Object.freeze({ type: 'command', channel: 'primary', commandIndex: 0 }),
+    type: 'shot-fired', tick: 5, shooterEntityId: 1, shooterKindBit: 0, shooterPosition: at(1, 2, 3), shooterForward: at(0, 0, 1), shooterSpeed: 64,
+    entityId: 20, family: 'gun', weapon: 1, mount: 0, position: at(1.5, 2, 3), trigger: Object.freeze({ type: 'command', channel: 'primary', commandIndex: 0 }),
   },
   {
-    type: 'hit', tick: 5, victimEntityId: 14, victimKindBit: 7, victimPosition: at(4, 5, 6), cause: 'projectile', sourceEntityId: 20, attacker: SHOOTER,
+    type: 'hit', tick: 5, victimEntityId: 14, victimKindBit: 7, victimPosition: at(4, 5, 6), victimForward: at(0, 1, 0), victimSpeed: 32, cause: 'projectile', sourceEntityId: 20, attacker: SHOOTER,
     damage: 12, gated: false, shield: Object.freeze({ before: 30, after: 18 }), hull: Object.freeze({ before: 50, after: 50 }), shieldWasEmpty: false,
     impact: Object.freeze({ point: at(4, 5, 5), local: at(0, 0, -1), face: 4 }), projectile: 'removed',
   },

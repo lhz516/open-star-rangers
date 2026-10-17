@@ -247,7 +247,7 @@ describe('an unguided missile (H5 phase 0, CR-09)', () => {
     const ended = step(state, [], missile);
     expect(ended.events).toEqual([{
       type: 'missile-ended', tick: 67, entityId: missile.id, shooterEntityId: player.id, outcome: 'fizzled', position, orientation: IDENTITY,
-    } satisfies MissileEndedEvent]);
+    } satisfies MissileEndedEvent, { type: 'object-retired', tick: 67, entityId: missile.id, kindBit: 20, state: 'pending-removal' }]);
     expect([missile.state, missile.position, ended.atMovement?.position]).toEqual(['pending-removal', position, position]);
     step(state);
     expect(state.entities.get(missile.id)).toBeUndefined();
@@ -357,7 +357,9 @@ describe('a homing missile (H5, CR-05, CR-09)', () => {
     state.player.target = craft.id;
     const { missile } = launch(state);
     const events = flyOut(state, missile).flatMap(({ events: tickEvents }) => tickEvents);
-    expect(events).toMatchObject([{ type: 'missile-ended', shooterEntityId: player.id, outcome: 'fizzled', position: { x: 0, y: 0 } }]);
+    expect(events).toMatchObject([
+      { type: 'missile-ended', shooterEntityId: player.id, outcome: 'fizzled', position: { x: 0, y: 0 } }, { type: 'object-retired', state: 'pending-removal' },
+    ]);
     expect(craft.combat.shield).toBe(1000);
   });
 
@@ -374,7 +376,7 @@ describe('a homing missile (H5, CR-05, CR-09)', () => {
     const deadline = (missile.combat.homing as { nextUpdateClock: number }).nextUpdateClock;
     const frames = flyOut(state, missile);
     const events = frames.flatMap(({ events: tickEvents }) => tickEvents);
-    expect(events).toMatchObject([{ type: 'missile-ended', outcome: 'fizzled' }]);
+    expect(events).toMatchObject([{ type: 'missile-ended', outcome: 'fizzled' }, { type: 'object-retired', state: 'pending-removal' }]);
     for (const frame of frames.filter(({ atMovement }) => atMovement?.state === 'active')) {
       expect(frame.atMovement!.block.steering).toEqual(steering);
       expectIntegrated(state, frame);

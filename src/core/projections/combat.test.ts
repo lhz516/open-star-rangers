@@ -134,7 +134,7 @@ describe('flight.combat readings (CR-12, AC-04)', () => {
         targetMode: 'friendly',
         target: {
           entityId: target.id, kindBit: 7, name, position: { x: 0, y: 0, z: 100 }, orientation: [...TEST_ORIENTATION],
-          distance: 100, speed: 37.5, shield: { current: 120, maximum: 450 },
+          distance: 100, speed: 37.5, shield: { current: 120, maximum: 450 }, activeState: true,
         },
         radar: {
           status: 1,
@@ -194,7 +194,7 @@ describe('flight.combat target (T7)', () => {
     expect(targetOf(state)).toBeNull();
     const target = add(state, 7, at(0, 0, 100));
     state.player.target = target.id;
-    expect(Object.keys(targetOf(state)!)).toEqual(['entityId', 'kindBit', 'name', 'position', 'orientation', 'distance', 'speed', 'shield']);
+    expect(Object.keys(targetOf(state)!)).toEqual(['entityId', 'kindBit', 'name', 'position', 'orientation', 'distance', 'speed', 'shield', 'activeState']);
     target.destroyed = true;
     target.state = 'destroyed-source';
     expect(targetOf(state)?.entityId).toBe(target.id);
@@ -211,6 +211,22 @@ describe('flight.combat target (T7)', () => {
     (missile.movement as SteeredMovementBlock).speed = 12.5;
     state.player.target = missile.id;
     expect(targetOf(state)).toMatchObject({ kindBit: 20, speed: 12.5, shield: null });
+  });
+
+  // P3-14 FA-02: the lock tone's −1 for a target whose state is below 7, whatever its activity (A-06).
+  it.each([
+    ['new', false], ['presentation-ready', false], ['awaiting-presentation', false], ['destroyed-source', false], ['area-switch', false],
+    ['pending-removal', false], ['active', true], ['projectile-hit', true],
+  ] as const)('reads a target in state %s as active state %s, frozen and detached', (objectState, active) => {
+    const [state] = combatWorld();
+    const target = add(state, 7, at(0, 0, 100), { activity: 'parked' });
+    state.player.target = target.id;
+    target.state = objectState;
+    const reading = targetOf(state)!;
+    expect(reading.activeState).toBe(active);
+    target.state = active ? 'pending-removal' : 'active';
+    expect(reading.activeState).toBe(active);
+    expect(Object.isFrozen(reading)).toBe(true);
   });
 
   it('measures the distance as the right display does: each double difference times its f32 store', () => {

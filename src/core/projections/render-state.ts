@@ -13,11 +13,16 @@
  * completed segments n, fraction u, length L and the tunnel path's 15 control points, for P3-12's tunnel effect; it is
  * null in every other view (and in the unreachable view 1 without a transit). The placement serial grows at a Warp
  * start, an arrival and a marker move.
+ *
+ * P3-14 (docs/plan/p3/02/spec.md, FA-04): each entity also carries its object state and its movement block speed, which
+ * the sound consumer reads for the per-object sounds (A-01, A-02, A-04); a listed entity is never parked and so always
+ * has a block, and one without is Core's fault.
  */
 import type { Vec3 } from '../contracts/domain-events.ts';
+import { CoreFaultError } from '../errors.ts';
 import { warpProgress } from '../rules/warp-path.ts';
 import { WARP_VIEW_MODE } from '../systems/view-switch.ts';
-import { frozenVec, type Entity, type EntityId, type EntityPresentation, type Matrix3 } from '../world/entity-table.ts';
+import { frozenVec, type Entity, type EntityId, type EntityPresentation, type Matrix3, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
 
 export interface RenderEntity {
@@ -32,6 +37,10 @@ export interface RenderEntity {
   readonly hitShimmerStart: number | null;
   /** An explosion's activation clock (CR-12); null for every other kind and before activation. */
   readonly explosionStart: number | null;
+  /** The object state (the original's byte +3), FA-04. */
+  readonly state: ObjectState;
+  /** The movement block's +0x08, f32 runtime units/s, FA-04. */
+  readonly speed: number;
 }
 
 export interface RenderState {
@@ -67,7 +76,8 @@ function renderWarp(world: WorldState): RenderWarp | null {
   return Object.freeze({ serial, progress: warpProgress(transit), segments, fraction, length, path: Object.freeze(path.map(frozenVec)) });
 }
 
-function renderEntity({ id, kindBit, presentation, position: { x, y, z }, orientation, placementSerial, combat }: Entity): RenderEntity {
+function renderEntity({ id, kindBit, presentation, position: { x, y, z }, orientation, placementSerial, combat, state, movement }: Entity): RenderEntity {
+  if (movement === null) throw new CoreFaultError('invariant-violated', 'render-state.movement');
   return Object.freeze({
     id,
     kindBit,
@@ -78,6 +88,8 @@ function renderEntity({ id, kindBit, presentation, position: { x, y, z }, orient
     placementSerial,
     hitShimmerStart: combat.type === 'craft' ? combat.hitFeedbackClock : null,
     explosionStart: combat.type === 'explosion' ? combat.activationClock : null,
+    state,
+    speed: movement.speed,
   });
 }
 

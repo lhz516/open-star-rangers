@@ -36,6 +36,7 @@ import { applyMapPoint, applyMapToggle, runMapStep, type MapPointRequest, type M
 import { applySteer, expireMissile, updateMissile } from './missiles.ts';
 import { moveEntities } from './movement.ts';
 import { updateObjectSets } from './object-sets.ts';
+import { isRetiredState, retire } from './object-state.ts';
 import { engageParked } from './parked-engagement.ts';
 import { expireProjectile, hitTestProjectile, updateProjectile } from './projectiles.ts';
 import { checkSpawnQueue, dispatchSpawn, type SpawnRequest } from './spawn.ts';
@@ -490,6 +491,7 @@ function handleRequest(context: TickContext, request: Request): void {
     case 'set-state':
       // An explosion's states are its activation and update (`0x2409c`, X4).
       if (entity.combat.type === 'explosion') setExplosionState(context, entity, entity.combat, request);
+      else if (isRetiredState(request.state)) retire(context, entity, request.state);
       else entity.state = request.state;
       return;
     case 'leave':
@@ -523,7 +525,7 @@ function handleRequest(context: TickContext, request: Request): void {
       createTransponder(context, entity);
       return;
     case 'warp-departure':
-      applyWarpDeparture(world, entity);
+      applyWarpDeparture(context, entity);
       return;
   }
 }
@@ -553,7 +555,7 @@ function updateParkedObjects(context: TickContext): void {
 
 /** Stage `area-check` (`0x3a468`, area.ts). */
 function checkArea(context: TickContext): void {
-  checkActiveArea(context.world);
+  checkActiveArea(context);
 }
 
 /**
@@ -625,8 +627,8 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   stage('mission-teardown', null),
   stage('area-check', checkArea),
   // Rule progress the original makes in its camera step and frame render: P3-09's map step (0x2b8ec, 0x49f8c) or
-  // Warp step (0x50508), then P3-07's cockpit display step (CR-10) and P3-10's communications presentation sub-step
-  // (CB-09); never waits for a rendered frame.
+  // Warp step (0x50508), then P3-07's cockpit display step (CR-10), the tail warning in its own views (CB-09, P3-14
+  // FA-01) and P3-10's communications presentation sub-step (CB-09); never waits for a rendered frame.
   stage('frame-end', runFrameEnd),
   stage('commit', commit),
 ]);

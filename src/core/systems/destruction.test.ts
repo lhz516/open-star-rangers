@@ -117,7 +117,11 @@ describe('a craft destroyed outside object update (X1, X2, X9, CR-08, AC-12)', (
     expect([explosion.state, part0.state, part1.state, enemy.state]).toEqual(['active', 'active', 'active', 'destroyed-source']);
     expect([fragmentOf(part0).expiry.type, fragmentOf(part1).expiry.type]).toEqual(['at', 'at']);
 
-    expect(tick(state)).toEqual([{ type: 'source-released', tick: 4, entityId: enemy.id, kindBit: SMALL, fragmentEntityId: part0.id, removed: true }]);
+    // The hand-off retires the source where it writes its state, before its own event (P3-14 FA-07).
+    expect(tick(state)).toEqual([
+      { type: 'object-retired', tick: 4, entityId: enemy.id, kindBit: SMALL, state: 'pending-removal' },
+      { type: 'source-released', tick: 4, entityId: enemy.id, kindBit: SMALL, fragmentEntityId: part0.id, removed: true },
+    ]);
     expect([enemy.state, fragmentOf(part0).handOff]).toEqual(['pending-removal', null]);
     expect(tick(state)).toEqual([]);
     expect(state.entities.get(enemy.id)).toBeUndefined();
@@ -201,11 +205,16 @@ describe('a held source (X2, X4, CR-08, AC-12)', () => {
     const activation = state.tick;
     runTo(state, activation + 27);
     expect(enemy.state).toBe('destroyed-source');
-    tick(state);
+    // P3-14 FA-07: the animation's end retires the held source, in request handling.
+    expect(tick(state)).toEqual([{ type: 'object-retired', tick: state.tick, entityId: enemy.id, kindBit: PARTLESS, state: 'pending-removal' }]);
     expect([state.tick - activation, enemy.state, explosionOf(explosion).heldSource]).toEqual([28, 'pending-removal', null]);
     tick(state);
     expect(state.entities.get(enemy.id)).toBeUndefined();
     expect(explosion.state).toBe('active');
+    // The explosion's own end (X4) retires it once, 49 ticks after the activation; it leaves at its next update.
+    const ended = runTo(state, activation + 60).flat().filter(({ type }) => type === 'object-retired');
+    expect(ended).toEqual([{ type: 'object-retired', tick: expect.any(Number), entityId: explosion.id, kindBit: 22, state: 'pending-removal' }]);
+    expect(state.entities.get(explosion.id)).toBeUndefined();
   });
 
   it('holds a missile in a missile explosion and releases it 14 ticks after the activation (6 frames)', () => {
@@ -239,7 +248,8 @@ describe('a held source (X2, X4, CR-08, AC-12)', () => {
     tick(state, { collision: (context) => constructExplosion(context, enemy) });
     const [explosion] = ofKind(state, 22);
     tick(state, { 'area-check': () => void (explosion.state = 'pending-removal') });
-    tick(state);
+    // P3-14 FA-07: message 0x40 retires the source it lets go of.
+    expect(tick(state)).toEqual([{ type: 'object-retired', tick: state.tick, entityId: enemy.id, kindBit: PARTLESS, state: 'pending-removal' }]);
     expect([state.entities.get(explosion.id), enemy.state]).toEqual([undefined, 'pending-removal']);
     tick(state);
     expect(state.entities.get(enemy.id)).toBeUndefined();
@@ -267,7 +277,7 @@ describe('objects made in object update (X9, CR-08, CR-11 difference 5)', () => 
     const parts = ofKind(state, 24);
     expect(types(events)).toEqual(['explosion-started']);
     expect([explosion.state, ...parts.map(({ state: partState }) => partState)]).toEqual(['active', 'active', 'active']);
-    expect(types(tick(state))).toEqual(['source-released']);
+    expect(types(tick(state))).toEqual(['object-retired', 'source-released']);
     tick(state);
     expect(state.entities.get(enemy.id)).toBeUndefined();
   });
@@ -306,7 +316,10 @@ describe('the player\'s delayed explosion and escape pod (X2, X7, CR-04, AC-12)'
     expect(quiet).toEqual([]);
     const expired = tick(state);
     expect(state.tick - firstCallbackTick).toBe(160);
-    expect(expired).toEqual([{ type: 'fragment-expired', tick: state.tick, entityId: pod.id, sourceKindBit: 0, part: 0, position: pod.position, outcome: 'escape-pod' }]);
+    expect(expired).toEqual([
+      { type: 'fragment-expired', tick: state.tick, entityId: pod.id, sourceKindBit: 0, part: 0, position: pod.position, outcome: 'escape-pod' },
+      { type: 'object-retired', tick: state.tick, entityId: pod.id, kindBit: 24, state: 'pending-removal' },
+    ]);
     expect([state.player.followedEntity, pod.state, player.state, state.entities.get(player.id)]).toEqual([null, 'pending-removal', 'destroyed-source', player]);
     tick(state);
     expect(state.entities.get(pod.id)).toBeUndefined();
@@ -405,7 +418,7 @@ describe('the events (CR-06)', () => {
     const { state } = world();
     const enemy = craftIn(state, SMALL);
     const events = [tick(state, { collision: (context) => destroyEntity(context, enemy) }), tick(state), tick(state)];
-    expect(events.flat().map(({ type }) => type)).toEqual(['explosion-started', 'source-released']);
+    expect(events.flat().map(({ type }) => type)).toEqual(['explosion-started', 'object-retired', 'source-released']);
     const result = { events: events.flat(), checkpoints: [{ tick: 0, hash: '0'.repeat(16) }, { tick: 3, hash: '1'.repeat(16) }], finalTick: 3 };
     expect(compareReplayResults(result, result)).toEqual({ match: true });
   });

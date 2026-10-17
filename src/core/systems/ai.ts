@@ -42,6 +42,7 @@ import { RandStream, type RandSource } from '../rules/original-random.ts';
 import { isWarpAllowed } from '../rules/parked-travel.ts';
 import { isActiveState, isValidAiProgram, type Activity, type AiController, type AiControllerCommon, type AiHandler, type AiProgramSlot, type Entity, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { retire } from './object-state.ts';
 import { emit, type TickContext } from './pipeline.ts';
 import { queueLine } from './radio.ts';
 import { fireAiChannel, fireAutomatic } from './weapons.ts';
@@ -118,14 +119,16 @@ const DEPARTURE_PARKED_LEAD = 0x80;
 
 /**
  * Message 0x800000's handling (`0x214a4`, D6; CR-21), in request handling: mayDepartByWarp again, and on success the
- * area switch, in Warp, the Warp timer 0 and the last parked update clock − 0x80; otherwise nothing. The following ticks
+ * area switch with its `object-retired` (docs/plan/p3/02/spec.md, FA-07), in Warp, the Warp timer 0 and the last
+ * parked update clock − 0x80; otherwise nothing. The following ticks
  * finish the departure through the lifecycle: the state-5 callback removes the controller and asks to leave, message
  * 0x20 parks the entity, its next callback (no transit with the timer 0) installs the parked handler, and its parked
  * update, due at once, starts the Warp jump (area.ts). A second request for the same entity fails on its Warp flag.
  */
-export function applyWarpDeparture(world: WorldState, entity: Entity): void {
+export function applyWarpDeparture(context: TickContext, entity: Entity): void {
+  const { world } = context;
   if (!mayDepartByWarp(world, entity)) return;
-  entity.state = 'area-switch';
+  retire(context, entity, 'area-switch');
   entity.inWarp = true;
   entity.warpClock = 0;
   entity.lastParkedUpdateClock = world.clock - DEPARTURE_PARKED_LEAD;

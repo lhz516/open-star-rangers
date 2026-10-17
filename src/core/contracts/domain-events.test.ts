@@ -10,6 +10,8 @@ import {
   type HitEvent,
   type ObjectInstantiatedEvent,
   type ObjectLeftWorldEvent,
+  type ObjectRetiredEvent,
+  type ShotFiredEvent,
   type ShotTrigger,
   type SpeedAssistReleasedEvent,
   type SpeedAssistToggledEvent,
@@ -48,9 +50,9 @@ const combatEvents: DomainEvent[] = [
   { type: 'target-changed', tick: 8, playerEntityId: 1, previousTarget: 5, target: 6, targetKindBit: 8, mode: 'enemy', origin: 'automatic', commandIndex: null },
   { type: 'target-cleared', tick: 8, playerEntityId: 1, previousTarget: 6, cause: 'warp' },
   { type: 'weapon-selected', tick: 8, entityId: 1, list: 1, index: -1, mount: null, changed: false, commandIndex: 1 },
-  { type: 'shot-fired', tick: 8, shooterEntityId: 1, shooterKindBit: 0, shooterPosition: at, entityId: 9, family: 'gun', weapon: 2, mount: 3, position: at,
+  { type: 'shot-fired', tick: 8, shooterEntityId: 1, shooterKindBit: 0, shooterPosition: at, shooterForward: at, shooterSpeed: 64, entityId: 9, family: 'gun', weapon: 2, mount: 3, position: at,
     trigger: { type: 'command', channel: 'primary', commandIndex: 2 } },
-  { type: 'hit', tick: 8, victimEntityId: 5, victimKindBit: 7, victimPosition: at, cause: 'projectile', sourceEntityId: 9, attacker: shooter, damage: 40, gated: false,
+  { type: 'hit', tick: 8, victimEntityId: 5, victimKindBit: 7, victimPosition: at, victimForward: at, victimSpeed: null, cause: 'projectile', sourceEntityId: 9, attacker: shooter, damage: 40, gated: false,
     shield: { before: 30, after: 0 }, hull: { before: 100, after: 90 }, shieldWasEmpty: false, impact: { point: at, local: at, face: 5 }, projectile: 'removed' },
   { type: 'object-destroyed', tick: 8, entityId: 5, kindBit: 7, source: null, position: at, activity: 'active', attacker: { type: 'lost-shooter' }, eventClass: 1,
     outcome: 'explodes' },
@@ -105,6 +107,12 @@ const aiEvents: DomainEvent[] = [
   { type: 'transponder-deployed', tick: 16, entityId: 20, creatorEntityId: 1, position: at, orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
 ];
 
+// P3-14's event (docs/plan/p3/02/spec.md, FA-07), one of each state.
+const retiredEvents: DomainEvent[] = [
+  { type: 'object-retired', tick: 17, entityId: 7, kindBit: 8, state: 'area-switch' },
+  { type: 'object-retired', tick: 17, entityId: 7, kindBit: 8, state: 'pending-removal' },
+];
+
 describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06; P3-07 CR-05, CR-06)', () => {
   it('has closed, frozen outcome and reason lists', () => {
     expect(COMMAND_OUTCOMES).toEqual(['accepted', 'rejected', 'ignored']);
@@ -128,7 +136,7 @@ describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06;
   it('is plain data that survives a JSON round trip unchanged', () => {
     const events: DomainEvent[] = [
       rejected, instantiated, toggled, matchedByCommand, matchedByAssist, released, leftWorld, ...combatEvents, ...mapWarpEvents, ...communicationsEvents,
-      ...aiEvents,
+      ...aiEvents, ...retiredEvents,
     ];
     expect(JSON.parse(JSON.stringify(events))).toEqual(events);
     expect(Object.keys(rejected)).toEqual(['type', 'tick', 'commandIndex', 'commandType', 'outcome', 'reason']);
@@ -144,7 +152,11 @@ describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06;
       | 'command-delivered' | 'radio-queued' | 'radio-taken' | 'incoming-started' | 'incoming-ended' | 'radio-flushed' | 'docking-requested'
       | 'docking-cancelled' | 'docked' | 'departed' | 'transition' | 'base-navigated' | 'base-confirmed'
       | 'wingman-command-consumed' | 'transponder-deployed'
+      | 'object-retired'
     >();
+    expectTypeOf<ObjectRetiredEvent['state']>().toEqualTypeOf<'pending-removal' | 'area-switch'>();
+    expectTypeOf<ShotFiredEvent['shooterSpeed']>().toEqualTypeOf<number | null>();
+    expectTypeOf<HitEvent['victimSpeed']>().toEqualTypeOf<number | null>();
     expect(new Set(combatEvents.map(({ type }) => type)).size).toBe(13);
     expect(new Set(mapWarpEvents.map(({ type }) => type)).size).toBe(4);
     expectTypeOf<WarpDestinationSetEvent['marker']['type']>().toEqualTypeOf<'created' | 'moved' | 'missing'>();

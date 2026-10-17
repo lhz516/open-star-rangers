@@ -30,9 +30,11 @@ import {
   type MapToggledEvent,
   type ObjectInstantiatedEvent,
   type ObjectLeftWorldEvent,
+  type ObjectRetiredEvent,
   type RadioFlushedEvent,
   type RadioQueuedEvent,
   type RadioTakenEvent,
+  type RetiredState,
   type ShotTrigger,
   type SpeedAssistReleasedEvent,
   type SpeedAssistToggledEvent,
@@ -89,6 +91,7 @@ type CombatEvent = Exclude<
   | MapWarpEvent
   | CommunicationsEvent
   | AiEvent
+  | ObjectRetiredEvent
 >;
 
 /** Difference data, not an error. */
@@ -107,9 +110,12 @@ const EVENT_FIELDS = {
   'target-changed': ['type', 'tick', 'playerEntityId', 'previousTarget', 'target', 'targetKindBit', 'mode', 'origin', 'commandIndex'],
   'target-cleared': ['type', 'tick', 'playerEntityId', 'previousTarget', 'cause'],
   'weapon-selected': ['type', 'tick', 'entityId', 'list', 'index', 'mount', 'changed', 'commandIndex'],
-  'shot-fired': ['type', 'tick', 'shooterEntityId', 'shooterKindBit', 'shooterPosition', 'entityId', 'family', 'weapon', 'mount', 'position', 'trigger'],
+  'shot-fired': [
+    'type', 'tick', 'shooterEntityId', 'shooterKindBit', 'shooterPosition', 'shooterForward', 'shooterSpeed', 'entityId', 'family', 'weapon', 'mount',
+    'position', 'trigger',
+  ],
   hit: [
-    'type', 'tick', 'victimEntityId', 'victimKindBit', 'victimPosition', 'cause', 'sourceEntityId', 'attacker', 'damage', 'gated', 'shield', 'hull',
+    'type', 'tick', 'victimEntityId', 'victimKindBit', 'victimPosition', 'victimForward', 'victimSpeed', 'cause', 'sourceEntityId', 'attacker', 'damage', 'gated', 'shield', 'hull',
     'shieldWasEmpty', 'impact', 'projectile',
   ],
   'object-destroyed': ['type', 'tick', 'entityId', 'kindBit', 'source', 'position', 'activity', 'attacker', 'eventClass', 'outcome'],
@@ -141,6 +147,7 @@ const EVENT_FIELDS = {
   'base-confirmed': ['type', 'tick', 'row', 'record', 'moved', 'commandIndex'],
   'wingman-command-consumed': ['type', 'tick', 'wingmanEntityId', 'code', 'issuedTick', 'path', 'outcome', 'replyLine'],
   'transponder-deployed': ['type', 'tick', 'entityId', 'creatorEntityId', 'position', 'orientation'],
+  'object-retired': ['type', 'tick', 'entityId', 'kindBit', 'state'],
 } as const satisfies { readonly [Type in Exclude<DomainEvent['type'], 'speed-matched'>]: readonly (keyof Extract<DomainEvent, { type: Type }>)[] };
 const SPEED_MATCHED_FIELDS = {
   command: ['type', 'tick', 'targetEntityId', 'origin', 'commandIndex'],
@@ -155,7 +162,7 @@ const ENTITY_ID = integerIn(1, Number.MAX_SAFE_INTEGER);
 const KIND_BIT = integerIn(0, 31);
 const COMMAND_INDEX = integerIn(0, CORE_LIMITS.commandsPerTick - 1);
 const COORDINATE: NumberRule = [Number.isFinite, 'must be a finite number'];
-/** P3-08's transponder pose (CR-22) is f32. */
+/** P3-08's transponder pose (CR-22) and P3-14's forward rows and speeds of shots and hits (FA-05) are f32. */
 const F32: NumberRule = [isFiniteFloat32, 'must be a finite f32'];
 const INT32 = integerIn(-0x80000000, 0x7fffffff);
 const LEVEL = integerIn(0, 3);
@@ -186,6 +193,8 @@ const FACE_MESSAGE_INDEX = integerIn(0, COMM_MESSAGES_LIMITS.faceMessages - 1);
 const DIRECT_INDEX = integerIn(0, COMM_MESSAGES_LIMITS.directMessages - 1);
 const SUB_STATES: readonly number[] = [0, 3, 4, 5];
 const RADIO_CALLBACKS = ['none', 'docking-reply', 'music-step', 'music-reset'] as const;
+// P3-14's (FA-07).
+const RETIRED_STATES: readonly RetiredState[] = ['pending-removal', 'area-switch'];
 
 function readBoolean(value: unknown, path: string): boolean {
   if (typeof value !== 'boolean') throw new CoreInputError(path, 'must be a boolean');
@@ -260,6 +269,8 @@ const readEntityId = (value: unknown, path: string): number => readNumber(value,
 const readKindBit = (value: unknown, path: string): number => readNumber(value, path, KIND_BIT);
 const readNullableEntityId = (value: unknown, path: string): number | null => (value === null ? null : readEntityId(value, path));
 const readNullableCommandIndex = (value: unknown, path: string): number | null => (value === null ? null : readNumber(value, path, COMMAND_INDEX));
+/** A movement block speed snapshot (FA-05): f32, null without a block. */
+const readNullableSpeed = (value: unknown, path: string): number | null => (value === null ? null : readNumber(value, path, F32));
 
 function readMatrix(value: unknown, path: string, rule = COORDINATE): Matrix3 {
   const rows = readList(value, path, 9, (item, at) => readNumber(item, at, rule));
@@ -336,6 +347,8 @@ function readHit(event: Record<string, unknown>, path: string, tick: number): Hi
     victimEntityId: readEntityId(event.victimEntityId, `${path}.victimEntityId`),
     victimKindBit: readKindBit(event.victimKindBit, `${path}.victimKindBit`),
     victimPosition: readVector(event.victimPosition, `${path}.victimPosition`),
+    victimForward: readVector(event.victimForward, `${path}.victimForward`, F32),
+    victimSpeed: readNullableSpeed(event.victimSpeed, `${path}.victimSpeed`),
     cause: readChoice(event.cause, `${path}.cause`, ['projectile', 'missile', 'collision', 'area', 'parked']),
     sourceEntityId: readNullableEntityId(event.sourceEntityId, `${path}.sourceEntityId`),
     attacker: readAttacker(event.attacker, `${path}.attacker`),
@@ -482,6 +495,8 @@ function readCombatEvent(event: Record<string, unknown>, path: string, tick: num
         shooterEntityId: readEntityId(event.shooterEntityId, at('shooterEntityId')),
         shooterKindBit: readKindBit(event.shooterKindBit, at('shooterKindBit')),
         shooterPosition: readVector(event.shooterPosition, at('shooterPosition')),
+        shooterForward: readVector(event.shooterForward, at('shooterForward'), F32),
+        shooterSpeed: readNullableSpeed(event.shooterSpeed, at('shooterSpeed')),
         entityId: readEntityId(event.entityId, at('entityId')),
         family: readChoice(event.family, at('family'), ['gun', 'missile']),
         weapon: readNumber(event.weapon, at('weapon'), INDEX),
@@ -837,6 +852,14 @@ function readEvent(value: unknown, path: string, tickRule: NumberRule): DomainEv
     case 'wingman-command-consumed':
     case 'transponder-deployed':
       return readAiEvent(event, path, tick, type);
+    case 'object-retired':
+      return {
+        type,
+        tick,
+        entityId: readEntityId(event.entityId, `${path}.entityId`),
+        kindBit: readKindBit(event.kindBit, `${path}.kindBit`),
+        state: readChoice(event.state, `${path}.state`, RETIRED_STATES),
+      };
     default:
       return readCombatEvent(event, path, tick, type);
   }
@@ -883,6 +906,8 @@ interface PendingTransition {
  * message that starts and ends in one tick has frames of no time; the invalid-object cancellation right after a flush,
  * of which there are at most two; at most one cancellation in the mission flow and one at the docking gate. P3-08's
  * (CR-22): at most one consumed command per wingman, and no more transponder deployments than command results before.
+ * P3-14's (FA-07): `object-retired` in any stage, at most once per entity and state, and an area switch never after the
+ * entity's pending removal.
  */
 class TickOrder {
   #previous: DomainEvent | null = null;
@@ -899,6 +924,7 @@ class TickOrder {
   readonly #hit = new Set<number>();
   readonly #destroyed = new Set<number>();
   readonly #consumed = new Set<number>();
+  readonly #retired = new Map<number, RetiredState>();
   #deployed = 0;
   /** Event types or causes of which a tick has at most a given number, counted. */
   readonly #counts = new Map<CountedEvent, number>();
@@ -923,6 +949,7 @@ class TickOrder {
     this.#hit.clear();
     this.#destroyed.clear();
     this.#consumed.clear();
+    this.#retired.clear();
     this.#deployed = 0;
     this.#counts.clear();
   }
@@ -1030,6 +1057,15 @@ class TickOrder {
         // Each comes from an accepted drop-transponder command of the tick, so no more than its command results.
         if (++this.#deployed > this.#commands) throw new CoreInputError(path, 'must not outnumber the command results before it');
         return false;
+      case 'object-retired': {
+        // Only an area switch may come before a pending removal of the same entity (FA-07).
+        const earlier = this.#retired.get(event.entityId);
+        if (earlier !== undefined && (earlier !== 'area-switch' || event.state !== 'pending-removal')) {
+          throw new CoreInputError(`${path}.state`, 'must be a pending removal after the entity\'s area switch, or its first retirement of the tick');
+        }
+        this.#retired.set(event.entityId, event.state);
+        return false;
+      }
       default:
         this.#readCommunications(event, previous, path);
         return false;

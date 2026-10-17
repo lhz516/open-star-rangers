@@ -406,7 +406,7 @@ describe('0x38cd4 and 0x3c3b0, an enemy appears (RX5, RX6, RX9 rows 3 and 4)', (
   });
 });
 
-describe('the tail warning, 0x4edf4 and 0x38c30 (CB-09 item 2, RX5; CB-17 decision 11)', () => {
+describe('the tail warning, 0x4edf4 and 0x38c30 (CB-09 item 2 as P3-14 FA-01 corrects it, RX5; audio A-07)', () => {
   function tailScene() {
     const sc = scene();
     const wingman = addWingman(sc);
@@ -427,7 +427,7 @@ describe('the tail warning, 0x4edf4 and 0x38c30 (CB-09 item 2, RX5; CB-17 decisi
     const hostile = addActive({ state, player }, HOSTILE_KIND_BIT);
     hostile.ai.objectTarget = player.id;
     checkTail(tickAt(state, 1000));
-    // Without P3-08's handler state, no attacker is on an attack run.
+    // Aiming at the player without closing a missile lock (level 0): no attacker.
     expect(state.communications.tailCheck).toEqual({ dueClock: 1000 + 0x80, attackerOnTail: false, missileIncoming: false });
     missile(player.id);
     checkTail(tickAt(state, 1000 + 0x80));
@@ -451,6 +451,91 @@ describe('the tail warning, 0x4edf4 and 0x38c30 (CB-09 item 2, RX5; CB-17 decisi
     missile(player.id);
     checkTail(tickAt(state, 2000));
     expect(state.communications.tailCheck.missileIncoming).toBe(true);
+  });
+
+  /** An active object of `kindBit` in state 7 aiming at the player with lock level `level`, its third row the player's. */
+  function attacker(sc: RadioScene, kindBit: number, level: 0 | 1 | 2 | 3 | 4, overrides: Partial<EntityInit> = {}): Entity {
+    const entity = addActive(sc, kindBit, { orientation: sc.player.orientation, ...overrides });
+    entity.ai.objectTarget = sc.player.id;
+    if (entity.combat.type !== 'craft') throw new Error('not a craft');
+    entity.combat.weapons.lock.level = level;
+    return entity;
+  }
+  const tailLines = (context: TickContext) => messagesOf(context).filter((message) => message.table === 20985 && message.index === 0xa);
+
+  it('finds an attacker of kinds 7–10, active, in state 7 or 8, aiming at the player, at lock level 3 or 4 (FA-01, CR-16)', () => {
+    const cases: [string, (sc: RadioScene) => void, boolean][] = [
+      ['kind 6, outside 0x780', (sc) => void attacker(sc, 6, 3), false],
+      ['kind 11, outside 0x780', (sc) => void attacker(sc, 11, 3), false],
+      ['kind 7', (sc) => void attacker(sc, 7, 3), true],
+      ['kind 10', (sc) => void attacker(sc, 10, 4), true],
+      ['a parked one', (sc) => void (attacker(sc, 7, 3).activity = 'parked'), false],
+      ['a docked one', (sc) => void (attacker(sc, 7, 3).activity = 'docked'), false],
+      ['state 6, pending removal', (sc) => void (attacker(sc, 7, 3).state = 'pending-removal'), false],
+      ['state 8, hit by a projectile', (sc) => void (attacker(sc, 7, 3).state = 'projectile-hit'), true],
+      ['another object target', (sc) => void (attacker(sc, 7, 3).ai.objectTarget = null), false],
+      ['lock level 2', (sc) => void attacker(sc, 7, 2), false],
+      ['lock level 4, destroyed (no dead-flag test)', (sc) => void (attacker(sc, 8, 4).destroyed = true), true],
+    ];
+    for (const [name, add, lit] of cases) {
+      const sc = tailScene();
+      add(sc);
+      const context = tickAt(sc.state, 1000);
+      checkTail(context);
+      expect(sc.state.communications.tailCheck, name).toEqual({ dueClock: 1000 + (lit ? 0x40 : 0x80), attackerOnTail: lit, missileIncoming: false });
+      // The wingman's warning follows the attacker (the rows are aligned and its limit clear).
+      expect(tailLines(context).length, name).toBe(lit ? 1 : 0);
+    }
+  });
+
+  it('takes the first attacker in ascending kind bits and table order for the wingman\'s warning', () => {
+    const sc = tailScene();
+    // Kind 10 first in the table, misaligned; kind 7 later, aligned: the walk meets kind 7 first, so W warns.
+    attacker(sc, 10, 4, { orientation: [1, 0, 0, 0, 0, -1, 0, 1, 0] });
+    attacker(sc, 7, 3);
+    const context = tickAt(sc.state, 1000);
+    checkTail(context);
+    expect(tailLines(context)).toHaveLength(1);
+    // And the other way round: kind 7 misaligned is the one passed, so no warning, though the flag is lit.
+    const other = tailScene();
+    attacker(other, 10, 4);
+    attacker(other, 7, 3, { orientation: [1, 0, 0, 0, 0, -1, 0, 1, 0] });
+    const second = tickAt(other.state, 1000);
+    checkTail(second);
+    expect([tailLines(second), other.state.communications.tailCheck.attackerOnTail]).toEqual([[], true]);
+  });
+
+  it('calls 0x38c30 for an attacker before and regardless of the radar: s = 0 keeps both, s = 1 clears the attacker, s ≥ 2 both', () => {
+    for (const [field, attackerOnTail, missileIncoming] of [[0, true, true], [1, false, true], [2, false, false], [3, false, false]] as const) {
+      const sc = tailScene();
+      attacker(sc, 7, 3);
+      sc.missile(sc.player.id);
+      withField12(sc.player, field);
+      const context = tickAt(sc.state, 1000);
+      checkTail(context);
+      expect(sc.state.communications.tailCheck, `s = ${field}`).toEqual({ dueClock: 1000 + (attackerOnTail || missileIncoming ? 0x40 : 0x80), attackerOnTail, missileIncoming });
+      expect(tailLines(context), `s = ${field}`).toHaveLength(1);
+      expect(sc.state.communications.limits.tailWarning).toBe(1000 + 0x640);
+    }
+  });
+
+  it('samples only past its due clock (strictly) and keeps the flags without a player entity', () => {
+    const sc = tailScene();
+    const enemy = attacker(sc, 7, 3);
+    checkTail(tickAt(sc.state, 1000));
+    expect(sc.state.communications.tailCheck).toEqual({ dueClock: 1000 + 0x40, attackerOnTail: true, missileIncoming: false });
+    if (enemy.combat.type === 'craft') enemy.combat.weapons.lock.level = 2;
+    // At the due clock itself nothing is sampled.
+    checkTail(tickAt(sc.state, 1000 + 0x40));
+    expect(sc.state.communications.tailCheck.attackerOnTail).toBe(true);
+    // Without a player entity, past the due clock too, the flags and due clock stay (A-07).
+    sc.state.player.entityId = null;
+    const gone = tickAt(sc.state, 2000);
+    checkTail(gone);
+    expect([sc.state.communications.tailCheck, gone.events]).toEqual([{ dueClock: 1000 + 0x40, attackerOnTail: true, missileIncoming: false }, []]);
+    sc.state.player.entityId = sc.player.id;
+    checkTail(tickAt(sc.state, 2002));
+    expect(sc.state.communications.tailCheck).toEqual({ dueClock: 2002 + 0x80, attackerOnTail: false, missileIncoming: false });
   });
 
   it('lets an active W warn with line 0xA, without a draw, while the third rows align, at most every 0x640 units', () => {
