@@ -119,7 +119,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 09, 23, 24, 25 | pending |
 | [30-stars-speed-dust-research.md](./subtasks/30-stars-speed-dust-research.md) | 08 | completed |
 | [31-stars-speed-dust.md](./subtasks/31-stars-speed-dust.md) | 10, 12, 16, 30, 32 | pending |
-| [32-speed-share-fact.md](./subtasks/32-speed-share-fact.md) | 10, 30 | in-progress |
+| [32-speed-share-fact.md](./subtasks/32-speed-share-fact.md) | 10, 30 | completed |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -139,6 +139,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 - **2026-10-17 — Subtask 09 resumed:** 用户经协调者提问批准 D-01 定稿，选择“批准，全部按推荐方案”（含开放选择 A–F 的推荐：通用 `view-switched`、Warp 撞墙用事件、Core 持有 `modelShown`、`explosion-created` 不带行矩阵、GPU 预算按本地计数定值、接受两项新差异）。协调者把原话转给 09 worker 写入批准记录并提交。
 - **2026-10-17 — spec 修订后的计划修订：** 用户以回答协调者提问的方式决定把星点与速度尘埃加入 P3-12、实现第 0、1 类闪光的画面平移、星云固定按开启绘制（[spec 审批](./spec.md#审批)的 2026-10-17 修订）。据此新增 30（Q-14 研究、原版文档、对照方案附录与 FS-12 推荐定稿）、31（星点与速度尘埃的实现）与 32（速度尘埃所需的 D-01 补充 FS-12：用户批准方向并授权协调者按推荐方案定稿，32 写入 P3-02 并在 Core 实现），23 依赖 31，29 依赖 30、31、32；19、21、25、26、27 的范围与验收按修订补充。已完成的 01–09 不受影响；08 冻结的对照方案不改，星点与速度尘埃由 30 另行冻结附录。
 - **2026-10-17 — 30 的更正：** 30 的已确认结论更正了 spec 修订中协调者写的三处事实（速度份额决定整层跳过与近处亮度而非粒子数；被毁视角爆炸前的 30 是速度；跟随实体离表后份额为 0）。协调者据此更正 spec 的[星点与速度尘埃](./spec.md#星点与速度尘埃)与 AC-23，以及 31、32；FS-12 由当前状态推导，不进快照、不再递增版本。星点表用默认 `rand` 序列的第 1–1000 次抽取（不是 1001–1128）。对照方案附录 `addendum-q14.md` 已冻结（SHA-256 `34c4c430…23c3b6`），`plan.md` 不变。
+- **2026-10-17 — FS-12 定稿：** 协调者按用户授权接受 30 的推荐定稿并由 32 写入 P3-02：`RenderState.speedShare` 按原版 i32/i16 存储建模（常规取值 0–100，极端输入可回绕超过 100，31 按原版夹取亮度与颜色）；MW-01 校验 4 收紧为玩家记录 trunc(+0xB8) ≥ 1，comm-replay 与 worker 停靠夹具相应调整，comm 摘要在 `3be64fe4` 重新取基线且不变。
 
 ## 审批
 

@@ -175,10 +175,12 @@ export const DOCKING_BASE_KIND = 17;
 /** The kind bits without speed in the docking mission: the player's and the base's. */
 export const DOCKING_STILL_KINDS: readonly number[] = Object.freeze([0, DOCKING_BASE_KIND]);
 /**
- * Their +0xB8: the base's 0; the player's the smallest positive f32 (2^-149), positive as P3-09's Warp check requires
- * (docs/plan/p3/02/spec.md, MW-01 check 4), whose movement in a tick rounds to 0.
+ * Their +0xB8: the base's 0; the player's 1, the least P3-09's Warp check and P3-12's speed share allow
+ * (docs/plan/p3/02/spec.md, MW-01 check 4, FS-12), with DOCKING_PLAYER_AT88.
  */
-export const DOCKING_STILL_SPEEDS: readonly number[] = Object.freeze([2 ** -149, 0]);
+export const DOCKING_STILL_SPEEDS: readonly number[] = Object.freeze([1, 0]);
+/** The player's +0x88, which keeps its energy-limited maximum speed trunc(E × 1000 ÷ +0x88) at 0 below the threshold. */
+export const DOCKING_PLAYER_AT88 = 2 ** 30;
 /** The base kind as a category's kind mask. */
 export const DOCKING_BASE_KIND_MASK = 1 << DOCKING_BASE_KIND;
 /** The communications command codes of the base status request and the docking request (P3-10). */
@@ -190,7 +192,7 @@ export const DOCKING_COMMAND_CODES = Object.freeze({ status: 7, docking: 9 });
  * category; the gated base menu holds the status request at key 1 and the docking request at key 2 before its exit; the
  * base face table (TABL 20011) has as many faces as the base face pool, 5, by taking a face of TABL 20985, so whichever
  * face the base draws has its docking reply (index 0) and status reply (index 1); and the player and base craft have no
- * speed (+0xB8 0), so the base stays within the docking range. Made-up values only.
+ * speed (the base's +0xB8 0, the player's energy-limited maximum 0), so the base stays within the docking range. Made-up values only.
  */
 export function dockingRuleDataContents(): RuleDataContents {
   const contents = productionRuleDataContents();
@@ -214,7 +216,8 @@ export function dockingRuleDataContents(): RuleDataContents {
       ...info,
       craft: info.craft.map((record, kindBit) => {
         const still = DOCKING_STILL_KINDS.indexOf(kindBit);
-        return still < 0 ? record : { ...record, atB8: DOCKING_STILL_SPEEDS[still] };
+        if (still < 0) return record;
+        return { ...record, atB8: DOCKING_STILL_SPEEDS[still], ...(kindBit === 0 ? { at88: DOCKING_PLAYER_AT88 } : {}) };
       }),
     },
   };

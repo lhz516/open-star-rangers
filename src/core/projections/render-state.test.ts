@@ -35,7 +35,7 @@ describe('Render State (P3-02 AC-10, Projection 与 Render State)', () => {
     const player = state.entities.allocate(entityInit(0));
     state.entities.allocate(entityInit(2, { activity: 'parked' }));
     state.player.entityId = player.id;
-    state.player.viewMode = 0x11;
+    Object.assign(state.player, { viewMode: 0x11, subMode: 8 });
     first.placementSerial = 2;
     state.clock = 6;
     const render = renderWorld(state);
@@ -51,9 +51,11 @@ describe('Render State (P3-02 AC-10, Projection 与 Render State)', () => {
         { id: player.id, kindBit: 0, presentation: { type: 'model', model: TEST_MODEL }, position: { x: 0, y: 2, z: 3 }, orientation: TEST_ORIENTATION, placementSerial: 0, ...unlit },
       ],
       warp: null,
-      subMode: 0,
+      subMode: 8,
       followedEntityId: null,
       activeAreaCentre: { x: 0, y: 2, z: 3 },
+      // P3-12 (FS-12): the destruction view before the explosion, 3000 idiv trunc(+0xB8 = 64).
+      speedShare: 46,
     });
     expect(deepFrozen(render)).toBe(true);
   });

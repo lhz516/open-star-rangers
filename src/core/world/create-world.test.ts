@@ -77,7 +77,7 @@ describe('world creation (P3-02 AC-02, 运行配置与世界创建)', () => {
     const world = constructWorld(state);
     expect(world.projection()).toMatchObject({ clock: { tick: 0, clock: 0, clockUnitsPerTick: 2 }, player: { entityId: null, viewMode: 0xc } });
     expect(world.renderState()).toEqual({
-      tick: 0, clock: 0, viewMode: 0xc, observedEntityId: null, entities: [], warp: null, subMode: 0, followedEntityId: null, activeAreaCentre: null,
+      tick: 0, clock: 0, viewMode: 0xc, observedEntityId: null, entities: [], warp: null, subMode: 0, followedEntityId: null, activeAreaCentre: null, speedShare: 0,
     });
   });
 
@@ -459,8 +459,9 @@ describe('craft info semantic checks (P3-06 AC-01, D-01)', () => {
       // speed of kind 0x4000, which `b` constructs.
       for (const kind of [7, 8]) Object.assign(info.craft[kind], { atAC: 0.75, atB0: 0.5, atB4: 0.25 });
       info.craft[14].atB8 = 64;
-      // The player's Warp divides by its +0xA8 and +0xB8 (MW-01 check 4); only the player's are checked.
-      Object.assign(info.craft[0], { atA8: 1, atB8: Math.fround(1e-30), at58: 0, at64: [0, 0, 0, 0], at78: [0, 0, 0, 0] });
+      // The player's Warp divides by its +0xA8 and +0xB8, the speed share by trunc(+0xB8) (MW-01 check 4, FS-12); only
+      // the player's are checked.
+      Object.assign(info.craft[0], { atA8: 1, atB8: 1, at58: 0, at64: [0, 0, 0, 0], at78: [0, 0, 0, 0] });
     });
     const { craft } = create({ craftInfo: zeroed }).craftInfo.content;
     expect([craft[0].atA4, craft[7].atA8, craft[7].atB8]).toEqual([0, 0, 0]);
@@ -525,16 +526,19 @@ describe('the player\'s Warp fields (P3-09 AC-02, docs/plan/p3/02/spec.md MW-01 
     ['a negative +0xA8', (info: CraftInfoDraft) => void (info.craft[0].atA8 = -1), `${PLAYER}.atA8`],
     ['+0xB8 of 0', (info: CraftInfoDraft) => void (info.craft[0].atB8 = 0), `${PLAYER}.atB8`],
     ['a negative +0xB8', (info: CraftInfoDraft) => void (info.craft[0].atB8 = -0.5), `${PLAYER}.atB8`],
+    // P3-12 (FS-12): the speed share divides by trunc(+0xB8).
+    ['a positive +0xB8 below 1', (info: CraftInfoDraft) => void (info.craft[0].atB8 = Math.fround(1 - 2 ** -24)), `${PLAYER}.atB8`],
+    ['the smallest positive +0xB8', (info: CraftInfoDraft) => void (info.craft[0].atB8 = 2 ** -149), `${PLAYER}.atB8`],
     // Before the parked Warp's (+0xA8 + +0xA4) × 64 check (P3-06), which would reject it too at +0xA8 ≥ 1.
     ['+0xA4 of 2^25, whose × 64 leaves i32', (info: CraftInfoDraft) => Object.assign(info.craft[0], { atA4: 2 ** 25, atA8: 1 }), `${PLAYER}.atA4`],
   ])('rejects %s', (_, change, path) => {
     expectRejected(craftInfoWith(change), path, 'for the player');
   });
 
-  it('accepts one pair, the smallest positive values, an +0xA4 of 0 and the largest +0xA8 = 1 allows, and does not check other kinds', () => {
+  it('accepts one pair, the smallest values, an +0xA4 of 0 and the largest +0xA8 = 1 allows, and does not check other kinds', () => {
     const accepted = create({
       craftInfo: craftInfoWithContent((info) => {
-        Object.assign(info.craft[0], { pairs: [{ at00: 0, at04: 0x7fffffff }], atA8: 1, atB8: 2 ** -149, atA4: 0 });
+        Object.assign(info.craft[0], { pairs: [{ at00: 0, at04: 0x7fffffff }], atA8: 1, atB8: 1, atA4: 0 });
         Object.assign(info.craft[7], { pairs: [], atA8: 0, atB8: 0 });
       }),
     });

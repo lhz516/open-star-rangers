@@ -27,7 +27,7 @@ import {
   IMPORT_SCENARIOS, MISSION_SCENARIOS, scenarioEntryProfile, scenarioGroups, type MissionScenario, type ScenarioGroup,
 } from './import-scenarios.test-support.ts';
 import { PRODUCTION_PACKAGE } from './production-package.ts';
-import { DOCKING_BASE_KIND_MASK, DOCKING_COMMAND_CODES, DOCKING_STILL_KINDS, DOCKING_STILL_SPEEDS } from './synthetic-import.test-support.ts';
+import { DOCKING_BASE_KIND_MASK, DOCKING_COMMAND_CODES, DOCKING_PLAYER_AT88, DOCKING_STILL_KINDS, DOCKING_STILL_SPEEDS } from './synthetic-import.test-support.ts';
 
 // P3-04 subtask 01 (S-09): each mission scenario runs its production import job in Node; the groups it sends are kept
 // as the import job owner and resource holder keep them (complete groups only, in slice definition order), judged as a
@@ -191,6 +191,7 @@ describe('P3-04 mission scenarios (S-09)', { timeout: 30_000 }, () => {
     const [baseFaces] = (assets.commMessages!.content as CommMessages).faceTables;
     expect(baseFaces.map(subTable => [subTable[0]?.present, subTable[1]?.present])).toEqual(Array.from({ length: 5 }, () => [true, true]));
     expect(DOCKING_STILL_KINDS.map(kindBit => (assets.craftInfo.content as CraftInfo).craft[kindBit].atB8)).toEqual(DOCKING_STILL_SPEEDS);
+    expect((assets.craftInfo.content as CraftInfo).craft[0].at88).toBe(DOCKING_PLAYER_AT88);
 
     const request: readonly Command[] = [
       { type: 'communications', operation: 'open' }, { type: 'select-number', value: 2 }, { type: 'select-number', value: 2 },

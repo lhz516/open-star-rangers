@@ -76,13 +76,13 @@ function messagesContent(status: readonly number[]) {
 
 /**
  * The synthetic craft info with the player and the base kinds 17 and 18 without speed, so nothing moves: the bases'
- * +0xB8 is 0; the player's is the smallest positive f32 (2^-149), positive as P3-09's Warp check requires (MW-01 check
- * 4), whose movement in a tick rounds to 0.
+ * +0xB8 is 0; the player's is 1, the least P3-09's Warp check and P3-12's speed share allow (MW-01 check 4, FS-12), and
+ * its +0x88 of 2^30 keeps the energy-limited maximum speed trunc(E × 1000 ÷ +0x88) at 0 below the threshold.
  */
 function stillCraftInfo() {
   const info = craftInfoContent();
   for (const kindBit of [17, 18]) info.craft[kindBit].atB8 = 0;
-  info.craft[0].atB8 = 2 ** -149;
+  Object.assign(info.craft[0], { atB8: 1, at88: 2 ** 30 });
   return info;
 }
 
@@ -209,9 +209,10 @@ function rerun(inputs: readonly TickInput[], read: Reader, group: number, hold: 
 // Whole runs of several hundred ticks: like the other limit-sized replay tests, longer than the default timeout under load.
 describe('communications replay (P3-10 AC-12, CB-16)', { timeout: 60_000 }, () => {
   // P3-12/10 (docs/plan/p3/02/spec.md, FS-08): the presentation facts change no rule outcome or draw; the digest is the
-  // one this run had before them (replay.test-support.ts).
+  // one this run had before them (replay.test-support.ts). P3-12/32 raised the player's +0xB8 to 1 (FS-12); the digest
+  // of that input is the one the code before FS-12 (3be64fe4) gives.
   it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
-    expect(gameplayDigest(DOCKING_INPUT, RECORDING.record.ticks)).toBe('adb682ae070f7653');
+    expect(gameplayDigest(DOCKING_INPUT, RECORDING.record.ticks)).toBe('8d83ea3256bebe8f');
   });
 
   it('runs the docking chain twice in one world: wait, reply, countdown, docking, base keys and launch', () => {

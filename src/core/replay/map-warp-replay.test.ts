@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
+import type { RenderState } from '../projections/render-state.ts';
 import type { Command } from '../contracts/tick-input.ts';
 import { CoreInputError } from '../errors.ts';
 import { mapGeometryContent } from '../world/create-world.test-support.ts';
@@ -23,16 +24,17 @@ const INPUT = chainInput();
 const CONTENT = contentOf(INPUT);
 
 /** The run with a checkpoint every tick, reading projection, Render State and snapshot after every step. */
-function recordReading(): { readonly recording: Recording; readonly snapshots: readonly GameSnapshot[] } {
+function recordReading(): { readonly recording: Recording; readonly snapshots: readonly GameSnapshot[]; readonly renders: readonly RenderState[] } {
   const session = createRecordingSession(INPUT, { producer: PRODUCER, checkpointInterval: 1 });
   const snapshots: GameSnapshot[] = [];
+  const renders: RenderState[] = [];
   for (let tick = 1; tick <= CHAIN_TICKS; tick++) {
     session.step(chainScript(tick));
     session.projection();
-    session.renderState();
+    renders.push(session.renderState());
     snapshots.push(session.snapshot());
   }
-  return { recording: session.exportRecording(), snapshots };
+  return { recording: session.exportRecording(), snapshots, renders };
 }
 
 const READ = recordReading();
@@ -64,6 +66,21 @@ describe('map and Warp replay (P3-09 AC-11; MW-14)', { timeout: 30_000 }, () => 
   // one this run had before them (replay.test-support.ts).
   it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
     expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('8231182cf57bf5fc');
+  });
+
+  // P3-12/32 (docs/plan/p3/02/spec.md, FS-12): the speed share at every tick's end, against the snapshot's player speed
+  // with the player's +0xB8 = 64: A = min(100, trunc(v × 100) idiv 64) in the flight views, W = min(100, trunc(v × 100
+  // ÷ 64)) in the Warp view (equal for an integral +0xB8), 0 in the map.
+  it('gives the speed share of the view at every tick\'s end', () => {
+    const views = new Set<number>();
+    READ.renders.forEach(({ tick, viewMode, speedShare }, index) => {
+      const { player, entities } = READ.snapshots[index].state;
+      const speed = entities.find(({ id }) => id === player.entityId)?.movement?.speed ?? 0;
+      const expected = viewMode === 8 ? 0 : Math.min(100, Math.trunc(Math.trunc(speed * 100) / 64));
+      expect(speedShare, `tick ${tick} in view ${viewMode}`).toBe(expected);
+      if (speedShare > 1) views.add(viewMode);
+    });
+    expect([...views].sort()).toEqual([1, 0x0c]);
   });
 
   it('has the whole chain in the recorded run', () => {

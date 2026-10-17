@@ -18,6 +18,8 @@
  * centre, and per entity its `inWarp`, an explosion's or fragment's source kind bit and its closed display stage, all
  * sampled at the tick's end. Renderers test the area with rules/active-area.ts's isWithinActiveArea and read no
  * projection to judge the view.
+ *
+ * P3-12 (docs/plan/p3/02/spec.md, FS-12): the speed dust's speed share at the tick's end (speed-share.ts).
  */
 import type { Vec3 } from '../contracts/domain-events.ts';
 import { activeAreaCentre } from '../rules/active-area.ts';
@@ -25,6 +27,7 @@ import { warpProgress } from '../rules/warp-path.ts';
 import { WARP_VIEW_MODE } from '../systems/view-switch.ts';
 import { frozenVec, type Entity, type EntityId, type EntityPresentation, type Matrix3 } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { speedShare } from './speed-share.ts';
 
 export interface RenderEntity {
   readonly id: EntityId;
@@ -70,6 +73,8 @@ export interface RenderState {
   readonly followedEntityId: EntityId | null;
   /** rules/active-area.ts's activeAreaCentre, the area check's centre; null without a player entity. */
   readonly activeAreaCentre: Vec3 | null;
+  /** The original's i16 `0x1b0758` (FS-12): 0–100 for a non-negative speed whose × 100 fits in i32. */
+  readonly speedShare: number;
 }
 
 /** The Warp transit's presentation inputs (MW-11). */
@@ -143,5 +148,6 @@ export function renderWorld(world: WorldState): RenderState {
     subMode: player.subMode,
     followedEntityId: player.followedEntity,
     activeAreaCentre: centre === null ? null : frozenVec(centre),
+    speedShare: speedShare(world),
   });
 }

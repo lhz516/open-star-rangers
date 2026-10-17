@@ -107,8 +107,8 @@ const WARP_INTERVAL_LIMIT = 2 ** 25;
  * The player craft's Warp fields (docs/plan/p3/02/spec.md, MW-01 check 4; docs/original/formats/executable.md, Warp
  * cost and Warp start): only the record kind bit 0 is bound to, the only one the original's Warp paths reach. The cost
  * walks at least one pair (with none the original reads the word before the array); +0xA8 divides the progress through
- * the transit length and +0xB8 the progress itself; +0xA4 × 64 stays in i32 (a negative value's u32 wrap is not
- * reproduced). f × +0xA8 ≤ 1, a Warp that completes in its start tick, is the original's branch and is kept; the cost's
+ * the transit length and +0xB8 the progress itself, and its integer part the speed share (P3-12, FS-12), so trunc(+0xB8)
+ * ≥ 1; +0xA4 × 64 stays in i32 (a negative value's u32 wrap is not reproduced). f × +0xA8 ≤ 1, a Warp that completes in its start tick, is the original's branch and is kept; the cost's
  * `IMUL` wraps in i32 and is not rejected.
  */
 export function checkPlayerWarp(info: CraftInfo): void {
@@ -116,7 +116,7 @@ export function checkPlayerWarp(info: CraftInfo): void {
   const record = info.craft[PLAYER_KIND_BIT];
   if (record.pairs.length === 0) throw new CoreInputError(`${path}.pairs`, 'must have a pair for the player, as the Warp cost walks them');
   if (!(record.atA8 > 0)) throw new CoreInputError(`${path}.atA8`, 'must be positive for the player, as the Warp progress divides by the transit length');
-  if (!(record.atB8 > 0)) throw new CoreInputError(`${path}.atB8`, 'must be positive for the player, as the Warp progress divides by it');
+  if (!(record.atB8 >= 1)) throw new CoreInputError(`${path}.atB8`, 'must be at least 1 for the player, as the Warp progress divides by it and the speed share by its integer part');
   if (record.atA4 < 0 || record.atA4 >= WARP_INTERVAL_LIMIT) {
     throw new CoreInputError(`${path}.atA4`, 'must be from 0 to below 2^25 for the player, so that the Warp interval stays in i32 clock units');
   }
