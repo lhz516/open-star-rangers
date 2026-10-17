@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "12"
 subtask: "11"
-updated: 2026-10-15
+updated: 2026-10-17
 ---
 
 # 11 — Runtime 帧后逐 tick 批次
@@ -34,6 +34,8 @@ updated: 2026-10-15
 
 - `src/app/runtime/**`：逐 tick 缓存与读取（不含 10 改动的 `game-event-bus.ts` 的事件表）。
 - `src/app/session/**`：帧后交付与故障语义。
+- `src/app/mission/dev-frame-timing.test.ts`、`src/ui/game/game-ui.test-support.ts`：测试替身补 `FrameReport.outputs`。
+- `docs/engineering/modules/app.md`：帧后批次标为已实现。
 
 ## 验收标准
 
