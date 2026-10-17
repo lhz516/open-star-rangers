@@ -108,7 +108,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [17-model-lighting.md](./subtasks/17-model-lighting.md) | 02, 16 | completed |
 | [18-hit-shimmer.md](./subtasks/18-hit-shimmer.md) | 05, 10, 17 | completed |
 | [19-nebula-background.md](./subtasks/19-nebula-background.md) | 04, 16 | completed |
-| [20-projectile-missile-fragment-render.md](./subtasks/20-projectile-missile-fragment-render.md) | 05, 13, 17 | pending |
+| [20-projectile-missile-fragment-render.md](./subtasks/20-projectile-missile-fragment-render.md) | 05, 13, 17 | in-progress |
 | [21-sprites-screen-flash.md](./subtasks/21-sprites-screen-flash.md) | 03, 04, 13, 16 | completed |
 | [22-warp-tunnel.md](./subtasks/22-warp-tunnel.md) | 06, 16 | completed |
 | [23-pass-integration.md](./subtasks/23-pass-integration.md) | 17, 18, 19, 20, 21, 22, 31 | pending |
