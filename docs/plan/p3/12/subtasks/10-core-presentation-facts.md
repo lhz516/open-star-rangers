@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "12"
 subtask: "10"
-updated: 2026-10-15
+updated: 2026-10-17
 ---
 
 # 10 — Core 表现事实与版本
@@ -34,6 +34,8 @@ updated: 2026-10-15
 
 - `src/core/**`：表现事实、事件、复位、快照、比较与版本。
 - `src/app/runtime/game-event-bus.ts`：新事件类型进入 `EVENT_TYPES`。
+- `src/app/runtime/game-event-bus.test.ts`：新事件类型的过滤测试。
+- `src/ui/dev/event-log.ts`、`src/ui/dev/event-log.test.ts`：开发事件日志对三个新事件的摘要（P3-02 FS-09）。
 
 ## 验收标准
 
