@@ -2,9 +2,10 @@
  * The drawing port between DOM-free render logic and a concrete surface. The browser implements it
  * with a WebGL renderer and canvas; Node tests use a recording double from the test support. The
  * port owns observation of container size, device pixel ratio and context loss; the render logic
- * owns layout decisions, scene contents and when to draw. Contract: docs/plan/p1/07/spec.md.
+ * owns layout decisions, scene contents and when to draw. Contract: docs/plan/p1/07/spec.md; the
+ * multi-pass frame (`drawPasses`) is the flight renderer's increment (docs/plan/p3/12/spec.md, 渲染器生命周期).
  */
-import type { Camera, ColorSpace, Scene } from 'three';
+import type { Camera, ColorSpace, Scene, WebGLRenderTarget } from 'three';
 import type { ViewportLayout } from '../viewport/viewport-layout.ts';
 
 /** What the render logic that will draw on a surface chooses when it is created. */
@@ -20,6 +21,27 @@ export interface RenderSurfaceSize {
   readonly width: number;
   readonly height: number;
   readonly devicePixelRatio: number;
+}
+
+/** A rectangle of device pixels measured from the top-left corner of its target. */
+export interface PixelRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** One pass of a multi-pass frame. */
+export interface RenderPass {
+  readonly scene: Scene;
+  readonly camera: Camera;
+  /** The render target drawn into; null draws to the canvas's drawing buffer. */
+  readonly target: WebGLRenderTarget | null;
+  /** Clear the whole target's colour to opaque black, and its depth to the farthest value, before drawing. */
+  readonly clearColor: boolean;
+  readonly clearDepth: boolean;
+  /** Limits the drawing, not the clear, to this rectangle of the target; null draws over the whole target. */
+  readonly scissor: PixelRect | null;
 }
 
 export interface RenderGpuStats {
@@ -46,6 +68,11 @@ export interface RenderSurface {
   setLayout(layout: ViewportLayout | null): void;
   /** Throws a {@link GraphicsDeviceError} when the draw failed because the context is lost. */
   draw(scene: Scene, camera: Camera): void;
+  /**
+   * Draws the passes in order as one frame, each into its target, then leaves the canvas as the target; nothing is
+   * cleared automatically. Throws a {@link GraphicsDeviceError} when a pass failed because the context is lost.
+   */
+  drawPasses(passes: readonly RenderPass[]): void;
   /** Read from the renderer each time, never cached. */
   gpuStats(): RenderGpuStats;
   /** Stops size, pixel-ratio and application context observation; idempotent. */

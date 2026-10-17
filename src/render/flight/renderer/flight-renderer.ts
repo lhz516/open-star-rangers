@@ -1,11 +1,15 @@
 /**
  * The flight renderer (docs/plan/p3/12/spec.md: 渲染器生命周期, 行为与边界; S-02, AC-02, AC-03): one per mission owner, on
  * the owner's one flight surface, drawing each frame of the owner's current run. It has no loop and requests no frame:
- * the run's frame consumer calls `draw` with the session frame, and the renderer reads only its `render` frame.
+ * the run's frame consumer calls `draw` with the session frame's Render States and projection and the presentation
+ * module's cameras, and the renderer reads nothing else.
  *
  * - **Runs:** `beginRun` checks the run's whole GPU plan, then binds one run at a time to its owner, run, package
  *   generation and content identity, with a GPU cache of its own (flight-gpu-cache.ts); the run's end releases it.
  *   Nothing GPU-side outlives the run.
+ * - **Frames (S-03, S-12):** the run's scene (scene/flight-scene.ts) gives the frame's visible set and camera, and its
+ *   composition (composition/flight-composition.ts) the frame's passes: the layers into the game image, then the screen
+ *   stage onto the canvas, submitted together with `RenderSurface.drawPasses`.
  * - **Redraws:** the last frame of the bound run is drawn again, without advancing anything, when the context is
  *   restored and when the layout changes, which both clear the drawing buffer, so a paused or held run, which gets no
  *   frames, keeps its picture.
@@ -18,14 +22,20 @@
  *   faults the session or blocks the start: nothing falls back silently.
  * - **Diagnostics:** state, successful draws, the last drawn tick and GPU counts, for development diagnostics and E2E.
  */
-import { Color, LinearSRGBColorSpace, OrthographicCamera, Scene } from 'three';
+import { LinearSRGBColorSpace } from 'three';
 import type { RenderFrame } from '../../../app/runtime/game-runtime.ts';
+import type { Projection } from '../../../core/projections/projection.ts';
+import type { SceneSettings } from '../../../content/flight/flight-data-content.ts';
 import { RollbackError } from '../../../app/session/rollback-error.ts';
 import { attemptAll } from '../../scene/cleanup.ts';
 import {
   GraphicsDeviceError, type RenderGpuStats, type RenderSurface, type RenderSurfaceOptions, type RenderSurfaceSize,
 } from '../../scene/render-surface.ts';
 import { computeViewportLayout, sameViewportLayout, type ViewportLayout } from '../../viewport/viewport-layout.ts';
+import { COMPOSITION_GPU_PLAN, FlightComposition } from '../composition/flight-composition.ts';
+import type { FlightLayer, FlightScreen } from '../composition/flight-layers.ts';
+import { logicalTransform } from '../composition/logical-screen.ts';
+import { FlightScene, type SceneCameras } from '../scene/flight-scene.ts';
 import { checkGpuPlan, EMPTY_GPU_PLAN, FlightGpuCache, isCount, type FlightGpuCounts, type FlightGpuPlan, type FlightRunBinding, type PixelSize } from './flight-gpu-cache.ts';
 import { FlightRenderError } from './flight-render-error.ts';
 
@@ -61,10 +71,12 @@ export interface FlightRenderDiagnostics {
   readonly layout: ViewportLayout | null;
 }
 
-/** What `draw` reads of a session frame. */
+/** What `draw` reads of a session frame, with the presentation module's cameras of its current tick. */
 export interface FlightFrame {
   readonly runId: number;
   readonly render: RenderFrame;
+  readonly projection: Projection;
+  readonly cameras: SceneCameras;
 }
 
 /** One run's drawing on the renderer. */
@@ -73,10 +85,15 @@ export interface FlightRunRender {
   /** The run's GPU cache; released with the run. */
   readonly resources: FlightGpuCache;
   /**
-   * Draws the frame's current Render State when the renderer is ready with a layout; otherwise submits nothing. Throws
-   * every failure that is not the graphics device's, and what made the renderer fail before.
+   * Draws the frame when the renderer is ready with a layout: the scene of its Render States and cameras, through the
+   * composition's layers (flight-layers.ts); otherwise submits nothing. Throws every failure that is not the graphics
+   * device's, and what made the renderer fail before.
    */
   draw(frame: FlightFrame): void;
+  /** Adds a layer to the run's composition until the returned, idempotent removal (P3-13 and the passes of 17–22). */
+  addLayer(layer: FlightLayer): () => void;
+  /** Replaces the default screen stage (the screen flash, 21) until the returned, idempotent removal. */
+  setScreen(screen: FlightScreen): () => void;
   /** Releases the run's GPU resources; idempotent. Throws an AggregateError of the failures, after which no run begins. */
   release(): void;
 }
@@ -89,11 +106,12 @@ export interface FlightRenderer {
   subscribe(listener: () => void): () => void;
   diagnostics(): FlightRenderDiagnostics;
   /**
-   * Binds the next run whose passes will allocate `plan` in all. Throws `render-capacity` for a plan over budget before
-   * anything is allocated, and throws while another run is bound, once a run's release failed, once a failure that is
+   * Binds the next run, drawn with its package's `settings`, whose passes will allocate `plan` in all besides the
+   * composition's own. Throws `render-capacity` for a plan over budget before anything is allocated, `invalid-input`
+   * for unusable settings, and throws while another run is bound, once a run's release failed, once a failure that is
    * not the device's made the renderer fail, and once disposed.
    */
-  beginRun(binding: FlightRunBinding, plan?: FlightGpuPlan): FlightRunRender;
+  beginRun(binding: FlightRunBinding, settings: SceneSettings, plan?: FlightGpuPlan): FlightRunRender;
   /** Releases the bound run, then the surface; attempts every step, throws an AggregateError of the failures; idempotent. */
   dispose(): void;
 }
@@ -105,6 +123,13 @@ export type FlightRendererOptions =
 
 const PATH = 'flightRenderer';
 const DRAW = `${PATH}.draw`;
+
+const withComposition = (plan: FlightGpuPlan): FlightGpuPlan => ({
+  texels: plan.texels + COMPOSITION_GPU_PLAN.texels,
+  vertices: plan.vertices + COMPOSITION_GPU_PLAN.vertices,
+  indices: plan.indices + COMPOSITION_GPU_PLAN.indices,
+  renderTargets: plan.renderTargets + COMPOSITION_GPU_PLAN.renderTargets,
+});
 
 function checkBinding(binding: FlightRunBinding): void {
   const { ownerId, runId, generation, identity } = binding ?? {};
@@ -118,8 +143,6 @@ class Renderer implements FlightRenderer {
   readonly #surface: RenderSurface | null;
   readonly #reportError: (error: unknown) => void;
   readonly #listeners = new Set<() => void>();
-  readonly #scene = new Scene();
-  readonly #camera = new OrthographicCamera();
   #status: FlightRendererStatus;
   /** A failure that is not the device's: thrown by every later draw and start. */
   #fault: { readonly cause: unknown } | null = null;
@@ -127,7 +150,7 @@ class Renderer implements FlightRenderer {
   #layout: ViewportLayout | null = null;
   #run: RunRender | null = null;
   /** The bound run's last frame, drawn again by a redraw. */
-  #last: RenderFrame | null = null;
+  #last: FlightFrame | null = null;
   #draws = 0;
   #lastTick: number | null = null;
 
@@ -136,7 +159,6 @@ class Renderer implements FlightRenderer {
     this.#surface = surface;
     this.#reportError = reportError;
     this.#status = Object.freeze(surface ? { state: 'ready', error: null } : { state: 'unavailable', error: unavailable });
-    this.#scene.background = new Color(0, 0, 0);
   }
 
   readonly getSnapshot = (): FlightRendererStatus => this.#status;
@@ -168,21 +190,24 @@ class Renderer implements FlightRenderer {
       contextRestored: () => {
         if (this.#status.state !== 'context-lost') return;
         // Three.js restored its own state first; drawing re-uploads the run's resources.
+        this.#run?.composition.contentsLost();
         this.#setStatus('ready', null);
         this.#redraw();
       },
     });
   }
 
-  beginRun(binding: FlightRunBinding, plan: FlightGpuPlan = EMPTY_GPU_PLAN): FlightRunRender {
+  beginRun(binding: FlightRunBinding, settings: SceneSettings, plan: FlightGpuPlan = EMPTY_GPU_PLAN): FlightRunRender {
     const path = `${PATH}.beginRun`;
     this.#requireLive(path);
     checkBinding(binding);
     checkGpuPlan(plan);
+    checkGpuPlan(withComposition(plan));
+    const scene = new FlightScene(settings?.deviceValues);
     if (binding.ownerId !== this.ownerId) throw new FlightRenderError('invalid-input', path, `binds owner ${binding.ownerId} to the renderer of owner ${this.ownerId}`);
     if (this.#run) throw new FlightRenderError('invalid-state', path, `is not allowed while run ${this.#run.binding.runId} is bound`);
     if (this.#releaseFailed) throw new FlightRenderError('invalid-state', path, 'is not allowed once a run\'s resources could not be released');
-    const run = new RunRender(this, new FlightGpuCache(binding, () => this.#maxRenderTarget()));
+    const run = new RunRender(this, new FlightGpuCache(binding, () => this.#maxRenderTarget()), scene);
     this.#run = run;
     this.#last = null;
     return run;
@@ -204,12 +229,12 @@ class Renderer implements FlightRenderer {
   }
 
   /** For the bound run's `draw`. */
-  draw(run: RunRender, { runId, render }: FlightFrame): void {
+  draw(run: RunRender, frame: FlightFrame): void {
     this.#requireLive(DRAW);
     if (this.#run !== run) throw new FlightRenderError('invalid-state', DRAW, 'is not allowed for a run that is no longer bound');
-    if (runId !== run.binding.runId) throw new FlightRenderError('invalid-input', DRAW, `got a frame of run ${runId} for run ${run.binding.runId}`);
-    this.#last = render;
-    this.#submit(run, render);
+    if (frame.runId !== run.binding.runId) throw new FlightRenderError('invalid-input', DRAW, `got a frame of run ${frame.runId} for run ${run.binding.runId}`);
+    this.#last = frame;
+    this.#submit(run, frame);
   }
 
   /** For the bound run's `release`. */
@@ -233,13 +258,14 @@ class Renderer implements FlightRenderer {
   }
 
   /**
-   * Draws `render` when ready with a layout; otherwise submits nothing. A device failure is handled; any other failure
+   * Draws `frame` when ready with a layout; otherwise submits nothing. A device failure is handled; any other failure
    * makes the renderer fail and is thrown.
    */
-  #submit(run: RunRender, render: RenderFrame): void {
+  #submit(run: RunRender, { render, projection, cameras }: FlightFrame): void {
     if (this.#status.state !== 'ready' || this.#layout === null || !this.#surface) return;
     try {
-      this.#surface.draw(this.#scene, this.#camera);
+      const scene = run.scene.frame({ render, cameras });
+      this.#surface.drawPasses(run.composition.passes({ logical: logicalTransform(this.#layout), render, projection, scene }));
     } catch (cause) {
       if (cause instanceof GraphicsDeviceError) return this.#deviceFailed(run, cause);
       this.#fail(cause);
@@ -316,16 +342,28 @@ class Renderer implements FlightRenderer {
 class RunRender implements FlightRunRender {
   readonly binding: FlightRunBinding;
   readonly resources: FlightGpuCache;
+  readonly scene: FlightScene;
+  readonly composition: FlightComposition;
   readonly #renderer: Renderer;
 
-  constructor(renderer: Renderer, resources: FlightGpuCache) {
+  constructor(renderer: Renderer, resources: FlightGpuCache, scene: FlightScene) {
     this.#renderer = renderer;
     this.resources = resources;
     this.binding = resources.binding;
+    this.scene = scene;
+    this.composition = new FlightComposition(resources);
   }
 
   draw(frame: FlightFrame): void {
     this.#renderer.draw(this, frame);
+  }
+
+  addLayer(layer: FlightLayer): () => void {
+    return this.composition.add(layer);
+  }
+
+  setScreen(screen: FlightScreen): () => void {
+    return this.composition.setScreen(screen);
   }
 
   release(): void {

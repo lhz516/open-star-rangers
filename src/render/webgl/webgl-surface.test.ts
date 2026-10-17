@@ -1,4 +1,4 @@
-import { Scene, PerspectiveCamera } from 'three';
+import { Scene, PerspectiveCamera, WebGLRenderTarget } from 'three';
 import { describe, expect, it } from 'vitest';
 import { GraphicsDeviceError, type RenderSurfaceEvents, type RenderSurfaceSize } from '../scene/render-surface.ts';
 import { computeViewportLayout, type ViewportFrame } from '../viewport/viewport-layout.ts';
@@ -17,6 +17,12 @@ function fakeParts(options: { readonly loseContext?: boolean } = {}) {
     renderer: {
       setDrawingBufferSize: (width, height, ratio) => { state.buffers.push([width, height, ratio]); },
       render: () => { log.push('render'); },
+      autoClear: true,
+      setRenderTarget: (target) => { log.push(target ? `target ${target.width}x${target.height} scissor ${target.scissorTest ? target.scissor.toArray().join(',') : 'off'}` : 'target canvas'); },
+      setClearColor: (color, alpha) => { log.push(`clear colour ${color} ${alpha}`); },
+      clear: (color, depth, stencil) => { log.push(`clear ${color} ${depth} ${stencil}`); },
+      setScissor: (x, y, width, height) => { log.push(`scissor ${x},${y},${width},${height}`); },
+      setScissorTest: (enabled) => { log.push(`scissor test ${enabled}`); },
       get info() { return info; },
       dispose: () => { log.push('renderer.dispose'); if (failures.dispose) throw failures.dispose; },
     },
@@ -113,6 +119,46 @@ describe('WebGL surface', () => {
     expect(fake.state.placed).toEqual([layout.frame, null]);
     surface.draw(new Scene(), new PerspectiveCamera());
     expect(fake.log).toEqual(['render']);
+  });
+
+  it('draws passes in order into their targets, clearing whole targets and scissoring only the drawing', () => {
+    const fake = fakeParts();
+    const surface = createWebGLSurface(fake.parts);
+    surface.setLayout(computeViewportLayout({ width: 640, height: 480, devicePixelRatio: 1, maxDrawingBufferSize: 4096 }));
+    const target = new WebGLRenderTarget(640, 480);
+    const scene = new Scene();
+    const camera = new PerspectiveCamera();
+    surface.drawPasses([
+      { scene, camera, target, clearColor: true, clearDepth: false, scissor: { x: 0, y: 0, width: 640, height: 316 } },
+      { scene, camera, target: null, clearColor: true, clearDepth: true, scissor: { x: 10, y: 20, width: 30, height: 40 } },
+      { scene, camera, target, clearColor: false, clearDepth: false, scissor: null },
+    ]);
+    expect(fake.log).toEqual([
+      'clear colour 0 1',
+      'target 640x480 scissor off', 'clear true false false', 'target 640x480 scissor 0,164,640,316', 'render', 'target 640x480 scissor off',
+      'target canvas', 'scissor test false', 'clear true true false', 'target canvas', 'scissor 10,420,30,40', 'scissor test true', 'render',
+      'target canvas', 'scissor test false',
+      'target 640x480 scissor off', 'render',
+      'scissor test false', 'target canvas',
+    ]);
+    expect(fake.parts.renderer.autoClear).toBe(true);
+    expect(target.scissorTest).toBe(false);
+  });
+
+  it('restores the renderer after a failed pass and recognizes a lost context as the device\'s', () => {
+    const fake = fakeParts();
+    const failure = new Error('render failed');
+    let lost = false;
+    const renderer = { ...fake.parts.renderer, render: () => { throw failure; } };
+    const surface = createWebGLSurface({ ...fake.parts, renderer, isContextLost: () => lost });
+    const pass = { scene: new Scene(), camera: new PerspectiveCamera(), target: null, clearColor: false, clearDepth: false, scissor: null };
+    expect(() => { surface.drawPasses([pass]); }).toThrow(failure);
+    expect(renderer.autoClear).toBe(true);
+    expect(fake.log.slice(-2)).toEqual(['scissor test false', 'target canvas']);
+    lost = true;
+    const thrown = (() => { try { surface.drawPasses([pass]); } catch (error) { return error; } })();
+    expect(thrown).toBeInstanceOf(GraphicsDeviceError);
+    expect((thrown as Error).cause).toBe(failure);
   });
 
   it('reads GPU counters from the renderer every time', () => {

@@ -10,7 +10,9 @@ export type FlightRenderErrorKind =
   /** A use the renderer's state or the run's binding does not allow, such as a second run or a released cache. */
   | 'invalid-state'
   /** A malformed argument, such as a resource whose actual size differs from the size it was budgeted with. */
-  | 'invalid-input';
+  | 'invalid-input'
+  /** A view the flight renderer does not draw (F2–F10 and the other sub-modes of 0x11 are P4's). */
+  | 'unsupported-view';
 
 export class FlightRenderError extends Error {
   readonly kind: FlightRenderErrorKind;

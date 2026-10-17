@@ -268,8 +268,13 @@ export const PRODUCTION_LISTS: readonly (readonly number[])[] = [
   PRODUCTION_EXPLOSION_RECORDS.slice(0, 7), PRODUCTION_EXPLOSION_RECORDS.slice(7, 14), PRODUCTION_EXPLOSION_RECORDS.slice(14),
 ];
 
-/** The production scene settings: other values than the small set's. */
-export const PRODUCTION_SCENE: SceneSettings = { ...SYNTHETIC_SCENE, deviceByte: 0x81, lightType0Colour: [0.5, -0.25, Math.fround(1e-3)] };
+/**
+ * The production scene settings: other values than the small set's, with device values ordered as the shipped data's
+ * (+0x1C < +0x20 < +0x24, docs/original/formats/executable.md PV4), which the flight renderer requires of a run.
+ */
+export const PRODUCTION_SCENE: SceneSettings = {
+  ...SYNTHETIC_SCENE, deviceByte: 0x81, lightType0Colour: [0.5, -0.25, Math.fround(1e-3)], deviceValues: { base: 600, kinds1c7c: 1200, kindsF8000: 4000 },
+};
 
 /**
  * The production RENS entry for the effect step and this step: the effect tests' records after a header of `settings`.

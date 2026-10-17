@@ -4,15 +4,24 @@
  * canvas and the size/pixel-ratio observers; this module wires their events, sizes the drawing
  * buffer and releases everything in the contract's order. Contract: docs/plan/p1/07/spec.md.
  */
-import type { Camera, Scene } from 'three';
+import type { Camera, Scene, WebGLRenderTarget } from 'three';
 import { runCleanup } from '../scene/cleanup.ts';
-import { GraphicsDeviceError, type RenderGpuStats, type RenderSurface, type RenderSurfaceEvents } from '../scene/render-surface.ts';
+import {
+  GraphicsDeviceError, type PixelRect, type RenderGpuStats, type RenderPass, type RenderSurface, type RenderSurfaceEvents,
+} from '../scene/render-surface.ts';
 import type { ViewportFrame, ViewportLayout } from '../viewport/viewport-layout.ts';
 
 /** The WebGLRenderer members the surface uses. */
 export interface WebGLSurfaceRenderer {
   setDrawingBufferSize(width: number, height: number, pixelRatio: number): void;
   render(scene: Scene, camera: Camera): void;
+  /** Multi-pass frames (`drawPasses`): render targets, explicit clears and the canvas's scissor. */
+  autoClear: boolean;
+  setRenderTarget(target: WebGLRenderTarget | null): void;
+  setClearColor(color: number, alpha: number): void;
+  clear(color: boolean, depth: boolean, stencil: boolean): void;
+  setScissor(x: number, y: number, width: number, height: number): void;
+  setScissorTest(enabled: boolean): void;
   readonly info: {
     readonly memory: { readonly geometries: number; readonly textures: number };
     readonly programs: readonly unknown[] | null;
@@ -52,6 +61,8 @@ class WebGLSurface implements RenderSurface {
   readonly #parts: WebGLSurfaceParts;
   #events: RenderSurfaceEvents | null = null;
   #size: { width: number; height: number } | null = null;
+  /** The drawing buffer's height in device pixels, for scissor rectangles on the canvas. */
+  #bufferHeight = 0;
   #ratio = 1;
   /** Cancellations of the current observers and listeners, in registration order. */
   #observers: (() => void)[] = [];
@@ -88,13 +99,41 @@ class WebGLSurface implements RenderSurface {
   }
 
   setLayout(layout: ViewportLayout | null): void {
-    if (layout) this.#parts.renderer.setDrawingBufferSize(layout.bufferWidth, layout.bufferHeight, 1);
+    if (layout) {
+      this.#parts.renderer.setDrawingBufferSize(layout.bufferWidth, layout.bufferHeight, 1);
+      this.#bufferHeight = layout.bufferHeight;
+    }
     this.#parts.placeCanvas(layout?.frame ?? null);
   }
 
   draw(scene: Scene, camera: Camera): void {
     try {
       this.#parts.renderer.render(scene, camera);
+    } catch (cause) {
+      if (this.#parts.isContextLost()) throw new GraphicsDeviceError('The WebGL context was lost during a draw', { cause });
+      throw cause;
+    }
+  }
+
+  drawPasses(passes: readonly RenderPass[]): void {
+    const { renderer } = this.#parts;
+    try {
+      const autoClear = renderer.autoClear;
+      renderer.autoClear = false;
+      try {
+        renderer.setClearColor(0x000000, 1);
+        for (const { scene, camera, target, clearColor, clearDepth, scissor } of passes) {
+          this.#scissor(target, null);
+          if (clearColor || clearDepth) renderer.clear(clearColor, clearDepth, false);
+          if (scissor) this.#scissor(target, scissor);
+          renderer.render(scene, camera);
+          if (scissor) this.#scissor(target, null);
+        }
+      } finally {
+        renderer.setScissorTest(false);
+        renderer.setRenderTarget(null);
+        renderer.autoClear = autoClear;
+      }
     } catch (cause) {
       if (this.#parts.isContextLost()) throw new GraphicsDeviceError('The WebGL context was lost during a draw', { cause });
       throw cause;
@@ -124,6 +163,24 @@ class WebGLSurface implements RenderSurface {
       ...(loseContext ? [loseContext] : []),
       () => { this.#parts.removeCanvas(); },
     ], 'WebGL surface release failed');
+  }
+
+  /**
+   * Makes `target` current with `rect` (top-left origin) as its scissor, or none. A render target carries its own
+   * scissor, which binding it applies; the canvas's is the renderer's. WebGL counts rows from the bottom.
+   */
+  #scissor(target: WebGLRenderTarget | null, rect: PixelRect | null): void {
+    const { renderer } = this.#parts;
+    const bottom = (height: number, { y, height: rows }: PixelRect): number => height - y - rows;
+    if (target) {
+      target.scissorTest = rect !== null;
+      if (rect) target.scissor.set(rect.x, bottom(target.height, rect), rect.width, rect.height);
+      renderer.setRenderTarget(target);
+      return;
+    }
+    renderer.setRenderTarget(null);
+    if (rect) renderer.setScissor(rect.x, bottom(this.#bufferHeight, rect), rect.width, rect.height);
+    renderer.setScissorTest(rect !== null);
   }
 
   #watchRatio(): void {

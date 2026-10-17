@@ -119,15 +119,17 @@ describe('flight consumer', () => {
 
   it('fails a start whose package content or presentation seed it refuses, and rolls the run back', async () => {
     const groups = await missionGroups('mission-startable');
-    const nebula = (groups.find(({ group }) => group === 'models')!.manifest as { assets: { id: string; role: string }[] }).assets
-      .find(({ role }) => role === 'nebula-backgrounds')!.id;
-    const broken = await openFlight({}, await nextSchemaJob('models', nebula));
-    toDeparture(broken.owner);
-    expect(broken.owner.getSnapshot()).toMatchObject({
-      flow: { position: 'config', startFailure: { kind: 'assembly', stage: 'consumer', rolledBack: true, cause: { name: 'ContentContractError' } } },
-      session: { phase: 'idle' },
-    });
-    expect(broken.renderer.diagnostics().runId).toBeNull();
+    const assets = (groups.find(({ group }) => group === 'models')!.manifest as { assets: { id: string; role: string }[] }).assets;
+    // The presentation's content and the renderer's scene settings alike.
+    for (const role of ['nebula-backgrounds', 'scene-settings']) {
+      const broken = await openFlight({}, await nextSchemaJob('models', assets.find((asset) => asset.role === role)!.id));
+      toDeparture(broken.owner);
+      expect(broken.owner.getSnapshot()).toMatchObject({
+        flow: { position: 'config', startFailure: { kind: 'assembly', stage: 'consumer', rolledBack: true, cause: { name: 'ContentContractError' } } },
+        session: { phase: 'idle' },
+      });
+      expect(broken.renderer.diagnostics().runId).toBeNull();
+    }
 
     const seeded = await openFlight({ seeds: [-1] });
     toDeparture(seeded.owner);

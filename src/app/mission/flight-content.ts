@@ -1,14 +1,15 @@
 /**
- * The flight presentation's content from a held package (docs/plan/p3/12/spec.md, 内容输入与校验): the models group's
- * `explosion-table` Asset, every explosion animation its lists name, and its `nebula-backgrounds` Asset, each decoded
- * strictly with `decodeFlightDataPayload`. A complete package has exactly one Asset of each of the two roles; one the
- * package lacks, or a named animation it lacks, is a content error, as is any decoding error, which keeps its code and
- * reason at `models[<Asset ID>].<path>`. The presentation module then checks what it needs of the content itself.
+ * The flight picture's content from a held package (docs/plan/p3/12/spec.md, 内容输入与校验): the models group's
+ * `explosion-table` Asset, every explosion animation its lists name and its `nebula-backgrounds` Asset for the
+ * presentation module, and its `scene-settings` Asset (RENS 10751's header) for the renderer, each decoded strictly with
+ * `decodeFlightDataPayload`. A complete package has exactly one Asset of each of the three roles; one the package lacks,
+ * or a named animation it lacks, is a content error, as is any decoding error, which keeps its code and reason at
+ * `models[<Asset ID>].<path>`. The presentation module and the renderer then check what they need of it themselves.
  */
 import type { AssetDescriptor } from '../../content/asset-contract.ts';
 import type { AssetId } from '../../content/asset-id.ts';
 import { ContentContractError } from '../../content/contract-validation.ts';
-import type { ExplosionAnimation, ExplosionTable, FlightDataPayload, NebulaBackgrounds } from '../../content/flight/flight-data-content.ts';
+import type { ExplosionAnimation, ExplosionTable, FlightDataPayload, NebulaBackgrounds, SceneSettings } from '../../content/flight/flight-data-content.ts';
 import { decodeFlightDataPayload } from '../../content/flight/flight-data-payload.ts';
 import { readGroupManifest } from '../../content/manifest.ts';
 import { readPayloadRecords } from '../../content/payload.ts';
@@ -19,7 +20,12 @@ const PATH = 'models';
 
 type Content = { readonly [Role in FlightDataPayload['role']]: Extract<FlightDataPayload, { readonly role: Role }>['content'] };
 
-export function presentationContentOf(groups: readonly PackageGroup[]): PresentationContent {
+export interface FlightContent {
+  readonly presentation: PresentationContent;
+  readonly settings: SceneSettings;
+}
+
+export function flightContentOf(groups: readonly PackageGroup[]): FlightContent {
   const models = groups.find(({ group }) => group === 'models');
   if (!models) throw new ContentContractError('invalid-resource-group', PATH, 'the package holds no complete models group');
   const { assets } = readGroupManifest(models.manifest, `groups.${PATH}.manifest`);
@@ -37,7 +43,7 @@ export function presentationContentOf(groups: readonly PackageGroup[]): Presenta
     if (payload.role !== role) throw new ContentContractError('invalid-role', `${PATH}[${descriptor.id}]`, `must be a ${role} Asset`);
     return payload.content as Content[Role];
   };
-  const only = (role: 'explosion-table' | 'nebula-backgrounds'): AssetDescriptor => {
+  const only = (role: 'explosion-table' | 'nebula-backgrounds' | 'scene-settings'): AssetDescriptor => {
     const found = assets.filter((descriptor) => descriptor.role === role);
     if (found.length !== 1) throw new ContentContractError('invalid-role', PATH, `must hold exactly one ${role} Asset`);
     return found[0];
@@ -51,5 +57,6 @@ export function presentationContentOf(groups: readonly PackageGroup[]): Presenta
     animations.set(animation.id, decode(descriptor, 'explosion-animation'));
   }
   const nebula: NebulaBackgrounds = decode(only('nebula-backgrounds'), 'nebula-backgrounds');
-  return Object.freeze({ explosions, animations, nebula });
+  const settings: SceneSettings = decode(only('scene-settings'), 'scene-settings');
+  return Object.freeze({ presentation: Object.freeze({ explosions, animations, nebula }), settings });
 }

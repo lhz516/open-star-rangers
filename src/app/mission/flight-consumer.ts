@@ -3,8 +3,8 @@
  * an owner-level consumer at the `media` stage. Connecting creates the owner's one flight surface and its renderer, and
  * binds the package the owner bound, which the holder holds while the owner is created. Each run is wired at tick 0,
  * while held for its departure, to a presentation module of its own and the renderer (`wireFlightRun`), from that
- * package's content, checked to be still held and decoded once, and a presentation seed drawn for it; the run's end
- * releases both.
+ * package's content and scene settings, checked to be still held and decoded once, and a presentation seed drawn for
+ * it; the run's end releases both.
  * Releasing the owner disposes the renderer and its surface after the session.
  *
  * Failures: a surface the device cannot provide (`GraphicsUnavailableError`) leaves an `unavailable` renderer and the
@@ -14,12 +14,11 @@
 import { contentIdentityKey } from '../../content/content-identity.ts';
 import type { FlightRunBinding } from '../../render/flight/renderer/flight-gpu-cache.ts';
 import { FlightRenderError } from '../../render/flight/renderer/flight-render-error.ts';
-import type { PresentationContent } from '../../render/flight/presentation/explosion-selection.ts';
 import { createFlightRenderer, type FlightRenderer, type FlightRendererOptions } from '../../render/flight/renderer/flight-renderer.ts';
 import { wireFlightRun } from '../../render/flight/renderer/flight-run.ts';
 import { GraphicsUnavailableError, type RenderSurface } from '../../render/scene/render-surface.ts';
 import type { ResourceHolder } from '../resources/resource-holder.ts';
-import { presentationContentOf } from './flight-content.ts';
+import { flightContentOf, type FlightContent } from './flight-content.ts';
 import type { MissionConsumerConnection, MissionOwnerConsumer, MissionOwnerContext } from './mission-owner.ts';
 import type { SeedSource } from './mission-ports.ts';
 
@@ -60,15 +59,15 @@ export function createFlightConsumer({ holder, createSurface, seed, reportError 
     const created = createFlightRenderer(options);
     renderer = created;
     // Decoded once, by the first run that starts; a failed decoding is tried again by the next start.
-    let content: PresentationContent | null = null;
+    let content: FlightContent | null = null;
     return {
       release: () => { created.dispose(); },
       attachRun(run, { runId }) {
         // A held package never changes, so the same object is the same generation and content identity.
         if (holder.current() !== held) throw new FlightRenderError('invalid-state', 'flightConsumer.package', 'is no longer the package the owner bound');
-        content ??= presentationContentOf(held.groups);
+        content ??= flightContentOf(held.groups);
         const binding: FlightRunBinding = { ownerId, runId, generation: held.generation, identity };
-        wireFlightRun(run, { renderer: created, binding, content, seed: seed() });
+        wireFlightRun(run, { renderer: created, binding, content: content.presentation, settings: content.settings, seed: seed() });
       },
     };
   };
