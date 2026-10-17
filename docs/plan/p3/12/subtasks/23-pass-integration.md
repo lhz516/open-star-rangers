@@ -34,6 +34,8 @@ updated: 2026-10-17
 - `src/render/flight/renderer/**`：pass 接入。
 - `src/render/flight/composition/**`：层次登记。
 - `src/render/flight/scene/**`：按视角选择。
+- `src/app/mission/**`：运行内容的解码与接线（星云图像、模型表面等）。
+- `src/original-data/conversion/flight-data.test-support.ts`：合成生产 RENS 的光照字段落在研究过的范围内。
 
 ## 验收标准
 

@@ -105,7 +105,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [14-destruction-camera.md](./subtasks/14-destruction-camera.md) | 01, 12 | completed |
 | [15-renderer-lifecycle.md](./subtasks/15-renderer-lifecycle.md) | 11, 12 | completed |
 | [16-scene-camera-composition.md](./subtasks/16-scene-camera-composition.md) | 01, 03, 10, 14, 15 | completed |
-| [17-model-lighting.md](./subtasks/17-model-lighting.md) | 02, 16 | in-progress |
+| [17-model-lighting.md](./subtasks/17-model-lighting.md) | 02, 16 | completed |
 | [18-hit-shimmer.md](./subtasks/18-hit-shimmer.md) | 05, 10, 17 | pending |
 | [19-nebula-background.md](./subtasks/19-nebula-background.md) | 04, 16 | completed |
 | [20-projectile-missile-fragment-render.md](./subtasks/20-projectile-missile-fragment-render.md) | 05, 13, 17 | pending |
@@ -145,6 +145,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 - **2026-10-17 — 15 的交接：** 呈现种子改由独立的 `MissionPorts.presentationSeed` 提供（从 `seed` 抽取会移动 E2E 世界种子）；`wireFlightRun`（`src/render/flight/renderer/flight-run.ts`）是 16/23 提供表现层 `effects`、`destructionCamera` 与 GPU `plan` 的接入点。已知限制：暂停的会话无法在帧外进入故障，UI 立即提示，故障在恢复时发生（见 15 的完成证据）。工程文档的过时处（README、source-structure、render.md、app.md 与测试 ID）交 28。
 - **2026-10-17 — 16 的接入约定：** 各 pass 实现 `FlightLayer {slot, passes(frame)}`，由 23 经 `FlightRunRender.addLayer` 接入，槽位按 FC2；世界层用 `frame.world.camera`；三维之前的二维层不写深度；21 用 `setScreen` 在整幅游戏图像纹理上实现闪光调色板与平移。运行开始拒绝不按 +0x1C < +0x20 < +0x24（且大于前平面）排列的设备值（spec 内容输入与校验，协调者批准），合成生产 RENS 改为 600/1200/4000。`RenderSurface.drawPasses` 为多遍绘制的增量端口，查看器不变。
 - **2026-10-17 — 19 的接入说明（交 23）：** 运行开始时调用一次 `selectNebulaImages(content.nebula, random)`，解码六项图像后连同 DATA 调色板传给 `createNebulaLayer({cache, images, palettes})`，以 `addLayer` 接入并把 `NEBULA_GPU_PLAN` 加入运行的 GPU 计划。表现模块的随机源是私有的，23 须决定星云起点与 31 的速度尘埃重生用哪个表现随机流（应为同一流，不另建同种子的第二个流）。NB5 的清除由合成每帧的黑色清除覆盖。
+- **2026-10-17 — 17 的接入说明与限制：** 23 在运行前调用 `prepareModelSurfaces(...)`（内容错误拒绝开始），把 `surfaces.plan` 加入 GPU 计划，再 `addLayer(new ModelLightingLayer(surfaces, run.resources))`；合成生产 RENS 的方向光须改为研究过的单光路径 0 < I_d ≤ 1 与非负环境光（由 23 修改 `flight-data.test-support.ts`）。模型须用 BackSide（相机空间相对 WebGL 是镜像的；16 的绕序说明由 28 更正）。未逐像素仿真的三项（按取整行剔除、定点跨度步进、16 位深度相等）按 ADR-0009 的设备像素三维记为显式限制，交 25、26。LS6 的逐位细节由 27 并入 `docs/original/`。18 用 `LitPartBuilder.part(model, 2, 0, …)`，20 用第 1 列表。
 
 ## 审批
 
