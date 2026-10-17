@@ -85,7 +85,7 @@ updated: 2026-10-17
 | [09-content-bindings.md](./subtasks/09-content-bindings.md) | 06 | completed |
 | [10-voice-parameters-progress.md](./subtasks/10-voice-parameters-progress.md) | 06 | completed |
 | [11-audio-pause-lifecycle.md](./subtasks/11-audio-pause-lifecycle.md) | 10 | in-progress |
-| [12-voice-allocation-ledger.md](./subtasks/12-voice-allocation-ledger.md) | 10 | in-progress |
+| [12-voice-allocation-ledger.md](./subtasks/12-voice-allocation-ledger.md) | 10 | completed |
 | [13-spatial-engine-parameters.md](./subtasks/13-spatial-engine-parameters.md) | 07, 08, 10 | pending |
 | [14-hud-audio-read-model.md](./subtasks/14-hud-audio-read-model.md) | 07, 08 | pending |
 | [15-event-sound-mapping.md](./subtasks/15-event-sound-mapping.md) | 07, 08, 09 | pending |
