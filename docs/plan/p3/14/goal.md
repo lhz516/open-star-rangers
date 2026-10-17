@@ -79,7 +79,7 @@ updated: 2026-10-16
 | [03-hud-cue-research.md](./subtasks/03-hud-cue-research.md) | — | completed |
 | [04-mode-reachability-research.md](./subtasks/04-mode-reachability-research.md) | — | completed |
 | [05-evidence-contract-baseline.md](./subtasks/05-evidence-contract-baseline.md) | 01, 02, 03, 04 | completed |
-| [06-shared-contract-approval.md](./subtasks/06-shared-contract-approval.md) | 05 | pending |
+| [06-shared-contract-approval.md](./subtasks/06-shared-contract-approval.md) | 05 | in-progress |
 | [07-presentation-contract-approval.md](./subtasks/07-presentation-contract-approval.md) | 06 | pending |
 | [08-core-audio-read-models.md](./subtasks/08-core-audio-read-models.md) | 06 | pending |
 | [09-content-bindings.md](./subtasks/09-content-bindings.md) | 06 | pending |
