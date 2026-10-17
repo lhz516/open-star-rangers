@@ -103,11 +103,14 @@ describe('nebula blit', () => {
   });
 
   it('writes the same source pixel at both positions of a diagonal step, leaving no hole', () => {
+    // A flag per screen pixel; writes about (320, 240) stay within ±91, so every index is on screen.
+    const written = new Uint8Array(640 * 480);
     for (const theta of ANGLES) {
-      const written = new Set(writes(theta).map(({ x, y }) => `${x},${y}`));
+      written.fill(0);
+      blitNebula(theta, 320, 240, 479, (x, y) => { written[y * 640 + x] = 1; });
       for (let dy = -60; dy <= 60; dy++) {
         for (let dx = -60; dx <= 60; dx++) {
-          if (dx * dx + dy * dy <= 60 * 60 && !written.has(`${320 + dx},${240 + dy}`)) throw new Error(`hole at ${dx}, ${dy} for θ = ${theta}`);
+          if (dx * dx + dy * dy <= 60 * 60 && written[(240 + dy) * 640 + 320 + dx] === 0) throw new Error(`hole at ${dx}, ${dy} for θ = ${theta}`);
         }
       }
     }

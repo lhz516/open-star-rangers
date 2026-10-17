@@ -41,6 +41,13 @@ function image(passes: ReturnType<ReturnType<typeof setup>['layer']['passes']>) 
   return { mesh, texture, data, drawn };
 }
 
+/** Index of the first differing byte, or -1 when both images are equal; much faster than a deep `toEqual` of 1.2 MB. */
+function firstDifference(actual: Uint8Array, expected: Uint8Array): number {
+  if (actual.length !== expected.length) return Math.min(actual.length, expected.length);
+  for (let index = 0; index < actual.length; index++) if (actual[index] !== expected[index]) return index;
+  return -1;
+}
+
 describe('Warp tunnel layer (AC-15)', () => {
   it('allocates its plan in the run\'s cache and draws in the warp-effect slot without depth', () => {
     const { cache, layer, frame, logicalCamera } = setup();
@@ -122,10 +129,10 @@ describe('Warp tunnel layer (AC-15)', () => {
       drawn.draw({ serial: 1, path: STRAIGHT_PATH, templates: rotation, edges: Array<boolean>(WARP_EDGE_DRAWS).fill(true), camera });
       return drawn.pixels;
     };
-    expect(reference(pose(9000))).not.toEqual(reference(cameraAt(9000, drawnRows)));
-    expect(at(cameraAt(9000, drawnRows))).toEqual(reference(pose(9000)));
-    expect(at(cameraAt(8900, drawnRows))).toEqual(reference(pose(8900)));
-    expect(at(cameraAt(8950, drawnRows))).toEqual(reference(cameraAt(8950, drawnRows)));
+    expect(firstDifference(reference(pose(9000)), reference(cameraAt(9000, drawnRows)))).not.toBe(-1);
+    expect(firstDifference(at(cameraAt(9000, drawnRows)), reference(pose(9000)))).toBe(-1);
+    expect(firstDifference(at(cameraAt(8900, drawnRows)), reference(pose(8900)))).toBe(-1);
+    expect(firstDifference(at(cameraAt(8950, drawnRows)), reference(cameraAt(8950, drawnRows)))).toBe(-1);
   });
 
   it('rejects drawing a Render State other than the last stepped tick\'s', () => {

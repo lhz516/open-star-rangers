@@ -37,9 +37,15 @@ describe('nebula selection', () => {
 
   it('gives every start the same number of rand values, drawing again above the largest multiple of the length', () => {
     for (const count of [1, 4, 7, 15, 32]) {
+      // One list per length: the selection only reads it, so building and validating it for every value adds nothing.
+      const nebula = list(count);
       const accepted = 32768 - (32768 % count);
       const starts = new Array<number>(count).fill(0);
-      for (let value = 0; value < accepted; value++) starts[Number(ids(count, value).ids[0])]++;
+      for (let value = 0; value < accepted; value++) {
+        const random = controlledRand(0);
+        random.queue(value);
+        starts[nebula.images.indexOf(selectNebulaImages(nebula, random)[0])]++;
+      }
       expect(new Set(starts)).toEqual(new Set([accepted / count]));
     }
     // 32768 = 2184 · 15 + 8: the values 32760–32767 are drawn again.

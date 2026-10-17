@@ -156,7 +156,8 @@ describe('Warp tunnel image (WT4–WT6)', () => {
     image.draw(drawing({ edges: ALL_EDGES }));
     const first = image.pixels.slice();
     image.draw(drawing({ edges: ALL_EDGES }));
-    expect(image.pixels).toEqual(first);
+    expect(image.pixels).toHaveLength(first.length);
+    expect(image.pixels.findIndex((value, index) => value !== first[index])).toBe(-1);
   });
 
   it('marks entries on or behind the camera plane with x = −1, keeping their last y until a new Warp', () => {
