@@ -108,7 +108,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [17-model-lighting.md](./subtasks/17-model-lighting.md) | 02, 16 | completed |
 | [18-hit-shimmer.md](./subtasks/18-hit-shimmer.md) | 05, 10, 17 | completed |
 | [19-nebula-background.md](./subtasks/19-nebula-background.md) | 04, 16 | completed |
-| [20-projectile-missile-fragment-render.md](./subtasks/20-projectile-missile-fragment-render.md) | 05, 13, 17 | in-progress |
+| [20-projectile-missile-fragment-render.md](./subtasks/20-projectile-missile-fragment-render.md) | 05, 13, 17 | completed |
 | [21-sprites-screen-flash.md](./subtasks/21-sprites-screen-flash.md) | 03, 04, 13, 16 | completed |
 | [22-warp-tunnel.md](./subtasks/22-warp-tunnel.md) | 06, 16 | completed |
 | [23-pass-integration.md](./subtasks/23-pass-integration.md) | 17, 18, 19, 20, 21, 22, 31 | pending |
@@ -152,6 +152,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 - **2026-10-17 — 新增修复子任务 33：** 集成 31 时 `warp-tunnel-layer.test.ts` 的该用例再次超时（负载约 8–12），31 的集成暂缓。原因是 640×480 像素数组的深度比较；33 改为等价的高效比较，完成后再集成 31 与后续行。
 - **2026-10-17 — 31 的接入说明（交 23）：** 运行开始时 `createStarFieldLayer({cache, palette})` 与 `createSpeedDustLayer({cache, palette, random})`（random 与星云、Warp 同一表现流），都 `addLayer` 并加入 `STAR_FIELD_GPU_PLAN`、`SPEED_DUST_GPU_PLAN`；绘制前对每个 `report.outputs` 项按次序调用 `dust.step({render: o.render, events: o.events, camera: 该 tick 的 PresentationTick.afterStep})`，静止帧不调用。星点表用独立的 Watcom `rand` 生成器（SHA-256 与 30 的 `1aa3406e…2754` 一致），不触及表现流。
 - **2026-10-17 — 18 的接入说明与取舍：** 23 在运行前调用 `prepareShimmerSurfaces({...ModelLightingContent, thresholds}, settings)`（内容错误拒绝开始）并加入 `surfaces.plan`；创建 `new HitShimmer({models, initial, random})`（random 用同一表现流，每个本方视觉一次抽取）；报告非空时在绘制前 `shimmer.advance(report.outputs)`；在世界槽中于 `ModelLightingLayer` 之后 `addLayer(new HitShimmerLayer(...))`。没有玩家对象时的命中（原版 `0x3d7ff` 读空句柄）按协调者决定取“≠ 1 → 开始”，标为高概率，恢复途径为一次基准环境读数，交 27 记入 U-027。
+- **2026-10-17 — 20 的接入说明与新事实：** 23 在运行前调用 `prepareObjectSurfaces({...ModelLightingContent, projectiles, missiles, debris, debrisModel}, settings)`（内容错误拒绝开始），加入 `surfaces.looks.plan`，再 `addLayer(new EffectObjectsLayer({surfaces, resources, effects}))`；`wireFlightRun` 目前不暴露表现效果，由 23 暴露。新事实（已确认，代码）：`0x97b14` 在网格创建时按角点 c0、c[n−2]、c[n−1] 为每个面计算一个法线，`0x7db10` 把它复制给该面的每个扇形三角形；LS6 的“每个三角形一个法线”只对三角形面成立，交 27 并入 LS6/HS8。导弹类型越界按 spec 拒绝（原版夹取，有意差异）。
 
 ## 审批
 
