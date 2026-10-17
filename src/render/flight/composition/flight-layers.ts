@@ -14,9 +14,10 @@
  * - **Views 6, 8 and 0x13:** no world, only the cockpit slot (the map is P3-13's, the base screens P3-10's).
  *
  * Among the 2D layers only explosion sprites read depth and none writes it (FC5): layers drawn before the world must not
- * write depth. A slot may hold several layers, drawn in the order they were added.
+ * write depth. The game image's depth is a texture (`CompositionFrame.depth`), so the sprites can test each block at
+ * one pixel as the original does (FC8). A slot may hold several layers, drawn in the order they were added.
  */
-import type { Camera, Scene, Texture, WebGLRenderTarget } from 'three';
+import type { Camera, DepthTexture, Scene, Texture, WebGLRenderTarget } from 'three';
 import type { RenderFrame } from '../../../app/runtime/game-runtime.ts';
 import type { Projection } from '../../../core/projections/projection.ts';
 import type { FlightSceneFrame, FlightViewKind } from '../scene/flight-scene.ts';
@@ -59,6 +60,11 @@ export interface CompositionFrame {
   readonly world: WorldView | null;
   /** Draws logical pixels (x, y) into the game image, z passed through as normalised depth (logical-screen.ts). */
   readonly logicalCamera: Camera;
+  /**
+   * The game image's depth, the world's once the world slot has drawn, with the device pixels' rows bottom up. A pass
+   * may sample it only while it draws into a target of its own: the game image's target holds it.
+   */
+  readonly depth: DepthTexture;
 }
 
 /** One pass a layer draws. */

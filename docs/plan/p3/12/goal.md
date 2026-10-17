@@ -109,7 +109,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [18-hit-shimmer.md](./subtasks/18-hit-shimmer.md) | 05, 10, 17 | in-progress |
 | [19-nebula-background.md](./subtasks/19-nebula-background.md) | 04, 16 | completed |
 | [20-projectile-missile-fragment-render.md](./subtasks/20-projectile-missile-fragment-render.md) | 05, 13, 17 | pending |
-| [21-sprites-screen-flash.md](./subtasks/21-sprites-screen-flash.md) | 03, 04, 13, 16 | in-progress |
+| [21-sprites-screen-flash.md](./subtasks/21-sprites-screen-flash.md) | 03, 04, 13, 16 | completed |
 | [22-warp-tunnel.md](./subtasks/22-warp-tunnel.md) | 06, 16 | completed |
 | [23-pass-integration.md](./subtasks/23-pass-integration.md) | 17, 18, 19, 20, 21, 22, 31 | pending |
 | [24-rule-independence-replay.md](./subtasks/24-rule-independence-replay.md) | 13, 14, 23 | pending |
@@ -147,6 +147,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 - **2026-10-17 — 19 的接入说明（交 23）：** 运行开始时调用一次 `selectNebulaImages(content.nebula, random)`，解码六项图像后连同 DATA 调色板传给 `createNebulaLayer({cache, images, palettes})`，以 `addLayer` 接入并把 `NEBULA_GPU_PLAN` 加入运行的 GPU 计划。表现模块的随机源是私有的，23 须决定星云起点与 31 的速度尘埃重生用哪个表现随机流（应为同一流，不另建同种子的第二个流）。NB5 的清除由合成每帧的黑色清除覆盖。
 - **2026-10-17 — 17 的接入说明与限制：** 23 在运行前调用 `prepareModelSurfaces(...)`（内容错误拒绝开始），把 `surfaces.plan` 加入 GPU 计划，再 `addLayer(new ModelLightingLayer(surfaces, run.resources))`；合成生产 RENS 的方向光须改为研究过的单光路径 0 < I_d ≤ 1 与非负环境光（由 23 修改 `flight-data.test-support.ts`）。模型须用 BackSide（相机空间相对 WebGL 是镜像的；16 的绕序说明由 28 更正）。未逐像素仿真的三项（按取整行剔除、定点跨度步进、16 位深度相等）按 ADR-0009 的设备像素三维记为显式限制，交 25、26。LS6 的逐位细节由 27 并入 `docs/original/`。18 用 `LitPartBuilder.part(model, 2, 0, …)`，20 用第 1 列表。
 - **2026-10-17 — 22 的接入说明（交 23）：** 用运行的表现随机流（与星云、速度尘埃同一流）创建 `createWarpTunnelLayer({cache, random})`，`addLayer` 接入并加入 `WARP_TUNNEL_GPU_PLAN`；绘制前按次序对每个 `report.outputs` 项调用 `layer.step(o.render)`，静止帧不调用。新序号时游标归 0、投影暂存清空，按 pass 的运算改为按 tick（06 推荐的有意差异）。
+- **2026-10-17 — 21 的遮挡取舍与接入说明：** AC-13 按协调者决定采用方案 B：游戏图像的深度改为 24 位 `DepthTexture`（精度不变），经 `CompositionFrame.depth` 暴露；精灵画入自己的渲染目标，在每个块的左上像素做深度测试（FC8），再复制进游戏图像（渲染目标 2/4）。23 的接线：运行前创建 `ExplosionSprites` 并 `addLayer`；每个 tick 输出以 `effects.flashRequests(tick)` 推进 `createScreenFlashes`；以 `setScreen` 安装 `FlashScreenStage`；把 `explosionSpritesGpuPlan` 与 `FLASH_SCREEN_GPU_PLAN` 加入计划；合成生产 RENS 的闪光级别须改到 0–63、持续时间有限且非零。FC8 库排序细节与视角切换后闪光表复位的推断交 27。已知风险：`warp-tunnel-layer.test.ts` 的一个用例在低负载下约 3 秒，机器高负载时会超过 5 秒超时；29 的 `pnpm check` 须在正常负载下确认，必要时由修复子任务处理。
 
 ## 审批
 

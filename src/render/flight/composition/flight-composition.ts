@@ -1,12 +1,13 @@
 /**
  * One run's composition (flight-layers.ts; docs/plan/p3/12/spec.md, 画面合成与 P3-13 接口; AC-16): its layers and
  * screen stage, and the passes of each frame. The game image is a render target of the drawing buffer's size from the
- * run's GPU cache, acquired again after a layout change; the screen stage's geometry and material come from the same
+ * run's GPU cache, acquired again after a layout change, whose depth is a texture (24-bit, like the renderbuffer it
+ * replaced) the frame gives the sprites; the screen stage's geometry and material come from the same
  * cache, so the run's end releases everything. Adding a layer returns its idempotent removal; a removed layer is never
  * called again and leaves nothing behind.
  */
 import {
-  BufferAttribute, BufferGeometry, Camera, Mesh, NearestFilter, Scene, ShaderMaterial, WebGLRenderTarget, type Texture,
+  BufferAttribute, BufferGeometry, Camera, DepthTexture, Mesh, NearestFilter, Scene, ShaderMaterial, UnsignedIntType, WebGLRenderTarget, type Texture,
 } from 'three';
 import type { RenderFrame } from '../../../app/runtime/game-runtime.ts';
 import type { Projection } from '../../../core/projections/projection.ts';
@@ -102,7 +103,9 @@ export class FlightComposition {
       setLogicalCamera(this.#logicalCamera, logical);
       this.#logical = logical;
     }
-    const frame: CompositionFrame = Object.freeze({ logical, viewMode, subMode, view, render, projection, world, logicalCamera: this.#logicalCamera });
+    const frame: CompositionFrame = Object.freeze({
+      logical, viewMode, subMode, view, render, projection, world, logicalCamera: this.#logicalCamera, depth: image.depthTexture!,
+    });
     // Only the paths of views 0xC and 0x11 clear the world's depth (FC2, RS6); Warp, map and base keep it.
     const clearDepth = view === 'flight' || view === 'destruction' || this.#depthLost;
     this.#depthLost = false;
@@ -139,6 +142,7 @@ export class FlightComposition {
     }
     const image = this.#cache.renderTarget(key, { width, height }, () => new WebGLRenderTarget(width, height, {
       minFilter: NearestFilter, magFilter: NearestFilter, generateMipmaps: false, depthBuffer: true,
+      depthTexture: new DepthTexture(width, height, UnsignedIntType),
     }));
     this.#imageKey = key;
     return image;

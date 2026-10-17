@@ -1,5 +1,5 @@
 import type { ShaderMaterial, WebGLRenderTarget } from 'three';
-import { BufferAttribute, BufferGeometry, Camera, Mesh, MeshBasicMaterial, Scene, Vector4 } from 'three';
+import { BufferAttribute, BufferGeometry, Camera, DepthTexture, Mesh, MeshBasicMaterial, Scene, UnsignedIntType, Vector4 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import type { RenderState } from '../../../core/projections/render-state.ts';
 import { computeViewportLayout, type ViewportLayout } from '../../viewport/viewport-layout.ts';
@@ -118,6 +118,7 @@ describe('flight composition', () => {
     const given = cockpit.frames[0];
     expect(given).toMatchObject({ viewMode: 0x0c, subMode: 0, view: 'flight', projection: PROJECTION, logical: { scale: 2, bufferWidth: 1280, bufferHeight: 960 } });
     expect(given.render.current).toBe(f1);
+    expect(given.depth).toBe(frame[0].target!.depthTexture);
     expect(given.world!.viewport).toEqual({ x: 0, y: 0, width: 640, height: 316 });
     expect(frame.find(({ scene }) => scene === world.scene)!.scissor).toEqual({ x: 0, y: 0, width: 1280, height: 632 });
     expect(frame.find(({ scene }) => scene === cockpit.scene)!.scissor).toBeNull();
@@ -146,12 +147,16 @@ describe('flight composition', () => {
     const first = passes(f1);
     const image = first[0].target!;
     expect([image.width, image.height]).toEqual([640, 480]);
+    // Its depth is a 24-bit texture the sprites sample (FC8); the renderer releases it with the target.
+    expect(image.depthTexture).toBeInstanceOf(DepthTexture);
+    expect(image.depthTexture!.type).toBe(UnsignedIntType);
     expect((first.at(-1)!.scene.children[0] as Mesh<BufferGeometry, ShaderMaterial>).material.uniforms.image.value).toBe(image.texture);
     expect(cache.counts()).toMatchObject({ renderTargets: 1, geometries: 1, materials: 1, vertices: 3 });
     const dispose = vi.spyOn(image, 'dispose');
     const resized = passes(f1, layout(1280, 960))[0].target!;
     expect([resized.width, resized.height]).toEqual([1280, 960]);
     expect(dispose).toHaveBeenCalledOnce();
+    expect(resized.depthTexture).not.toBe(image.depthTexture);
     expect(cache.counts()).toMatchObject({ renderTargets: COMPOSITION_GPU_PLAN.renderTargets, vertices: COMPOSITION_GPU_PLAN.vertices });
     cache.dispose();
     expect(cache.counts()).toMatchObject({ renderTargets: 0, geometries: 0, materials: 0 });
