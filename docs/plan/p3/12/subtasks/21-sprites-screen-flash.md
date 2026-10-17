@@ -33,6 +33,7 @@ updated: 2026-10-17
 
 - `src/render/flight/sprites/**`：爆炸精灵 pass 与测试。
 - `src/render/flight/flash/**`：屏幕闪光与测试。
+- `src/render/flight/composition/**`：游戏图像的深度纹理与 `CompositionFrame` 中的深度访问，供精灵按块左上像素做遮挡测试（FC8）。
 
 ## 验收标准
 
