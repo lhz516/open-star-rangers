@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "12"
 subtask: "16"
-updated: 2026-10-15
+updated: 2026-10-17
 ---
 
 # 16 — Render State 消费、相机投影与画面合成
@@ -38,6 +38,8 @@ updated: 2026-10-15
 - `src/render/flight/scene/**`：插值、可见集合、相机与投影。
 - `src/render/flight/composition/**`：逻辑画面、层次与 P3-13 接口。
 - `src/render/flight/renderer/**`：接入场景与合成。
+- `src/render/scene/render-surface.ts`、`src/render/scene/render-surface.test-support.ts`、`src/render/webgl/webgl-surface.ts`、`src/render/webgl/webgl-surface.test.ts`：多遍绘制的增量端口（渲染目标、清除与裁剪），查看器行为不变。
+- `src/app/mission/flight-content.ts`、`src/app/mission/flight-consumer.ts` 及其测试：解码 `data/scene-settings` 并传入飞行运行。
 
 ## 验收标准
 
