@@ -2,7 +2,7 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-10
+updated: 2026-10-16
 related: [U-001, U-009, U-027, U-028]
 ---
 
@@ -33,8 +33,8 @@ Notes:
 
 - Every face is a triangle.
 - Coordinates are **32-bit floats**. Mesh extents range from about 1.4 to 276 units, consistent with metres (fighters tens of metres, stations hundreds).
-- UVs range from about −11 to 9.6, so textures tile (wrap) across faces. Whether the original repeats or mirror-repeats them is Unconfirmed (P2-12/22).
-- The **slot index** of a corner is always below `ns`, and the largest slot index used is exactly `ns − 1`. The slot table itself is not stored. In 288 meshes `ns` equals `nv` (all corners of a vertex share one slot); in 96 meshes `ns` equals the total corner count (every corner has its own slot, i.e. flat shading); the remaining 102 lie in between. Likely a per-corner shading table built at load time, equivalent to smoothing groups.
+- UVs range from about −11 to 9.6, so textures tile (wrap) across faces. The original repeats them (the fractional part is used), samples the nearest texel without mip levels and interpolates affinely (Confirmed, code, P3-12/02, [executable](./executable.md#ls7-rasterisation-of-shades-and-texels--confirmed-code-unless-marked)).
+- The **slot index** of a corner is always below `ns`, and the largest slot index used is exactly `ns − 1`. The slot table itself is not stored. In 288 meshes `ns` equals `nv` (all corners of a vertex share one slot); in 96 meshes `ns` equals the total corner count (every corner has its own slot, i.e. flat shading); the remaining 102 lie in between. The native builder uses the slot index as the corner's normal index ([native normal slots](#native-normal-slots-p3-1202)), so the slots act like smoothing groups (Confirmed, code, P3-12/02).
 - Vertices are in model space: MODL applies no transform.
 
 <a id="texture-coordinate-block-order-likely-p2-12"></a>
@@ -68,7 +68,11 @@ Local statistics with the import's readers (`local/research/p2-06/structure-reco
 | The slice's five craft models | 149 | 98 | 51 | 0 | 1,934 / 1,453 / 73 |
 | All MESH entries | 486 | 336 | 150 | 0 | 8,244 / 4,666 / 375 |
 
-No mesh has only near-zero triangles, and every stored normal has unit length within 10⁻³. These are records only. They establish neither a front-face winding nor how the original lights faces (U-028). The payload keeps winding and normals as stored; the consumer boundary is in [source structure](../../engineering/modules/content.md#模型-payload). In the P2-12 viewer comparison ([§3](#p2-12-viewer-comparison-v-1)), the double-sided renders showed no face that the original hides; the front-face winding remains Unconfirmed.
+No mesh has only near-zero triangles, and every stored normal has unit length within 10⁻³. These are records only. They establish neither a front-face winding nor how the original lights faces (U-028). The payload keeps winding and normals as stored; the consumer boundary is in [source structure](../../engineering/modules/content.md#模型-payload). In the P2-12 viewer comparison ([§3](#p2-12-viewer-comparison-v-1)), the double-sided renders showed no face that the original hides. **Original rendering (Confirmed, code, P3-12/01, P3-12/07):** a vertex (x, y, z) is placed at P + x·R0 + y·R1 + z·R2 of the owning object (after the library's orthonormalisation), with +R0 shown to the right and +R1 up in a view with the same pose (the viewer's provisional axis and handedness convention); the authoritative cull is the rasterisers' screen-space predicate on the rounded rows, which keeps triangles that run clockwise on screen; that equals "(b − a) × (c − a) in stored order faces the camera" wherever row rounding does not change or zero the sign, and small or nearly edge-on triangles can differ. That no further object-space cull exists is Likely ([executable](./executable.md#rs4-back-face-culling--confirmed-code)). Lit faces use the library's face normal from the same corner order, not the stored normals, except for Gouraud parts ([executable](./executable.md#ls6-lighting-computation--confirmed-code)).
+
+### Native normal slots (P3-12/02)
+
+**Confirmed (code and counts):** the native builder `0x6a7b4` passes the slot count `ns` to `0x80c14` as the normal count and the stored normal block (`nv` normals) as the source. `0x80c14` copies and normalises `ns` normals, and each face corner uses normal [slot]. When `ns > nv`, slots ≥ `nv` read the bytes that follow the normal block: the face count and the face records. As f32 these are zero or tiny (every word is a count or an index), so the normaliser leaves them unnormalised and the lit value rounds to 0: such corners receive ambient light only. Counts (local, `local/research/p3-12/lighting/`): 198 of 486 meshes have `ns > nv`; 19,231 of 39,855 corners read beyond the normals; 57 corners in 2 meshes would read past the MESH block, none of them in a list-0 flag-3 part. Among list-0 flag-3 parts (the only Gouraud parts), 113 of 382 meshes and 2,593 of 11,643 corners are affected and no read leaves the block, so the result is deterministic. Flat (quality 2) and unlit parts do not use corner normals.
 
 ## 2. MODL (structure Confirmed on all 19 entries)
 
@@ -82,8 +86,8 @@ Part, 28 bytes:
 
 | Offset | Type | Meaning |
 |---|---|---|
-| +0 | u32 | Flags; observed 1, 2 and 3 (see [part structure by list](#part-structure-by-list-confirmed-counts)); meaning Unconfirmed (U-027) |
-| +4 | u32 × 3 | Colour, 0–255 per channel; Likely the base colour for untextured parts |
+| +0 | u32 | Flags; observed 1, 2 and 3 (see [part structure by list](#part-structure-by-list-confirmed-counts)). The low byte is the part's render quality for list 0 and for the first list-2 part, capped by RENS +0x18 (1 unlit, 2 flat lit, 3 Gouraud lit); list 1 does not read it (Confirmed, code, P3-12/02, [executable](./executable.md#ls8-model-visuals-part-flags-colours-and-the-texture-option--confirmed-code)) |
+| +4 | u32 × 3 | Colour R, G, B (+4 is R), 0–255: the face colour of untextured parts (Confirmed, code, P3-12/02) |
 | +16 | u32 | 0 |
 | +20 | u32 | MESH entry ID |
 | +24 | u32 | TEX entry ID, or 0 for none |
@@ -94,14 +98,15 @@ Block size is always `44 + 28 × (total parts)`. All MESH, TEX, and SND referenc
 
 **Confirmed source reuse statistic:** collecting every part from all 19 MODL entries references 485 distinct MESH entries; one MESH source is referenced by more than one MODL. This is a source-format reuse relationship, not a decision that each MESH must become an independent canonical Asset. The unused/implicit geometry and the conversion ownership policy require separate analysis.
 
-Part lists (meaning Unconfirmed, U-027):
+Part lists (roles Confirmed by code; static outlines of list 2 not comparable, U-027):
 
 - **List 0**: the intact model. Rendering list 0 of every MODL with its textures produces recognisable craft, stations, and structures (checked locally; renders stay in `local/`).
 - **List 1**: hull fragments that look like a wrecked version of the same model. When a craft is destroyed, its fragment effects draw parts of its own model's list 1 (Confirmed by code, see [executable](./executable.md#effect-presentation-sources)). The destruction rules read only the list-1 **count** of the M2ID model of the source's kind bit, one fragment per part, with kinds 1 and 2 skipping parts 1 and 2; no rule reads a part's flags, mesh or texture, and the part-0 fragment of kinds 1 and 2 draws parts 0–2 together (Confirmed, code, [fragments](./executable.md#destruction-explosions-and-fragments-p3-0706)). One MODL, 10383, has an empty list 0 and only fragments in list 1; the flight effect setup loads it by ID and fragment effects draw its parts as generic debris (Confirmed by code, same section).
 - **List 2**: zero or one roughly convex hull that looked single-coloured in the local renders. It is not untextured: every list-2 part names a TEX entry, the same one in all 16, and no list-0 part names that entry (Confirmed counts). In the slice's 4 list-2 parts all texture coordinates are equal, so the part shows a single texel (Confirmed counts).
   - **Display (Likely, P2-12/21–22):** on both enemy types the original shows the hull only in frames where the craft is hit, dithered over the craft so that the craft shows through (`srangers_103.png`, `srangers_112.png`, `srangers_114.png`). Captures of the same types without a hit (`srangers_018.png`, `srangers_020.png`, `srangers_101.png`, `srangers_102.png`) show no hull. When it is shown and the dither pattern are runtime behaviour (P3, U-027); its static outline could not be compared, because it appears only dithered. The P2-12/30 recaptures add no undithered frame, and no capture or video frame shows the hull of the base or the player craft, so the static outline remains unjudged in P2-12 for lack of a baseline. The single texel the slice's list-2 parts show is in the same colour family as the dither in those captures.
   - **Hit effect (P3-01/10):** the code that shows it is found. On a hit, the effect for kinds `0x383` gives the struck craft's list-2 part a copy of TEX 11069 and sweeps a band of opaque and half-transparent pixels through it with the mission clock; the list-2 meshes only size the effect's texture wraps (Confirmed, EXE; [executable](./executable.md#data-loaded-by-the-loop-p3-0110)). That this is the dither in the captures is Likely. TEX 11069 is not a slice texture, and no MODL names it.
-  - **No transparency field:** neither MODL nor the image record has a transparency field (Confirmed). Flag value 1 alone is not a translucency flag (Likely): the list-2 parts carry it, but so do list-0 parts that the original shows opaque (the first enemy type's glow part, the second enemy type's window part and the player craft's tail glow). Whether list-2 membership itself selects the dithered drawing is Unconfirmed.
+  - **Display rule (Confirmed, code, P3-12/05):** the list-2 part is never attached as such. A hit ([executable](./executable.md#hs1-the-hit-item-in-the-scene-step--confirmed-code)) attaches a **copy** of part 0 with its own texture and opacity image for kinds in `0x383`, or places one of 16 shared copies at the local hit point, oriented by the struck box face, for kinds in `0xf9c7c`. The copy is unlit (its flag 1 is its render quality), its stored texture coordinates are replaced by sphere wraps, and it shows only while the band runs (about 1.97 s per hit), through a 4 × 4 screen door ([HS6](./executable.md#hs6-how-the-opacity-image-is-drawn--confirmed-code)); the dithered hull in the captures is that screen door (Likely: the checkerboard phase is seen in early-band frames only). Slice data (local counts): for kinds 0, 1, 7, 8 and 9 the list-2 hull encloses the list-0 bounds (size ratio 1.1–1.2, centred on the origin); the base's list-2 part (kind 17) is a small shape away from the origin, placed at the hit point. The complete static outline is never drawn and stays not comparable.
+  - **No transparency field:** neither MODL nor the image record has a transparency field (Confirmed). Flag value 1 alone is not a translucency flag (Likely): the list-2 parts carry it, but so do list-0 parts that the original shows opaque (the first enemy type's glow part, the second enemy type's window part and the player craft's tail glow). List-2 membership does not select the dithered drawing: the shimmer gives the drawn copy a second (opacity) image, and that image selects the screen-door rasteriser (Confirmed, code, P3-12/05).
   - It is not a collision volume: the projectile hit tests and collision passes read only the shapes of the craft and DEBRIS records (Confirmed, code, [hits and collisions](./executable.md#projectiles-missiles-hits-and-collisions-p3-0703)).
 
 ### Part structure by list (Confirmed counts)
@@ -115,7 +120,7 @@ Local counts with the import's readers (`local/research/p2-06/structure-records.
 | 2 | 16 | 1: 16 / 0 | 4 | 1: 4 / 0 |
 
 - **Slice parts:** 127, 18 and 4 parts in lists 0, 1 and 2. Within each list every part names a different MESH entry, and no MESH of list 1 or 2 is also used by list 0, so the slice has 149 distinct meshes. The friendly craft model uses only list 0 (2 parts); the other four models use all three lists.
-- **Flags:** flag values do not separate textured from untextured parts, because flags 1 and 3 both occur with and without a TEX entry. Flag 1 is not a translucency flag (Likely; see list 2 above). Flag meaning is otherwise Unconfirmed (U-027).
+- **Flags:** flag values do not separate textured from untextured parts, because flags 1 and 3 both occur with and without a TEX entry. The flag is the part's render quality, not a translucency flag (Confirmed, code, P3-12/02; §2 above).
 - **Sound slots:** across the five slice models, slots 0–4 are non-empty in 3, 4, 4, 3 and 4 models. Their meanings are the ones recorded in [audio](./audio.md#slice-sample-set-and-role-correspondences-p2-08) and §2 above: slots 1, 2 and 4 Confirmed, slots 0 and 3 Unconfirmed. P2-06 assigns none.
 
 ### Observed maxima against the readers' limits (Confirmed)
@@ -193,6 +198,6 @@ Texture appearance on the textured parts whose coordinates vary was not establis
 
 ## 4. Open questions
 
-- Meaning of part lists 1 and 2 and the part flags (U-027). Sound slots 1, 2 and 4 are confirmed; slots 0 and 3 remain Unconfirmed.
-- Which texture-coordinate field the rasterizer applies along texture columns (§1; the first array, Likely). The original's texture wrap mode and front-face winding.
-- How lighting selects shades (U-028); which craft type each M2ID slot is.
+- Sound slots 1, 2 and 4 are confirmed; slots 0 and 3 remain Unconfirmed (U-027). The roles of lists 1 and 2 and of the part flags are Confirmed by code (P3-12/02, P3-12/05); the complete static outline of a list-2 hull remains not comparable.
+- Which texture-coordinate field the rasterizer applies along texture columns (§1; the first array, Likely). The wrap mode (repeat) and the front-face rule are Confirmed by code (P3-12/02, P3-12/07).
+- Lighting is Confirmed by code and Likely in appearance (P3-12/02, U-028); which craft type each M2ID slot is.
