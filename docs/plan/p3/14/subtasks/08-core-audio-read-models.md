@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "14"
 subtask: "08"
-updated: 2026-10-15
+updated: 2026-10-17
 ---
 
 # 08 — Core 音效所需只读输出
@@ -35,6 +35,10 @@ updated: 2026-10-15
 - `src/app/runtime/*.test*.ts`：必要事件 fixture 同步。
 - `src/app/session/*.test*.ts`：必要读模型 fixture 同步。
 - `docs/engineering/modules/core.md`：新增 API 与版本说明。
+- `src/app/runtime/game-event-bus.ts`：穷举事件表加入 `object-retired`（协调者 2026-10-17 扩展）。
+- `src/ui/dev/event-log.ts`、`src/ui/dev/event-log.test.ts`：开发事件日志的穷举字段与夹具（同上）。
+- `tools/replay-check.ts`、`tools/replay-check.test.ts`：最长事件表与预算推导中的新事件和 FA-05 字段（同上）。
+- `docs/plan/p3/02/spec.md`：仅 CR-06 中 `weapon-selected` 的 `commandIndex: null` 措辞，按 FA-06 更正（同上）。
 
 ## 验收标准
 
