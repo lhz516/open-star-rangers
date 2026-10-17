@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "14"
 subtask: "11"
-updated: 2026-10-15
+updated: 2026-10-17
 ---
 
 # 11 — 保留进度的暂停与宿主中断
@@ -35,6 +35,7 @@ updated: 2026-10-15
 - `src/platform/audio/**`：暂停/恢复、中断与能力替身测试。
 - `src/app/viewer/viewer-audio.test.ts`：未启用新门禁时的兼容。
 - `docs/engineering/modules/platform.md`：暂停/中断契约。
+- `src/ui/viewer/ViewerAudioPanel.tsx`：仅在穷举状态文案中加入 `paused`（按 P2-08 修订，文案同 `suspended`；协调者 2026-10-17 扩展）。
 
 ## 验收标准
 
