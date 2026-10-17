@@ -17,6 +17,7 @@ updated: 2026-10-17
 ## 工作范围
 
 - 集成时发现：22 的 `src/render/flight/warp/warp-tunnel-layer.test.ts` 中“projects with the stored rows …”用例在低负载下约 3 秒，机器负载较高时超过 Vitest 默认的 5 秒超时，使 `pnpm check` 不稳定。原因是对 640×480 像素数组做了四次深度 `toEqual` 比较。
+- 18 的集成检查又发现 19 的 `nebula-blit`“diagonal step”与 `nebula-selection`“same number of rand values”在负载下各需 7–11 秒，一并处理。
 - 改为等价但高效的比较（例如按字节逐一比较后断言布尔值，失败时报告首个不同的下标），保持断言的含义与覆盖不变；不提高超时、不删断言。
 
 ## 不包含
@@ -26,6 +27,7 @@ updated: 2026-10-17
 ## 写入范围
 
 - `src/render/flight/warp/warp-tunnel-layer.test.ts`：比较方式。
+- `src/render/flight/nebula/nebula-blit.test.ts`、`src/render/flight/nebula/nebula-selection.test.ts`：同类慢用例（“diagonal step”与“same number of rand values”）。
 
 ## 验收标准
 
