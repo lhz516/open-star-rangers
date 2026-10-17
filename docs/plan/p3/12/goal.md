@@ -102,7 +102,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [11-runtime-tick-batches.md](./subtasks/11-runtime-tick-batches.md) | 09 | completed |
 | [12-presentation-foundation.md](./subtasks/12-presentation-foundation.md) | 10, 11 | completed |
 | [13-presentation-effects.md](./subtasks/13-presentation-effects.md) | 01, 05, 12 | in-progress |
-| [14-destruction-camera.md](./subtasks/14-destruction-camera.md) | 01, 12 | in-progress |
+| [14-destruction-camera.md](./subtasks/14-destruction-camera.md) | 01, 12 | completed |
 | [15-renderer-lifecycle.md](./subtasks/15-renderer-lifecycle.md) | 11, 12 | in-progress |
 | [16-scene-camera-composition.md](./subtasks/16-scene-camera-composition.md) | 01, 03, 10, 14, 15 | pending |
 | [17-model-lighting.md](./subtasks/17-model-lighting.md) | 02, 16 | pending |
@@ -140,6 +140,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 - **2026-10-17 — spec 修订后的计划修订：** 用户以回答协调者提问的方式决定把星点与速度尘埃加入 P3-12、实现第 0、1 类闪光的画面平移、星云固定按开启绘制（[spec 审批](./spec.md#审批)的 2026-10-17 修订）。据此新增 30（Q-14 研究、原版文档、对照方案附录与 FS-12 推荐定稿）、31（星点与速度尘埃的实现）与 32（速度尘埃所需的 D-01 补充 FS-12：用户批准方向并授权协调者按推荐方案定稿，32 写入 P3-02 并在 Core 实现），23 依赖 31，29 依赖 30、31、32；19、21、25、26、27 的范围与验收按修订补充。已完成的 01–09 不受影响；08 冻结的对照方案不改，星点与速度尘埃由 30 另行冻结附录。
 - **2026-10-17 — 30 的更正：** 30 的已确认结论更正了 spec 修订中协调者写的三处事实（速度份额决定整层跳过与近处亮度而非粒子数；被毁视角爆炸前的 30 是速度；跟随实体离表后份额为 0）。协调者据此更正 spec 的[星点与速度尘埃](./spec.md#星点与速度尘埃)与 AC-23，以及 31、32；FS-12 由当前状态推导，不进快照、不再递增版本。星点表用默认 `rand` 序列的第 1–1000 次抽取（不是 1001–1128）。对照方案附录 `addendum-q14.md` 已冻结（SHA-256 `34c4c430…23c3b6`），`plan.md` 不变。
 - **2026-10-17 — FS-12 定稿：** 协调者按用户授权接受 30 的推荐定稿并由 32 写入 P3-02：`RenderState.speedShare` 按原版 i32/i16 存储建模（常规取值 0–100，极端输入可回绕超过 100，31 按原版夹取亮度与颜色）；MW-01 校验 4 收紧为玩家记录 trunc(+0xB8) ≥ 1，comm-replay 与 worker 停靠夹具相应调整，comm 摘要在 `3be64fe4` 重新取基线且不变。
+- **2026-10-17 — 14 的原版文档补充（交 27）：** 14 实现时核实了被毁相机的 f32 细节（进入角为 f32 `0x3F0EFA35` = Math.fround(32° 弧度)；爆炸前每个分量为 F(P + F(R2 × s))；首次跟随距离的求和顺序为 (y² + z²) + x²；跟随位置为 F(F + F(R2 × −d))；两个缓动分支得到相同的 double），由 27（写入范围含 `docs/original/**`）并入 executable 的自动视角/PV8 段落。在 `clock` 之前阶段发生的进入 `view-switched` 使用上一 tick 的时钟（与 `0x18641c` 一致；按 FS-03 不可达）。
 
 ## 审批
 
