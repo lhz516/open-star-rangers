@@ -64,6 +64,8 @@ const bound = (controller: AudioController): AudioController => ({
   voiceState: voice => controller.voiceState(voice),
   stop: (voice, reason) => controller.stop(voice, reason),
   stopAll: () => controller.stopAll(),
+  pause: () => controller.pause(),
+  resume: () => controller.resume(),
   getSnapshot: () => controller.getSnapshot(),
   subscribe: listener => controller.subscribe(listener),
   dispose: () => controller.dispose(),

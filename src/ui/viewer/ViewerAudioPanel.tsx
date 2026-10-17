@@ -12,6 +12,8 @@ const STATUS_TEXT: Readonly<Record<ViewerAudioSnapshot['status'], string>> = Obj
   idle: 'Audio is ready; it starts with the first click on Play.',
   locked: 'Audio is waiting for a click to start.',
   running: 'Audio is running.',
+  // The viewer never pauses its controller; this status reads as a suspension.
+  paused: 'Audio is suspended while the page is hidden.',
   suspended: 'Audio is suspended while the page is hidden.',
   unavailable: 'Audio is unavailable in this browser.',
   failed: 'Audio failed and stopped.',

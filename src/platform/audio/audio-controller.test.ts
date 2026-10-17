@@ -720,3 +720,300 @@ describe('audio controller repeat passes', () => {
     for (const error of errors) expect(error).toBeLessThanOrEqual(bound + 1e-9);
   });
 });
+
+/** Lets settled host promises run their reactions. */
+const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+
+/** A running controller with one voice of each loop mode: `none` fixed, `whole` and `repeat` with parameters. */
+function withModes() {
+  const fixture = withRepeats();
+  const { audio, controller } = fixture;
+  audio.context.currentTime = 1;
+  const voices = [voiceOf(controller.play('sound/fire')), voiceOf(controller.play('sound/warp', {})), voiceOf(controller.play('sound/arrival', {}))];
+  return { ...fixture, voices, ports: [...audio.context.voices] };
+}
+
+describe('audio controller task pause gate', () => {
+  it('keeps every mode\'s voice where it is while paused and continues it on resume, without replay', () => {
+    const { audio, controller, voices, ports } = withModes();
+    audio.context.currentTime = 1.1;
+    expect(controller.pause()).toBe('paused');
+    expect(controller.pause()).toBe('paused');
+    expect(audio.context.count('suspend')).toBe(1);
+    expect(controller.getSnapshot()).toEqual({ status: 'paused', loaded: 4, voices: 3 });
+    expect(voices.map(voice => controller.voiceState(voice))).toEqual(Array(3).fill({ status: 'paused' }));
+    expect(controller.play('sound/fire')).toEqual({ status: 'rejected', code: 'audio-paused' });
+    expect(controller.play('sound/fire', { volume: 999 })).toEqual({ status: 'rejected', code: 'audio-paused' });
+    audio.context.setState('suspended');
+    expect(controller.getSnapshot()).toEqual({ status: 'paused', loaded: 4, voices: 3 });
+    // The context time stands still while suspended, so nothing of the passes is consumed.
+    expect(controller.resume()).toBe('paused');
+    expect(audio.context.count('resume')).toBe(1);
+    expect(voices.map(voice => controller.voiceState(voice))).toEqual(Array(3).fill({ status: 'paused' }));
+    audio.context.setState('running');
+    expect(controller.getSnapshot()).toEqual({ status: 'running', loaded: 4, voices: 3 });
+    expect(voices.map(voice => controller.voiceState(voice))).toEqual(Array(3).fill({ status: 'playing' }));
+    // Never stopped, restarted or rescheduled: the host continues each source from its position.
+    expect(ports.map(port => port.calls)).toEqual([['start'], ['start'], ['start 1', 'stop 1.375']]);
+    expect(audio.context.voices).toHaveLength(3);
+    expect(controller.resume()).toBe('running');
+    expect(audio.context.count('resume')).toBe(1);
+  });
+
+  it('applies updates to paused voices at the frozen context time, counting the passes left from there', () => {
+    const { audio, controller, voices, ports } = withModes();
+    audio.context.currentTime = 1.1;
+    controller.pause();
+    audio.context.setState('suspended');
+    // 800 of 3000 source frames played; the rest at twice the rate once resumed.
+    expect(controller.update(voices[2], { rate: 16_000 })).toEqual({ status: 'updated' });
+    expect(controller.update(voices[1], { pan: 0 })).toEqual({ status: 'updated' });
+    expect(controller.update(voices[0], { pan: 0 })).toEqual(updateRejected('fixed-parameters'));
+    expect(ports[2].calls).toEqual(['start 1', 'stop 1.375', 'set 1.1', `stop ${1.1 + 2_200 / 16_000}`]);
+    controller.resume();
+    audio.context.setState('running');
+    expect(controller.voiceState(voices[2])).toEqual({ status: 'playing' });
+    ports[2].end();
+    expect([controller.voiceState(voices[2]), controller.getSnapshot().voices]).toEqual([ended('natural'), 2]);
+  });
+
+  it('keeps the voices through a resume issued before the pause\'s suspension lands', () => {
+    const { audio, controller, voices } = withModes();
+    controller.pause();
+    // A `running` before the pending suspension lands is not a resume of the paused context.
+    audio.context.setState('running');
+    expect(controller.getSnapshot()).toEqual({ status: 'paused', loaded: 4, voices: 3 });
+    expect(controller.resume()).toBe('paused');
+    audio.context.setState('suspended');
+    expect(controller.voiceState(voices[0])).toEqual({ status: 'paused' });
+    audio.context.setState('running');
+    expect(controller.getSnapshot()).toEqual({ status: 'running', loaded: 4, voices: 3 });
+    expect(audio.context.count('suspend')).toBe(1);
+  });
+
+  it('keeps the voices whether the suspension settles before or after its state change is dispatched', async () => {
+    const { audio, controller } = withModes();
+    controller.pause();
+    // As in Chromium: the state reads suspended at once and the promise settles before `statechange` is dispatched.
+    audio.context.state = 'suspended';
+    audio.context.suspensions[0].resolve();
+    await flush();
+    audio.context.setState('suspended');
+    expect(controller.getSnapshot()).toEqual({ status: 'paused', loaded: 4, voices: 3 });
+    // A quick resume: the state reads running before the earlier suspension's `statechange` arrives.
+    controller.resume();
+    audio.context.state = 'running';
+    audio.context.setState('running');
+    expect(controller.getSnapshot()).toEqual({ status: 'running', loaded: 4, voices: 3 });
+  });
+
+  it('runs again when a quick resume left no state change, once the pause\'s suspension settles', async () => {
+    const { audio, controller } = withModes();
+    controller.pause();
+    controller.resume();
+    expect(statuses(controller)).toBe('paused');
+    audio.context.suspensions[0].resolve();
+    await flush();
+    expect(controller.getSnapshot()).toEqual({ status: 'running', loaded: 4, voices: 3 });
+  });
+
+  it('releases what a late or spontaneous resume let play while paused, and suspends again', () => {
+    const { audio, errors, controller, voices, ports } = withModes();
+    controller.pause();
+    audio.context.setState('suspended');
+    audio.context.setState('running');
+    expect(controller.getSnapshot()).toEqual({ status: 'paused', loaded: 4, voices: 0 });
+    expect(voices.map(voice => controller.voiceState(voice))).toEqual(Array(3).fill(ended('released')));
+    expect(ports.map(port => port.calls.slice(-2))).toEqual(Array(3).fill(['stop', 'disconnect']));
+    expect([audio.context.count('suspend'), audio.context.count('resume')]).toEqual([2, 0]);
+    expect(controller.play('sound/fire')).toEqual({ status: 'rejected', code: 'audio-paused' });
+    audio.context.setState('suspended');
+    controller.resume();
+    audio.context.setState('running');
+    expect(controller.getSnapshot()).toEqual({ status: 'running', loaded: 4, voices: 0 });
+    expect(audio.context.voices).toHaveLength(3);
+    expect(errors).toEqual([]);
+  });
+
+  it('releases every voice when the context is interrupted while paused, keeping the gate closed', () => {
+    const { audio, controller, voices } = withModes();
+    controller.pause();
+    audio.context.setState('suspended');
+    audio.context.setState('interrupted');
+    expect(controller.getSnapshot()).toEqual({ status: 'paused', loaded: 4, voices: 0 });
+    expect(voices.map(voice => controller.voiceState(voice))).toEqual(Array(3).fill(ended('released')));
+    expect(controller.play('sound/fire')).toEqual({ status: 'rejected', code: 'audio-paused' });
+    // The interruption ends with the context running: still paused, and suspended again.
+    audio.context.setState('running');
+    expect([statuses(controller), audio.context.count('suspend')]).toEqual(['paused', 2]);
+    controller.resume();
+    audio.context.setState('suspended');
+    audio.context.setState('running');
+    expect(controller.getSnapshot()).toEqual({ status: 'running', loaded: 4, voices: 0 });
+  });
+
+  it.each([
+    ['interrupted', 'paused'],
+    ['closed', 'failed'],
+  ] as const)('releases every voice when the context becomes %s while the pause\'s suspension is pending', async (state, status) => {
+    const { audio, errors, controller, voices } = withModes();
+    controller.pause();
+    audio.context.setState(state);
+    expect(controller.getSnapshot()).toEqual({ status, loaded: 4, voices: 0 });
+    expect(voices.map(voice => controller.voiceState(voice))).toEqual(Array(3).fill(ended('released')));
+    // The suspension landing late keeps nothing and reports nothing.
+    audio.context.suspensions[0].resolve();
+    await flush();
+    expect([statuses(controller), errors]).toEqual([status, []]);
+  });
+
+  it('releases every voice and stays paused when hidden while paused, and never resumes on showing', () => {
+    const { audio, lifecycle, controller, voices } = withModes();
+    controller.pause();
+    lifecycle.hide();
+    expect(controller.getSnapshot()).toEqual({ status: 'paused', loaded: 4, voices: 0 });
+    expect(voices.map(voice => controller.voiceState(voice))).toEqual(Array(3).fill(ended('released')));
+    expect(controller.update(voices[1], { volume: 1 })).toEqual(updateRejected('unknown-voice'));
+    audio.context.setState('suspended');
+    // Neither showing nor a resume while hidden opens the gate.
+    expect(controller.resume()).toBe('paused');
+    lifecycle.show();
+    lifecycle.fire('pageshow');
+    expect([statuses(controller), audio.context.count('resume')]).toEqual(['paused', 0]);
+    expect(controller.unlock()).toBe('paused');
+    expect(audio.context.count('resume')).toBe(0);
+    expect(controller.resume()).toBe('paused');
+    audio.context.setState('running');
+    expect(controller.getSnapshot()).toEqual({ status: 'running', loaded: 4, voices: 0 });
+  });
+
+  it('releases the voices kept for a resume still waiting for the context when hidden, as before the gate', () => {
+    const { audio, lifecycle, controller } = withModes();
+    controller.pause();
+    audio.context.setState('suspended');
+    controller.resume();
+    lifecycle.hide();
+    expect(controller.getSnapshot()).toEqual({ status: 'suspended', loaded: 4, voices: 0 });
+    lifecycle.show();
+    expect(audio.context.count('resume')).toBe(2);
+    audio.context.setState('running');
+    expect(statuses(controller)).toBe('running');
+  });
+
+  it('pauses a context hidden before the pause, which showing then leaves suspended', () => {
+    const { audio, lifecycle, controller } = running();
+    lifecycle.hide();
+    expect(controller.pause()).toBe('paused');
+    audio.context.setState('suspended');
+    lifecycle.show();
+    expect([statuses(controller), audio.context.count('resume')]).toEqual(['paused', 0]);
+    controller.resume();
+    audio.context.setState('running');
+    expect(statuses(controller)).toBe('running');
+  });
+
+  it('records only the gate without a context, and takes the capability without playing when unlocked while paused', () => {
+    const { audio, controller } = setup({ initialState: 'running' });
+    controller.load(SOUND_RECORDS);
+    expect(controller.pause()).toBe('idle');
+    expect(controller.play('sound/fire')).toEqual({ status: 'rejected', code: 'audio-paused' });
+    expect(controller.unlock()).toBe('paused');
+    // Created running in the gesture, the context is suspended again at once.
+    expect(audio.context.calls).toEqual(['suspend']);
+    expect(controller.play('sound/fire')).toEqual({ status: 'rejected', code: 'audio-paused' });
+    audio.context.setState('suspended');
+    expect(controller.unlock()).toBe('paused');
+    expect(controller.resume()).toBe('paused');
+    audio.context.setState('running');
+    expect(controller.play('sound/fire').status).toBe('started');
+  });
+
+  it('waits for the autoplay policy as locked when resumed without ever having run', () => {
+    const { audio, controller } = setup();
+    controller.load(SOUND_RECORDS);
+    controller.pause();
+    expect(controller.unlock()).toBe('paused');
+    expect(audio.context.calls).toEqual([]);
+    expect(controller.resume()).toBe('locked');
+    expect(audio.context.calls).toEqual(['resume']);
+    expect(controller.play('sound/fire')).toEqual({ status: 'rejected', code: 'audio-locked' });
+    audio.context.setState('running');
+    expect(statuses(controller)).toBe('running');
+  });
+
+  it('keeps a locked controller locked when paused, and suspends a resume that lands while paused', () => {
+    const { audio, controller } = setup();
+    controller.load(SOUND_RECORDS);
+    expect(controller.unlock()).toBe('locked');
+    expect(controller.pause()).toBe('locked');
+    expect(controller.play('sound/fire')).toEqual({ status: 'rejected', code: 'audio-paused' });
+    // Unlocking while paused retries nothing.
+    expect(controller.unlock()).toBe('locked');
+    expect([audio.context.count('resume'), audio.context.count('suspend')]).toEqual([1, 0]);
+    audio.context.setState('running');
+    expect([statuses(controller), audio.context.count('suspend')]).toEqual(['paused', 1]);
+    expect(controller.play('sound/fire')).toEqual({ status: 'rejected', code: 'audio-paused' });
+    audio.context.setState('suspended');
+    expect(controller.resume()).toBe('paused');
+    audio.context.setState('running');
+    expect(statuses(controller)).toBe('running');
+  });
+
+  it('fails and releases every voice when the pause cannot suspend the context, reporting only the error name', async () => {
+    const thrown = withModes();
+    thrown.audio.context.failSuspend = true;
+    expect(thrown.controller.pause()).toBe('failed');
+    expect(thrown.controller.getSnapshot()).toEqual({ status: 'failed', loaded: 4, voices: 0 });
+    expect(thrown.voices.map(voice => thrown.controller.voiceState(voice))).toEqual(Array(3).fill(ended('released')));
+
+    const rejecting = withModes();
+    rejecting.controller.pause();
+    rejecting.audio.context.suspensions[0].reject(new DOMException('secret host text', 'InvalidStateError'));
+    await flush();
+    expect(rejecting.controller.getSnapshot()).toEqual({ status: 'failed', loaded: 4, voices: 0 });
+    for (const { errors } of [thrown, rejecting]) {
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({ name: 'AudioPauseError', hostError: 'InvalidStateError' });
+      expect(String((errors[0] as Error).message)).not.toContain('secret');
+    }
+    expect(rejecting.controller.resume()).toBe('failed');
+  });
+
+  it('ignores the settlement of a suspension no longer current: after running again, after disposal', async () => {
+    const resumed = withModes();
+    resumed.controller.pause();
+    resumed.audio.context.setState('suspended');
+    resumed.controller.resume();
+    resumed.audio.context.setState('running');
+    resumed.audio.context.suspensions[0].reject(new Error('late'));
+
+    const disposed = withModes();
+    disposed.controller.pause();
+    disposed.controller.dispose();
+    disposed.audio.context.suspensions[0].reject(new Error('late'));
+    await flush();
+    expect([resumed.controller.getSnapshot(), resumed.errors]).toEqual([{ status: 'running', loaded: 4, voices: 3 }, []]);
+    expect([statuses(disposed.controller), disposed.errors]).toEqual(['disposed', []]);
+  });
+
+  it('returns the status unchanged for a controller that cannot play', () => {
+    const { audio, controller } = running();
+    audio.context.setState('closed');
+    expect([controller.pause(), controller.resume()]).toEqual(['failed', 'failed']);
+    controller.dispose();
+    expect([controller.pause(), controller.resume()]).toEqual(['disposed', 'disposed']);
+    const unavailable = setup();
+    unavailable.audio.failContext = true;
+    unavailable.controller.unlock();
+    expect([unavailable.controller.pause(), unavailable.controller.play('sound/fire')]).toEqual(['unavailable', { status: 'rejected', code: 'audio-unavailable' }]);
+  });
+
+  it('stops paused voices on request with their own end reasons', () => {
+    const { controller, voices } = withModes();
+    controller.pause();
+    expect(controller.stop(voices[0], 'preempted')).toBe(true);
+    controller.stopAll();
+    expect(voices.map(voice => controller.voiceState(voice))).toEqual([ended('preempted'), ended('stopped'), ended('stopped')]);
+    expect(controller.getSnapshot()).toEqual({ status: 'paused', loaded: 4, voices: 0 });
+  });
+});

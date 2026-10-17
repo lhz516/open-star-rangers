@@ -72,9 +72,17 @@ export class FakeContext implements AudioContextPort {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
   }
-  // Like a browser blocking autoplay, the promises never settle; tests drive the state instead.
+  // Like a browser blocking autoplay, the promises never settle unless a test settles a suspension; tests drive the state.
   resume(): Promise<unknown> { this.calls.push('resume'); return new Promise(() => undefined); }
-  suspend(): Promise<unknown> { this.calls.push('suspend'); return new Promise(() => undefined); }
+  /** Each `suspend()` call's settlement, in call order. */
+  readonly suspensions: { readonly resolve: () => void; readonly reject: (error: unknown) => void }[] = [];
+  /** `suspend()` throws synchronously. */
+  failSuspend = false;
+  suspend(): Promise<unknown> {
+    this.calls.push('suspend');
+    if (this.failSuspend) throw new DOMException('suspend threw', 'InvalidStateError');
+    return new Promise((resolve, reject) => { this.suspensions.push({ resolve: () => resolve(undefined), reject }); });
+  }
   /** What `close()` does: reject (the default), resolve, stay pending, or throw synchronously. */
   closing: 'reject' | 'resolve' | 'pending' | 'throw' = 'reject';
   close(): Promise<unknown> {

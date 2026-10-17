@@ -171,6 +171,28 @@ describe('audition', () => {
     expect(other).toHaveBeenCalled();
     expect(reportError).toHaveBeenCalledWith(failure);
   });
+
+  it('never closes the task pause gate: hiding and browser suspensions release voices as before, never paused', async () => {
+    const { audio, capability, lifecycle, reportError } = setup({ initialState: 'running' });
+    const statuses: string[] = [];
+    audio.subscribe(() => statuses.push(audio.getSnapshot().status));
+    audio.audition(IDS[0]);
+    lifecycle.hide();
+    capability.context.setState('suspended');
+    lifecycle.show();
+    capability.context.setState('running');
+    audio.audition(IDS[1]);
+    capability.context.setState('interrupted');
+    capability.context.setState('running');
+    // The suspensions the controller requested for hiding are ignored, whatever they settle to.
+    for (const suspension of capability.context.suspensions) suspension.reject(new Error('late'));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(new Set(statuses)).toEqual(new Set(['running', 'suspended']));
+    expect(capability.context.voices.map(voice => voice.calls)).toEqual(Array(2).fill(['start', 'stop', 'disconnect']));
+    expect([capability.context.count('suspend'), capability.context.count('resume')]).toEqual([1, 1]);
+    expect(audio.getSnapshot()).toMatchObject({ status: 'running', voices: 0 });
+    expect(reportError).not.toHaveBeenCalled();
+  });
 });
 
 describe('closing the audio context', () => {

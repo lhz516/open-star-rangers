@@ -28,7 +28,7 @@ related: [ADR-0015]
     - `audio` 能力：`createContext()` 返回上下文端口，含 `state`、`currentTime`（上下文时间，秒；P3-03/27）、`onStateChange`、`resume`/`suspend`/`close`，以及接到输出的 `createVoice(buffer, loop, parameters?)`；发声端口的 `start(when?)` 与 `stop(when?)` 立即执行，或在上下文时间 `when` 执行，较晚的 `stop` 取代尚未到达的预定停止。只有给出初始参数 `{ gain, left, right, playbackRate }`（有限数）时才创建参数节点并在返回前设好，返回的端口另有 `setParameters(parameters, when)`；不给参数的“固定”发声没有该方法（P3-14/10）。`createBuffer(channels, sampleRate)` 不需要上下文。
     - `lifecycle` 宿主：`visible()`，以及可撤销的 `visibilitychange`、`pagehide`、`pageshow` 监听。
     - 必填的 `reportError`。
-  - **状态：** `idle`、`locked`、`running`、`suspended`、`unavailable`、`failed`、`disposed`。
+  - **状态：** `idle`、`locked`、`running`、`paused`、`suspended`、`unavailable`、`failed`、`disposed`。`paused` 只在使用任务暂停门禁时出现（P3-14/11）；查看器的状态文案把它当作 `suspended`，但查看器从不暂停。
     - **上下文：** 每个控制器至多一个，延迟到 `unlock()` 创建；构造失败为 `unavailable`。
     - **状态来源：** 由上下文的状态变化驱动，从不等待 `resume()` 的 Promise。首次运行前未运行时为 `locked`；浏览器自行挂起或中断时停止全部发声，变为 `suspended`；上下文被关闭，或宿主操作同步抛错（创建缓冲、注册状态监听、开始发声、恢复、挂起）时为 `failed`。离开 `running` 时先改变状态再停止发声，所以订阅者在这期间也不能开始新的发声。
   - **可见性门：**
@@ -36,21 +36,28 @@ related: [ADR-0015]
     - **恢复：** 只有这种挂起才在页面恢复可见（`visibilitychange` 为 visible，或可见时的 `pageshow`）时自动 `resume()`。
     - **隐藏期间：** `unlock()` 不创建也不恢复上下文；迟到的 `running` 立即再次挂起。
     - **不补播：** 恢复后不补播任何发声。
+  - **任务暂停门禁（[P2-08 的 P3-14 修订](../../plan/p2/08/spec.md#播放控制器的扩展p3-14-的修订)，P3-14/11）：** 只有调用 `pause()`/`resume()` 的消费者（任务所有者）使用；不调用的查看器行为不变。
+    - **`pause()`：** 关闭门禁，之后 `play` 为 `audio-paused`（`unavailable`、`failed`、`disposed` 时仍为各自的码）。有上下文且可用时请求 `suspend()`，状态为 `paused`，已有发声不停止、不断开，`none`、`whole`、`repeat` 的源进度随上下文时间停止；`idle`、`locked` 时只记下门禁，状态不变。重复调用幂等。暂停中 `update` 照常应用于保留的发声（上下文时间不前进，`repeat` 不消耗遍数），`stop`/`stopAll` 照常结束它们。
+    - **暂停失败：** 这次 `suspend()` 同步抛错或兑现为 rejected 时，以 `released` 释放全部发声，向 `reportError` 报告只带宿主错误名称的 `AudioPauseError`（`hostError`），状态为 `failed`。这是控制器唯一观察结果的宿主 Promise；已被新的挂起取代、门禁打开后已运行或已释放时的迟到结果被忽略。
+    - **`resume()`：** 须在可信用户激活中调用。页面可见时打开门禁并调用上下文的 `resume()`；状态等 `statechange` 报告运行才回到 `running`，保留的发声从原位置继续，不重播。期间状态保持 `paused`（发声为 `paused`）；上下文从未运行过时为 `locked`。页面隐藏时什么也不做，门禁仍关闭。
+    - **门禁关闭时 `unlock()`：** 没有上下文时在手势中创建；创建即运行的上下文立即再挂起。状态为 `paused`，不播放，也不恢复已有上下文或打开门禁。
+    - **只有暂停自己的挂起保留发声：** 门禁的 `suspend()` 落地（观察到 `suspended`、或 Promise 兑现）之前出现的 `running` 视为暂停之前发出的恢复，等待挂起；落地后门禁关闭时出现的 `running`（迟到或自行恢复）以 `released` 释放全部发声并再次挂起，状态仍为 `paused`。`interrupted`、不是这次暂停造成的挂起（包括挂起尚未落地时的中断）都以 `released` 释放全部发声；门禁关闭时状态保持 `paused`，门禁已打开时为 `suspended`；上下文关闭为 `failed`。同一次宿主往返内的暂停、继续、再暂停可能因此释放发声（保守处理）。
+    - **门禁关闭时隐藏：** 以 `released` 释放全部发声，状态不变；页面恢复可见不恢复上下文。门禁打开时隐藏（包括继续后仍等待上下文运行）与修订前相同：释放全部发声，状态为 `suspended`，显示后自动恢复。
   - **命令：**
     - **`load(sounds)`：** 用 `readSoundPayload` 与 `soundChannelData` 把 `{ id, schemaVersion, bytes }` 转为控制器自有的浮点缓冲，整批成功才登记；`idle` 时也可调用。`schemaVersion` 须为 `SOUND_PAYLOAD_SCHEMA_VERSION`（P3-03/27 起为 2），schema 1（字节与 schema 2 相同）与其他版本的记录为 `invalid-sound-payload`。`repeat` 声音只建一份一遍的缓冲，不按次数复制（否则解码内存最多放大 255 倍），并记下全部遍数的源帧数 `plays × 帧数`（P3-14/10 起按源帧计进度）。
     - **`play(id)`：** 只在 `running` 时开始新的发声：`none` 播放一次，`whole` 整段循环到被停止，两者只调用 `start()`，与 P3-03 之前相同。`repeat`（[P3-03/27](../../plan/p3/03/subtasks/27-sound-repeat.md)）整段循环一份缓冲，读取一次 `currentTime`，以同一时间调用 `start(when)` 与 `stop(when + 时长)`，由宿主的结束事件自然结束，并像 `none` 一样释放；不用 `start()` 的 `duration` 参数，因为各引擎对循环源的处理不一致。读取 `currentTime` 失败时控制器为 `failed` 并释放发声。同时发声上限为 `AUDIO_VOICE_LIMIT`（8），只是资源保护。
     - **逐发声参数（[P2-08 的 P3-14 修订](../../plan/p2/08/spec.md#播放控制器的扩展p3-14-的修订)，P3-14/10）：** `play(id, parameters?)` 的 `{ volume, pan, rate }` 都是整数：音量、声像 0–127，速率 1–`AUDIO_RATE_LIMIT`（44,100 Hz，游戏的钳位）。整个对象先校验，缺省项（缺失或 `undefined`）取 127、64 与存储速率；任一项非整数、非有限或越界为 `invalid-parameters`，不分配句柄、不创建节点。范围只检查给出的值：缺省的存储速率即使高于上限（payload 允许到 96,000 Hz）也照用，`playbackRate` 为 1。宿主在创建发声或注册结束监听时抛错，已取得的节点全部断开，控制器为 `failed`。映射与校验在 [voice-progress.ts](../../../src/platform/audio/voice-progress.ts)：增益 = 音量 ÷ 127，两声道增益为 A-09 线性平衡表的 T[127 − 声像] ÷ 128 与 T[声像] ÷ 128（第一声道为左，D1-07），`playbackRate` = 速率 ÷ 存储速率。不传参数的 `play(id)` 与修订前完全相同（查看器即如此）。
     - **`update(voice, parameters)`：** 只对带参数的存活发声，整个对象校验后在当前 `currentTime` 一次应用（全有或全无）；合并后与当前值相同则不调用宿主，避免逐帧调用者堆积自动化事件；结果为 `updated`，或 `unknown-voice`（未知或已结束）、`fixed-parameters`、`invalid-parameters`、`audio-failed`（宿主抛错，控制器 `failed` 并释放全部发声）、`disposed`。
     - **`repeat` 的遍数：** 按源帧计，与速率和墙钟无关。开始时与每次改变速率时，`RepeatProgress` 把上次以来按旧速率播放的源帧扣除，再以“剩余源帧 ÷（存储速率 × `playbackRate`）”在当前上下文时间之后重新 `stop(when)`；速率不变的更新不重排。上下文时间不前进就不消耗进度。速率不变时遍数精确；`playbackRate` 在渲染量子边界生效，每次变速的误差至多 128 个输出帧乘以速率之差（以源帧计）。
-    - **`voiceState(voice)`：** 纯读取，不调用宿主：存活且 `running` 为 `playing`，存活而上下文未运行为 `paused`，已结束为 `ended` 及第一个原因，否则 `unknown`。原因：`natural`（自然结束，含 `repeat` 的预定停止）、`stopped`（`stop` 缺省或 `stopAll`）、`preempted`（`stop(voice, 'preempted')`）、`released`（隐藏、浏览器挂起或中断、宿主关闭或失败、`dispose`）。句柄单调递增不复用，保留最近 `AUDIO_ENDED_HISTORY`（256）个终态，更早的为 `unknown`。
+    - **`voiceState(voice)`：** 纯读取，不调用宿主：存活且 `running` 为 `playing`，存活而上下文未运行为 `paused`，已结束为 `ended` 及第一个原因，否则 `unknown`。原因：`natural`（自然结束，含 `repeat` 的预定停止）、`stopped`（`stop` 缺省或 `stopAll`）、`preempted`（`stop(voice, 'preempted')`）、`released`（隐藏、浏览器挂起或中断、宿主关闭或失败、暂停失败、`dispose`）。句柄单调递增不复用，保留最近 `AUDIO_ENDED_HISTORY`（256）个终态，更早的为 `unknown`。
     - **`stop`、`stopAll`：** 立即停止并断开节点（含参数节点），可重复调用；对 `repeat` 声音不带参数的 `stop()` 取代尚未到达的预定停止，可提前结束，之后不再续播。
     - **`dispose()`：** 同步停止全部发声、移除全部监听并释放缓冲；从不为释放而创建上下文；只在上下文存在且未关闭时 `close()` 一次。
   - **结果与快照：**
-    - **结果：** 判别联合的纯数据，错误码封闭：`audio-unavailable`、`audio-locked`、`audio-suspended`、`audio-failed`、`unknown-sound`、`duplicate-sound`、`invalid-sound-payload`、`voice-limit`、`disposed`，以及只在使用新参数能力时出现的 `invalid-parameters`、`unknown-voice`、`fixed-parameters`。宿主错误文本不进入结果。
-    - **快照：** `{ status, loaded, voices }`，冻结，两次变化之间保持同一对象；`subscribe` 可配合 `useSyncExternalStore`。
-    - **错误转交：** 订阅者错误与发声清理错误交给 `reportError`。
+    - **结果：** 判别联合的纯数据，错误码封闭：`audio-unavailable`、`audio-locked`、`audio-suspended`、`audio-failed`、`unknown-sound`、`duplicate-sound`、`invalid-sound-payload`、`voice-limit`、`disposed`，以及只在使用新能力时出现的 `audio-paused`（暂停门禁）与 `invalid-parameters`、`unknown-voice`、`fixed-parameters`（参数）。宿主错误文本不进入结果。
+    - **快照：** `{ status, loaded, voices }`（`voices` 计入播放中与暂停中的发声），冻结，两次变化之间保持同一对象；`subscribe` 可配合 `useSyncExternalStore`。
+    - **错误转交：** 订阅者错误、发声清理错误与暂停失败（`AudioPauseError`）交给 `reportError`。
     - **所有权：** 不保留、不修改、也不转移调用方的 payload。
-  - **测试：** 用假能力与假生命周期宿主在 Node 中测试；假能力记录 `start`/`stop` 的排程时间、初始参数（固定发声为 `null`）与每次 `setParameters` 的参数和时间（[audio-controller.test-support.ts](../../../src/platform/audio/audio-controller.test-support.ts)）。
+  - **测试：** 用假能力与假生命周期宿主在 Node 中测试；假能力记录 `start`/`stop` 的排程时间、初始参数（固定发声为 `null`）与每次 `setParameters` 的参数和时间，并可逐次兑现或拒绝 `suspend()` 的 Promise、令其同步抛错（[audio-controller.test-support.ts](../../../src/platform/audio/audio-controller.test-support.ts)）。
   - **重复播放的精度（残余风险）：** 排程用主线程读到的 `currentTime`，开始准时时恰为各遍；若宿主晚于该时间才开始，最后一遍可能被截短。Chrome 中 `currentTime` 是下一个未渲染量子的起点，P3-03/27 逐帧计数 24 次 8 遍播放都恰为 8 遍；Firefox 与 WebKit 未实测。
 - **浏览器工厂：** [browser-audio-controller.ts](../../../src/platform/audio/browser-audio-controller.ts) 的 `createBrowserAudioController({ reportError })` 提供真实能力：
   - **上下文：** `new AudioContext()`；构造器缺失或抛错时，控制器为 `unavailable`。
