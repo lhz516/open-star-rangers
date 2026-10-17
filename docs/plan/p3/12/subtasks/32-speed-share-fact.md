@@ -33,6 +33,7 @@ updated: 2026-10-17
 - `src/core/**`：FS-12 的投影、校验与测试。
 - `docs/plan/p3/02/spec.md`：FS-12 与审批记录。
 - `docs/engineering/modules/core.md`：FS-12 的契约部分。
+- `src/workers/synthetic-import.test-support.ts`、`src/workers/mission-scenarios.test.ts`：合成玩家记录的 +0xB8 满足收紧后的校验。
 
 ## 验收标准
 
