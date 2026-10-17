@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "10"
-updated: 2026-10-14
+updated: 2026-10-16
 related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-021, U-022, U-030, U-031]
 ---
 
@@ -109,11 +109,11 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 | [22-ui-base-page-gaps.md](./subtasks/22-ui-base-page-gaps.md) | 19, 21 | completed |
 | [23-browser-verification.md](./subtasks/23-browser-verification.md) | 20, 22 | completed |
 | [24-real-content-check.md](./subtasks/24-real-content-check.md) | 20 | completed |
-| [25-original-formal-runs.md](./subtasks/25-original-formal-runs.md) | 06, 10 | in-progress |
-| [26-comparison-conclusions.md](./subtasks/26-comparison-conclusions.md) | 20, 24, 25 | pending |
-| [27-docs-handoff.md](./subtasks/27-docs-handoff.md) | 20, 22, 23, 26 | pending |
+| [25-original-formal-runs.md](./subtasks/25-original-formal-runs.md) | 06, 10 | completed |
+| [26-comparison-conclusions.md](./subtasks/26-comparison-conclusions.md) | 20, 24, 25 | completed |
+| [27-docs-handoff.md](./subtasks/27-docs-handoff.md) | 20, 22, 23, 26 | completed |
 | [29-comm-messages-import.md](./subtasks/29-comm-messages-import.md) | 07 | completed |
-| [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29 | pending |
+| [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29 | completed |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -165,6 +165,14 @@ related: [ADR-0004, ADR-0006, ADR-0015, ADR-0017, B-004, B-006, U-009, U-010, U-
 - **2026-10-14 — 24 完成：** 私有真实内容核对 4 次正式 World 运行全部通过。未覆盖、交公共测试与 25/26：船体补给（碰撞只损及护盾与子系统）、僚机停靠与恢复分支（P3-08 之前僚机停放）、1000 门禁边界附近。
 
 - **2026-10-14 — 23 完成：** 新增合成场景 `mission-docking`（基地在 1000 门禁内、菜单含状态 7 与停靠 9）；用例文件名为 `e2e/base-interaction.development.spec.ts`（测试入口只在开发构建中，配置按后缀分配项目）。菜单协议只经测试读模型验证，不宣称生产通讯画面通过。
+
+- **2026-10-15 — spec 修订 1（受损注入，用户选 A）：** 受损服务配方族改为停靠请求之前经调试器写入受损字段，再实测服务链；`f-dmg-01`（撞击阶段超时）与 `f-dmg-02`（取消）用掉该族 4 次中的 2 次。25 增加声明式内存写入刺激。其余判据与预算不变。
+
+- **2026-10-16 — spec 修订 2（用户选择）：** 25 的三个可达分支（停靠等待中对象失效的取消、活动僚机在距离外时的停靠、其余通讯反应分支）没有原版样本，改作未运行对照，由 26 以代码证据与 Node 独立期望作限定结论。交战族剩 2 次启动未用。
+
+- **2026-10-16 — spec 修订 3（用户选择）：** 26 判定已取得的样本全部一致，没有修复子任务。受攻击的状态查询的来电时间链与 RQ2 原版一侧的重算两项缺口，按修订 2 的做法改作限定结论。
+
+- **2026-10-16 — 27 完成：** 工程文档与交接已同步；顺带改正了两处 P3-10 之前的旧说法（replay 格式版本为 2；audio 中 11381 一行误写基地补给播放选择音效，按 BS7 改正）。
 
 ## 审批
 

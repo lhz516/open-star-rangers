@@ -78,6 +78,7 @@ src/
       load-mission.ts
     projections/
       combat.ts
+      communications.ts
       map.ts
       projection.ts
       render-state.ts
@@ -101,12 +102,16 @@ src/
       ai-support.ts
       ai-targeting.ts
       ai-wingman.ts
+      base-service.ts
       collision-shapes.ts
       collision.ts
       combat-init.ts
+      comm-menus.ts
+      comm-reactions.ts
       coordinates.ts
       damage.ts
       displays.ts
+      docking.ts
       energy.ts
       explosions.ts
       firing.ts
@@ -115,6 +120,7 @@ src/
       flight-state.ts
       float32.ts
       fragments.ts
+      full-repair.ts
       guidance.ts
       hit-tests.ts
       initial-ai.ts
@@ -131,6 +137,7 @@ src/
       placement.ts
       projectile-motion.ts
       radar.ts
+      radio.ts
       random-direction.ts
       record-defaults.ts
       spawn-schedule.ts
@@ -145,11 +152,16 @@ src/
     systems/
       ai.ts
       area.ts
+      base-interior.ts
+      base-response.ts
       collision.ts
+      comm-reactions.ts
       commands.ts
+      communications.ts
       damage.ts
       destruction.ts
       displays.ts
+      docking.ts
       energy.ts
       flight-control.ts
       launch.ts
@@ -160,6 +172,7 @@ src/
       parked-engagement.ts
       pipeline.ts
       projectiles.ts
+      radio.ts
       spawn.ts
       targeting.ts
       view-switch.ts
@@ -167,6 +180,7 @@ src/
       weapons.ts
       xpon.ts
     world/
+      comm-input.ts
       craft-info-input.ts
       create-world.ts
       entity-table.ts
@@ -396,6 +410,7 @@ src/
       failure-copy.ts
       resource-copy.ts
     mission/
+      BasePage.tsx
       GameInputZone.tsx
       InputNotices.tsx
       MissionMenuPage.tsx
@@ -404,6 +419,7 @@ src/
       MissionShell.tsx
       PlaceholderPage.tsx
       StartConfigPage.tsx
+      base-page.ts
       input-notices.ts
       mission-copy.ts
       page-keys.ts
@@ -431,12 +447,12 @@ src/
 
 | 分册 | 内容 |
 |---|---|
-| [core](./modules/core.md) | 模块边界；Core 任务载入；正式 Core 的创建、规则数据输入与静态规则数据、世界、契约、流水线，飞行控制、运动与停放，战斗规则，地图与 Warp，原版规则辅助、读模型、快照与 replay，上限、扩展规则、已知差异与交接 |
+| [core](./modules/core.md) | 模块边界；Core 任务载入；正式 Core 的创建、规则数据输入与静态规则数据、世界、契约、流水线，飞行控制、运动与停放，战斗规则，地图与 Warp，通讯、停靠与基地服务，原版规则辅助、读模型、快照与 replay，上限、扩展规则、已知差异与交接 |
 | [content](./modules/content.md) | 基础契约与切片定义，图形、状态显示屏文字、模型与效果 payload，规范 JSON 与规则数据、飞行数据、视角标签、HUD 文字与地图几何 payload |
 | [original-data](./modules/original-data.md) | 光盘、封包、版本识别与来源映射，任务、规则与飞行数据解析，图形、逻辑、规则数据、音频、模型、效果与飞行数据转换 |
 | [workers](./modules/workers.md) | 导入 Worker 的协议、宿主、作业与生产包配置 |
 | [app](./modules/app.md) | 正式 Runtime 与游戏会话，任务流程、所有者与槽位，资源持有者，查看器音频与所有者 |
-| [ui](./modules/ui.md) | 游戏 store、会话桥接与命令反馈，任务页面与缺省标注文字，开发诊断，失败文案 |
+| [ui](./modules/ui.md) | 游戏 store、会话桥接与命令反馈，任务页面、基地页面与缺省标注文字，开发诊断，失败文案 |
 | [render](./modules/render.md) | 视口、WebGL 表面与资源查看渲染 |
 | [platform](./modules/platform.md) | 资源缓存、音频播放、任务端口的浏览器适配与键盘源 |
 
@@ -493,10 +509,10 @@ Core 消费规范化逻辑数据，不认识原版封包。持续事实走投影
 | `errors.ts`、`determinism/` | 输入错误与内部故障错误；带种子的 RNG 与 FNV-1a 哈希 |
 | `mission/` | 由三份逻辑 Asset 载入冻结的 `MissionSetup`（P2-09） |
 | `contracts/` | 跨目录共用的契约：上限、时钟、动作输入、领域事件、规范文本与校验读取器 |
-| `world/` | 世界创建与运行配置、机型输入、规则数据输入与静态规则数据（`rule-data.ts`，P3-07；静态 AI 数据由 `rules/ai-support.ts` 计算，P3-08；地图的静态规则数据 `map-rule-data.ts`，P3-09）、语义校验、setupHash；世界与故障锁存；世界状态（含 P3-09 的对象集合与地图图标列表，P3-08 的脚本解析缓存）、实体表（含飞行状态、战斗状态与地图可见标志，P3-08 的 AI 程序槽、控制器与种类 `0x4000` 的 Xpon 状态）、玩家状态（含目标、控制状态，P3-07 的瞄准、战斗记录与驾驶舱显示状态，P3-09 的地图与 Warp 状态）与生成状态 |
-| `systems/` | 唯一的有序阶段表与本 tick 的请求处理；各阶段的系统：生成、玩家更新与操纵（`flight-control.ts`）、运动、活动区域与停放（`area.ts`）；P3-07 的命令分派（`commands.ts`）、目标（`targeting.ts`）、武器与发射（`weapons.ts`、`launch.ts`）、弹丸（`projectiles.ts`）、导弹（`missiles.ts`）、伤害（`damage.ts`）、毁伤、爆炸与碎片（`destruction.ts`）、碰撞（`collision.ts`）、能量（`energy.ts`）、驾驶舱显示步（`displays.ts`）与停放交战（`parked-engagement.ts`）；P3-09 的地图开关、选点与标记（`map.ts`）、Warp 的开始、过程与完成（`warp.ts`）、对象集合（`object-sets.ts`）与视角切换（`view-switch.ts`）；P3-08 的 AI 控制器分派、执行预算与 Warp 离场（`ai.ts`），以及 `drop-transponder` 与种类 `0x4000` 的构造和回调（`xpon.ts`）。规则任务在自己的阶段接入 |
-| `rules/` | 按原版代码实现的确定性规则辅助（只经 `RandSource` 抽取，并修改显式传入的世界计数、移动块或战斗状态）：坐标换算与 f32 数值、原版随机映射、放置、缺省值、排程与名称；飞行状态、运动积分、操纵、速度匹配、AI 初态、随机方向、活动区域与停放行进（P3-06）；载入变换与碰撞形状、战斗初值、目标与雷达、挂点与开火、移动块构造与模式 1/2 运动、弹丸命中、伤害与子系统、能量与显示、碰撞、共享转向模块与导弹制导、爆炸与碎片、停放交战（P3-07）；地图换算、图标列表与选点、地图可见性与覆盖、启动旋转表、Warp 能量、隧道路径与 Warp 到达（P3-09）；AI 支持闭包与参数（`ai-support.ts`、`ai-parameters.ts`）、程序选择与安装（`ai-selection.ts`）、脚本与解析缓存（`ai-script.ts`）、解释器（`ai-interpreter.ts`）、驾驶的投递者（`ai-piloting.ts`，转向库扩展在共享的 `steering.ts` 中）、目标与交战（`ai-targeting.ts`）、扳机、AI 锁定与基地（`ai-firing.ts`）、攻击航线（`ai-attack-pass.ts`）、僚机（`ai-wingman.ts`）、僚机命令的消费（`ai-commands.ts`）与停放处理器（`ai-parked.ts`）（P3-08）；只在真实复用时提取 |
-| `projections/` | 按分区的 projection（含 `flight` 的运动组与战斗组 `combat.ts`、`map` 分区 `map.ts`）与 Render State，深度冻结、与世界脱离 |
+| `world/` | 世界创建与运行配置、机型输入、规则数据输入与静态规则数据（`rule-data.ts`，P3-07；静态 AI 数据由 `rules/ai-support.ts` 计算，P3-08；地图的静态规则数据 `map-rule-data.ts`，P3-09；通讯输入的检查与通讯规则数据 `comm-input.ts`，P3-10）、语义校验、setupHash；世界与故障锁存；世界状态（含 P3-09 的对象集合与地图图标列表，P3-08 的脚本解析缓存）、实体表（含飞行状态、战斗状态与地图可见标志，P3-08 的 AI 程序槽、控制器与种类 `0x4000` 的 Xpon 状态）、玩家状态（含目标、控制状态，P3-07 的瞄准、战斗记录与驾驶舱显示状态，P3-09 的地图与 Warp 状态，P3-10 的停靠对象、通讯与停靠位姿）与生成状态；P3-10 的任务流程子状态、无线电、友伤累计与基地服务在世界状态中 |
+| `systems/` | 唯一的有序阶段表与本 tick 的请求处理；各阶段的系统：生成、玩家更新与操纵（`flight-control.ts`）、运动、活动区域与停放（`area.ts`）；P3-07 的命令分派（`commands.ts`）、目标（`targeting.ts`）、武器与发射（`weapons.ts`、`launch.ts`）、弹丸（`projectiles.ts`）、导弹（`missiles.ts`）、伤害（`damage.ts`）、毁伤、爆炸与碎片（`destruction.ts`）、碰撞（`collision.ts`）、能量（`energy.ts`）、驾驶舱显示步（`displays.ts`）与停放交战（`parked-engagement.ts`）；P3-09 的地图开关、选点与标记（`map.ts`）、Warp 的开始、过程与完成（`warp.ts`）、对象集合（`object-sets.ts`）与视角切换（`view-switch.ts`）；P3-08 的 AI 控制器分派、执行预算与 Warp 离场（`ai.ts`），以及 `drop-transponder` 与种类 `0x4000` 的构造和回调（`xpon.ts`）；P3-10 的通讯菜单判定与命令投递（`communications.ts`）、基地回应（`base-response.ts`）、无线电与来电（`radio.ts`）、通讯反应与报告（`comm-reactions.ts`）、停靠等待、停靠与离港（`docking.ts`）、基地服务与完全修理（`base-interior.ts`）。规则任务在自己的阶段接入 |
+| `rules/` | 按原版代码实现的确定性规则辅助（只经 `RandSource` 抽取，并修改显式传入的世界计数、移动块或战斗状态）：坐标换算与 f32 数值、原版随机映射、放置、缺省值、排程与名称；飞行状态、运动积分、操纵、速度匹配、AI 初态、随机方向、活动区域与停放行进（P3-06）；载入变换与碰撞形状、战斗初值、目标与雷达、挂点与开火、移动块构造与模式 1/2 运动、弹丸命中、伤害与子系统、能量与显示、碰撞、共享转向模块与导弹制导、爆炸与碎片、停放交战（P3-07）；地图换算、图标列表与选点、地图可见性与覆盖、启动旋转表、Warp 能量、隧道路径与 Warp 到达（P3-09）；AI 支持闭包与参数（`ai-support.ts`、`ai-parameters.ts`）、程序选择与安装（`ai-selection.ts`）、脚本与解析缓存（`ai-script.ts`）、解释器（`ai-interpreter.ts`）、驾驶的投递者（`ai-piloting.ts`，转向库扩展在共享的 `steering.ts` 中）、目标与交战（`ai-targeting.ts`）、扳机、AI 锁定与基地（`ai-firing.ts`）、攻击航线（`ai-attack-pass.ts`）、僚机（`ai-wingman.ts`）、僚机命令的消费（`ai-commands.ts`）与停放处理器（`ai-parked.ts`）（P3-08）；菜单、无线电、通讯反应、停靠、基地服务与完全修理（P3-10）；只在真实复用时提取 |
+| `projections/` | 按分区的 projection（含 `flight` 的运动组与战斗组 `combat.ts`、`map` 分区 `map.ts`、P3-10 的 `communications.ts`）与 Render State，深度冻结、与世界脱离 |
 | `replay/` | 正式快照与状态哈希、规则版本、录制、replay 与结果比较 |
 
 ## 文件与 helper 归属
@@ -512,7 +528,7 @@ Core 消费规范化逻辑数据，不认识原版封包。持续事实走投影
 
 仓库根 [e2e/](../../e2e/)属于测试，不是 app/platform 模块，也不进入网站导入链。[配置](../../playwright.config.ts)和[独立tsconfig](../../tsconfig.e2e.json)允许 Node runner 与 evaluate 的 DOM 类型，但 Core/Node 程序仍无 DOM。命令、已有浏览器准备、origin/端口所有权、headed CDP 与输出清理见[工程约定](./README.md#本地浏览器-runner)。
 
-- bootstrap、probe-contract、interaction-render、joint-resources、browser-replay、native-lifecycle、webgl-unavailable 各自承担独立验收面；P3-04 起，页面、生命周期与图形的验收已迁到正式任务流程或查看器，各用例按下列当前路径验证（各旧用例的去向见 [P3-04/11](../plan/p3/04/subtasks/11-e2e-lifecycle-resources.md#完成证据) 与 [P3-04/12](../plan/p3/04/subtasks/12-e2e-shell-production.md#完成证据)）：bootstrap 载入应用菜单，没有资源包时任务入口禁用并说明原因；probe-contract 核对探针（含应用的单次计时器）不干扰页面，并读取任务画面的只读属性，生产中没有诊断元素；interaction-render 为只用键盘的任务流程（原生控件、非绑定键无效）与任务画面、查看器画布的同所有者 resize；browser-replay 在浏览器与 Node 中以正式 Core 的 `replayRecord`/`compareReplayResults` 得到相同结果并同样拒绝不符的记录；webgl-unavailable 在查看器上核对 WebGL 2 不可用时的降级与两次进出的释放，任务流程照常且没有画布；native-lifecycle 为任务飞行与出发保持中的原生隐藏、显式继续与不补跑；joint-resources 为三次任务往返（各含重开）的资源平衡；mission-flow.development/production 为完整任务流程、离页确认、开发诊断与录制下载后的 Node 核对。P1-12增加rights DOM和仅production的许可产物可读性用例。[P1-10覆盖/历史适用性](../plan/p1/10/subtasks/07-evidence-docs-alignment.md#完成证据)、[P1-12相关证据](../plan/p1/12/subtasks/08-local-evidence-docs.md#完成证据)及[P1-14当前完整回归](../plan/p1/14/subtasks/03-browser-exit-checks.md#完成证据)分别保留各候选的实际结果，阶段判定见[退出评审](../reviews/P1-exit.md)。
+- bootstrap、probe-contract、interaction-render、joint-resources、browser-replay、native-lifecycle、webgl-unavailable 各自承担独立验收面；P3-04 起，页面、生命周期与图形的验收已迁到正式任务流程或查看器，各用例按下列当前路径验证（各旧用例的去向见 [P3-04/11](../plan/p3/04/subtasks/11-e2e-lifecycle-resources.md#完成证据) 与 [P3-04/12](../plan/p3/04/subtasks/12-e2e-shell-production.md#完成证据)）：bootstrap 载入应用菜单，没有资源包时任务入口禁用并说明原因；probe-contract 核对探针（含应用的单次计时器）不干扰页面，并读取任务画面的只读属性，生产中没有诊断元素；interaction-render 为只用键盘的任务流程（原生控件、非绑定键无效）与任务画面、查看器画布的同所有者 resize；browser-replay 在浏览器与 Node 中以正式 Core 的 `replayRecord`/`compareReplayResults` 得到相同结果并同样拒绝不符的记录；webgl-unavailable 在查看器上核对 WebGL 2 不可用时的降级与两次进出的释放，任务流程照常且没有画布；native-lifecycle 为任务飞行与出发保持中的原生隐藏、显式继续与不补跑；joint-resources 为三次任务往返（各含重开）的资源平衡；mission-flow.development/production 为完整任务流程、离页确认、开发诊断与录制下载后的 Node 核对；base-interaction.development（P3-10/23，只在开发构建中运行，因为测试入口只在开发构建中）经真实模块 Worker 导入合成光盘 `mission-docking`（[synthetic-import.test-support.ts](../../src/workers/synthetic-import.test-support.ts)，场景表在 [import-scenarios.test-support.ts](../../src/workers/import-scenarios.test-support.ts)：基地在停靠门禁之内，菜单含状态查询与停靠），以输入区中的可信按键走通讯菜单、停靠请求、G-02/3 与 G-02/4 的保持占位、G-05 基地页面与离港，并把基地页面与 Node 中重放导出录制的 projection 比较；菜单协议只经开发事件日志核对，不验证正式通讯画面（P3-13）。P1-12增加rights DOM和仅production的许可产物可读性用例。[P1-10覆盖/历史适用性](../plan/p1/10/subtasks/07-evidence-docs-alignment.md#完成证据)、[P1-12相关证据](../plan/p1/12/subtasks/08-local-evidence-docs.md#完成证据)及[P1-14当前完整回归](../plan/p1/14/subtasks/03-browser-exit-checks.md#完成证据)分别保留各候选的实际结果，阶段判定见[退出评审](../reviews/P1-exit.md)。
 - `e2e/support/`按测试能力放 environment、只读宿主探针、错误fixture、DOM/采样、截图/布局与CDP relay，不建立生产debug/world写入API。输入走可信UI/浏览器协议；任务画面只经只读的 `data-owner`/`data-run`/`data-tick`/`data-position` 属性与开发诊断面板取证（[mission-observations.ts](../../e2e/support/mission-observations.ts)）；P3-09 的地图与 Warp 证据另经 [map-warp.ts](../../e2e/support/map-warp.ts) 从任务画面元素的 React fiber 找到组件持有的任务 UI store，只调用它的 `getState`/`subscribe` 读取会话桥接发布的状态，不写 store、世界或 projection；P3-08 的 AI 与 `b` 证据另经 [ai-wingman.ts](../../e2e/support/ai-wingman.ts)：在 Node 中由合成光盘的转换结果生成规则数据 payload 变体，只写入测试自己的隔离缓存，并在 Node 中重放浏览器导出的录制以读取诊断面板不显示的 Core 状态；replay只导入公开纯模块创建独立世界。
 - Node 单元测试继续证明纯规则、通知/旧回调、注册失败/回滚/稀有错误；持久E2E证明真实DOM/图形/宿主生命周期与联合资源。仍适用的人工HMR/window/DPR证据直接复用，不自动改源码，不把本机Chromium结果说成Safari/系统快捷键/目标GPU/原版保真。
 - `tools/e2e-configuration.test.ts`是 Node 接入与项目设置回归：读取 Playwright 配置并列出用例，不启动浏览器或需要已安装浏览器；真正浏览器验收独立运行`pnpm test:e2e`，不由`pnpm check`替代。报告与合成截图只有ignored测试目录，不是产品资源。

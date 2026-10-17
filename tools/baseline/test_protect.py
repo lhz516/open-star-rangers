@@ -102,6 +102,22 @@ class ProtectTests(unittest.TestCase):
         self.assertEqual(record["changedLines"], 3)
         self.assertEqual(emulator_settings("[cpu]\ncycles=max\n[dosbox]\ncycles=fixed 9\n"), {"cycles": "max"})
 
+    def test_private_config_mounts_a_private_disc_on_the_same_drive(self):
+        cd = self.tmp / "cd"
+        cd.mkdir()
+        base = BASE_CONFIG.format(captures=self.tmp / "captures", install=self.install, cd=cd)
+        disc = self.tmp / "run dir" / "disc"
+        text, record = private_config(base.replace("imgmount d", "imgmount E"), self.install,
+                                      self.tmp / "run/install", self.tmp / "run/captures", cd, {}, disc)
+        self.assertIn(f'mount E "{disc}" -t cdrom\n', text)
+        self.assertNotIn("imgmount", text)
+        self.assertEqual(record["changes"], {"captures": 1, "mount-c": 1, "disc": 1})
+        self.assertEqual(record["media"], Path(os.path.realpath(cd / "DISC.cue")))  # still bound to the manifest
+        for refused in (base + f"imgmount e {cd}/DISC.cue -t cdrom\n", base.replace(f"imgmount d {cd}", "imgmount d /x")):
+            with self.subTest(refused=refused[-40:]):
+                self.assertCode("private-copy-invalid", private_config, refused, self.install,
+                                self.tmp / "run/install", self.tmp / "run/captures", cd, {}, disc)
+
     def test_media_binding(self):
         cd = self.tmp / "cd"
         cd.mkdir()

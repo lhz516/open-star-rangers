@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-14
+updated: 2026-10-16
 related: [U-004, U-016, U-027]
 ---
 
@@ -140,7 +140,7 @@ The project was opened with `-readOnly -noanalysis`; nothing was saved.
 | SND | Poster | Trigger |
 |---|---|---|
 | 11087 | Dispatcher, message type 2 | Posted by the target selection helpers `0x2799c`, `0x27a04`, `0x27884` and `0x27910` (the `t`/`f`, `u` and `r`/`y` cases of the [target modes](./executable.md#player-target-modes-and-enemy-classification)) |
-| 11381 | Dispatcher, message type 4 | Posted by `0x2e4ec` on every selection key the player presses in a flight view (`/`, `.`, `>`, `,`, `<`; through `0x2d6dc`, `0x2d6f0`), also when the selection does not change, and when the rescue or the base re-arm cycles the player's lists; never for other objects ([W3](./executable.md#w3-selection--confirmed-code)) |
+| 11381 | Dispatcher, message type 4 | Posted by `0x2e4ec` on every selection key the player presses in a flight view (`/`, `.`, `>`, `,`, `<`; through `0x2d6dc`, `0x2d6f0`), also when the selection does not change, and when the rescue or the base re-arm cycles the player's lists (the base missile walk posts after the message loop, so its messages are never dispatched: [BS7](./executable.md#bs7-sounds--confirmed-code)); never for other objects ([W3](./executable.md#w3-selection--confirmed-code)) |
 | 10485 | Dispatcher, message type 0x100000, after an optional left-display page change (`0x4cdf0`) | Posted by the flight key handler `0x264a0` (two sites), `0x27ab4` and the communications command handler `0x27b44` (seven sites) |
 | 10463 | Map click `0x2b9bc` | A Warp destination is set |
 | 10401 | Warp start `0x2be00` | As above |
@@ -150,6 +150,8 @@ The project was opened with `-readOnly -noanalysis`; nothing was saved.
 | 10169 | Docking `0x38ff4`, sub-command 3 | Enter, the selected base action |
 
 These nine entries are exactly the `SR.NOB` entries whose directory flags are 0x50 ([imfat](./imfat.md) §2): loaded when the archive opens and never released.
+
+**Confirmed (base interior, code; P3-10/05):** SND 10167 (Up, Down) and 10169 (Enter) are type-2 presentation items posted in request handling; the frame render calls `0x554a0` first, which plays them by ID in the same frame when sound is enabled, on every press, also at the cursor clamp and on a row that needs no service ([BS4](./executable.md#bs4-base-keys-sub-commands-13-of-message-0x400000--confirmed-code), [BS7](./executable.md#bs7-sounds--confirmed-code)). While the player is docked, `0x554a0` skips the object sound types 4 and 8 ([BS7](./executable.md#bs7-sounds--confirmed-code), [DK4](./executable.md#dk4-systems-while-docked-activity-3--confirmed-code-unless-marked)). The selection sound (11381) of the base missile walk is never dispatched (BS7).
 
 **Confirmed (other loop sounds outside the models and EXPL):**
 
