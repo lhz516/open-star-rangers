@@ -36,6 +36,7 @@ updated: 2026-10-17
 - `src/app/runtime/game-event-bus.ts`：新事件类型进入 `EVENT_TYPES`。
 - `src/app/runtime/game-event-bus.test.ts`：新事件类型的过滤测试。
 - `src/ui/dev/event-log.ts`、`src/ui/dev/event-log.test.ts`：开发事件日志对三个新事件的摘要（P3-02 FS-09）。
+- `tools/replay-check.ts`、`tools/replay-check.test.ts`：`LONGEST_EVENTS` 与事件键列表加入三个新事件（P3-02 FS-09）。
 
 ## 验收标准
 
