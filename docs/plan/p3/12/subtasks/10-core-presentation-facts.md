@@ -37,6 +37,8 @@ updated: 2026-10-17
 - `src/app/runtime/game-event-bus.test.ts`：新事件类型的过滤测试。
 - `src/ui/dev/event-log.ts`、`src/ui/dev/event-log.test.ts`：开发事件日志对三个新事件的摘要（P3-02 FS-09）。
 - `tools/replay-check.ts`、`tools/replay-check.test.ts`：`LONGEST_EVENTS` 与事件键列表加入三个新事件（P3-02 FS-09）。
+- `docs/engineering/modules/core.md`：版本号、`ExplosionConstructionStage`、`TickContext.stage` 与共享视角切换 API 的说明。
+- `docs/plan/p3/02/spec.md`：只限 FS-03 的勘误（`ExplosionConstructionStage` 补 `parked-update`），附勘误记录。
 
 ## 验收标准
 
