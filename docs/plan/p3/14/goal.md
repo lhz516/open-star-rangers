@@ -80,7 +80,7 @@ updated: 2026-10-17
 | [04-mode-reachability-research.md](./subtasks/04-mode-reachability-research.md) | — | completed |
 | [05-evidence-contract-baseline.md](./subtasks/05-evidence-contract-baseline.md) | 01, 02, 03, 04 | completed |
 | [06-shared-contract-approval.md](./subtasks/06-shared-contract-approval.md) | 05 | completed |
-| [07-presentation-contract-approval.md](./subtasks/07-presentation-contract-approval.md) | 06 | pending |
+| [07-presentation-contract-approval.md](./subtasks/07-presentation-contract-approval.md) | 06 | blocked |
 | [08-core-audio-read-models.md](./subtasks/08-core-audio-read-models.md) | 06 | in-progress |
 | [09-content-bindings.md](./subtasks/09-content-bindings.md) | 06 | in-progress |
 | [10-voice-parameters-progress.md](./subtasks/10-voice-parameters-progress.md) | 06 | in-progress |
@@ -113,6 +113,10 @@ updated: 2026-10-17
   Evidence: 05 的 V-06 基线（[完成证据](./subtasks/05-evidence-contract-baseline.md#完成证据)）列出的 R-01 至 R-18 全部是原版运行时观测，01–05 的静态研究已穷尽可静态闭合的项（Miles 自然结束状态、暂停保留位置、声像到交错声道均已静态确认）。
   Affected acceptance: AC-01、AC-15；24 的三项验收，及依赖它的 25、26、27、28。
   Resume when: 用户同意运行 DOSBox-X（基准配置、所选任务），由协调者按 05 的 R 清单合并成尽量少的会话，并与 P3-11/P3-12 已安排的原版运行合并。
+- **2026-10-17 — Subtask 07 blocked:** D-02 须与 P3-12、P3-13 及 P3-11 的已批准输出对齐（spec 实施关卡；07 不得代建其他任务的合同），这些来源尚不可用。
+  Evidence: main 上没有 `docs/plan/p3/11/`、`12/`、`13/` 的 spec；P3-12 的 spec 已批准但只在未合入的 `p3-12-flight-scene-spec` 分支，goal 29 项中 8 项完成；P3-11、P3-13 尚无 spec。06 已把 05 (c) 第 4、5、8 项（爆炸重放、管线阶段映射、基地/地图/拆除中的听者）交给 07。
+  Affected acceptance: AC-05、AC-07、AC-09、AC-14 及 S-05、S-06 的接线；07 的三项验收；依赖 07 的 13、14、15，以及其后的 16–23、25–28。
+  Resume when: P3-12 的相机/效果接口合入 main（或其 spec 的听者与 EXPL 交接节在 main 上可读），且 P3-13 的共享 HUD 与 P3-11 的失利/救援/结果衔接各有已批准 spec；届时协调者起草 D-02 并取得用户批准。
 
 ## 审批
 
