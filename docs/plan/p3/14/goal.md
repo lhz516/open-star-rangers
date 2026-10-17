@@ -117,6 +117,7 @@ updated: 2026-10-17
   Evidence: main 上没有 `docs/plan/p3/11/`、`12/`、`13/` 的 spec；P3-12 的 spec 已批准但只在未合入的 `p3-12-flight-scene-spec` 分支，goal 29 项中 8 项完成；P3-11、P3-13 尚无 spec。06 已把 05 (c) 第 4、5、8 项（爆炸重放、管线阶段映射、基地/地图/拆除中的听者）交给 07。
   Affected acceptance: AC-05、AC-07、AC-09、AC-14 及 S-05、S-06 的接线；07 的三项验收；依赖 07 的 13、14、15，以及其后的 16–23、25–28。
   Resume when: P3-12 的相机/效果接口合入 main（或其 spec 的听者与 EXPL 交接节在 main 上可读），且 P3-13 的共享 HUD 与 P3-11 的失利/救援/结果衔接各有已批准 spec；届时协调者起草 D-02 并取得用户批准。
+- **2026-10-17 — 集成时交给 27 的文档提议：** 09、12 建议在 [app 分册](../../../engineering/modules/app.md)新增 flight-audio 一节（content.ts 的 `bindFlightSounds` 等 API、12 的声部账本）；12 建议在 audio A-03 的漂移边缘一条补注“从一致的计数出发，分配、回收、句柄停止与全部停止都到不了该边缘（高概率：代码规则推理与模拟）”；11 的三处暂停/恢复解释已写入 platform 分册，16/17 以此为准。11 首次集成因 12 的控制器替身缺 `pause`/`resume` 失败，扩展 11 的写入范围后重做通过。
 
 ## 审批
 
