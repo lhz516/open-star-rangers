@@ -120,7 +120,8 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [30-stars-speed-dust-research.md](./subtasks/30-stars-speed-dust-research.md) | 08 | completed |
 | [31-stars-speed-dust.md](./subtasks/31-stars-speed-dust.md) | 10, 12, 16, 30, 32 | in-progress |
 | [32-speed-share-fact.md](./subtasks/32-speed-share-fact.md) | 10, 30 | completed |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32 | pending |
+| [33-warp-test-timeout.md](./subtasks/33-warp-test-timeout.md) | 22 | in-progress |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -148,6 +149,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 - **2026-10-17 — 17 的接入说明与限制：** 23 在运行前调用 `prepareModelSurfaces(...)`（内容错误拒绝开始），把 `surfaces.plan` 加入 GPU 计划，再 `addLayer(new ModelLightingLayer(surfaces, run.resources))`；合成生产 RENS 的方向光须改为研究过的单光路径 0 < I_d ≤ 1 与非负环境光（由 23 修改 `flight-data.test-support.ts`）。模型须用 BackSide（相机空间相对 WebGL 是镜像的；16 的绕序说明由 28 更正）。未逐像素仿真的三项（按取整行剔除、定点跨度步进、16 位深度相等）按 ADR-0009 的设备像素三维记为显式限制，交 25、26。LS6 的逐位细节由 27 并入 `docs/original/`。18 用 `LitPartBuilder.part(model, 2, 0, …)`，20 用第 1 列表。
 - **2026-10-17 — 22 的接入说明（交 23）：** 用运行的表现随机流（与星云、速度尘埃同一流）创建 `createWarpTunnelLayer({cache, random})`，`addLayer` 接入并加入 `WARP_TUNNEL_GPU_PLAN`；绘制前按次序对每个 `report.outputs` 项调用 `layer.step(o.render)`，静止帧不调用。新序号时游标归 0、投影暂存清空，按 pass 的运算改为按 tick（06 推荐的有意差异）。
 - **2026-10-17 — 21 的遮挡取舍与接入说明：** AC-13 按协调者决定采用方案 B：游戏图像的深度改为 24 位 `DepthTexture`（精度不变），经 `CompositionFrame.depth` 暴露；精灵画入自己的渲染目标，在每个块的左上像素做深度测试（FC8），再复制进游戏图像（渲染目标 2/4）。23 的接线：运行前创建 `ExplosionSprites` 并 `addLayer`；每个 tick 输出以 `effects.flashRequests(tick)` 推进 `createScreenFlashes`；以 `setScreen` 安装 `FlashScreenStage`；把 `explosionSpritesGpuPlan` 与 `FLASH_SCREEN_GPU_PLAN` 加入计划；合成生产 RENS 的闪光级别须改到 0–63、持续时间有限且非零。FC8 库排序细节与视角切换后闪光表复位的推断交 27。已知风险：`warp-tunnel-layer.test.ts` 的一个用例在低负载下约 3 秒，机器高负载时会超过 5 秒超时；29 的 `pnpm check` 须在正常负载下确认，必要时由修复子任务处理。
+- **2026-10-17 — 新增修复子任务 33：** 集成 31 时 `warp-tunnel-layer.test.ts` 的该用例再次超时（负载约 8–12），31 的集成暂缓。原因是 640×480 像素数组的深度比较；33 改为等价的高效比较，完成后再集成 31 与后续行。
 
 ## 审批
 
