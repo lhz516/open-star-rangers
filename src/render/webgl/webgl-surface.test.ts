@@ -1,6 +1,6 @@
 import { Scene, PerspectiveCamera } from 'three';
 import { describe, expect, it } from 'vitest';
-import type { RenderSurfaceEvents, RenderSurfaceSize } from '../scene/render-surface.ts';
+import { GraphicsDeviceError, type RenderSurfaceEvents, type RenderSurfaceSize } from '../scene/render-surface.ts';
 import { computeViewportLayout, type ViewportFrame } from '../viewport/viewport-layout.ts';
 import { createWebGLSurface, type WebGLContextEventType, type WebGLSurfaceParts } from './webgl-surface.ts';
 
@@ -25,6 +25,7 @@ function fakeParts(options: { readonly loseContext?: boolean } = {}) {
       removeEventListener: (type, listener) => { log.push(`remove ${type}`); contextListeners.get(type)!.delete(listener); },
     },
     maxDrawingBufferSize: 4096,
+    isContextLost: () => false,
     loseContext: options.loseContext === false ? null : () => {
       log.push('loseContext');
       if (failures.loseContext) throw failures.loseContext;
@@ -177,5 +178,21 @@ describe('WebGL surface', () => {
     surface.dispose();
     expect(fake.log).toEqual(['renderer.dispose', 'loseContext', 'removeCanvas']);
     expect(() => surface.connect(recordingEvents().events)).toThrow('connects once');
+  });
+
+  it('recognizes a draw that failed on a lost context as the device\'s, and passes every other failure through', () => {
+    const fake = fakeParts();
+    const failure = new Error('render failed');
+    let lost = false;
+    const surface = createWebGLSurface({
+      ...fake.parts,
+      renderer: { ...fake.parts.renderer, render: () => { throw failure; } },
+      isContextLost: () => lost,
+    });
+    expect(() => { surface.draw(new Scene(), new PerspectiveCamera()); }).toThrow(failure);
+    lost = true;
+    const thrown = (() => { try { surface.draw(new Scene(), new PerspectiveCamera()); } catch (error) { return error; } })();
+    expect(thrown).toBeInstanceOf(GraphicsDeviceError);
+    expect((thrown as Error).cause).toBe(failure);
   });
 });

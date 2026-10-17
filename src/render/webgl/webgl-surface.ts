@@ -6,7 +6,7 @@
  */
 import type { Camera, Scene } from 'three';
 import { runCleanup } from '../scene/cleanup.ts';
-import type { RenderGpuStats, RenderSurface, RenderSurfaceEvents } from '../scene/render-surface.ts';
+import { GraphicsDeviceError, type RenderGpuStats, type RenderSurface, type RenderSurfaceEvents } from '../scene/render-surface.ts';
 import type { ViewportFrame, ViewportLayout } from '../viewport/viewport-layout.ts';
 
 /** The WebGLRenderer members the surface uses. */
@@ -35,6 +35,8 @@ export interface WebGLSurfaceParts {
   readonly maxDrawingBufferSize: number;
   /** `WEBGL_lose_context.loseContext`, or null when the device lacks the extension. */
   readonly loseContext: (() => void) | null;
+  /** The context's `isContextLost()`, which tells a draw that failed on a lost context from any other failure. */
+  readonly isContextLost: () => boolean;
   /** Shows the canvas over a frame inside the container, or hides it for null. */
   placeCanvas(frame: ViewportFrame | null): void;
   removeCanvas(): void;
@@ -91,7 +93,12 @@ class WebGLSurface implements RenderSurface {
   }
 
   draw(scene: Scene, camera: Camera): void {
-    this.#parts.renderer.render(scene, camera);
+    try {
+      this.#parts.renderer.render(scene, camera);
+    } catch (cause) {
+      if (this.#parts.isContextLost()) throw new GraphicsDeviceError('The WebGL context was lost during a draw', { cause });
+      throw cause;
+    }
   }
 
   gpuStats(): RenderGpuStats {

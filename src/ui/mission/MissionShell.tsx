@@ -1,6 +1,6 @@
 /**
  * The mission screen during flight and after a run ended (docs/plan/p3/04/spec.md: 应用流程, 任务菜单、暂停与退出): the
- * game view area, left for the flight view, cockpit and HUD of P3-12 and P3-13; the project status bar outside it with
+ * game view area with the flight picture of P3-12, whose cockpit and HUD are P3-13's; the project status bar outside it with
  * the phase, the pause reason, why resume is unavailable and the missing music (G-01); pause, resume and mission menu
  * controls; and, once the run faulted or stopped, its reason without imported content, with restart (unless a cleanup
  * failed) and the way back. Focus starts on the heading.
@@ -15,6 +15,7 @@ import type { GameStoreReader } from '../game/game-store.ts';
 import { useGame } from '../game/use-game.ts';
 import { selectBaseShown } from './base-page.ts';
 import { BasePage } from './BasePage.tsx';
+import { FlightView, type MissionFlightView } from './FlightView.tsx';
 import { GameInputZone } from './GameInputZone.tsx';
 import { fullscreenButtonState, type GapNotice, type InputFocusEntry } from './input-notices.ts';
 import { InputNotices, type MissionInputView } from './InputNotices.tsx';
@@ -35,13 +36,13 @@ export interface MissionShellProps {
   readonly gap?: GapNotice | null;
   /** The owner's UI store. */
   readonly game: GameStoreReader;
+  /** The owner's flight picture; without one the flight area shows only its note. */
+  readonly flight?: MissionFlightView | null;
 }
 
-/** The game view's content: the base page in the base view, otherwise the note that the flight view is still missing. */
-function GameView({ game }: { readonly game: GameStoreReader }) {
-  return useGame(game, selectBaseShown)
-    ? <BasePage game={game} />
-    : <p>Game view: the flight view, cockpit and HUD are not implemented yet.</p>;
+/** The game view's content: the base page in the base view, otherwise the flight area. */
+function GameView({ game, flight }: { readonly game: GameStoreReader; readonly flight: MissionFlightView | null }) {
+  return useGame(game, selectBaseShown) ? <BasePage game={game} /> : <FlightView flight={flight} />;
 }
 
 function EndedNotice({ snapshot, owner, onReturn }: Pick<MissionShellProps, 'snapshot' | 'owner' | 'onReturn'>) {
@@ -69,7 +70,7 @@ function EndedNotice({ snapshot, owner, onReturn }: Pick<MissionShellProps, 'sna
   );
 }
 
-export function MissionShell({ snapshot, owner, onReturn, input = null, entry = null, gap = null, game }: MissionShellProps) {
+export function MissionShell({ snapshot, owner, onReturn, input = null, entry = null, gap = null, game, flight = null }: MissionShellProps) {
   const { session, flow, actionError } = snapshot;
   const running = session.phase === 'running';
   const focus = useShellFocus(entry, running, input?.bindZone);
@@ -77,7 +78,7 @@ export function MissionShell({ snapshot, owner, onReturn, input = null, entry = 
   const blocked = resumeBlockedText(session);
   const inFlight = flow.position === 'flight';
   const fullscreenButton = input ? fullscreenButtonState(input.fullscreen.status) : 'hidden';
-  const view = <GameView game={game} />;
+  const view = <GameView game={game} flight={flight} />;
   return (
     <section aria-labelledby="mission-shell-heading" data-testid="mission-shell">
       <h2 id="mission-shell-heading" ref={focus.heading} tabIndex={-1}>Mission</h2>

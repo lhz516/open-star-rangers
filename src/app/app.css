@@ -81,6 +81,44 @@ button:focus-visible {
   overflow: auto;
 }
 
+/* P3-12: the flight view fills the game view. The canvas's container fills the flight area, which the surface letterboxes
+   to 4:3 on black; the notes overlay the picture: why it is missing in the middle, and the P3-13 note in the cockpit
+   area at the bottom, which stays black until P3-13 draws there. */
+.flight-view {
+  place-self: stretch;
+  position: relative;
+  display: grid;
+  place-items: center;
+  background: #000;
+}
+
+.flight-area,
+.flight-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.flight-notice {
+  position: relative;
+  max-width: 80%;
+  padding: 0 0.75rem;
+  border: 2px solid #a51d2d;
+  background: #241f31;
+}
+
+.flight-notice pre {
+  white-space: pre-wrap;
+  text-align: left;
+}
+
+.flight-in-progress {
+  position: absolute;
+  inset: auto 0 0;
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
+
 /* P3-10 G-05: the base page, a compact project page inside the game view. States and the selection are words; the
    outline and weight only repeat them. */
 .base-page {

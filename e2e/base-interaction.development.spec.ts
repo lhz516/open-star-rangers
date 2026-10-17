@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { CDPSession, Page } from '@playwright/test';
+import { FLIGHT_IN_PROGRESS } from '../src/ui/mission/mission-copy.ts';
 import { SLICE_GAPS, type SliceGapId } from '../src/ui/mission/slice-gaps-copy.ts';
 import { scenarioEntryProfile, scenarioFiles } from '../src/workers/import-scenarios.test-support.ts';
 import { DOCKING_BASE_KIND_MASK, DOCKING_COMMAND_CODES, MARKER } from '../src/workers/synthetic-import.test-support.ts';
@@ -156,7 +157,7 @@ async function launch(page: Page, end: PlaceholderEnd): Promise<void> {
   await page.keyboard.press('l');
   await throughHold(page, 'G-02/4', 'departed', end);
   await expect(page.getByTestId('base-page')).toHaveCount(0);
-  await expect(page.getByTestId('mission-view')).toContainText('Game view: the flight view, cockpit and HUD are not implemented yet.');
+  await expect(page.getByTestId('mission-view')).toContainText(FLIGHT_IN_PROGRESS);
   expect(resultsOf(await loggedEvents(page), 'launch'), 'L submitted once').toHaveLength(1);
 }
 

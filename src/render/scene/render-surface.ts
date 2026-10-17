@@ -44,6 +44,7 @@ export interface RenderSurface {
   connect(events: RenderSurfaceEvents): void;
   /** Sizes the drawing buffer and places it in the container; null hides it. */
   setLayout(layout: ViewportLayout | null): void;
+  /** Throws a {@link GraphicsDeviceError} when the draw failed because the context is lost. */
   draw(scene: Scene, camera: Camera): void;
   /** Read from the renderer each time, never cached. */
   gpuStats(): RenderGpuStats;
@@ -54,4 +55,26 @@ export interface RenderSurface {
    * then removes the canvas; attempts every step and is idempotent.
    */
   dispose(): void;
+}
+
+/**
+ * A failure the surface recognizes as the graphics device being unavailable, such as a draw that threw on a lost
+ * context, rather than a defect of what was drawn; `cause` is what the device threw.
+ */
+export class GraphicsDeviceError extends Error {
+  constructor(message: string, options: { readonly cause: unknown }) {
+    super(message, options);
+    this.name = 'GraphicsDeviceError';
+  }
+}
+
+/**
+ * The surface could not be created because the device provides no WebGL 2 context; nothing was left behind unless a
+ * RollbackError carries this as its cause. `cause` is what the renderer threw.
+ */
+export class GraphicsUnavailableError extends Error {
+  constructor(options: { readonly cause: unknown }) {
+    super(options.cause instanceof Error ? options.cause.message : 'WebGL 2 is unavailable', options);
+    this.name = 'GraphicsUnavailableError';
+  }
 }

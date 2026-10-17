@@ -13,6 +13,7 @@ import { useSyncExternalStore, type ReactNode } from 'react';
 import { MissionUnavailableError, type MissionOwner } from '../../app/mission/mission-owner.ts';
 import { selectRunId, selectTick, type GameStoreReader } from '../game/game-store.ts';
 import { useGame } from '../game/use-game.ts';
+import type { MissionFlightView } from './FlightView.tsx';
 import { useGapNotice, type MissionInputView } from './InputNotices.tsx';
 import { describeStructure, eligibilityReason } from './mission-copy.ts';
 import { MissionMenuPage } from './MissionMenuPage.tsx';
@@ -22,8 +23,8 @@ import { StartConfigPage } from './StartConfigPage.tsx';
 import { useInputFocusEntry } from './use-input-focus.ts';
 
 export interface MissionPageProps {
-  /** The current owner with its UI store; null while it is prepared, between owners, and when none could open. */
-  readonly mission: { readonly owner: MissionOwner; readonly game: GameStoreReader } | null;
+  /** The current owner with its UI store and flight picture; null while it is prepared, between owners, and when none could open. */
+  readonly mission: { readonly owner: MissionOwner; readonly game: GameStoreReader; readonly flight?: MissionFlightView | null } | null;
   /** Why no owner could be opened, such as a package that is no longer eligible. */
   readonly openFailure: { readonly cause: unknown } | null;
   /** The development diagnostics panel; null in production builds. */
@@ -52,9 +53,10 @@ function RunFrame({ ownerId, game, position, children }: {
   );
 }
 
-function OwnerPages({ owner, game, devPanel, onReturn, input = null }: Omit<MissionPageProps, 'mission' | 'openFailure'> & {
+function OwnerPages({ owner, game, flight = null, devPanel, onReturn, input = null }: Omit<MissionPageProps, 'mission' | 'openFailure'> & {
   readonly owner: MissionOwner;
   readonly game: GameStoreReader;
+  readonly flight?: MissionFlightView | null;
 }) {
   const snapshot = useSyncExternalStore(owner.subscribe, owner.getSnapshot);
   const { position } = snapshot.flow;
@@ -71,7 +73,7 @@ function OwnerPages({ owner, game, devPanel, onReturn, input = null }: Omit<Miss
   } else if (position === 'menu') {
     page = <MissionMenuPage snapshot={snapshot} owner={owner} onReturn={onReturn} />;
   } else if (position === 'flight' || position === 'ended') {
-    page = <MissionShell snapshot={snapshot} owner={owner} onReturn={onReturn} input={input} entry={entry} gap={gap} game={game} />;
+    page = <MissionShell snapshot={snapshot} owner={owner} onReturn={onReturn} input={input} entry={entry} gap={gap} game={game} flight={flight} />;
   }
   return (
     <RunFrame ownerId={owner.ownerId} game={game} position={position}>
@@ -85,7 +87,15 @@ export function MissionPage({ mission, openFailure, devPanel, onReturn, input = 
   if (mission) {
     // Keyed, so nothing a replaced owner's pages or panel held survives into the next owner's, whose runIds restart at 1.
     return (
-      <OwnerPages key={mission.owner.ownerId} owner={mission.owner} game={mission.game} devPanel={devPanel} onReturn={onReturn} input={input} />
+      <OwnerPages
+        key={mission.owner.ownerId}
+        owner={mission.owner}
+        game={mission.game}
+        flight={mission.flight}
+        devPanel={devPanel}
+        onReturn={onReturn}
+        input={input}
+      />
     );
   }
   return (

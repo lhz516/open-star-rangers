@@ -100,11 +100,18 @@ export function MissionScreen({ slot, ports, holder, onReturn }: {
     },
   } : null;
   const devPanel = MissionDevPanel && mission?.diagnostics
-    ? <MissionDevPanel diagnostics={mission.diagnostics} game={mission.store.reader} submitCommand={command => mission.feedback.submit(command)} />
+    ? (
+      <MissionDevPanel
+        diagnostics={mission.diagnostics}
+        game={mission.store.reader}
+        flight={mission.flight.renderer}
+        submitCommand={command => mission.feedback.submit(command)}
+      />
+    )
     : null;
   return (
     <MissionPage
-      mission={mission && { owner: mission.owner, game: mission.store.reader }}
+      mission={mission && { owner: mission.owner, game: mission.store.reader, flight: mission.flight }}
       openFailure={openFailure}
       devPanel={devPanel}
       onReturn={onReturn}

@@ -12,10 +12,11 @@ import { openHeldViewer } from './support/version-4.ts';
 import { viewerDiagnostics } from './support/viewer-observations.ts';
 
 // A real Chromium with WebGL disabled, in the development and production projects. P3-04 (docs/plan/p3/04/spec.md,
-// 合成演示退役) moves the WebGL-unavailable fallback from the retired synthetic demo to the resource viewer, the one
-// screen with a WebGL surface: its explanation, its lists and its release on two visits, in both builds (viewer-page.spec.ts
-// covers one development visit with sounds and the mission summary). The mission flow, which has no WebGL surface, stays
-// usable. The startable mission package is seeded into the test's own context and restored through the real menu.
+// 合成演示退役) moves the WebGL-unavailable fallback from the retired synthetic demo to the resource viewer: its
+// explanation, its lists and its release on two visits, in both builds (viewer-page.spec.ts covers one development visit
+// with sounds and the mission summary). P3-12/15 gives the mission owner a flight surface too; without WebGL 2 its
+// renderer is unavailable, the flight area says so, and the mission flow stays usable without a canvas. The startable
+// mission package is seeded into the test's own context and restored through the real menu.
 
 const test = observed.extend({
   page: async ({ baseURL, viewport }, use) => {
@@ -50,7 +51,7 @@ async function expectReleased(page: Page, baseline: number) {
   return menu;
 }
 
-test('without WebGL the viewer explains it and releases on each visit, and the mission flow creates no WebGL surface', async ({ page }, testInfo) => {
+test('without WebGL the viewer explains it and releases on each visit, and the mission flow runs with an unavailable flight picture and no canvas', async ({ page }, testInfo) => {
   const mission = missionPackage();
   await page.goto('/');
   const browser = page.context().browser();
@@ -83,12 +84,17 @@ test('without WebGL the viewer explains it and releases on each visit, and the m
     visits.push({ visit, viewer, released: (await expectReleased(page, baseline)).frames });
   }
 
-  // The mission flow runs, pauses and resumes with only its 2D cursor, then releases on return.
+  // The mission flow runs, pauses and resumes with only its 2D cursor and the flight area's unavailable alert, then
+  // releases on return.
   const { owner } = await enterMission(page);
   await endPlaceholder(page, 'G-02/1', 'button');
   await button(page, 'Start').click();
   await endPlaceholder(page, 'G-02/2', 'button');
   const running = await expectAdvancingTick(page);
+  await expect(page.getByTestId('flight-area')).toHaveAttribute('data-state', 'unavailable');
+  await expect(page.getByTestId('flight-notice')).toHaveAttribute('role', 'alert');
+  await expect(page.getByTestId('flight-notice')).toContainText('this browser provides no WebGL 2');
+  await expect(page.getByTestId('flight-area').locator('canvas')).toHaveCount(0);
   await button(page, 'Pause').click();
   const paused = await expectStableTick(page, 400);
   await button(page, 'Resume').click();

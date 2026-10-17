@@ -5,6 +5,8 @@
  * - a session host from the ports;
  * - a `ui` consumer that, as the owner connects it, creates the owner's UI store, session bridge and command feedback,
  *   binds the bridge to the owner's session and unbinds it on release;
+ * - a `media` consumer for the flight picture (P3-12): the owner's one WebGL 2 surface, created in a container element of
+ *   its own that the mounted flight area holds (`bindFlightArea`), so remounting the area keeps the canvas and context;
  * - in development builds only, the frame timing that wraps that host, the diagnostics and the recording options. Their
  *   modules load through a dynamic import behind the compile-time `import.meta.env.DEV`, so production builds contain
  *   none of them.
@@ -23,9 +25,11 @@ import { MAP_INPUT_POLICY } from '../../ui/game-input/map-input-policy.ts';
 import { createBrowserMapCursor } from '../../render/map/browser-map-cursor.ts';
 import type { MapCursorDrawer } from '../../render/map/map-cursor.ts';
 import type { MapInputGeometryPort } from '../../render/map/map-input-geometry.ts';
+import { FLIGHT_SURFACE, type FlightRenderer } from '../../render/flight/renderer/flight-renderer.ts';
 import { appProducer } from '../app-version.ts';
 import type { MissionSlot } from './mission-slot.ts';
 import type { MissionFlowState } from '../mission/mission-flow.ts';
+import { createFlightConsumer, type FlightConsumer } from '../mission/flight-consumer.ts';
 import {
   developmentRecording, type MissionOwner, type MissionOwnerConsumer, type MissionOwnerSetup,
 } from '../mission/mission-owner.ts';
@@ -40,8 +44,16 @@ export interface MissionScreenParts {
   readonly input: GameInputConsumer<HTMLElement>;
   /** Supplies the mounted game's input zone to the keyboard and Pointer Lock ports. */
   readonly bindInputZone: (zone: HTMLElement | null) => void;
+  readonly flight: MissionFlightParts;
   /** Development builds only. */
   readonly diagnostics: MissionDiagnostics | null;
+}
+
+/** The owner's flight picture. */
+export interface MissionFlightParts {
+  readonly renderer: FlightRenderer;
+  /** Places the flight canvas's container in the mounted flight area, or takes it out for null. */
+  readonly bindFlightArea: (area: HTMLElement | null) => void;
 }
 
 export interface MissionOwnerHandle {
@@ -65,10 +77,11 @@ interface Assembly {
   parts(owner: MissionOwner): MissionScreenParts;
 }
 
-function assemble({ mission: ports, reportError }: AppPorts, holder: ResourceHolder): Assembly {
+function assemble({ mission: ports, createSurface, reportError }: AppPorts, holder: ResourceHolder): Assembly {
   let ui: Pick<MissionScreenParts, 'store' | 'feedback'> | null = null;
   let diagnostics: MissionDiagnostics | null = null;
   let mapCursor: MapCursorDrawer | null = null;
+  let flight: { readonly consumer: FlightConsumer; readonly container: HTMLElement } | null = null;
   const inputZone: { current: HTMLElement | null } = { current: null };
   const mapGeometry: MapInputGeometryPort = Object.freeze({ read: () => null });
   const input = createInputConsumer<HTMLElement>({
@@ -107,6 +120,10 @@ function assemble({ mission: ports, reportError }: AppPorts, holder: ResourceHol
     setup() {
       const host = ports.createSessionHost();
       const base = { holder, seed: ports.seed, clock: ports.clock, timer: ports.timer, leaveGuard: ports.leaveGuard, reportError };
+      const container = document.createElement('div');
+      container.className = 'flight-canvas';
+      const consumer = createFlightConsumer({ holder, createSurface: () => createSurface(container, FLIGHT_SURFACE), seed: ports.presentationSeed, reportError });
+      flight = { consumer, container };
       if (development && ports.createFileSave) {
         const timing = development.createFrameTiming(host, ports.clock);
         diagnostics = development.createMissionDiagnostics({ timing, fileSave: ports.createFileSave });
@@ -114,14 +131,20 @@ function assemble({ mission: ports, reportError }: AppPorts, holder: ResourceHol
           ...base,
           host: timing.host,
           recording: developmentRecording(appProducer(import.meta.env.MODE)),
-          consumers: [input, uiConsumer, timing.consumer, diagnostics.consumer],
+          consumers: [input, uiConsumer, timing.consumer, diagnostics.consumer, consumer],
         };
       }
-      return { ...base, host, recording: null, consumers: [input, uiConsumer] };
+      return { ...base, host, recording: null, consumers: [input, uiConsumer, consumer] };
     },
     parts(owner) {
-      if (!ui) throw new Error('The mission owner did not connect its UI consumer');
-      return Object.freeze({ owner, ...ui, input, bindInputZone, diagnostics });
+      const renderer = flight?.consumer.renderer();
+      if (!ui || !flight || !renderer) throw new Error('The mission owner did not connect its UI and flight consumers');
+      const { container } = flight;
+      const bindFlightArea = (area: HTMLElement | null): void => {
+        if (area) area.append(container);
+        else container.remove();
+      };
+      return Object.freeze({ owner, ...ui, input, bindInputZone, diagnostics, flight: Object.freeze({ renderer, bindFlightArea }) });
     },
   };
 }

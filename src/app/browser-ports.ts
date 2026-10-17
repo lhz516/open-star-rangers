@@ -33,6 +33,7 @@ export function createBrowserPorts(): AppPorts {
     profile: PRODUCTION_PACKAGE,
     mission: Object.freeze({
       seed: createBrowserSeedSource(),
+      presentationSeed: createBrowserSeedSource(),
       clock: createBrowserClock(),
       timer: createBrowserTimer(),
       leaveGuard: createLeaveGuard(window),

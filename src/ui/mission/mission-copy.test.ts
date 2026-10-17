@@ -5,10 +5,11 @@ import { CoreFaultError, CoreInputError } from '../../core/errors.ts';
 import { FIVE_WINGMAN_NAMES } from '../../original-data/formats/formats.test-support.ts';
 import { MISSION_SCENARIOS } from '../../workers/import-scenarios.test-support.ts';
 import {
-  describeStructure, eligibilityReason, MISSION_SKELETON, pauseText, resumeBlockedText, startFailureText, startRetryable, wingmanLabel,
+  describeStructure, eligibilityReason, FLIGHT_IN_PROGRESS, flightNotice, MISSION_SKELETON, pauseText, resumeBlockedText, startFailureText, startRetryable, wingmanLabel,
 } from './mission-copy.ts';
 import { MISSION_OBJECTIVES, SLICE_GAPS } from './slice-gaps-copy.ts';
 import type { GameSessionStatus } from '../../app/session/game-session.ts';
+import { GraphicsDeviceError } from '../../render/scene/render-surface.ts';
 
 // P3-04 S-03, S-11 and AC-19 (界面部分): the page copy of the mission flow, read without a DOM.
 
@@ -124,5 +125,20 @@ describe('slice gap copy (G IDs)', () => {
     expect(MISSION_OBJECTIVES.sources.join('\n')).toMatch(/Confirmed: docs\/original\/formats\/executable\.md[\s\S]*Likely: docs\/original\/behavior\/B-003/);
     expect(MISSION_SKELETON).toMatch(/formal runtime skeleton, not yet a playable slice/);
     expect(MISSION_SKELETON).not.toMatch(/game controls/);
+    expect(MISSION_SKELETON).toMatch(/flight view is in progress, but there is no cockpit, HUD/);
+  });
+
+  it('says why the flight picture is missing, whether the run goes on, and that the cockpit and HUD are P3-13\'s', () => {
+    expect(FLIGHT_IN_PROGRESS).toMatch(/Flight rendering is connected; the cockpit and HUD are not implemented yet \(P3-13\)/);
+    expect(flightNotice({ state: 'ready', error: null })).toBeNull();
+    expect(flightNotice({ state: 'disposed', error: null })).toBeNull();
+    expect(flightNotice({ state: 'context-lost', error: null })).toEqual({ alert: false, text: expect.stringMatching(/context was lost.*continues/), detail: null });
+    const unavailable = flightNotice({ state: 'unavailable', error: new Error('imported text') })!;
+    expect(unavailable).toMatchObject({ alert: true, text: expect.stringMatching(/no WebGL 2.*continues.*pause.*mission menu/) });
+    expect(unavailable.detail).not.toMatch(/imported text/);
+    expect(flightNotice({ state: 'failed', error: new GraphicsDeviceError('lost', { cause: null }) })).toMatchObject({
+      alert: true, text: expect.stringMatching(/graphics device failed.*continues/), detail: expect.stringMatching(/^GraphicsDeviceError/),
+    });
+    expect(flightNotice({ state: 'failed', error: new Error('shader') })).toMatchObject({ alert: true, text: expect.stringMatching(/run cannot continue/) });
   });
 });
