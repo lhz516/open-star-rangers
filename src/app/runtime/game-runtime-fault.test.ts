@@ -19,7 +19,7 @@ import type * as CreateWorldModule from '../../core/world/create-world.ts';
 import type { CreateWorldInput } from '../../core/world/create-world.ts';
 import { thrownBy } from '../../core/world/world.test-support.ts';
 import { createGameRuntime, type GameRuntime } from './game-runtime.ts';
-import { NEUTRAL_AXES, recordingOptions, runtimeSpec, TICK_MS } from './game-runtime.test-support.ts';
+import { deliveriesOf, expectSameDeliveries, NEUTRAL_AXES, recordingOptions, runtimeSpec, TICK_MS } from './game-runtime.test-support.ts';
 import { GameRuntimeError } from './runtime-errors.ts';
 
 // Faults are injected only where tests create the world: the mocked creation entries wrap the real Core world or
@@ -210,16 +210,29 @@ describe('GameRuntime failure frames', () => {
     // Nothing was executed for the queued rest; the Runtime itself has not faulted.
     expect(runtime.clearIntent()).toEqual(ids(64, 100));
     runtime.clearSubscriptions();
-    expect(runtime.frame(2 * TICK_MS)).toEqual({ ticks: 1, capped: false, stop: null, cut: null, transitions: [] });
+    expect(runtime.frame(2 * TICK_MS)).toEqual({ ticks: 1, capped: false, stop: null, cut: null, transitions: [], outputs: [expect.objectContaining({ tick: 2 })] });
+  });
+
+  it('reports each tick\'s Render State as the read model extracted it, intermediate ticks included', () => {
+    const { runtime } = prepared(0, null);
+    let extracted: unknown;
+    injection.arm('renderState', 3, (real) => (extracted = real()));
+    const report = runtime.frame(5 * TICK_MS);
+    expect(report.outputs.map((output) => output.tick)).toEqual([1, 2, 3, 4, 5]);
+    expect(extracted).toBeDefined();
+    expect(report.outputs[2].render).toBe(extracted);
   });
 
   it('a recording refusal stops after delivering the earlier ticks: the refused tick changes nothing and the recording exports', () => {
     const { runtime, delivered } = prepared(200);
+    const deliveries = deliveriesOf(runtime);
     let refused: unknown;
     runtime.on('command-result', () => { refused ??= thrownBy(() => runtime.setIntent({ axes: NEUTRAL_AXES, primaryFire: false })); });
     const cause = new CoreInputError('recording', 'would exceed 131072 recorded ticks');
     injection.arm('step', 3, () => { throw cause; });
-    expect(runtime.frame(5 * TICK_MS)).toEqual({ ticks: 2, capped: false, stop: 'recording-capacity', cut: null, transitions: [] });
+    const report = runtime.frame(5 * TICK_MS);
+    expect(report).toEqual({ ticks: 2, capped: false, stop: 'recording-capacity', cut: null, transitions: [], outputs: [expect.objectContaining({ tick: 1 }), expect.objectContaining({ tick: 2 })] });
+    expectSameDeliveries(report, deliveries);
     expect(new Set(delivered.map((event) => event.tick))).toEqual(new Set([1, 2]));
     expect(delivered.filter((event) => event.type === 'command-result')).toHaveLength(128);
     expect(refused).toMatchObject({ kind: 'recording-capacity', cause });

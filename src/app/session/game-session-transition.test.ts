@@ -65,7 +65,7 @@ describe('entering the hold', () => {
     ]);
     // Executed commands kept their results and are never reported cancelled.
     expect(results).toEqual(ids.slice(0, CORE_LIMITS.commandsPerTick));
-    expect(frames[0].report).toEqual({ ticks: 1, capped: false, stop: null, cut: 'transition', transitions: [{ gap: 'G-02/3', tick: 1 }] });
+    expect(frames[0].report).toEqual({ ticks: 1, capped: false, stop: null, cut: 'transition', transitions: [{ gap: 'G-02/3', tick: 1 }], outputs: [expect.objectContaining({ tick: 1 })] });
     const still = frames[1].render;
     expect({ same: still.previous === still.current, alpha: still.alpha, tick: still.current.tick }).toEqual({ same: true, alpha: 0, tick: 1 });
     expect(session.status()).toMatchObject({
@@ -121,7 +121,7 @@ describe('ending the hold', () => {
     complete(session, run.runId, 1);
     expect(session.status().phase).toBe('running');
     host.deliver(3_600_000);
-    expect(frames.at(-1)?.report).toEqual({ ticks: 0, capped: false, stop: null, cut: null, transitions: [] });
+    expect(frames.at(-1)?.report).toEqual({ ticks: 0, capped: false, stop: null, cut: null, transitions: [], outputs: [] });
     host.deliver(3_600_000 + 2 * TICK_MS);
     expect(frames.at(-1)?.report?.ticks).toBe(2);
     expect(run.projection().clock.tick).toBe(3);

@@ -99,7 +99,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [08-original-records-comparison-plan.md](./subtasks/08-original-records-comparison-plan.md) | 01, 02, 03, 04, 05, 06, 07 | completed |
 | [09-d01-contract-gate.md](./subtasks/09-d01-contract-gate.md) | 01, 05, 07 | completed |
 | [10-core-presentation-facts.md](./subtasks/10-core-presentation-facts.md) | 09 | completed |
-| [11-runtime-tick-batches.md](./subtasks/11-runtime-tick-batches.md) | 09 | in-progress |
+| [11-runtime-tick-batches.md](./subtasks/11-runtime-tick-batches.md) | 09 | completed |
 | [12-presentation-foundation.md](./subtasks/12-presentation-foundation.md) | 10, 11 | pending |
 | [13-presentation-effects.md](./subtasks/13-presentation-effects.md) | 01, 05, 12 | pending |
 | [14-destruction-camera.md](./subtasks/14-destruction-camera.md) | 01, 12 | pending |

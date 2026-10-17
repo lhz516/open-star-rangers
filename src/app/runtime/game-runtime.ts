@@ -16,6 +16,11 @@
  * `transition` is the frame's last tick. The frame reports the cut and that tick's transitions, raises a barrier that
  * refuses input and frames, and only then delivers its events as usual; the Session releases the barrier when its hold
  * ends. Nothing is checked per tick from outside.
+ *
+ * Per-tick outputs (docs/plan/p3/04/spec.md, 帧后逐 tick 输出（P3-12 的修订）): the frame report carries each
+ * successful tick's Render State and events, the same objects the read model and the Event Bus receive, so a consumer
+ * can advance tick by tick after the frame without a second dispatch. A frame that throws reports nothing, and the
+ * Runtime keeps no outputs beyond the report it returns.
  */
 import type { DomainEvent, TransitionEvent } from '../../core/contracts/domain-events.ts';
 import { CORE_LIMITS } from '../../core/contracts/limits.ts';
@@ -63,6 +68,19 @@ export interface FrameTransition {
   readonly tick: number;
 }
 
+/** One event of a tick as the Event Bus dispatched it: the same frozen event and its delivery `commandId`. */
+export type TickEvent = PendingDelivery;
+
+/** One successful tick: its Render State (the object the read model took), and its events in emission order. */
+export interface TickOutput {
+  /** === render.tick */
+  readonly tick: number;
+  /** === render.clock */
+  readonly clock: number;
+  readonly render: RenderState;
+  readonly events: readonly TickEvent[];
+}
+
 /** `ticks` counts successful steps only. */
 export interface FrameReport {
   readonly ticks: number;
@@ -73,6 +91,11 @@ export interface FrameReport {
   readonly cut: 'transition' | null;
   /** That tick's transition events in event order, as frozen copies taken from the step's output; empty without a cut. */
   readonly transitions: readonly FrameTransition[];
+  /**
+   * Each successful tick in ascending order, `ticks` items: empty for a 0-tick frame, up to the cut tick in a cut frame,
+   * the prefix before the refused tick in a stopped frame. The last item's render is renderFrame().current.
+   */
+  readonly outputs: readonly TickOutput[];
 }
 
 export interface GameRuntime {
@@ -216,14 +239,12 @@ class Runtime implements GameRuntime {
     const timing = this.#clock.advance(nowMs);
     this.#inFrame = true;
     try {
-      const pending: PendingDelivery[] = [];
+      const outputs: TickOutput[] = [];
       const undelivered: number[] = [];
-      let ticks = 0;
       let transitions = NO_TRANSITIONS;
-      while (ticks < timing.ticks) {
-        const events = this.#tick(pending, undelivered);
+      while (outputs.length < timing.ticks) {
+        const events = this.#tick(outputs, undelivered);
         if (events === null) break;
-        ticks++;
         transitions = transitionsOf(events);
         if (transitions.length > 0) break;
       }
@@ -234,6 +255,7 @@ class Runtime implements GameRuntime {
       this.#renderFrame = this.#publish(this.#stop || cut ? 0 : timing.alpha);
       // Only running out of command IDs in a receiver can fault the Runtime during delivery; that fault outranks the
       // receiver failures it causes.
+      const pending = outputs.flatMap((output) => output.events);
       if (pending.length > 0) {
         try {
           this.#bus.dispatch(pending);
@@ -243,8 +265,8 @@ class Runtime implements GameRuntime {
       }
       if (this.#fault) throw this.#fault;
       return Object.freeze({
-        ticks, capped: timing.capped && !cut, stop: this.#stop ? 'recording-capacity' : null, cut: cut ? 'transition' : null,
-        transitions,
+        ticks: outputs.length, capped: timing.capped && !cut, stop: this.#stop ? 'recording-capacity' : null,
+        cut: cut ? 'transition' : null, transitions, outputs: Object.freeze(outputs),
       });
     } finally {
       this.#inFrame = false;
@@ -338,11 +360,11 @@ class Runtime implements GameRuntime {
   }
 
   /**
-   * Runs one tick and collects its deliveries; `undelivered` gathers the IDs this frame's successful ticks executed.
-   * Returns the tick's events, or null when the recording refused the tick (the Runtime has stopped); throws the fault
-   * otherwise.
+   * Runs one tick and appends its output once the step and both reads succeeded; `undelivered` gathers the IDs this
+   * frame's successful ticks executed. Returns the tick's events, or null when the recording refused the tick (the
+   * Runtime has stopped); throws the fault otherwise.
    */
-  #tick(pending: PendingDelivery[], undelivered: number[]): readonly DomainEvent[] | null {
+  #tick(outputs: TickOutput[], undelivered: number[]): readonly DomainEvent[] | null {
     const batch = this.#batch();
     let events: readonly DomainEvent[];
     try {
@@ -362,12 +384,13 @@ class Runtime implements GameRuntime {
     this.#fireLatched = false;
     undelivered.push(...submitted(batch.ids));
     try {
-      for (const event of events) pending.push({ event, commandId: deliveryId(event, batch.ids) });
+      const tickEvents = Object.freeze(events.map((event) => Object.freeze({ event, commandId: deliveryId(event, batch.ids) })));
       const projection = this.#world.projection();
       const render = this.#world.renderState();
       this.#projection = projection;
       this.#previous = this.#current;
       this.#current = render;
+      outputs.push(Object.freeze({ tick: render.tick, clock: render.clock, render, events: tickEvents }));
     } catch (cause) {
       throw this.#failRun(cause, undelivered);
     }
