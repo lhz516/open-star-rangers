@@ -123,7 +123,8 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [33-warp-test-timeout.md](./subtasks/33-warp-test-timeout.md) | 22 | completed |
 | [34-pod-parts-start-check.md](./subtasks/34-pod-parts-start-check.md) | 20, 23, 24 | completed |
 | [35-verdict-supplement.md](./subtasks/35-verdict-supplement.md) | 26 | completed |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35 | in-progress |
+| [36-load-sensitive-tests.md](./subtasks/36-load-sensitive-tests.md) | 23, 25, 34 | pending |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -172,6 +173,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
   Affected acceptance: AC-19 第二项、27 的第二项验收；29。
   Resume when: 用户对 V02-C 的形状比较作出具体决定——推荐：记为外观证据缺口（恢复条件：有一张大到使对照部件拟合失败的带纹理碎片原版画面，或可识别碎片判别值的原版画面），与 B 组相同处置；或授权一次基准运行取得这样的画面。协调者于 2026-10-17 提问时用户不在。
 - **2026-10-18 — Subtask 27 resumed:** 用户选择 V02-C 的形状比较“记为外观证据缺口，不运行 DOSBox-X”（记入 [spec 审批](./spec.md#审批)）。27 在原工作树中勾选剩余验收并提交。
+- **2026-10-18 — 最终对齐 29 第一次检查：** 已通过：候选一致（25、26 的 `src/` 与当前相同）、D-01 批准早于 10/11/12、对照方案早于新版画面、契约不变量（核心与飞行代码无非确定来源，表现模块不导入 three 或 app，不提交命令，未新增 G 项，在制提示可见）、`vitest run src/core src/app src/render tools/engineering-boundaries.test.ts`（214 文件 / 5,441 测试）、`pnpm check:compliance`（无发现）、`task-state` 无计划问题。未通过：并发负载下 `pnpm check` 有 1 个超时（`failure-matrix` 用例，main 约 0.7 秒、本分支约 1.8 秒，由放大的合成夹具引起），完整 E2E 246/247（ai-wingman AC-17 用例在负载下错过只出现一瞬的 `departure`）；两者单独重跑通过。按 execute-goal，29 退回 pending，新增修复子任务 36，修复后重跑 29。
 
 ## 审批
 
