@@ -1,4 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { AssetDescriptor } from '../../content/asset-contract.ts';
+import { validateGroup } from '../../content/completeness.ts';
+import type { CraftTypeTable } from '../../content/logic/logic-content.ts';
+import { encodeModelPayload, readModelPayload } from '../../content/models/model-payload.ts';
+import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
+import { payloadIdentityOf } from '../../content/synthetic-content.test-support.ts';
 import { RecordingSurface } from '../../render/scene/render-surface.test-support.ts';
 import { GraphicsDeviceError, GraphicsUnavailableError } from '../../render/scene/render-surface.ts';
 import { TICK_MS } from '../runtime/game-runtime.test-support.ts';
@@ -6,7 +12,8 @@ import type { GameSessionRun } from '../session/game-session.ts';
 import { RollbackError } from '../session/rollback-error.ts';
 import { createFlightConsumer } from './flight-consumer.ts';
 import type { MissionOwnerContext } from './mission-owner.ts';
-import type { FakeJob } from '../resources/resource-holder.test-support.ts';
+import { finishedJob, type FakeJob } from '../resources/resource-holder.test-support.ts';
+import { missionInput } from '../resources/mission-input.ts';
 import type { ResourceHolder } from '../resources/resource-holder.ts';
 import {
   missionGroups, missionHolder, nextSchemaJob, ownerSetup, sessionProbe, skip, testPorts, testSlot, toDeparture, toFlight, type MissionScenario,
@@ -50,6 +57,27 @@ async function openFlight(options: FlightOptions = {}, source: MissionScenario |
     ...ports, ...parts, holder, slot, owner, renderer: parts.consumer.renderer()!,
     session: probe.session, run: () => probe.session().currentRun(),
   };
+}
+
+/**
+ * The `mission-startable` package with the player's model cut to its first list-1 part: Core accepts it, as its DEBRIS
+ * records do not change, but its escape pod could not draw parts 0–2.
+ */
+async function onePartPlayerJob(): Promise<FakeJob> {
+  const groups = (await missionGroups('mission-startable')).filter((group) => validateGroup(CLASSIC_P2_SLICE, group).status === 'group-complete');
+  const logic = groups.find(({ group }) => group === 'logic')!;
+  const player = (missionInput(logic).craftTypes.content as CraftTypeTable).entries.find(({ craftType }) => craftType === 0)!.model.id;
+  return finishedJob(groups.map((group) => {
+    if (group.group !== 'models') return group;
+    const manifest = structuredClone(group.manifest) as { assets: AssetDescriptor[] };
+    const payloads = structuredClone(group.payloads) as { id: string; schemaVersion: number; bytes: Uint8Array }[];
+    const descriptor = manifest.assets.find(({ id }) => id === player)!;
+    const payload = payloads.find(({ id }) => id === player)!;
+    const { partLists, geometries, soundSlots } = readModelPayload(payload.bytes, payload.schemaVersion);
+    payload.bytes = encodeModelPayload({ geometries, soundSlots, partLists: [partLists[0], partLists[1].slice(0, 1), partLists[2]] });
+    (descriptor as { payloadIdentity: unknown }).payloadIdentity = { ...payloadIdentityOf(payload.bytes), schemaVersion: payload.schemaVersion };
+    return { ...group, manifest, payloads };
+  }));
 }
 
 /** The Core tick of the run's latest Render State. */
@@ -136,6 +164,16 @@ describe('flight consumer', () => {
       });
       expect(broken.renderer.diagnostics().runId).toBeNull();
     }
+
+    // A player model whose escape pod could not draw parts 0–2 (AC-10), refused before the run's first tick.
+    const podless = await openFlight({}, await onePartPlayerJob());
+    toDeparture(podless.owner);
+    expect(podless.owner.getSnapshot()).toMatchObject({
+      flow: { position: 'config', startFailure: { kind: 'assembly', stage: 'consumer', rolledBack: true, cause: { name: 'ContentContractError', code: 'binding-mismatch' } } },
+      session: { phase: 'idle' },
+    });
+    expect(podless.owner.getSnapshot().flow).toMatchObject({ startFailure: { cause: { path: expect.stringMatching(/^objects\.podModels\[/) } } });
+    expect(podless.renderer.diagnostics()).toMatchObject({ runId: null, resources: null });
 
     const seeded = await openFlight({ seeds: [-1] });
     toDeparture(seeded.owner);

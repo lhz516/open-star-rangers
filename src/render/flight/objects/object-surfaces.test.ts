@@ -173,6 +173,15 @@ describe('content checks', () => {
     expect(() => prepareObjectSurfaces(objectContent({ models }), lightingSettings())).toThrow(expect.objectContaining({ path: 'objects.debrisModel' }));
   });
 
+  it('refuse a pod model of kind 1 or 2 the content lacks or with fewer than three list-1 parts, which its pod draws', () => {
+    const refused = (id: AssetId) => expect.objectContaining({ code: 'binding-mismatch', path: `objects.podModels[${id}]` });
+    expect(() => prepareObjectSurfaces(objectContent({ podModels: new Set([CRAFT, MODEL]) }), lightingSettings())).toThrow(refused(MODEL));
+    expect(() => prepareObjectSurfaces(objectContent({ podModels: new Set(['model/absent' as AssetId]) }), lightingSettings())).toThrow(refused('model/absent' as AssetId));
+    // Three parts are enough, and a model that is no pod's may have fewer.
+    expect(prepareObjectSurfaces(objectContent({ podModels: new Set([CRAFT, DEBRIS_MODEL]) }), lightingSettings()).looks.models.has(podLook(DEBRIS_MODEL))).toBe(true);
+    expect(() => prepareObjectSurfaces(objectContent({ podModels: new Set() }), lightingSettings())).not.toThrow();
+  });
+
   it('refuse an effect texture the content lacks', () => {
     const images = new Map(content.images);
     images.delete(MISSILE_TEXTURE);

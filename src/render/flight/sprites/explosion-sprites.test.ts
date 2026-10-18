@@ -8,7 +8,7 @@ import type { PalettePayload } from '../../../content/graphics/palette-payload.t
 import type { ExplosionVariant } from '../../../core/world/entity-table.ts';
 import type { CompositionFrame } from '../composition/flight-layers.ts';
 import type { PresentationListener } from '../presentation/flight-presentation.ts';
-import type { ExplosionKey, ExplosionSelection, PresentationExplosion, PresentationTick } from '../presentation/presentation-contract.ts';
+import type { ExplosionKey, ExplosionSelection, PresentationCamera, PresentationExplosion, PresentationTick } from '../presentation/presentation-contract.ts';
 import { IDENTITY, renderState, vec } from '../presentation/presentation.test-support.ts';
 import { renderFrame } from '../scene/scene.test-support.ts';
 import { FlightGpuCache } from '../renderer/flight-gpu-cache.ts';
@@ -40,8 +40,10 @@ const animations = (change: Partial<Record<string, ImagePayload[]>> = {}) =>
 function setup(input: { animations?: ReturnType<typeof animations> } = {}) {
   let listener: PresentationListener | null = null;
   let live: PresentationExplosion[] = [];
+  let advanced = 0;
   const presentation = {
     explosions: () => live,
+    camera: () => ({ tick: advanced }) as PresentationCamera,
     subscribe: (next: PresentationListener) => {
       listener = next;
       return () => {
@@ -64,9 +66,11 @@ function setup(input: { animations?: ReturnType<typeof animations> } = {}) {
     show: (...explosions: PresentationExplosion[]) => {
       live = explosions;
     },
-    tick: (tick: number, viewMode: number, keys: readonly ExplosionKey[] = []) => {
+    /** Notifies `tick` with the module advanced to `advancedTo`. */
+    tick: (tick: number, viewMode: number, keys: readonly ExplosionKey[] = [], advancedTo = tick) => {
       const camera = { tick, position: vec(0), rows: IDENTITY, viewMode, subMode: 0, viewport: F1_VIEWPORT };
       const activations = keys.map((key) => ({ key, origin: { type: 'core', entityId: 0, eventIndex: 0 }, sourceKindBit: 7, variant: 'other', selection: LIST_1, tick, clock: 2 * tick, position: vec(0) }));
+      advanced = advancedTo;
       listener?.({ ownerId: 1, runId: 1, tick, clock: 2 * tick, beforeStep: camera, afterStep: camera, activations } as unknown as PresentationTick);
     },
   };
@@ -179,33 +183,41 @@ describe('explosion sprite layer', () => {
     expect(cache.counts().geometries).toBe(3);
   });
 
-  it('mixes positions from the previous tick drawn, unless the frame folds or the explosion is new', () => {
+  it('mixes positions from those after the previous tick, however ticks are grouped into frames, unless the frame folds or the explosion is new', () => {
     const { sprites, frameAt, show, tick } = setup();
     const quadAt = keyAt;
     const depth = (passes: ReturnType<typeof sprites.passes>) => keyOf(visibleQuads(passes)[0]);
-    tick(10, 0x0c, ['core:1']);
+    // The presentation module shows each tick's positions when it notifies that tick.
     show(explosion('core:1', 100));
-    sprites.passes(frameAt(10));
-    tick(11, 0x0c);
+    tick(10, 0x0c, ['core:1']);
     show(explosion('core:1', 200));
+    tick(11, 0x0c);
     expect(depth(sprites.passes(frameAt(11, { alpha: 0.5 })))).toBe(quadAt(150));
     // A redraw of the same tick still mixes from tick 10.
     expect(depth(sprites.passes(frameAt(11, { alpha: 0.25 })))).toBe(quadAt(125));
     // A view change folds the frame.
     expect(depth(sprites.passes(frameAt(11, { alpha: 0.5, previous: renderState(10, { viewMode: 8 }) })))).toBe(quadAt(200));
-    // Tick 12 follows a frame drawn at tick 11; tick 14 does not follow a drawn tick 13.
-    show(explosion('core:1', 300));
-    expect(depth(sprites.passes(frameAt(12, { alpha: 0.5 })))).toBe(quadAt(250));
-    show(explosion('core:1', 100));
-    expect(depth(sprites.passes(frameAt(14, { alpha: 0.5 })))).toBe(quadAt(100));
+    // Ticks 12 to 14 advance in one frame: tick 14 mixes from tick 13's positions, which no frame drew.
+    for (const [at, z] of [[12, 300], [13, 100], [14, 300]]) {
+      show(explosion('core:1', z));
+      tick(at, 0x0c);
+    }
+    expect(depth(sprites.passes(frameAt(14, { alpha: 0.5 })))).toBe(quadAt(200));
+    expect(depth(sprites.passes(frameAt(14)))).toBe(quadAt(100));
     // An explosion activated at the current tick is not mixed with an earlier one of the same key.
-    tick(15, 0x0c, ['core:1']);
     show(explosion('core:1', 200, { activationTick: 15 }));
+    tick(15, 0x0c, ['core:1']);
     expect(depth(sprites.passes(frameAt(15, { alpha: 0.5 })))).toBe(quadAt(200));
   });
 
+  it('refuses a tick notified after the module advanced past it, whose positions it no longer shows', () => {
+    const { tick } = setup();
+    tick(10, 0x0c, ['core:1']);
+    expect(() => tick(11, 0x0c, [], 12)).toThrow(expect.objectContaining({ kind: 'invalid-state', path: 'sprites.presentation' }));
+  });
+
   it('must be created before the run has an explosion', () => {
-    const presentation = { explosions: () => [explosion('core:1', 100)], subscribe: () => () => undefined };
+    const presentation = { explosions: () => [explosion('core:1', 100)], subscribe: () => () => undefined, camera: () => ({ tick: 0 }) as PresentationCamera };
     const cache = new FlightGpuCache({ ownerId: 1, runId: 1, generation: 1, identity: 'identity' }, () => ({ width: 640, height: 480 }));
     expect(() => new ExplosionSprites({ presentation, explosions: EXPLOSIONS, animations: animations(), palette: { id: PALETTE_ID, payload: PALETTE }, resources: cache }))
       .toThrow(expect.objectContaining({ kind: 'invalid-state', path: 'sprites' }));

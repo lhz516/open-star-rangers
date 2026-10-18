@@ -37,7 +37,7 @@ const MODELS: ReadonlyMap<number, SyntheticModlFields> = new Map([
   [DEFAULT_MODEL_IDS[0], {
     partLists: [
       [{ mesh: quad, texture: texture(13), flags: 1 }, { mesh: pair, texture: texture(11), flags: 1, colour: [255, 0, 0] }],
-      [{ mesh: pair, flags: 3 }],
+      [{ mesh: pair, flags: 3 }, { mesh: triangle, flags: 3, colour: [0, 255, 0] }, { mesh: quad, texture: texture(13), flags: 3 }],
       [{ mesh: triangle, texture: texture(5), flags: 1 }],
     ],
     sounds: [10_679, 10_669, 10_647, 0, 10_175],

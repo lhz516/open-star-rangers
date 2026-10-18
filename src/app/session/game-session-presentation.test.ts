@@ -1,6 +1,8 @@
 import { Texture, type BufferAttribute, type Material, type ShaderMaterial } from 'three';
 import { beforeAll, describe, expect, it } from 'vitest';
+import type { AssetId } from '../../content/asset-id.ts';
 import { contentIdentityKey } from '../../content/content-identity.ts';
+import type { CraftTypeTable } from '../../content/logic/logic-content.ts';
 import type { CraftInfo } from '../../content/rule-data/craft-info.ts';
 import type { DomainEvent } from '../../core/contracts/domain-events.ts';
 import type { Command } from '../../core/contracts/tick-input.ts';
@@ -8,6 +10,7 @@ import { compareReplayResults } from '../../core/replay/compare.ts';
 import type { Recording } from '../../core/replay/recording.ts';
 import { replayRecord } from '../../core/replay/replay.ts';
 import { contentOf } from '../../core/replay/replay.test-support.ts';
+import { podLook } from '../../render/flight/objects/object-surfaces.ts';
 import type { PresentationTick } from '../../render/flight/presentation/presentation-contract.ts';
 import { prepareFlightContent, type PreparedFlightContent } from '../../render/flight/renderer/flight-passes.ts';
 import { createFlightRenderer, type FlightRenderer } from '../../render/flight/renderer/flight-renderer.ts';
@@ -32,11 +35,10 @@ import { current, departure, sessionSetup } from './game-session.test-support.ts
 
 /** Inputs change only at multiples of BLOCK ticks, where every grouping below starts a frame. */
 const BLOCK = 5;
-/**
- * Ends before the player's own explosion starts at tick 100: its escape pod draws parts 0–2 of the synthetic player
- * model, which has one list-1 part, and the renderer refuses that.
- */
-const TICKS = 60;
+/** Runs past the player's escape pod, which appears at tick 99 and draws parts 0–2 of the player model, and its explosion at tick 100. */
+const TICKS = 120;
+/** The first block end whose frame draws the escape pod. */
+const POD_DRAWN_FROM = 100;
 const PRESENTATION_SEED = 0x2468_ace1;
 const WORLD_SEED = 0x1234_5678;
 
@@ -69,6 +71,8 @@ interface PackageRun {
   /** A fresh run spec of the changed package, recording a checkpoint every tick and held for its departure. */
   readonly spec: () => GameRunSpec;
   readonly content: PreparedFlightContent;
+  /** The player's model, craft type 0's, whose escape pod draws its list-1 parts 0–2. */
+  readonly playerModel: AssetId;
   readonly generation: number;
   readonly identity: string;
 }
@@ -101,7 +105,8 @@ async function packageRun(): Promise<PackageRun> {
     models: runModelInputs(held.groups, { ...assets, identity, run } as Parameters<typeof runModelInputs>[1]), identity, run,
   };
   const spec = () => ({ ...inputs, recording: recordingOptions(1), initialTransition: departure() }) as unknown as GameRunSpec;
-  return { spec, content, generation: held.generation, identity: contentIdentityKey(identity) };
+  const playerModel = (craftTypes.content as CraftTypeTable).entries.find(({ craftType }) => craftType === 0)!.model.id;
+  return { spec, content, playerModel, generation: held.generation, identity: contentIdentityKey(identity) };
 }
 
 /** What the presentation shows after one tick: its notice, then its explosions, fragments and flash requests. */
@@ -296,7 +301,7 @@ function frameAround(frames: readonly number[], tick: number): { readonly previo
 
 describe('the flight presentation and picture with Core (AC-17)', () => {
   let source: PackageRun;
-  let baseline: { core: ReturnType<typeof coreOf>; presentation: readonly PresentationRecord[]; drawn: ReadonlyMap<number, unknown> };
+  let baseline: { core: ReturnType<typeof coreOf>; presentation: readonly PresentationRecord[]; drawn: ReadonlyMap<number, ReturnType<typeof frameDigest>> };
 
   beforeAll(async () => {
     source = await packageRun();
@@ -313,14 +318,20 @@ describe('the flight presentation and picture with Core (AC-17)', () => {
     const count = (type: DomainEvent['type']) => core.events.filter((event) => event.type === type).length;
     // The player's own explosion starts at tick 100.
     expect({ destroyed: count('object-destroyed'), started: count('explosion-started'), released: count('source-released') })
-      .toEqual({ destroyed: 8, started: 7, released: 7 });
+      .toEqual({ destroyed: 8, started: 8, released: 8 });
     expect(presentation.map(({ tick }) => tick.tick)).toEqual(Array.from({ length: TICKS }, (_, at) => at + 1));
     const activations = presentation.flatMap(({ tick }) => tick.activations);
     expect(new Set(activations.map(({ key }) => key)).size).toBe(activations.length);
-    // Seven Core explosions and ten extra ones, whose ticks and choices come from the presentation's random source.
-    expect(activations.map(({ origin }) => origin.type).sort()).toEqual([...Array(7).fill('core'), ...Array(10).fill('extra')]);
+    // Eight Core explosions and twelve extra ones, whose ticks and choices come from the presentation's random source.
+    expect(activations.map(({ origin }) => origin.type).sort()).toEqual([...Array(8).fill('core'), ...Array(12).fill('extra')]);
     expect(new Set(activations.map(({ selection }) => selection.item)).size).toBeGreaterThan(2);
     expect([...drawn.keys()]).toEqual(BLOCK_ENDS);
+    // The flight content names the player's model as a pod model, and its escape pod's three parts are drawn from
+    // its first block end on.
+    expect(source.content.passes.podModels).toEqual(new Set([source.playerModel]));
+    const pod = podLook(source.playerModel);
+    const podParts = (end: number) => drawn.get(end)!.flatMap(({ objects }) => objects.map(({ name }) => name)).filter((name) => name.startsWith(`${pod}:`));
+    for (const end of BLOCK_ENDS) expect(podParts(end)).toEqual(end >= POD_DRAWN_FROM ? [0, 1, 2].map((part) => `${pod}:${part}`) : []);
     // The recording replays to the same outcome.
     expect(compareReplayResults(core.recording.result, replayRecord(core.recording.record, contentOf(source.spec() as never)))).toEqual({ match: true });
   });

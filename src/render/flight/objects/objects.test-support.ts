@@ -45,6 +45,7 @@ export function objectContent(overrides: Partial<ObjectContent> = {}): ObjectCon
     missiles: syntheticMissile(),
     debris: syntheticDebris(),
     debrisModel: DEBRIS_MODEL,
+    podModels: new Set([CRAFT]),
     ...overrides,
   };
 }

@@ -9,7 +9,9 @@
  *   (`readPalettePayload`) Asset of the group, so every model a run can show, every texture, explosion frame and nebula
  *   image and every palette they index are there; the DATA palette, the group's one `flight-palette` palette; the
  *   hit-shimmer thresholds, its one `hit-shimmer` image; the projectile, missile and debris visuals, its one `data`
- *   Asset of each of those roles (`readEffectPayload`); and the debris model, its one `debris` model.
+ *   Asset of each of those roles (`readEffectPayload`); and the debris model, its one `debris` model;
+ * - from the logic group, the models the mission's craft type table binds to craft types 0 and 1 (kinds 1 and 2,
+ *   `missionInput`), whose part-0 fragment is an escape pod.
  *
  * A complete package has exactly one Asset of each of the roles named here; one the package lacks, or a named animation
  * it lacks, is a content error, as is any decoding error, which keeps its code and reason at `models[<Asset ID>].<path>`.
@@ -23,16 +25,33 @@ import type { ExplosionAnimation, ExplosionTable, FlightDataPayload } from '../.
 import { decodeFlightDataPayload } from '../../content/flight/flight-data-payload.ts';
 import { checkGraphicsBinding } from '../../content/graphics/graphics-binding.ts';
 import { readImagePayload, type ImagePayload } from '../../content/graphics/image-payload.ts';
+import type { CraftTypeTable } from '../../content/logic/logic-content.ts';
 import { readPalettePayload, type PalettePayload } from '../../content/graphics/palette-payload.ts';
 import { readGroupManifest } from '../../content/manifest.ts';
 import { checkModelBinding, readModelPayload, type ModelPayload } from '../../content/models/model-payload.ts';
 import { readPayloadRecords } from '../../content/payload.ts';
+import { PLAYER_KIND_BIT, WINGMAN_KIND_BIT } from '../../core/rules/spawn-schedule.ts';
 import type { FlightRunContent } from '../../render/flight/renderer/flight-passes.ts';
-import type { PackageGroup } from '../resources/mission-input.ts';
+import { missionInput, type PackageGroup } from '../resources/mission-input.ts';
 
 const PATH = 'models';
 
 type Content = { readonly [Role in FlightDataPayload['role']]: Extract<FlightDataPayload, { readonly role: Role }>['content'] };
+
+/** Craft types 0 and 1, the player's and the wingman's: kinds 1 and 2, whose part 0 is the escape pod. */
+const POD_CRAFT_TYPES: ReadonlySet<number> = new Set([PLAYER_KIND_BIT, WINGMAN_KIND_BIT]);
+
+/**
+ * The models of craft types 0 and 1 in the craft type table the package's mission references. A table it lacks is
+ * `invalid-resource-group`; a decoding error keeps its code and reason at `logic[<Asset ID>].<path>`.
+ */
+function podModelsOf(groups: readonly PackageGroup[]): ReadonlySet<AssetId> {
+  const logic = groups.find(({ group }) => group === 'logic');
+  const craftTypes = logic && missionInput(logic).craftTypes;
+  if (!craftTypes) throw new ContentContractError('invalid-resource-group', 'logic', 'the package holds no craft type table its mission references');
+  const { entries } = craftTypes.content as CraftTypeTable;
+  return new Set(entries.filter(({ craftType }) => POD_CRAFT_TYPES.has(craftType)).map(({ model }) => model.id));
+}
 
 export function flightContentOf(groups: readonly PackageGroup[]): FlightRunContent {
   const models = groups.find(({ group }) => group === 'models');
@@ -104,6 +123,7 @@ export function flightContentOf(groups: readonly PackageGroup[]): FlightRunConte
       missiles: effect('missile'),
       debris: effect('debris'),
       debrisModel: only('debris', 'model').id,
+      podModels: podModelsOf(groups),
     }),
   });
 }

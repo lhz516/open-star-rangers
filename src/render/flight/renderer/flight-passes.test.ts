@@ -9,7 +9,7 @@ import { RecordingSurface, type PassRecord } from '../../scene/render-surface.te
 import { COMPOSITION_GPU_PLAN } from '../composition/flight-composition.ts';
 import { FLASH_SCREEN_GPU_PLAN } from '../flash/flash-screen-stage.ts';
 import { NEBULA_GPU_PLAN } from '../nebula/nebula-layer.ts';
-import { PROJECTILE_VISUALS } from '../objects/objects.test-support.ts';
+import { MODEL, PROJECTILE_VISUALS } from '../objects/objects.test-support.ts';
 import { explosionStarted, renderEntity, renderState, tickInput, vec } from '../presentation/presentation.test-support.ts';
 import { hit, player, PLAYER, shimmerEntity } from '../shimmer/shimmer.test-support.ts';
 import { explosionSpritesGpuPlan } from '../sprites/explosion-sprites.ts';
@@ -128,6 +128,8 @@ describe('flight passes', () => {
     const flashes = RUN_SETTINGS.screenFlashes.map((flash, at) => (at === 1 ? { ...flash, level: 64 } : flash)) as unknown as typeof RUN_SETTINGS.screenFlashes;
     expect(() => prepareFlightContent({ ...base, settings: { ...RUN_SETTINGS, screenFlashes: flashes } })).toThrow(expect.objectContaining({ path: 'flash.screenFlashes[1].level' }));
     expect(() => prepareFlightContent({ ...base, settings: { ...RUN_SETTINGS, lightType3Colour: [0, 0, 0] } })).toThrow(ContentContractError);
+    // A player or wingman model whose pod could not draw parts 0–2 (AC-03, AC-10).
+    expect(() => prepareFlightContent({ ...base, passes: { ...base.passes, podModels: new Set([MODEL]) } })).toThrow(expect.objectContaining({ path: `objects.podModels[${MODEL}]` }));
   });
 
   it('draws an F1 frame in FC2 order, the world in its viewport, and flashes the whole picture after a hit on the player', () => {

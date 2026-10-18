@@ -10,7 +10,8 @@
  * - **Fragments:** discriminator 1, one of the two textured debris shapes (quality 2, TEX 10151); discriminators 2 and 3,
  *   list-1 part p of MODL 10383 or of the source model (quality 2, the part's colour and texture), and for the pods of
  *   kinds 1 and 2 parts 0–2. Every list-1 part of every model is prepared, and the three-part look of every model that
- *   has three, since which models are pods is the Core's to say.
+ *   has three, since which fragments are pods is the Core's to say. A model of kind 1 or 2 with fewer than three list-1
+ *   parts, which the original leaves undefined and Core accepts, refuses the start rather than its pod the flight.
  * - **Quality** is the builder's, capped by RENS +0x18 (LS5); 0 (Likely wireframe) is refused as for models.
  * - **Colour** (`0x7a698`): each f32 component clamped to [0, 1], times 255 and rounded half to even; the byte triple is
  *   an untextured shape's part colour, whose ramp it is drawn with (LS4). A textured shape's ramps are its texture's.
@@ -54,6 +55,8 @@ export interface ObjectContent extends ModelLightingContent {
   readonly debris: DebrisVisuals;
   /** `model/debris`, MODL 10383: discriminator 2's parts. Must be one of `models`. */
   readonly debrisModel: AssetId;
+  /** The models of kinds 1 and 2 (craft types 0 and 1), whose part-0 fragment is a pod. Each must be one of `models`. */
+  readonly podModels: ReadonlySet<AssetId>;
 }
 
 export interface ObjectSurfaces {
@@ -145,7 +148,8 @@ function shapePart(builder: LitPartBuilder, shape: EffectShape, quality: PartQua
 /**
  * The looks of every projectile record, missile type, textured debris shape and list-1 part of `content`, under
  * `settings`' lights and device quality. Refuses, before the run, what the lit parts refuse (model-surfaces.ts), a
- * debris model the content lacks or without list-1 parts, and a device quality below 1.
+ * debris model the content lacks or without list-1 parts, a pod model it lacks or with fewer than three, and a device
+ * quality below 1.
  */
 export function prepareObjectSurfaces(content: ObjectContent, settings: SceneSettings): ObjectSurfaces {
   const builder = new LitPartBuilder(content, settings);
@@ -182,6 +186,9 @@ export function prepareObjectSurfaces(content: ObjectContent, settings: SceneSet
   }
   if ((listOneParts.get(content.debrisModel) ?? 0) === 0) {
     fail('binding-mismatch', `${PATH}.debrisModel`, `names ${content.debrisModel}, which the content lacks or which has no list-1 parts`);
+  }
+  for (const id of content.podModels) {
+    if ((listOneParts.get(id) ?? 0) < POD_PARTS) fail('binding-mismatch', `${PATH}.podModels[${id}]`, 'is a model the content lacks or with fewer than the three list-1 parts its pod draws');
   }
   return Object.freeze({
     looks: Object.freeze({ lighting: builder.lighting, models: looks, plan: litPartsPlan([...looks.values()].flat()) }),

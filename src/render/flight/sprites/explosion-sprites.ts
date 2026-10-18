@@ -13,8 +13,9 @@
  *   the layer's own, cleared to opaque black, where a drawn pixel has alpha 0; a second pass copies those pixels into
  *   the game image.
  * - **Positions:** mixed like the world's (scene/flight-scene.ts): from the previous tick's end to the current tick's
- *   by the frame's alpha, for an explosion active at both, unless the frame folds; the previous positions are those of
- *   the last frame drawn at the previous tick, so after a frame that advanced several ticks the current ones are used.
+ *   by the frame's alpha, for an explosion active at both, unless the frame folds. Both are recorded as the presentation
+ *   module advances each tick, so a frame that advanced several ticks mixes from the tick before its last, as a frame
+ *   of one tick does, and the drawing does not depend on how ticks are grouped into frames (AC-17).
  * - **Lifetime:** created before the run's first tick, as its frame records follow every tick from there.
  *
  * The run's GPU cache holds every texture, material, quad and the sprite image, so the run's end releases them; `dispose`
@@ -33,7 +34,7 @@ import type { CompositionFrame, FlightLayer, LayerPass } from '../composition/fl
 import type { LogicalTransform } from '../composition/logical-screen.ts';
 import type { FlightPresentation } from '../presentation/flight-presentation.ts';
 import { PRESENTATION_LIMITS } from '../presentation/presentation-budget.ts';
-import type { ExplosionKey, ExplosionSelection, PresentationExplosion } from '../presentation/presentation-contract.ts';
+import type { ExplosionKey, ExplosionSelection } from '../presentation/presentation-contract.ts';
 import { foldsFrame } from '../scene/flight-scene.ts';
 import type { FlightGpuCache, FlightGpuPlan } from '../renderer/flight-gpu-cache.ts';
 import { FlightRenderError } from '../renderer/flight-render-error.ts';
@@ -106,8 +107,12 @@ export interface SpritePalette {
 }
 
 export interface ExplosionSpritesInput {
-  /** The run's presentation module: its explosions, and its ticks for the frame changes. */
-  readonly presentation: Pick<FlightPresentation, 'explosions' | 'subscribe'>;
+  /**
+   * The run's presentation module: its explosions, and its ticks for the frame changes and positions. It must notify
+   * each tick before advancing by the next, as wireFlightRun advances it one tick at a time, so that its explosions are
+   * those after the tick notified; its camera's tick says which tick that is.
+   */
+  readonly presentation: Pick<FlightPresentation, 'explosions' | 'subscribe' | 'camera'>;
   readonly explosions: ExplosionTable;
   /** The frames of every animation the table names, in display order, by the animation's Asset ID. */
   readonly animations: ReadonlyMap<AssetId, readonly ImagePayload[]>;
@@ -185,7 +190,7 @@ export function explosionSpritesGpuPlan({ explosions, animations }: Pick<Explosi
 
 export class ExplosionSprites implements FlightLayer {
   readonly slot = 'sprites' as const;
-  readonly #presentation: Pick<FlightPresentation, 'explosions'>;
+  readonly #presentation: Pick<FlightPresentation, 'explosions' | 'camera'>;
   readonly #explosions: ExplosionTable;
   readonly #animations: ReadonlyMap<AssetId, Animation>;
   readonly #palette: SpritePalette;
@@ -208,7 +213,10 @@ export class ExplosionSprites implements FlightLayer {
     this.#palette = input.palette;
     this.#resources = input.resources;
     this.#frames = new SpriteFrames((selection) => this.#animation(selection).frames);
-    this.#unsubscribe = input.presentation.subscribe((tick) => this.#frames.step(tick));
+    this.#unsubscribe = input.presentation.subscribe((tick) => {
+      this.#frames.step(tick);
+      this.#remember(tick.tick);
+    });
   }
 
   passes(frame: CompositionFrame): readonly LayerPass[] {
@@ -217,7 +225,6 @@ export class ExplosionSprites implements FlightLayer {
     const { camera, viewport, backPlane } = world.scene;
     const { previous, current, alpha } = frame.render;
     const live = this.#presentation.explosions();
-    this.#remember(current.tick, live);
     const before = !foldsFrame(previous, current) && this.#earlier?.tick === previous.tick ? this.#earlier.positions : null;
     const queue: QueuedSprite[] = [];
     for (const { key, variant, selection, position, activationTick } of live) {
@@ -282,11 +289,12 @@ export class ExplosionSprites implements FlightLayer {
     return material;
   }
 
-  /** Keeps the positions of the last two ticks drawn. */
-  #remember(tick: number, live: readonly PresentationExplosion[]): void {
-    if (this.#latest?.tick === tick) return;
+  /** Keeps the positions after the last two ticks the presentation module advanced by. */
+  #remember(tick: number): void {
+    const after = this.#presentation.camera().tick;
+    if (after !== tick) throw new FlightRenderError('invalid-state', `${PATH}.presentation`, `notified tick ${tick} after advancing to tick ${after}`);
     this.#earlier = this.#latest;
-    this.#latest = { tick, positions: new Map(live.map(({ key, position }) => [key, position])) };
+    this.#latest = { tick, positions: new Map(this.#presentation.explosions().map(({ key, position }) => [key, position])) };
   }
 
   #animation(selection: ExplosionSelection): Animation {
