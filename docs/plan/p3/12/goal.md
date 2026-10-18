@@ -114,7 +114,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [23-pass-integration.md](./subtasks/23-pass-integration.md) | 17, 18, 19, 20, 21, 22, 31 | completed |
 | [24-rule-independence-replay.md](./subtasks/24-rule-independence-replay.md) | 13, 14, 23 | completed |
 | [25-browser-regression.md](./subtasks/25-browser-regression.md) | 23, 24, 34 | completed |
-| [26-real-content-comparison.md](./subtasks/26-real-content-comparison.md) | 08, 25 | in-progress |
+| [26-real-content-comparison.md](./subtasks/26-real-content-comparison.md) | 08, 25 | completed |
 | [27-presentation-verdicts.md](./subtasks/27-presentation-verdicts.md) | 26 | pending |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 09, 23, 24, 25 | completed |
 | [30-stars-speed-dust-research.md](./subtasks/30-stars-speed-dust-research.md) | 08 | completed |
@@ -158,6 +158,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 - **2026-10-17 — 新增修复子任务 34：** 24 在真实 Session 中发现逃生舱碎片（`parts-0-2`）在合成生产包上于飞行中触发内容错误（Core 接受第 1 列表 ≥ 1 个部件，渲染器需要 ≥ 3）。原版数据有 7 个部件，少于 3 时原版行为未定义；按 spec 的内容校验原则，34 在运行开始时拒绝此类内容并修正合成玩家机体。25 依赖 34，因为浏览器场景可能摧毁玩家。
 - **2026-10-17 — 34 完成：** 运行开始时按任务机体类型表（类型 0、1）得出逃生舱来源模型，缺失或少于 3 个第 1 列表部件时在分配前以 `binding-mismatch` 拒绝；合成玩家机体改为 3 个部件。延长到 120 tick 的集成测试还暴露并修复了 21 精灵层对帧分组的依赖（前一位置改为逐 tick 记录，AC-17）。
 - **2026-10-17 — 25 完成：** 基线 `pnpm test:e2e` 有 7 个失败，均因 15 加入飞行画布而旧断言仍写“任务画面没有 WebGL 画布”，25 在 e2e 中修正；最终 247 个全部通过（Chrome 155）。未能自动验证、记为限制的项：运行中改变设备像素比的通知（CDP 模拟不触发 `resolution` 媒体查询，DPR 2 在独立上下文中验证）、速度尘埃的逐粒子位置与线段端点（Node 的 31 覆盖）、导弹的逐像素外观（只验证外壳）、正式流程中的暖态 GPU 相等（改在隔离入口同 tick 比较）、P3-11 的真实被毁与救援流程（只用合成状态）。
+- **2026-10-17 — 26 完成（交 27 判定）：** 在候选 `357f49eb` 上用真实内容取得五类画面并按冻结方案逐项配对（计划与附录指纹核对一致）。成立：星云 19 个放置精确一致；星点 57/57 一致、对照全为 0；Warp 色阶与邻接；逃生舱居中。待 27 判定：与导弹爆炸重叠的 14 帧中近处机体爆炸有 1,715 个部分精灵块无法由另一精灵或三维覆盖解释（可能与 FC8 的逐块遮挡有差异）；无项目样本的缺口（导弹类型 0/2/3、弹丸记录 1/6、判别值 1/2 碎片、基地与玩家的受击闪烁、067 的基地配对、Q14-B 逐粒子期望）；G-05a 中后段与 G-05b 接缝仍为外观缺口。闪光平移露出的行在闪光调色板下为索引 0，与 044 一致。
 
 ## 审批
 
