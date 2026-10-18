@@ -79,7 +79,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [01-flow-result-research.md](./subtasks/01-flow-result-research.md) | — | completed |
 | [02-loss-rescue-research.md](./subtasks/02-loss-rescue-research.md) | — | completed |
 | [03-messages-manual-research.md](./subtasks/03-messages-manual-research.md) | — | completed |
-| [04-original-facts.md](./subtasks/04-original-facts.md) | 01, 02, 03 | in-progress |
+| [04-original-facts.md](./subtasks/04-original-facts.md) | 01, 02, 03 | completed |
 | [05-shared-contract-gate.md](./subtasks/05-shared-contract-gate.md) | 04 | pending |
 | [06-evidence-reuse-audit.md](./subtasks/06-evidence-reuse-audit.md) | 01, 02 | in-progress |
 | [07-sampling-criteria-gate.md](./subtasks/07-sampling-criteria-gate.md) | 04, 06 | pending |
