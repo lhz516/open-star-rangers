@@ -19,7 +19,7 @@ import { devOrigin } from './support/environment.ts';
 import { readLog, stopWatchingResume, submitEditorCommand, watchResume, type LogEntry } from './support/map-warp.ts';
 import {
   chooseWingman, devState, endPlaceholder, enterMission, expectAdvancingTick, expectStableTick, leaveGuards, missionEntry, missionFrame,
-  waitForFrame,
+  skipPlaceholder, stopWatchingPositions, waitForFrame, watchedPositions, watchPositions,
 } from './support/mission-observations.ts';
 import { nativeBrowser, NativeTarget, until } from './support/native-lifecycle.ts';
 import { ResourceBalance, settleTooling } from './support/resource-balance.ts';
@@ -320,12 +320,17 @@ test('an AI fault shows through the Runtime, the run stops at its tick, and afte
   await enterMission(page);
   await endPlaceholder(page, 'G-02/1', 'button');
   await chooseWingman(page, 0);
+  await watchPositions(page);
   await button(page, 'Start').click();
   await waitForFrame(page, frame => frame.position === 'departure' && frame.run !== null);
-  await endPlaceholder(page, 'G-02/2', 'button');
+  // The run faults a few ticks into its flight, which can end between two polls under load (the first flight frame
+  // binds and draws the flight picture); the page's own position log records it however briefly it showed.
+  await skipPlaceholder(page, 'G-02/2', 'button');
 
   const ended = page.getByTestId('mission-ended');
   await expect(ended).toHaveAttribute('data-ended', 'faulted');
+  expect(await watchedPositions(page)).toEqual(['config', 'departure', 'flight', 'ended']);
+  await stopWatchingPositions(page);
   await expect(status(page)).toHaveAttribute('data-phase', 'faulted');
   const alert = ended.getByRole('alert');
   await expect(alert).toContainText('The run stopped on a fault and cannot continue.');

@@ -184,10 +184,24 @@ export function stopWatchingPositions(page: Page): Promise<void> {
   });
 }
 
-/** How long the mission screen showed `from` before it last changed to `to`, by the `watchPositions` log. */
-async function shownFor(page: Page, from: string, to: string): Promise<number> {
+/** The `watchPositions` log so far: each position the mission screen committed, with the time it did. */
+async function positionLog(page: Page): Promise<{ readonly position: string | null; readonly time: number }[]> {
   const log = await page.evaluate(() => window.osrPositions?.log.map(entry => ({ ...entry })) ?? null);
   if (!log) throw new Error('watchPositions was not installed');
+  return log;
+}
+
+/**
+ * Every position the mission screen committed since `watchPositions`, in order, however briefly each showed: a
+ * position a few ticks long, such as the flight of a run that faults at once, can end between two polls.
+ */
+export async function watchedPositions(page: Page): Promise<(string | null)[]> {
+  return (await positionLog(page)).map(({ position }) => position);
+}
+
+/** How long the mission screen showed `from` before it last changed to `to`, by the `watchPositions` log. */
+async function shownFor(page: Page, from: string, to: string): Promise<number> {
+  const log = await positionLog(page);
   const end = log.findLastIndex(entry => entry.position === to);
   if (end < 1 || log[end - 1].position !== from) throw new Error(`No change from ${from} to ${to}: ${JSON.stringify(log)}`);
   return log[end].time - log[end - 1].time;
@@ -211,13 +225,21 @@ export async function endPlaceholder(page: Page, gap: keyof typeof PLACEHOLDER_P
     expect(await shownFor(page, from, to), 'A placeholder ended before 3 s of visible time').toBeGreaterThanOrEqual(2_900);
     return frame;
   }
+  await skipPlaceholder(page, gap, end);
+  return waitForFrame(page, frame => frame.position === to);
+}
+
+/**
+ * Ends the shown G-02 placeholder `gap` by its skip button or a key, with focus on that button first, without waiting
+ * for the position after it.
+ */
+export async function skipPlaceholder(page: Page, gap: keyof typeof PLACEHOLDER_POSITIONS, end: Exclude<PlaceholderEnd, 'natural'>): Promise<void> {
   const placeholder = page.getByTestId('mission-placeholder');
   await expect(placeholder).toHaveAttribute('data-gap', gap);
   await expect(placeholder).toHaveAttribute('data-status', 'timing');
   await expect(button(page, 'Skip')).toBeFocused();
   if (end === 'button') await button(page, 'Skip').click();
   else await page.keyboard.press(KEYS[end]);
-  return waitForFrame(page, frame => frame.position === to);
 }
 
 /**

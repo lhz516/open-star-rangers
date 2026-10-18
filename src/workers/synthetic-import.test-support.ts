@@ -141,6 +141,9 @@ export const NO_MODELS: ModelStepInput = Object.freeze({
 });
 
 let sliceExecutable: Uint8Array | undefined;
+/** The slice `MAIN/SR.NOB`, intact and with the corrupt mesh; it does not depend on the other options. */
+let sliceArchive: Uint8Array | undefined;
+let corruptSliceArchive: Uint8Array | undefined;
 
 /**
  * The covered files of a disc for every production step: `MAIN/SR.NOB` with the production graphics and flight graphics
@@ -162,9 +165,11 @@ export function sliceCoveredFiles({ scenario = syntheticScenario(defaultScenario
   const build = () => regionExecutable([...productionEffectRegionWrites(), ...PRODUCTION_GRAPHICS_REGION_WRITES, ...sources.writes], sources.fixups);
   // Only the default rule data's executable is cached.
   const executable = ruleData === undefined ? (sliceExecutable ??= build()) : build();
+  const buildArchive = () => buildImfat(10_000, productionSliceEntries(corruptMesh));
+  const archive = corruptMesh ? (corruptSliceArchive ??= buildArchive()) : (sliceArchive ??= buildArchive());
   return {
     'MAIN/SCENARIO.NOB': syntheticScenarioArchive(campaign, scenario),
-    'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries(corruptMesh)),
+    'MAIN/SR.NOB': archive.slice(),
     ...sources.archives,
     'MAIN/SRANGERS.EXE': executable.slice(),
   };

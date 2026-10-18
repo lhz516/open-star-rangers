@@ -58,12 +58,21 @@ const rawEntry = (id: number, type: string, { width, height, indices }: Syntheti
   ({ id, type, data: rawImageBlock(width, height, indices, bgr) });
 
 /**
+ * Generated once per process: the nebulae make the entries costly to build, and many disc fixtures include them. Each
+ * call returns copies, so a caller may change what it receives.
+ */
+let flightGraphicsEntries: readonly SyntheticEntry[] | undefined;
+
+const copyEntry = ({ data, relocations, ...entry }: SyntheticEntry): SyntheticEntry =>
+  ({ ...entry, data: data.slice(), ...(relocations && { relocations: [...relocations] }) });
+
+/**
  * The synthetic entries of every production flight graphic, in ascending ID order: TEX 11069 and 11089, the 15 BITM of
  * the NEBC list, the 17 ANIM entries with their production frame counts and TABL 10399. `replace` swaps an entry by ID
  * for another, or omits it when null. The DATA entry of the flight palettes is not included.
  */
 export function productionFlightGraphicsEntries(replace: Readonly<Record<number, SyntheticEntry | null>> = {}): SyntheticEntry[] {
-  const entries = [
+  flightGraphicsEntries ??= [
     rawEntry(HIT_SHIMMER_ENTRY, 'TEX', SYNTHETIC_HIT_SHIMMER),
     rawEntry(TARGET_DISPLAY_ENTRY, 'TEX', SYNTHETIC_TARGET_DISPLAY, SYNTHETIC_TARGET_DISPLAY.bgr),
     ...PRODUCTION_NEBULA_IMAGES.map((entry, index) => rawEntry(entry, 'BITM', syntheticNebula(index))),
@@ -71,8 +80,8 @@ export function productionFlightGraphicsEntries(replace: Readonly<Record<number,
       animEntry(entry, Array.from({ length: frames }, (_, frame) => syntheticExplosionFrame(animation, frame)))),
     blockEntry(VIEW_LABELS_ENTRY, 'TABL', viewLabelTable(SYNTHETIC_VIEW_LABEL)),
   ];
-  return entries
-    .map(entry => (Object.hasOwn(replace, entry.id) ? replace[entry.id] : entry))
+  return flightGraphicsEntries
+    .map(entry => (Object.hasOwn(replace, entry.id) ? replace[entry.id] : copyEntry(entry)))
     .filter((entry): entry is SyntheticEntry => entry !== null)
     .sort((left, right) => left.id - right.id);
 }
