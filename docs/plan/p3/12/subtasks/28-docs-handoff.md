@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "12"
 subtask: "28"
-updated: 2026-10-15
+updated: 2026-10-17
 ---
 
 # 28 — 文档同步与交接
@@ -31,6 +31,7 @@ updated: 2026-10-15
 ## 写入范围
 
 - `docs/engineering/**`：模块说明、源码结构、工程约定与交接。
+- `docs/guides/local-import.md`：导入后进入飞行的画面说明（已接入飞行画面，驾驶舱/HUD 待 P3-13）。
 
 ## 验收标准
 
