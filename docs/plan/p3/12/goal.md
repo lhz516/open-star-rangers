@@ -112,7 +112,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [21-sprites-screen-flash.md](./subtasks/21-sprites-screen-flash.md) | 03, 04, 13, 16 | completed |
 | [22-warp-tunnel.md](./subtasks/22-warp-tunnel.md) | 06, 16 | completed |
 | [23-pass-integration.md](./subtasks/23-pass-integration.md) | 17, 18, 19, 20, 21, 22, 31 | completed |
-| [24-rule-independence-replay.md](./subtasks/24-rule-independence-replay.md) | 13, 14, 23 | pending |
+| [24-rule-independence-replay.md](./subtasks/24-rule-independence-replay.md) | 13, 14, 23 | in-progress |
 | [25-browser-regression.md](./subtasks/25-browser-regression.md) | 23, 24 | pending |
 | [26-real-content-comparison.md](./subtasks/26-real-content-comparison.md) | 08, 25 | pending |
 | [27-presentation-verdicts.md](./subtasks/27-presentation-verdicts.md) | 26 | pending |
