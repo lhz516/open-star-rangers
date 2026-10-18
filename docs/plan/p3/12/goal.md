@@ -111,7 +111,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [20-projectile-missile-fragment-render.md](./subtasks/20-projectile-missile-fragment-render.md) | 05, 13, 17 | completed |
 | [21-sprites-screen-flash.md](./subtasks/21-sprites-screen-flash.md) | 03, 04, 13, 16 | completed |
 | [22-warp-tunnel.md](./subtasks/22-warp-tunnel.md) | 06, 16 | completed |
-| [23-pass-integration.md](./subtasks/23-pass-integration.md) | 17, 18, 19, 20, 21, 22, 31 | in-progress |
+| [23-pass-integration.md](./subtasks/23-pass-integration.md) | 17, 18, 19, 20, 21, 22, 31 | completed |
 | [24-rule-independence-replay.md](./subtasks/24-rule-independence-replay.md) | 13, 14, 23 | pending |
 | [25-browser-regression.md](./subtasks/25-browser-regression.md) | 23, 24 | pending |
 | [26-real-content-comparison.md](./subtasks/26-real-content-comparison.md) | 08, 25 | pending |
@@ -153,6 +153,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 - **2026-10-17 — 31 的接入说明（交 23）：** 运行开始时 `createStarFieldLayer({cache, palette})` 与 `createSpeedDustLayer({cache, palette, random})`（random 与星云、Warp 同一表现流），都 `addLayer` 并加入 `STAR_FIELD_GPU_PLAN`、`SPEED_DUST_GPU_PLAN`；绘制前对每个 `report.outputs` 项按次序调用 `dust.step({render: o.render, events: o.events, camera: 该 tick 的 PresentationTick.afterStep})`，静止帧不调用。星点表用独立的 Watcom `rand` 生成器（SHA-256 与 30 的 `1aa3406e…2754` 一致），不触及表现流。
 - **2026-10-17 — 18 的接入说明与取舍：** 23 在运行前调用 `prepareShimmerSurfaces({...ModelLightingContent, thresholds}, settings)`（内容错误拒绝开始）并加入 `surfaces.plan`；创建 `new HitShimmer({models, initial, random})`（random 用同一表现流，每个本方视觉一次抽取）；报告非空时在绘制前 `shimmer.advance(report.outputs)`；在世界槽中于 `ModelLightingLayer` 之后 `addLayer(new HitShimmerLayer(...))`。没有玩家对象时的命中（原版 `0x3d7ff` 读空句柄）按协调者决定取“≠ 1 → 开始”，标为高概率，恢复途径为一次基准环境读数，交 27 记入 U-027。
 - **2026-10-17 — 20 的接入说明与新事实：** 23 在运行前调用 `prepareObjectSurfaces({...ModelLightingContent, projectiles, missiles, debris, debrisModel}, settings)`（内容错误拒绝开始），加入 `surfaces.looks.plan`，再 `addLayer(new EffectObjectsLayer({surfaces, resources, effects}))`；`wireFlightRun` 目前不暴露表现效果，由 23 暴露。新事实（已确认，代码）：`0x97b14` 在网格创建时按角点 c0、c[n−2]、c[n−1] 为每个面计算一个法线，`0x7db10` 把它复制给该面的每个扇形三角形；LS6 的“每个三角形一个法线”只对三角形面成立，交 27 并入 LS6/HS8。导弹类型越界按 spec 拒绝（原版夹取，有意差异）。
+- **2026-10-17 — 23 的接入结果：** 全部 pass 经 `renderer/flight-passes.ts` 按 FC2 槽位接入；一个表现随机流由表现模块、星云起点、受击闪烁、闪光、速度尘埃与 Warp 共享，每个 tick 先推进表现模块再依次推进各 pass，使分组不影响抽取的归属（AC-17 回归测试）；内容检查全部在分配之前。合成生产包的图形与模型夹具改到各 pass 支持的范围。会话行为变化：格式错误的 tick 批次在处理完该批次此前的 tick 后才使消费者故障（此前整批校验后拒绝），两种情况会话都会故障。
 
 ## 审批
 

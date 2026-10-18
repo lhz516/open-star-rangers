@@ -62,7 +62,9 @@ describe('flight consumer', () => {
     expect(surfaces).toHaveLength(1);
     expect(renderer.ownerId).toBe(owner.ownerId);
     toDeparture(owner);
-    expect(renderer.diagnostics()).toMatchObject({ state: 'ready', runId: 1, draws: 0, resources: { geometries: 0 } });
+    // The passes acquire their fixed resources as they join the run; nothing is drawn yet.
+    expect(renderer.diagnostics()).toMatchObject({ state: 'ready', runId: 1, draws: 0, resources: { renderTargets: 0 } });
+    expect(renderer.diagnostics().resources!.geometries).toBeGreaterThan(0);
     expect(seed).toHaveBeenCalledOnce();
     skip(owner);
     surfaces[0].resize();
@@ -72,6 +74,10 @@ describe('flight consumer', () => {
     expect(mission.session().status().phase).toBe('running');
     expect(tickOf(mission)).toBe(6);
     expect(renderer.diagnostics()).toMatchObject({ draws: 3, lastTick: 6 });
+    // A frame of the run's F1 view: the passes' layers into the game image, then the screen flash onto the canvas.
+    const drawn = surfaces[0].frames.at(-1)!.map(({ scene, objects }) => scene.name || objects[0]?.name);
+    expect(drawn).toEqual(expect.arrayContaining(['flight-nebula', 'flight-starField', 'flight-speedDust', 'lit-models']));
+    expect(drawn.at(-1)).toBe('flight-screen-flash');
     // A pause delivers a still frame that only redraws.
     owner.pause();
     expect(renderer.diagnostics()).toMatchObject({ draws: 4, lastTick: 6 });
@@ -120,8 +126,8 @@ describe('flight consumer', () => {
   it('fails a start whose package content or presentation seed it refuses, and rolls the run back', async () => {
     const groups = await missionGroups('mission-startable');
     const assets = (groups.find(({ group }) => group === 'models')!.manifest as { assets: { id: string; role: string }[] }).assets;
-    // The presentation's content and the renderer's scene settings alike.
-    for (const role of ['nebula-backgrounds', 'scene-settings']) {
+    // The presentation's content, the renderer's scene settings and the passes' content alike.
+    for (const role of ['nebula-backgrounds', 'scene-settings', 'hit-shimmer']) {
       const broken = await openFlight({}, await nextSchemaJob('models', assets.find((asset) => asset.role === role)!.id));
       toDeparture(broken.owner);
       expect(broken.owner.getSnapshot()).toMatchObject({

@@ -36,7 +36,7 @@ import { COMPOSITION_GPU_PLAN, FlightComposition } from '../composition/flight-c
 import type { FlightLayer, FlightScreen } from '../composition/flight-layers.ts';
 import { logicalTransform } from '../composition/logical-screen.ts';
 import { FlightScene, type SceneCameras } from '../scene/flight-scene.ts';
-import { checkGpuPlan, EMPTY_GPU_PLAN, FlightGpuCache, isCount, type FlightGpuCounts, type FlightGpuPlan, type FlightRunBinding, type PixelSize } from './flight-gpu-cache.ts';
+import { addGpuPlans, checkGpuPlan, EMPTY_GPU_PLAN, FlightGpuCache, isCount, type FlightGpuCounts, type FlightGpuPlan, type FlightRunBinding, type PixelSize } from './flight-gpu-cache.ts';
 import { FlightRenderError } from './flight-render-error.ts';
 
 /**
@@ -124,13 +124,6 @@ export type FlightRendererOptions =
 const PATH = 'flightRenderer';
 const DRAW = `${PATH}.draw`;
 
-const withComposition = (plan: FlightGpuPlan): FlightGpuPlan => ({
-  texels: plan.texels + COMPOSITION_GPU_PLAN.texels,
-  vertices: plan.vertices + COMPOSITION_GPU_PLAN.vertices,
-  indices: plan.indices + COMPOSITION_GPU_PLAN.indices,
-  renderTargets: plan.renderTargets + COMPOSITION_GPU_PLAN.renderTargets,
-});
-
 function checkBinding(binding: FlightRunBinding): void {
   const { ownerId, runId, generation, identity } = binding ?? {};
   if (!isCount(ownerId) || !isCount(runId) || !isCount(generation) || typeof identity !== 'string' || identity.length === 0) {
@@ -202,7 +195,7 @@ class Renderer implements FlightRenderer {
     this.#requireLive(path);
     checkBinding(binding);
     checkGpuPlan(plan);
-    checkGpuPlan(withComposition(plan));
+    checkGpuPlan(addGpuPlans(plan, COMPOSITION_GPU_PLAN));
     const scene = new FlightScene(settings?.deviceValues);
     if (binding.ownerId !== this.ownerId) throw new FlightRenderError('invalid-input', path, `binds owner ${binding.ownerId} to the renderer of owner ${this.ownerId}`);
     if (this.#run) throw new FlightRenderError('invalid-state', path, `is not allowed while run ${this.#run.binding.runId} is bound`);

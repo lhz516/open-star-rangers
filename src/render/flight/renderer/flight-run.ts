@@ -1,11 +1,15 @@
 /**
  * Wires one run to the flight presentation module and the flight renderer (docs/plan/p3/12/spec.md: 渲染器生命周期;
  * docs/plan/p3/04/spec.md: 帧后逐 tick 输出（P3-12 的修订）, 消费者接线与释放). Called while the run is held at tick 0,
- * before its first frame: the run's presentation module starts from the tick-0 Render State with a presentation random
- * source of its own seed, the presentation effects (P3-12/13) and the destruction camera (P3-12/14), the renderer binds
- * the run with the package's scene settings, and the run's frame consumer advances the module by each frame's per-tick
- * outputs, in order, then draws with the cameras after the steps of the previous and the current tick. A still frame,
- * whose report is null, advances nothing and only redraws.
+ * before its first frame: the run's presentation random source is created from its own seed, the presentation module
+ * starts from the tick-0 Render State with it, the presentation effects (P3-12/13) and the destruction camera
+ * (P3-12/14), the renderer binds the run with the package's scene settings and the passes' whole GPU plan, and the
+ * passes join the run's composition (flight-passes.ts), drawing from the same random source. The run's frame consumer
+ * takes each frame's per-tick outputs in order, advancing the module by one tick and then stepping the passes by it, so
+ * every draw from the shared source goes to the same consumer however the ticks are grouped into frames; then it draws
+ * with the cameras after the steps of the previous and the current tick. A frame without a tick, a still frame whose
+ * report is null included, advances nothing and only redraws. A batch is checked one tick at a time: a tick that does
+ * not continue the run faults the consumer after the ticks before it were processed.
  *
  * Every acquisition is handed to `run.ownCleanup` as it is made, so the run's end, a failed start's rollback included,
  * releases it, newest first; one that cannot be handed over is released here before the error is thrown. Whatever the
@@ -15,13 +19,12 @@
 import type { GameSessionRun } from '../../../app/session/game-session.ts';
 import { RollbackError } from '../../../app/session/rollback-error.ts';
 import type { SessionCleanup } from '../../../app/session/session-host.ts';
-import type { SceneSettings } from '../../../content/flight/flight-data-content.ts';
 import { createDestructionCamera } from '../presentation/destruction-camera/destruction-camera.ts';
-import { createPresentationEffects } from '../presentation/effects/presentation-effects.ts';
-import type { PresentationContent } from '../presentation/explosion-selection.ts';
+import { createPresentationEffects, type FlightPresentationEffects } from '../presentation/effects/presentation-effects.ts';
 import { createFlightPresentation, presentationRandom, type FlightPresentation } from '../presentation/flight-presentation.ts';
 import type { SceneCameras } from '../scene/flight-scene.ts';
-import type { FlightGpuPlan, FlightRunBinding } from './flight-gpu-cache.ts';
+import type { FlightRunBinding } from './flight-gpu-cache.ts';
+import { attachFlightPasses, type PreparedFlightContent } from './flight-passes.ts';
 import { FlightRenderError } from './flight-render-error.ts';
 import type { FlightRenderer, FlightRunRender } from './flight-renderer.ts';
 
@@ -31,18 +34,16 @@ export type FlightRunHandle = Pick<GameSessionRun, 'runId' | 'renderFrame' | 'on
 export interface FlightRunInput {
   readonly renderer: FlightRenderer;
   readonly binding: FlightRunBinding;
-  /** Decoded from the package the run was created from. */
-  readonly content: PresentationContent;
-  /** Decoded from the same package: its `data/scene-settings`. */
-  readonly settings: SceneSettings;
+  /** Decoded from the package the run was created from and prepared (`prepareFlightContent`). */
+  readonly content: PreparedFlightContent;
   /** The presentation random source's uint32 seed, drawn from the host for this run; never the world's. */
   readonly seed: number;
-  /** What the run's passes will allocate in all, checked before anything is; nothing by default. */
-  readonly plan?: FlightGpuPlan;
 }
 
 export interface FlightRunWiring {
   readonly presentation: FlightPresentation;
+  /** The run's presentation effects, which the presentation module steps. */
+  readonly effects: FlightPresentationEffects;
   readonly render: FlightRunRender;
 }
 
@@ -60,12 +61,14 @@ function own(run: FlightRunHandle, cleanup: SessionCleanup): void {
   }
 }
 
-export function wireFlightRun(run: FlightRunHandle, { renderer, binding, content, settings, seed, plan }: FlightRunInput): FlightRunWiring {
+export function wireFlightRun(run: FlightRunHandle, { renderer, binding, content, seed }: FlightRunInput): FlightRunWiring {
   const { ownerId, runId } = binding;
   if (run.runId !== runId) throw new FlightRenderError('invalid-input', 'flightRun.binding', `binds run ${runId} to run ${run.runId}`);
+  const initial = run.renderFrame().current;
+  const random = presentationRandom(seed);
+  const effects = createPresentationEffects({ content: content.presentation });
   const presentation = createFlightPresentation({
-    ownerId, runId, content, initial: run.renderFrame().current, random: presentationRandom(seed),
-    effects: createPresentationEffects({ content }), destructionCamera: createDestructionCamera(),
+    ownerId, runId, content: content.presentation, initial, random, effects, destructionCamera: createDestructionCamera(),
   });
   own(run, () => {
     presentation.dispose();
@@ -79,15 +82,25 @@ export function wireFlightRun(run: FlightRunHandle, { renderer, binding, content
     unsubscribe();
     return undefined;
   });
-  const render = renderer.beginRun(binding, settings, plan);
+  const render = renderer.beginRun(binding, content.settings, content.plan);
   own(run, () => {
     render.release();
     return undefined;
   });
+  const passes = attachFlightPasses({ content, render, presentation, effects, random, initial });
+  own(run, () => {
+    passes.dispose();
+    return undefined;
+  });
   own(run, run.onFrame((frame) => {
-    if (frame.report) presentation.advance({ ownerId, runId, outputs: frame.report.outputs });
+    // One tick at a time, the module then the passes, so the shared random source gives every consumer the same draws
+    // however the ticks are grouped into frames (AC-17).
+    for (const output of frame.report?.outputs ?? []) {
+      presentation.advance({ ownerId, runId, outputs: [output] });
+      passes.step(output, presentation.camera());
+    }
     render.draw({ runId: frame.runId, render: frame.render, projection: frame.projection, cameras });
     return undefined;
   }));
-  return Object.freeze({ presentation, render });
+  return Object.freeze({ presentation, effects, render });
 }

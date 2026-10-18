@@ -46,6 +46,11 @@ export interface FlightGpuPlan {
 
 export const EMPTY_GPU_PLAN: FlightGpuPlan = Object.freeze({ texels: 0, vertices: 0, indices: 0, renderTargets: 0 });
 
+/** The plan of all of `plans` together. */
+export const addGpuPlans = (...plans: readonly FlightGpuPlan[]): FlightGpuPlan => Object.freeze(plans.reduce((sum, plan) => ({
+  texels: sum.texels + plan.texels, vertices: sum.vertices + plan.vertices, indices: sum.indices + plan.indices, renderTargets: sum.renderTargets + plan.renderTargets,
+}), EMPTY_GPU_PLAN));
+
 /** Anything the cache can release. */
 export interface Releasable {
   dispose(): void;

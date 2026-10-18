@@ -36,7 +36,7 @@ const rawIndices = (width: number, height: number, seed: number, range = 256): S
   ({ width, height, indices: Array.from({ length: width * height }, (_, pixel) => (seed * 41 + pixel * 53 + 7) % range) });
 
 /** The hit-shimmer thresholds: every value is kept as stored, including those beyond any palette's use. */
-export const SYNTHETIC_HIT_SHIMMER = rawIndices(8, 6, 3);
+export const SYNTHETIC_HIT_SHIMMER = rawIndices(4, 2, 3);
 
 /** The target display background: indices below its 16-entry embedded palette, and that palette as stored BGR triples. */
 export const SYNTHETIC_TARGET_DISPLAY = Object.freeze({
@@ -45,11 +45,11 @@ export const SYNTHETIC_TARGET_DISPLAY = Object.freeze({
 });
 
 /** Nebula background `index` of the NEBC list. */
-export const syntheticNebula = (index: number): SyntheticRawImage => rawIndices(3 + (index % 3), 4, 100 + index);
+export const syntheticNebula = (index: number): SyntheticRawImage => rawIndices(128, 128, 100 + index);
 
 /** Frame `frame` of explosion animation `animation`, both from 0: runs of both kinds, sized by animation and frame. */
 export const syntheticExplosionFrame = (animation: number, frame: number): SyntheticFrame =>
-  patternFrame(3 + (animation % 5), 3 + (frame % 3), animation * 31 + frame + 1);
+  patternFrame(3 + (animation % 5), 3 + (animation % 3), animation * 31 + frame + 1);
 
 /** Made-up bytes of the view label of sub-mode 8, including 1, 0x7F and bytes 128–255. */
 export const SYNTHETIC_VIEW_LABEL = String.fromCharCode(0x5a, 1, 0x7f, 0x80, 0xa7, 0xff, 0x20, 0x2e, 0x5a);
