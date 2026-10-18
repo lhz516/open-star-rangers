@@ -35,6 +35,7 @@ updated: 2026-10-17
 - `e2e/**`：飞行画面用例与支持代码。
 - `src/workers/import-scenarios.test-support.ts`、`src/workers/synthetic-import.test-support.ts`：合成任务包扩展。
 - `src/content/synthetic-content.test-support.ts`、`src/content/**/*.test-support.ts`：合成内容扩展。
+- `src/render/flight/**/*.test-support.ts`：浏览器测试入口与场景构建（只限测试支持文件，不改生产代码）。
 
 ## 验收标准
 
