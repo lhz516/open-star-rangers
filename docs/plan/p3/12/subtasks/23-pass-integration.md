@@ -36,6 +36,7 @@ updated: 2026-10-17
 - `src/render/flight/scene/**`：按视角选择。
 - `src/app/mission/**`：运行内容的解码与接线（星云图像、模型表面等）。
 - `src/original-data/conversion/flight-data.test-support.ts`：合成生产 RENS 的光照字段落在研究过的范围内。
+- `src/original-data/conversion/production-flight-graphics.test-support.ts`、`src/original-data/conversion/production-models.test-support.ts`：合成生产包的图形与模型落在各 pass 支持的范围内（受击闪烁尺寸、128×128 星云、同尺寸爆炸帧、部件标志与第 2 列表外壳）。
 
 ## 验收标准
 
