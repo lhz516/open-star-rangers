@@ -80,7 +80,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [02-loss-rescue-research.md](./subtasks/02-loss-rescue-research.md) | — | completed |
 | [03-messages-manual-research.md](./subtasks/03-messages-manual-research.md) | — | completed |
 | [04-original-facts.md](./subtasks/04-original-facts.md) | 01, 02, 03 | completed |
-| [05-shared-contract-gate.md](./subtasks/05-shared-contract-gate.md) | 04 | pending |
+| [05-shared-contract-gate.md](./subtasks/05-shared-contract-gate.md) | 04 | in-progress |
 | [06-evidence-reuse-audit.md](./subtasks/06-evidence-reuse-audit.md) | 01, 02 | completed |
 | [07-sampling-criteria-gate.md](./subtasks/07-sampling-criteria-gate.md) | 04, 06 | pending |
 | [08-contract-foundation.md](./subtasks/08-contract-foundation.md) | 05 | pending |
@@ -108,6 +108,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
   - 01 证明主状态 5 的失败分支在正常游戏中可达（导弹起爆与到期生成请求同帧的巧合，SCEN 3019 有 300 秒到期的编组），推翻 spec“仅调试入口可达、违反即 Core 故障”的前提。按 spec 的规则（“若研究发现正常可达反例，先修订契约与原因联合”），05 须先修订 spec 的失败原因联合与该不变量，经用户决定后再实现 08、10。
   - 01：全清掩码须由 `craftType` 导出 `0x91780`/`0x93780`，不能只靠 `side`；建议创建时拒绝总结选择值 1–12 与 ≥ 36；状态 4、5 的到期为严格比较。
   - 03：完成与信标消息进入消息行（类型 8 仪表），0x3C0 只是未画出时的过期时间，不是显示时长；spec 中“显示 0x3C0 单位”的表述须在 05 订正。
+- **2026-10-18 — 06：** 审计 205 份私有运行报告：没有运行到达全清，也没有第二次救援。可复用 P3-07 p-b-01（被毁→逃生舱计时）与 P3-09 w2-01、w1-03、t2-01（各一次首次救援，只有离散的救援后状态）。无需预实验；D-02 的缺口与建议的 F（失败链）、S（成功链）两个配方族见 `local/research/p3-11/reuse/audit.md`。
 
 ## 审批
 
