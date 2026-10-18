@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "12"
-updated: 2026-10-17
+updated: 2026-10-18
 related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-018, U-021, U-027, U-028]
 ---
 
@@ -115,7 +115,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [24-rule-independence-replay.md](./subtasks/24-rule-independence-replay.md) | 13, 14, 23 | completed |
 | [25-browser-regression.md](./subtasks/25-browser-regression.md) | 23, 24, 34 | completed |
 | [26-real-content-comparison.md](./subtasks/26-real-content-comparison.md) | 08, 25 | completed |
-| [27-presentation-verdicts.md](./subtasks/27-presentation-verdicts.md) | 26, 35 | blocked |
+| [27-presentation-verdicts.md](./subtasks/27-presentation-verdicts.md) | 26, 35 | in-progress |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 09, 23, 24, 25 | completed |
 | [30-stars-speed-dust-research.md](./subtasks/30-stars-speed-dust-research.md) | 08 | completed |
 | [31-stars-speed-dust.md](./subtasks/31-stars-speed-dust.md) | 10, 12, 16, 30, 32 | completed |
@@ -171,6 +171,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
   Evidence: 27 在 `local/research/p3-12/verdicts/` 做了两个 TEX 10151 模板与 MODL 10383 六个第 1 列表部件对照的位姿拟合：098 的 13 个孤立碎片分量（13–169 像素）模板与至少一个对照都能达到 0 个带外差异，按冻结方案 §1.6 对照未失败、比较无效；044 没有孤立碎片。颜色判据成立（T_8 下 939/939，对照 396/98/765），代码判定一致。27 的其余判定与 `docs/original` 更新已在其分支 `exec-p3-12-27` 的 `00064dbd`（工作树保留）。
   Affected acceptance: AC-19 第二项、27 的第二项验收；29。
   Resume when: 用户对 V02-C 的形状比较作出具体决定——推荐：记为外观证据缺口（恢复条件：有一张大到使对照部件拟合失败的带纹理碎片原版画面，或可识别碎片判别值的原版画面），与 B 组相同处置；或授权一次基准运行取得这样的画面。协调者于 2026-10-17 提问时用户不在。
+- **2026-10-18 — Subtask 27 resumed:** 用户选择 V02-C 的形状比较“记为外观证据缺口，不运行 DOSBox-X”（记入 [spec 审批](./spec.md#审批)）。27 在原工作树中勾选剩余验收并提交。
 
 ## 审批
 
