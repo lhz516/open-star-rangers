@@ -115,14 +115,14 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [24-rule-independence-replay.md](./subtasks/24-rule-independence-replay.md) | 13, 14, 23 | completed |
 | [25-browser-regression.md](./subtasks/25-browser-regression.md) | 23, 24, 34 | completed |
 | [26-real-content-comparison.md](./subtasks/26-real-content-comparison.md) | 08, 25 | completed |
-| [27-presentation-verdicts.md](./subtasks/27-presentation-verdicts.md) | 26, 35 | blocked |
+| [27-presentation-verdicts.md](./subtasks/27-presentation-verdicts.md) | 26, 35 | in-progress |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 09, 23, 24, 25 | completed |
 | [30-stars-speed-dust-research.md](./subtasks/30-stars-speed-dust-research.md) | 08 | completed |
 | [31-stars-speed-dust.md](./subtasks/31-stars-speed-dust.md) | 10, 12, 16, 30, 32 | completed |
 | [32-speed-share-fact.md](./subtasks/32-speed-share-fact.md) | 10, 30 | completed |
 | [33-warp-test-timeout.md](./subtasks/33-warp-test-timeout.md) | 22 | completed |
 | [34-pod-parts-start-check.md](./subtasks/34-pod-parts-start-check.md) | 20, 23, 24 | completed |
-| [35-verdict-supplement.md](./subtasks/35-verdict-supplement.md) | 26 | in-progress |
+| [35-verdict-supplement.md](./subtasks/35-verdict-supplement.md) | 26 | completed |
 | [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -165,6 +165,7 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
   Affected acceptance: AC-19、AC-20（外观部分）、S-13；29。
   Resume when: 35 完成 A1–A8 后由 27 在其工作树中重新判定；B 组与 18 的点阵网格取得用户的具体决定（批准为外观证据缺口或已批准差异、或授权最小基准运行）。27 的工作树与分支保留。
 - **2026-10-17 — 用户对 27 阻塞的决定：** B 组五项“记为外观证据缺口，不运行 DOSBox-X”；18 的点阵网格“批准为已知差异”（spec [审批](./spec.md#审批)与技术决定 4 已更新）；17 的三项限制按冻结误差带判定。27 的 B 组恢复条件已满足，剩余恢复条件为 35 完成 A1–A8。
+- **2026-10-17 — Subtask 27 resumed:** 35 已取得 A1–A8 的项目侧样本与内部量（`local/research/p3-12/verdict-supplement/out/report.md`），B 组与点阵网格已有用户决定；27 在原工作树中变基并重新判定。
 
 ## 审批
 
