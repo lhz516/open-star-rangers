@@ -77,7 +77,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-flow-result-research.md](./subtasks/01-flow-result-research.md) | — | completed |
-| [02-loss-rescue-research.md](./subtasks/02-loss-rescue-research.md) | — | in-progress |
+| [02-loss-rescue-research.md](./subtasks/02-loss-rescue-research.md) | — | completed |
 | [03-messages-manual-research.md](./subtasks/03-messages-manual-research.md) | — | completed |
 | [04-original-facts.md](./subtasks/04-original-facts.md) | 01, 02, 03 | pending |
 | [05-shared-contract-gate.md](./subtasks/05-shared-contract-gate.md) | 04 | pending |
