@@ -5,7 +5,7 @@ import { button, chooserInput, discFiles, expectNoPlayClaim, type FilePayload } 
 import { installAudioProbe } from './support/audio-playback.ts';
 import { test, expect } from './support/browser-test.ts';
 import { test as audited } from './support/audited-test.ts';
-import { endPlaceholder, enterMission, expectAdvancingTick, expectFlightCursorWithoutWebGL, missionEntry, missionFrame } from './support/mission-observations.ts';
+import { endPlaceholder, enterMission, expectAdvancingTick, expectFlightCanvas, missionEntry, missionFrame } from './support/mission-observations.ts';
 import { missionPackage, seedProductionCache } from './support/production-cache.ts';
 import { entryButton, expectSamples, firstEntry, pictureOf, pictureSamples, solidSamples, viewerDiagnostics } from './support/viewer-observations.ts';
 import { ordinaryFiles } from '../tools/compliance/distribution.ts';
@@ -152,8 +152,8 @@ audited('the menu, import page and mission flow from a restored cache run under 
   await endPlaceholder(page, 'G-02/2', 'button');
   await expectAdvancingTick(page);
   expect(await missionFrame(page)).toMatchObject({ owner, run: 1, position: 'flight' });
-  // The mission flow creates no WebGL surface; the flight view is P3-12's.
-  await expectFlightCursorWithoutWebGL(page);
+  // The flight picture's one WebGL surface (P3-12), released on return below.
+  await expectFlightCanvas(page);
   await expectNoDiagnostics(page);
   await expectNoPlayClaim(page);
   await button(page, 'Mission menu').click();

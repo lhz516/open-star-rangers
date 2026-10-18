@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { scenarioFiles } from '../src/workers/import-scenarios.test-support.ts';
 import { installBrowserProbes } from './support/browser-probes.ts';
+import { FLIGHT_SURFACE_LISTENERS } from './support/mission-observations.ts';
 import { nativeBrowser, NativeTarget, until } from './support/native-lifecycle.ts';
 
 // P3-04 subtask 11 (docs/plan/p3/04/spec.md: 会话, 衔接占位; AC-13): real page hiding of a mission run. The development
@@ -34,6 +35,10 @@ function state() {
     position: screen?.dataset.position ?? null, owner: number(screen?.dataset.owner), run: number(screen?.dataset.run), tick: number(screen?.dataset.tick),
     phase: status?.dataset.phase ?? null, pause: status?.dataset.pause ?? null,
     placeholder: document.querySelector<HTMLElement>('[data-testid="mission-placeholder"]')?.dataset.status ?? null,
+    flight: document.querySelector<HTMLElement>('[data-testid="flight-area"]')?.dataset.state ?? null,
+    flightCanvas: document.querySelector('[data-testid="flight-area"] canvas') !== null,
+    flightDraws: document.querySelector('[data-testid="dev-flight-draws"]')?.textContent ?? null,
+    flightTick: document.querySelector('[data-testid="dev-flight-last-tick"]')?.textContent ?? null,
     frames: probe.frames.pending, timers: probe.timers.pending.length,
     leaveGuards: probe.listeners.filter(entry => entry.active && entry.type === 'beforeunload' && entry.group === 'other').length,
     owned: probe.listeners.filter(entry => entry.active && ['keyboard', 'fullscreen', 'pointer-lock', 'session', 'render'].includes(entry.group)).map(entry => `${entry.group}:${entry.type}`).sort(),
@@ -79,6 +84,8 @@ const INPUT_PAGE = [
   'keyboard:blur', 'keyboard:focus', 'keyboard:pagehide', 'keyboard:pageshow', 'keyboard:visibilitychange',
   'pointer-lock:mousedown', 'pointer-lock:mousemove', 'pointer-lock:mouseup', 'pointer-lock:pointerlockchange', 'pointer-lock:pointerlockerror',
 ];
+/** The owner's flight surface's listeners (P3-12). */
+const RENDER = FLIGHT_SURFACE_LISTENERS.map(type => `render:${type}`);
 /** One tick of the formal Runtime's default step, 64 ÷ 2 = 32 Hz. */
 const TICK_MS = 1000 / 32;
 
@@ -141,7 +148,7 @@ test('native tab hiding pauses the run, which stays paused when visible until an
     // Hidden during the departure hold: its timer is revoked while hidden, and ending it on return leaves the run paused.
     await app.press('Start mission');
     const intro = await until(read, value => value.position === 'intro' && value.timers === 1, 'Introduction placeholder');
-    expect(intro).toMatchObject({ run: null, tick: null, frames: 0, leaveGuards: 0, owned: [...INPUT_PAGE, ...SESSION] });
+    expect(intro).toMatchObject({ run: null, tick: null, frames: 0, leaveGuards: 0, owned: [...INPUT_PAGE, ...RENDER, ...SESSION] });
     await app.press('Skip');
     await until(read, value => value.position === 'config', 'Start page');
     await app.press('Start');
@@ -174,7 +181,17 @@ test('native tab hiding pauses the run, which stays paused when visible until an
     await until(read, value => value.visibility === 'visible', 'Native visible return');
     await frames();
     const visiblePaused = await read();
-    expect(visiblePaused).toMatchObject({ phase: 'paused', pause: 'hidden', tick: hidden.tick, frames: 0 });
+    expect(visiblePaused).toMatchObject({ phase: 'paused', pause: 'hidden', tick: hidden.tick, frames: 0, flight: 'ready', flightCanvas: true });
+    // The flight renderer has no loop of its own (P3-12): while hidden no animation frame ran (frames 0 above), so it
+    // drew no tick past the one the hide paused at; while the run stays paused its draw count and last tick hold across
+    // real animation frames.
+    await app.press('Refresh flight render');
+    const drawn = await until(read, value => value.flightDraws !== null, 'Flight render diagnostics');
+    await frames();
+    await app.press('Refresh flight render');
+    await settle(100);
+    expect(await read()).toMatchObject({ flightDraws: drawn.flightDraws, flightTick: drawn.flightTick, tick: hidden.tick });
+    expect(Number(drawn.flightTick)).toBeLessThanOrEqual(hidden.tick!);
 
     // The resume's first frame only anchors, so each tick shown afterwards is within the time since that frame; catching
     // up the time spent hidden would add up to 5 ticks (the per-frame cap) at once.

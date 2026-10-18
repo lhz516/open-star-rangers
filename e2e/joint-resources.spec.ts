@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 import { button } from './support/app-entry.ts';
 import { test, expect } from './support/browser-test.ts';
 import {
-  chooseWingman, endPlaceholder, enterMission, expectAdvancingTick, expectStableTick, frameWindow, missionEntry, waitForFrame,
+  chooseWingman, endPlaceholder, enterMission, expectAdvancingTick, expectStableTick, FLIGHT_SURFACE_LISTENERS, frameWindow, missionEntry, waitForFrame,
 } from './support/mission-observations.ts';
 import { tabTo } from './support/keyboard-input.ts';
 import { missionPackage, seedProductionCache } from './support/production-cache.ts';
@@ -13,7 +13,8 @@ import { ResourceBalance, settleTooling } from './support/resource-balance.ts';
 // identity and restored through the real menu. While the mission shows, the owner holds the session's three lifecycle
 // listeners, the placeholders' one-shot timer, the leave guard while a run exists, and at most one animation frame
 // while the run is running, none while held, paused, in the mission menu or before a run. Back at the menu everything
-// is at the document's baseline. The mission screen has no canvas, input source or audio yet (P3-05, P3-12 to P3-14).
+// is at the document's baseline. The owner's flight surface (P3-12) holds its render listeners while the owner exists and
+// draws no frame of its own; the mission screen has no audio yet (P3-14).
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -49,7 +50,7 @@ function expectHeld(resources: OwnerResources, timers: number, leaveGuards: numb
   expect(resources.keyboard, `${what}: keyboard listener count`).toHaveLength(zoneBound ? 9 : 5);
   expect(resources.fullscreen, `${what}: full-screen listeners`).toEqual(['fullscreenchange', 'fullscreenerror']);
   expect(resources.pointerLock, `${what}: Pointer Lock listeners`).toHaveLength(5);
-  expect(resources.render, `${what}: render listeners`).toEqual([]);
+  expect(resources.render, `${what}: render listeners`).toEqual(FLIGHT_SURFACE_LISTENERS);
   expect(resources.frames, `${what}: game frames`).toMatchObject(IDLE);
   expect(resources.timers, `${what}: pending timers`).toBe(timers);
   expect(resources.leaveGuards, `${what}: leave guards`).toBe(leaveGuards);
@@ -61,7 +62,7 @@ function expectRunning(resources: OwnerResources, what: string): void {
   expect(resources.keyboard, `${what}: keyboard listeners`).toHaveLength(9);
   expect(resources.fullscreen, `${what}: full-screen listeners`).toEqual(['fullscreenchange', 'fullscreenerror']);
   expect(resources.pointerLock, `${what}: Pointer Lock listeners`).toHaveLength(5);
-  expect(resources.render, `${what}: render listeners`).toEqual([]);
+  expect(resources.render, `${what}: render listeners`).toEqual(FLIGHT_SURFACE_LISTENERS);
   expect(resources.frames.maximum, `${what}: game frames in flight`).toBeLessThanOrEqual(1);
   expect(resources.frames.delivered, `${what}: delivered game frames`).toBeGreaterThan(0);
   expect(resources.timers, `${what}: pending timers`).toBe(0);

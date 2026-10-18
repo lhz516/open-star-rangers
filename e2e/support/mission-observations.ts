@@ -93,15 +93,44 @@ export async function expectAdvancingTick(page: Page, duration = 600): Promise<{
 /** The main menu's mission entry. */
 export const missionEntry = (page: Page) => button(page, 'Start mission');
 
-/** In flight, the only canvas is the hidden 2D map cursor, not a WebGL scene. */
-export async function expectFlightCursorWithoutWebGL(page: Page): Promise<void> {
-  await expect(page.locator('canvas')).toHaveCount(1);
-  const cursor = page.getByTestId('game-input-zone').locator('canvas');
+/**
+ * The listeners of a mission owner's flight surface (P3-12) while the owner exists, by type: the pixel-ratio media
+ * query's `change`, and on the canvas Three.js's and the surface's context loss and restoration, and Three.js's context
+ * creation error.
+ */
+export const FLIGHT_SURFACE_LISTENERS = Object.freeze([
+  'change', 'webglcontextcreationerror', 'webglcontextlost', 'webglcontextlost', 'webglcontextrestored', 'webglcontextrestored',
+]);
+
+/**
+ * In flight with WebGL 2 (P3-12): the owner's flight canvas, named and drawing in the flight area, the only connected
+ * WebGL canvas the probes know, with a live context, and the hidden 2D map cursor.
+ */
+export async function expectFlightCanvas(page: Page): Promise<void> {
+  await expect(page.locator('canvas')).toHaveCount(2);
+  const flight = page.getByTestId('flight-area').locator('canvas');
+  await expect(flight).toHaveCount(1);
+  await expect(flight).toHaveAttribute('role', 'img');
+  await expect(flight).toHaveAttribute('aria-label', 'Flight view');
+  await expect(page.getByTestId('flight-area')).toHaveAttribute('data-state', 'ready');
+  await expectHiddenMapCursor(page);
+  expect(await page.evaluate(() => window.osrProbe.snapshot().canvases.filter(({ connected }) => connected).map(({ extension, lost }) => ({ extension, lost }))))
+    .toEqual([{ extension: true, lost: false }]);
+}
+
+/** The game input zone's hidden 2D map cursor, which takes no pointer events. */
+async function expectHiddenMapCursor(page: Page): Promise<void> {
+  const cursor = page.getByTestId('game-input-zone').locator('canvas[aria-hidden="true"]');
   await expect(cursor).toHaveCount(1);
-  await expect(cursor).toHaveAttribute('aria-hidden', 'true');
   await expect(cursor).toBeHidden();
   await expect(cursor).toHaveCSS('pointer-events', 'none');
   expect(await cursor.evaluate(canvas => canvas instanceof HTMLCanvasElement && canvas.getContext('2d') !== null)).toBe(true);
+}
+
+/** In flight without WebGL 2, the only canvas is the hidden 2D map cursor, not a WebGL scene. */
+export async function expectFlightCursorWithoutWebGL(page: Page): Promise<void> {
+  await expect(page.locator('canvas')).toHaveCount(1);
+  await expectHiddenMapCursor(page);
   expect(await page.evaluate(() => window.osrProbe.snapshot().canvases)).toEqual([]);
 }
 
