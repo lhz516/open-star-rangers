@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-15
+updated: 2026-10-17
 related: [B-003, B-004, B-005, B-006]
 ---
 
@@ -37,6 +37,12 @@ related: [B-003, B-004, B-005, B-006]
 各页面显示的 G 项：主菜单 G-07；介绍占位 G-02/1；开始配置 G-04、G-07，以及缺省说明中的 G-01、G-02/1、G-02/2；出发占位 G-02/2；入港与离港占位 G-02/3、G-02/4；任务壳（飞行）状态栏的 G-01、飞行输入区的 G-08–G-10 暂缺提示与缺省说明中的 G-01、G-02/1、G-02/2，运行结束且可以重开时另有 G-06；任务壳在基地视角时游戏视图内的 G-05；任务菜单 G-07、G-06。G-03 没有页面标注，由 P3-13 在驾驶舱显示屏标注。
 
 本构建尚无界面的其他 G 项见 P3-01 的[缺省清单](../plan/p3/01/spec.md#缺省清单)，由负责实现的任务加入本文。
+
+## 在制标注（非 G 项）
+
+P3-12 接入了飞行画布，但驾驶舱、HUD、视角标签与地图画面归 P3-13（[P3-12 spec：画面合成与 P3-13 接口](../plan/p3/12/spec.md#画面合成与-p3-13-接口)）。在 P3-13 接入之前，任务壳的飞行区域始终显示在制提示 “Flight rendering is connected; the cockpit and HUD are not implemented yet (P3-13).”（[FlightView.tsx](../../src/ui/mission/FlightView.tsx) 的 `flight-in-progress`，文字为 [mission-copy.ts](../../src/ui/mission/mission-copy.ts) 的 `FLIGHT_IN_PROGRESS`），构建状态说明 `MISSION_SKELETON` 也写明飞行画面在制、没有驾驶舱与 HUD。飞行画面只画世界视口（F1 为逻辑行 0–315）内的内容，驾驶舱区域保持黑色，不用项目框架冒充原版驾驶舱；屏幕闪光仍作用于整幅画面。
+
+这是在制状态，不是 G 项：不进入 `SLICE_GAPS`，不使用 `GapNote`，也不是长期豁免。P3-13 接入驾驶舱与 HUD 时移除该提示并更新构建状态说明，最迟在 P3-15 之前补齐（[render 模块说明的交接](./modules/render.md#交接)）。
 
 ## G-02 不计时与基准设置的差异
 

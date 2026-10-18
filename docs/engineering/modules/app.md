@@ -10,7 +10,7 @@ related: [ADR-0015]
 
 本文件是[源码结构指南](../source-structure.md)的模块分册，记录 `src/app/` 中已交付代码的当前 API 与契约要点。目录树、职责边界与 helper 归属以指南为准，行为契约以各任务 spec 为准；修改本模块代码的任务同步更新本文件。
 
-`src/app/` 中已交付：[P3-04](../../plan/p3/04/spec.md) 的正式 Runtime（[app/runtime/](../../../src/app/runtime/)）、游戏会话（[app/session/](../../../src/app/session/)）、DOM-free 的任务流程与所有者（[app/mission/](../../../src/app/mission/)）及其应用槽位（[app/composition/](../../../src/app/composition/) 的 `mission-slot.ts`）；P2-11 的资源持有者与任务载入诊断（[app/resources/](../../../src/app/resources/)）、查看器音频与所有者（[app/viewer/](../../../src/app/viewer/)）；P1-08 起的 DOM-free 页面流转（[app/flow/](../../../src/app/flow/)，菜单、导入、任务与查看器，内存状态，不用路由）。[App](../../../src/app/App.tsx) 是应用外壳；React hook、画面模块、应用端口与接线见[工程约定](../README.md#页面流转与任务生命周期)。P1 的合成演示所有者、演示槽位与合成 Runtime/Session 已于 P3-04 退役，见[退役记录](../source-structure.md#p3-04-合成演示退役记录)。
+`src/app/` 中已交付：[P3-04](../../plan/p3/04/spec.md) 的正式 Runtime（[app/runtime/](../../../src/app/runtime/)）、游戏会话（[app/session/](../../../src/app/session/)）、DOM-free 的任务流程与所有者（[app/mission/](../../../src/app/mission/)，含 P3-12 的飞行画面消费者与飞行内容解码，见[飞行画面](#飞行画面)）及其应用槽位（[app/composition/](../../../src/app/composition/) 的 `mission-slot.ts`）；P2-11 的资源持有者与任务载入诊断（[app/resources/](../../../src/app/resources/)）、查看器音频与所有者（[app/viewer/](../../../src/app/viewer/)）；P1-08 起的 DOM-free 页面流转（[app/flow/](../../../src/app/flow/)，菜单、导入、任务与查看器，内存状态，不用路由）。[App](../../../src/app/App.tsx) 是应用外壳；React hook、画面模块、应用端口与接线见[工程约定](../README.md#页面流转与任务生命周期)。P1 的合成演示所有者、演示槽位与合成 Runtime/Session 已于 P3-04 退役，见[退役记录](../source-structure.md#p3-04-合成演示退役记录)。
 
 ## 正式 Runtime
 
@@ -78,6 +78,16 @@ P3-05 通过 `consumers` 注册单一 `input` 阶段消费者 [createInputConsum
 - **消费者：** `MissionOwnerConsumer` 为 `{ stage: 'input' | 'ui' | 'media', connect(context) }`，`context` 为 `{ ownerId, session: { status, currentRun, onStatus }, previousClosed }`（只读视图，不能控制会话）。`connect` 返回 `{ release, attachRun?, onSessionError? }`：`attachRun(run, { ownerId, runId })` 在每个新运行的出发保持期间为它登记运行级消费者，撤销函数交给 `run.ownCleanup`，由会话在运行结束时逆序释放；`release` 返回 thenable 时为异步关闭，确认前同类资源不得重建（`previousClosed`）。
 - **离页保护：** 有运行时（transition、running、paused，以及仍保有诊断或录制的 stopped、faulted）登记一份，exit 或释放时撤销；介绍、配置与主菜单不登记。
 - **释放：** `release()` 只执行一次，重复调用返回第一次的 `{ failures, closed }`：先失效占位回调并撤销计时器，再依次释放 `input` 阶段、会话、`ui` 阶段、离页保护与 `media` 阶段；每项都尝试，第一个清理失败经槽位锁存。
+
+### 飞行画面
+
+P3-12 的飞行画面是任务所有者的一个 `media` 阶段消费者（[spec：渲染器生命周期](../../plan/p3/12/spec.md#渲染器生命周期)、[内容输入与校验](../../plan/p3/12/spec.md#内容输入与校验)），渲染器、表现模块与各 pass 的 API 见 [render 模块说明](./render.md#飞行渲染p3-12)。由 Node 测试以真实所有者、真实会话与记录表面覆盖（[flight-consumer.test.ts](../../../src/app/mission/flight-consumer.test.ts)）。
+
+- **消费者：** [flight-consumer.ts](../../../src/app/mission/flight-consumer.ts) 的 `createFlightConsumer({ holder, createSurface, seed, reportError })` 返回 `MissionOwnerConsumer<'media'>` 加 `renderer()`（连接前为 null）。一个消费者只连接一个所有者：连接时要求持有者持有完整的资源包（否则 `invalid-state`），记下它与它的内容身份（`contentIdentityKey`），创建所有者唯一的飞行表面与 `createFlightRenderer`；表面因设备没有 WebGL 2 而无法创建（`GraphicsUnavailableError`）时改为 `unavailable` 的渲染器，会话照常运行；其他创建失败（含回滚失败）使所有者创建失败。`release` 释放渲染器与表面；它在 `media` 阶段，所以在会话之后释放。
+- **运行：** `attachRun(run, { runId })` 在每个运行的出发保持中、tick 0 时调用：持有者的资源包须仍是连接时的那一份（否则 `invalid-state`）；内容由第一个开始的运行解码并 `prepareFlightContent` 一次（失败留给下一次开始重试）；再以 `{ ownerId, runId, generation, identity }` 绑定、为该运行从 `seed` 抽取一个表现种子，调用 `wireFlightRun`。内容、种子、绑定或预算的错误使该次开始失败，由所有者回滚。
+- **表现种子：** `AppPorts.mission.presentationSeed`（[ports.ts](../../../src/app/ports.ts)）与世界种子 `seed` 分开，每个运行抽一个 uint32，使测试入口给出的世界种子序列不因飞行画面而移动；浏览器实现同为 `crypto.getRandomValues`。
+- **飞行内容：** [flight-content.ts](../../../src/app/mission/flight-content.ts) 的 `flightContentOf(groups)` 从持有包的 `models` 组严格解码并按描述符核对：`explosion-table`、它所列的每个爆炸动画与 `nebula-backgrounds`（`decodeFlightDataPayload`，表现模块用），`scene-settings`（RENS 10751 的头部，渲染器用），以及各 pass 用的全部 `model`、`image`、`palette` Asset、唯一的 `flight-palette`（DATA）、唯一的 `hit-shimmer` 图像、`projectile`、`missile` 与 `debris` 效果数据各一和 `debris` 模型；再从 `logic` 组的机型表取得种类 1、2（机型 0、1）的模型，作为逃生舱来源（`podModels`）。缺少所需角色或所列动画、角色不唯一，以及任何解码错误都是内容错误，路径为 `models[<Asset ID>].<path>`（机型表为 `logic[…]`）；各 pass 需要的进一步核对在 `prepareFlightContent` 中。
+- **画面接线：** React 装配与测试 ID 见[工程约定](../README.md#页面流转与任务生命周期)。
 
 ### 任务槽位与收尾
 
