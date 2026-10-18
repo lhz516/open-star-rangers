@@ -115,14 +115,15 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 | [24-rule-independence-replay.md](./subtasks/24-rule-independence-replay.md) | 13, 14, 23 | completed |
 | [25-browser-regression.md](./subtasks/25-browser-regression.md) | 23, 24, 34 | completed |
 | [26-real-content-comparison.md](./subtasks/26-real-content-comparison.md) | 08, 25 | completed |
-| [27-presentation-verdicts.md](./subtasks/27-presentation-verdicts.md) | 26 | in-progress |
+| [27-presentation-verdicts.md](./subtasks/27-presentation-verdicts.md) | 26, 35 | blocked |
 | [28-docs-handoff.md](./subtasks/28-docs-handoff.md) | 09, 23, 24, 25 | completed |
 | [30-stars-speed-dust-research.md](./subtasks/30-stars-speed-dust-research.md) | 08 | completed |
 | [31-stars-speed-dust.md](./subtasks/31-stars-speed-dust.md) | 10, 12, 16, 30, 32 | completed |
 | [32-speed-share-fact.md](./subtasks/32-speed-share-fact.md) | 10, 30 | completed |
 | [33-warp-test-timeout.md](./subtasks/33-warp-test-timeout.md) | 22 | completed |
 | [34-pod-parts-start-check.md](./subtasks/34-pod-parts-start-check.md) | 20, 23, 24 | completed |
-| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34 | pending |
+| [35-verdict-supplement.md](./subtasks/35-verdict-supplement.md) | 26 | pending |
+| [29-final-alignment.md](./subtasks/29-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -159,6 +160,10 @@ related: [ADR-0006, ADR-0009, ADR-0015, ADR-0017, B-001, B-005, B-006, B-009, U-
 - **2026-10-17 — 34 完成：** 运行开始时按任务机体类型表（类型 0、1）得出逃生舱来源模型，缺失或少于 3 个第 1 列表部件时在分配前以 `binding-mismatch` 拒绝；合成玩家机体改为 3 个部件。延长到 120 tick 的集成测试还暴露并修复了 21 精灵层对帧分组的依赖（前一位置改为逐 tick 记录，AC-17）。
 - **2026-10-17 — 25 完成：** 基线 `pnpm test:e2e` 有 7 个失败，均因 15 加入飞行画布而旧断言仍写“任务画面没有 WebGL 画布”，25 在 e2e 中修正；最终 247 个全部通过（Chrome 155）。未能自动验证、记为限制的项：运行中改变设备像素比的通知（CDP 模拟不触发 `resolution` 媒体查询，DPR 2 在独立上下文中验证）、速度尘埃的逐粒子位置与线段端点（Node 的 31 覆盖）、导弹的逐像素外观（只验证外壳）、正式流程中的暖态 GPU 相等（改在隔离入口同 tick 比较）、P3-11 的真实被毁与救援流程（只用合成状态）。
 - **2026-10-17 — 26 完成（交 27 判定）：** 在候选 `357f49eb` 上用真实内容取得五类画面并按冻结方案逐项配对（计划与附录指纹核对一致）。成立：星云 19 个放置精确一致；星点 57/57 一致、对照全为 0；Warp 色阶与邻接；逃生舱居中。待 27 判定：与导弹爆炸重叠的 14 帧中近处机体爆炸有 1,715 个部分精灵块无法由另一精灵或三维覆盖解释（可能与 FC8 的逐块遮挡有差异）；无项目样本的缺口（导弹类型 0/2/3、弹丸记录 1/6、判别值 1/2 碎片、基地与玩家的受击闪烁、067 的基地配对、Q14-B 逐粒子期望）；G-05a 中后段与 G-05b 接缝仍为外观缺口。闪光平移露出的行在闪光调色板下为索引 0，与 044 一致。
+- **2026-10-17 — Subtask 27 blocked:** 27 已提交部分结果（worker 分支 `exec-p3-12-27` 的 `a4dba08b`：V-01 至 V-03 判定矩阵与“交 27”的 `docs/original` 更新），但 AC-19 第二项未满足：必需项中有“无法判定”。代码判定全部一致，可见性项全部一致；26 的 1,715 个部分精灵块高概率由表现层的额外爆炸解释，未见实现缺陷。
+  Evidence: 27 的完成证据与 `local/research/p3-12/verdicts/`。A 组（不需 DOSBox-X）缺项目侧样本或表现内部量：A1–A8。B 组需要基准环境或批准：B1 第 2 列表中后段（G-05a）、B2 基地与玩家受击闪烁、B3 导弹类型 0/2/3、B4 六个接缝面（G-05b）、B5 被毁视角的速度尘埃。另有实现限制待决：17 的按取整行剔除、定点跨度步进、16 位深度相等，以及 18 在绘制缓冲宽度小于 640 时按设备像素网格生成点阵（与技术决定 4 的措辞冲突）。
+  Affected acceptance: AC-19、AC-20（外观部分）、S-13；29。
+  Resume when: 35 完成 A1–A8 后由 27 在其工作树中重新判定；B 组与 18 的点阵网格取得用户的具体决定（批准为外观证据缺口或已批准差异、或授权最小基准运行）。27 的工作树与分支保留。
 
 ## 审批
 
