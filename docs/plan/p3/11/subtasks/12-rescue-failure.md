@@ -42,6 +42,7 @@ updated: 2026-10-17
 - `src/core/systems/spawn.ts`：放置服务的复用接口。
 - `src/core/world/spawn-state.ts`：来源记录的运行时字段（若 08 未覆盖）。
 - `src/core/systems/*.test.ts`：联合回归与受影响的既有测试。
+- `src/app/runtime/game-runtime-recording.test.ts`：容量停止测试改用减速为正的玩家机型记录，使耗尽后的能量救援不落入油门越界的 Core 故障（合成数据的伪影，ME-17 决定 7 不变）。
 
 ## 验收标准
 
