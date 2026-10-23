@@ -37,6 +37,7 @@ updated: 2026-10-17
 - `src/core/systems/mission-flow.ts`：锁存后转入退场。
 - `src/core/systems/launch.ts`：`0x339cc` 门禁。
 - `src/core/systems/spawn.ts`：`0x339cc` 门禁。
+- `src/core/systems/destruction.ts`：`shedFragments` 的 `0x339cc` 门禁（ME-11、ME-15：主状态 1 中不构造碎片）。
 - `src/core/world/world.ts`：完成后 step 的拒绝。
 - `src/core/errors.ts`：非锁存错误（若 D-01 新增类别）。
 - `src/core/world/*.test.ts`：完成后读取与拒绝的测试。
