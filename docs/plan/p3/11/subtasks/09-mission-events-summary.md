@@ -42,6 +42,8 @@ updated: 2026-10-17
 - `src/core/world/*.test.ts`：创建拒绝的测试。
 - `src/core/systems/*.test.ts`：受影响的既有测试。
 - `src/core/world/create-world.test-support.ts`：`eventMission` 的总结选择值改为创建时检查接受的值（ME-02）。
+- `src/original-data/formats/formats.test-support.ts`：合成 SCEN 的总结选择值改为 ME-02 接受的值。
+- `src/original-data/formats/formats.test.ts`、`src/original-data/conversion/convert-logic.test.ts`：与之对应的期望值。
 
 ## 验收标准
 
