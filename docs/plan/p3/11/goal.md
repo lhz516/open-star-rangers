@@ -91,7 +91,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [13-wingman-loss-timer.md](./subtasks/13-wingman-loss-timer.md) | 10 | completed |
 | [14-teardown-completion.md](./subtasks/14-teardown-completion.md) | 12, 13 | completed |
 | [15-projection-replay.md](./subtasks/15-projection-replay.md) | 14 | completed |
-| [16-runtime-session-ending.md](./subtasks/16-runtime-session-ending.md) | 15 | pending |
+| [16-runtime-session-ending.md](./subtasks/16-runtime-session-ending.md) | 15 | in-progress |
 | [17-result-page-ui.md](./subtasks/17-result-page-ui.md) | 16 | pending |
 | [18-browser-verification.md](./subtasks/18-browser-verification.md) | 17 | pending |
 | [19-real-content-check.md](./subtasks/19-real-content-check.md) | 07, 15 | pending |
