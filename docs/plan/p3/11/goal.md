@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "11"
-updated: 2026-10-18
+updated: 2026-10-22
 related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010, U-014, U-021, U-022, U-028, U-031]
 ---
 
@@ -80,7 +80,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [02-loss-rescue-research.md](./subtasks/02-loss-rescue-research.md) | — | completed |
 | [03-messages-manual-research.md](./subtasks/03-messages-manual-research.md) | — | completed |
 | [04-original-facts.md](./subtasks/04-original-facts.md) | 01, 02, 03 | completed |
-| [05-shared-contract-gate.md](./subtasks/05-shared-contract-gate.md) | 04 | blocked |
+| [05-shared-contract-gate.md](./subtasks/05-shared-contract-gate.md) | 04 | in-progress |
 | [06-evidence-reuse-audit.md](./subtasks/06-evidence-reuse-audit.md) | 01, 02 | completed |
 | [07-sampling-criteria-gate.md](./subtasks/07-sampling-criteria-gate.md) | 04, 06 | pending |
 | [08-contract-foundation.md](./subtasks/08-contract-foundation.md) | 05 | pending |
@@ -114,6 +114,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
   Evidence: 草稿在 worker 会话“P3-11 · 05 d-01 drafting”的工作树 `musical-happiness`（未提交）：P3-02 新增“P3-11 的契约修订（D-01）”ME-01–ME-19，P3-04 新增“终局与救援衔接（P3-11 的修订）”，P3-11 spec 的强制修订与“D-01 定稿（待用户批准）”。需批准的 11 项推荐方案见该小节与 ME-17（状态 5 失败竞态忠实复现并新增原因 `settlement-failed`；锁存 tick 起退场、下一 tick 完成；锁存后命令 `ignored`/`mission-ended`；完成后 step 为非锁存 `CoreInputError`；总结选择值只接受 ≤0 与 13–19；比例按指令顺序 f64；Warp 中能量救援油门越界与扇区放置测试的处置；`RULES_VERSION` 与快照格式各 +1、replay 格式不变；退场写视角 0x13；会话 `completed` 阶段与终局占位）。
   Affected acceptance: AC-01；05 的全部验收；08 至 23 依赖它，07 与它写入范围重叠。
   Resume when: 用户明确批准 D-01（全部推荐或逐项修改）。协调者把决定转给该 worker，由它写审批记录并提交，随后集成。
+- **2026-10-22 — Subtask 05 resumed:** 用户原话“批准 D-01 全部推荐”。协调者已把该决定转给 05 worker。
 
 ## 审批
 
