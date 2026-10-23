@@ -45,6 +45,8 @@ updated: 2026-10-17
 - `src/app/runtime/game-event-bus.ts`：新事件类型加入穷尽登记（测试已在 `src/app/**/*.test.ts` 内）。
 - `src/ui/dev/event-log.ts`、`src/ui/dev/event-log.test.ts`：新事件的字段行。
 - `src/app/mission/mission-owner.ts`：运行中衔接的占位守卫收窄为 G-02/3、G-02/4（G-02/5、G-02/6 的衔接与占位归 16、17）。
+- `tools/replay-check.ts`、`tools/replay-check.test.ts`：新事件的最长形式进入穷尽的 `LONGEST_EVENTS` 与测试的事件列表。
+- `docs/guides/tools.md`：仅当最长事件改变导致 `RECORDING_MAX_BYTES` 变化时，同步其说明。
 
 ## 验收标准
 
