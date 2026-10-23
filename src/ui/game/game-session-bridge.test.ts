@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { TICK_MS } from '../../app/runtime/game-runtime.test-support.ts';
+import { SUCCESS_COMPLETION_TICK, successSpec } from '../../app/runtime/mission-end.test-support.ts';
 import { departure, runSpec } from '../../app/session/game-session.test-support.ts';
 import { RollbackError } from '../../app/session/rollback-error.ts';
 import { GameSessionError } from '../../app/session/session-errors.ts';
 import type { MapPlayer, Projection } from '../../core/projections/projection.ts';
 import type { RenderWarp } from '../../core/projections/render-state.ts';
+import type { AssetId } from '../../content/asset-id.ts';
 import type { MissionStatus } from '../../core/world/world-state.ts';
 import { PROJECTION_SAMPLE_INTERVAL_MS, createGameSessionBridge, type GameRunBinding, type GameRunConsumer } from './game-session-bridge.ts';
 import { createGameStore } from './game-store.ts';
@@ -422,6 +424,31 @@ describe('game session bridge: 10 Hz projection sampling', () => {
   });
 });
 
+describe('game session bridge: a completed run (P3-11)', () => {
+  it('keeps a completed run attached with its final projection through the ending, and lets go of it at the exit', () => {
+    const { host, reader, session, clock, currentRun } = setupBridge();
+    session.control({ type: 'start', spec: { ...successSpec(), initialTransition: null } });
+    const run = currentRun();
+    let hostMs = 0;
+    host.deliver(hostMs);
+    while (session.status().phase === 'running') {
+      hostMs += 50 * TICK_MS;
+      clock.now = hostMs;
+      host.deliver(hostMs);
+    }
+    const { status, projection } = reader.getState();
+    expect(status).toMatchObject({ phase: 'completed', runId: 1, transition: { gap: 'G-02/8', index: 0, count: 1 } });
+    expect(status?.result).toMatchObject({ outcome: 'success', reason: { type: 'all-clear' }, completedTick: SUCCESS_COMPLETION_TICK });
+    // The completion tick's read model, published at once: its phase and frozen result, not a cleared projection.
+    expect(projection).toBe(run.projection());
+    expect(projection).toMatchObject({ clock: { tick: SUCCESS_COMPLETION_TICK }, mission: { phase: 'completed' }, result: status?.result });
+    session.control({ type: 'complete-transition', runId: 1, transitionId: (status!.transition as { transitionId: number }).transitionId });
+    expect(reader.getState()).toMatchObject({ status: { phase: 'completed', transition: null }, projection: { clock: { tick: SUCCESS_COMPLETION_TICK } } });
+    session.control({ type: 'exit' });
+    expect(reader.getState()).toMatchObject({ status: { phase: 'idle' }, projection: null });
+  });
+});
+
 describe('game session bridge: key facts published at the end of their frame', () => {
   /** A running bridge whose next frames are typed doubles of later Core read models, delivered to the bridge alone. */
   function doubles() {
@@ -457,6 +484,8 @@ describe('game session bridge: key facts published at the end of their frame', (
     ['the interaction context', (base) => ({ player: Object.freeze({ ...base.player, interactionContext: 'map' as const }) })],
     // P3-11's status after the all-clear or a failure (ME-04).
     ['the mission status', (base) => ({ mission: Object.freeze({ ...base.mission, status: 'ended' as MissionStatus }) })],
+    // The flow's phase (ME-14), such as the settlement wait after the all-clear.
+    ['the mission phase', (base) => ({ mission: Object.freeze({ ...base.mission, phase: 'settlement-wait' as const }) })],
     ['the result\'s completion', () => ({ result: FINAL_RESULT })],
     // A partition readiness: P3-06 splits the flight partition into groups, each ready on its own (P3-06 motion, P3-07 combat).
     ['the flight motion group readiness', (base) => ({
@@ -511,6 +540,19 @@ describe('game session bridge: key facts published at the end of their frame', (
     // The final result is frozen once completed: a copy is no change.
     deliver(1040, { result: Object.freeze({ ...FINAL_RESULT }) });
     expect(log).toEqual([[4, 1030]]);
+  });
+
+  it('compares the final result\'s reason and summary by their fields, not only its completion tick', () => {
+    const { log, deliver } = doubles();
+    const summary = Object.freeze({ mission: 'mission/synthetic' as AssetId, trigger: 0, range: 1 });
+    const final = (overrides: object) => ({ result: Object.freeze({ ...FINAL_RESULT, ...overrides }) as Projection['result'] });
+    const energy = Object.freeze({ type: 'third-loss' as const, loss: 'energy' as const });
+    deliver(1010, final({}));
+    deliver(1020, final({ reason: energy }));
+    deliver(1030, final({ reason: { ...energy } }));
+    deliver(1040, final({ reason: energy, summary }));
+    deliver(1050, final({ reason: energy, summary: { ...summary, range: 0 } }));
+    expect(log).toEqual([[2, 1010], [3, 1020], [5, 1040], [6, 1050]]);
   });
 });
 

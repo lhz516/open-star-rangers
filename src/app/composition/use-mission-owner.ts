@@ -4,7 +4,8 @@
  * the slot creates the owner only when it may, and only then does this hook create what the owner is given:
  * - a session host from the ports;
  * - a `ui` consumer that, as the owner connects it, creates the owner's UI store, session bridge and command feedback,
- *   binds the bridge to the owner's session and unbinds it on release;
+ *   binds the bridge to the owner's session and unbinds it on release, and binds the imported texts the result page
+ *   shows to the package the owner is opening on (docs/plan/p3/11/spec.md, 结果页、重试与返回);
  * - in development builds only, the frame timing that wraps that host, the diagnostics and the recording options. Their
  *   modules load through a dynamic import behind the compile-time `import.meta.env.DEV`, so production builds contain
  *   none of them.
@@ -30,6 +31,7 @@ import {
   developmentRecording, type MissionOwner, type MissionOwnerConsumer, type MissionOwnerSetup,
 } from '../mission/mission-owner.ts';
 import type { AppPorts } from '../ports.ts';
+import { missionTexts, type MissionTexts } from '../resources/mission-texts.ts';
 import type { ResourceHolder } from '../resources/resource-holder.ts';
 
 /** What the mission screen shows of one owner. */
@@ -42,6 +44,8 @@ export interface MissionScreenParts {
   readonly bindInputZone: (zone: HTMLElement | null) => void;
   /** Development builds only. */
   readonly diagnostics: MissionDiagnostics | null;
+  /** The imported texts of the package generation the owner bound, decoded only when read. */
+  readonly texts: MissionTexts;
 }
 
 export interface MissionOwnerHandle {
@@ -66,7 +70,7 @@ interface Assembly {
 }
 
 function assemble({ mission: ports, reportError }: AppPorts, holder: ResourceHolder): Assembly {
-  let ui: Pick<MissionScreenParts, 'store' | 'feedback'> | null = null;
+  let ui: Pick<MissionScreenParts, 'store' | 'feedback' | 'texts'> | null = null;
   let diagnostics: MissionDiagnostics | null = null;
   let mapCursor: MapCursorDrawer | null = null;
   const inputZone: { current: HTMLElement | null } = { current: null };
@@ -95,11 +99,13 @@ function assemble({ mission: ports, reportError }: AppPorts, holder: ResourceHol
   const uiConsumer: MissionOwnerConsumer = {
     stage: 'ui',
     connect({ ownerId, session }) {
+      // The owner connects its consumers while it opens, after it checked the held package: this is the package it binds.
+      const logic = holder.current()?.groups.find(({ group }) => group === 'logic');
       const store = createGameStore<MissionFlowState>(ownerId);
       const feedback = createGameCommandFeedback(store);
       const bridge = createGameSessionBridge({ store, clock: ports.clock, consumers: [feedback] });
       bridge.bind(session);
-      ui = { store, feedback };
+      ui = { store, feedback, texts: missionTexts(logic) };
       return { release: () => { bridge.unbind(); }, onSessionError: bridge.onError };
     },
   };

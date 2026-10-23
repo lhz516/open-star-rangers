@@ -105,6 +105,47 @@ button:focus-visible {
   border-collapse: collapse;
 }
 
+/* P3-11 G-06: the result page's view keeps the 4:3 box and scrolls a long summary inside it. The outcome is a word and
+   a mark; nothing rests on colour. The imported summary keeps its stored spacing and line breaks. */
+.result-page {
+  place-self: stretch;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.result-page h3,
+.result-page p {
+  margin: 0.35rem 0;
+}
+
+.result-outcome {
+  font-size: 1.25rem;
+}
+
+.result-summary-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.result-note {
+  font-size: 0.75rem;
+}
+
+.result-attempt {
+  display: grid;
+  grid-template-columns: max-content auto;
+  gap: 0.1rem 0.75rem;
+  margin: 0.25rem 0;
+}
+
+.result-attempt dd {
+  margin: 0;
+}
+
 .base-service caption {
   caption-side: bottom;
   padding-top: 0.25rem;
