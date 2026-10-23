@@ -6,9 +6,9 @@
  * - 3, the mission runs: by sub-state. In 0, a mission status `ended` (the all-clear, mission-events.ts) starts the
  *   settlement: the pre-settlement runs the all-clear test again excluding nothing, a success selects the summary
  *   (rules/mission-summary.ts), state 4 is due at c′ + 0x140, and `settlement-started`. That tick, and every later one,
- *   makes no wingman-loss test. In 1, the beacon wait (player-loss.ts), once c′ reaches its due: sub-state 2, the
- *   radio flush and the energy loss's handling, a rescue or the third loss (rescue.ts). Sub-states 3–5 are P3-10's
- *   docking (docking.ts); 2 does nothing.
+ *   makes no wingman-loss test; until then that test follows the status test (wingman-loss.ts). In 1, the beacon wait
+ *   (player-loss.ts), once c′ reaches its due: sub-state 2, the radio flush and the energy loss's handling, a rescue
+ *   or the third loss (rescue.ts). Sub-states 3–5 are P3-10's docking (docking.ts); 2 does nothing.
  * - 4, the settlement wait, once c′ is past its due (strictly): in the Warp view (view mode 1 exactly) the due moves to
  *   c′ + 0x140 (`settlement-deferred`); otherwise the radio flush, the completion message, state 5 due at c′ + 0x3C0.
  * - 5, the result delay, once c′ is past its due (strictly): the radio flush, then the latch of the settlement's
@@ -31,6 +31,7 @@ import { flushRadio } from './radio.ts';
 import { resolvePlayerLoss } from './rescue.ts';
 import { pendingSpawns } from './spawn.ts';
 import { WARP_VIEW_MODE } from './view-switch.ts';
+import { checkWingmanLossTimer } from './wingman-loss.ts';
 
 /** Clock units from the 3→4 step, or a deferral, to state 4's due (`0x18681c`). */
 export const SETTLEMENT_WAIT = 0x140;
@@ -70,6 +71,7 @@ function runMission(context: TickContext): void {
   switch (world.flow.subState) {
     case 0:
       if (world.missionStatus === 'ended') startSettlement(context);
+      else checkWingmanLossTimer(context);
       return;
     case 1:
       if (world.clock >= world.flow.beaconDeadline) expireBeacon(context);

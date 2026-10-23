@@ -88,7 +88,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [10-all-clear-settlement.md](./subtasks/10-all-clear-settlement.md) | 09 | completed |
 | [11-player-loss.md](./subtasks/11-player-loss.md) | 10 | completed |
 | [12-rescue-failure.md](./subtasks/12-rescue-failure.md) | 11 | completed |
-| [13-wingman-loss-timer.md](./subtasks/13-wingman-loss-timer.md) | 10 | in-progress |
+| [13-wingman-loss-timer.md](./subtasks/13-wingman-loss-timer.md) | 10 | completed |
 | [14-teardown-completion.md](./subtasks/14-teardown-completion.md) | 12, 13 | pending |
 | [15-projection-replay.md](./subtasks/15-projection-replay.md) | 14 | pending |
 | [16-runtime-session-ending.md](./subtasks/16-runtime-session-ending.md) | 15 | pending |
@@ -125,6 +125,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 - **2026-10-22 — 10 的交接：** 11 在 `mission-flow.ts` 的 `runMission` 中分派子状态 1（目前 case 1 直接返回）；12 在写入状态 ended、关闭生成且救援计数保持 2 之后调用导出的 `latch(context, { type: 'third-loss', loss })`；13 把僚机计时放在子状态 0 分支中 `missionStatus === 'ended'` 检查之后；14 起锁存后世界停在主状态 0，`compare.ts` 要求锁存 tick 内发出 `teardown-started`。“状态 4/5 中的损失既不救援也不失败”的入口测试留给 11/12。交 22：`core.md` 阶段表的 `mission-flow` 行应写明 `runMissionFlow`，并提到 `reportObjectEvent` 中的全清入口；`player-state.ts` 中 `heavyDamage` 的注释应改为只供 P4 勋章（ME-18）。
 - **2026-10-23 — 11 的交接：** `destroyPlayer`（0x32d74）接在 `damage.ts` 的 `destroy` 中，在击杀计数之后、`destroyEntity` 之前；`startBeaconWait`（0x33464）接在玩家每次耗尽更新之后；`mission-flow` 子状态 1 在 c′ ≥ 期限时置子状态 2 并 `flushRadio('beacon-expired')`，12 在其后调用 `resolvePlayerLoss('energy')`，并在逃生舱到期处接入 `'destroyed'`。损失停在子状态 2，等待 12。Warp 中被毁时，`switchView` 恢复 `savedLeftPage` 的 `left-page-changed` 在 `player-loss-started` 之后发出（比较器要求 `player-loss-started` 紧接其清空，同 MW-05 先例），15 若修改比较器可再议。“状态 4/5 中的损失不进入”的入口测试已在 `player-loss.test.ts` 覆盖，12 只需覆盖救援与失败一侧（主状态 ≠ 3 时 `resolvePlayerLoss` 直接返回）。测试注意：`radioScene` 在第一个 tick 才初始化玩家资源，耗尽须在其后设置。交 22：`core.md` 第 774 行与约 1010–1027 行的交接段落已过时（0x32d74、0x33464 已接入）。
 - **2026-10-23 — 12 的交接：** `resolvePlayerLoss(context, loss)` 在 `systems/rescue.ts`，接在 `destruction.ts` 的 `expireFragment`（`followedEntity := null` 之后、待移除之前）与 `mission-flow` 子状态 1（`flushRadio('beacon-expired')` 之后）；第三次损失写入状态 ended、关闭生成，救援计数保持 2 时调用 `latch`。恢复规则在 `rules/rescue.ts`；救援油门越界在 `'rescue.throttle'` 报 Core 故障（ME-17 决定 7）。13：僚机损失计时仍未接入。14/16：`game-runtime-recording` 的 131072 tick 运行现在经过一次能量救援（G-02/6，测试中释放屏障），到达救援的会话级运行会遇到 16 必须接纳的 G-02/5、G-02/6 保持。交 22：`core.md` 第 770、774 行与约 1010–1027 行已过时；已知差异列表应补上媒体零用时、不建模扇区预算（决定 8）与 G-2 的 Warp 油门故障。
+- **2026-10-23 — 13 的交接：** 0x32dec 接在 `damage.ts` 的 `destroy` 中（`destroyPlayer` 的 else 分支之后、停靠测试之前）；子状态 0 的检查为 `mission-flow` 中 `missionStatus === 'ended'` 之后的 `checkWingmanLossTimer`；`RULES_VERSION` 与快照格式不变（08 已递增，字段已序列化）。交 22：`core.md` 约第 408、1010、1023、1029 行仍把 0x32dec 与僚机损失消息写成待接入。
 
 ## 审批
 
