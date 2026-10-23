@@ -10,7 +10,7 @@ import type { MessageIdentity } from '../../core/world/world-state.ts';
  * G-03 has no page here: its message summaries are for the cockpit display P3-13 draws.
  */
 export type SliceGapId =
-  | 'G-01' | 'G-02/1' | 'G-02/2' | 'G-02/3' | 'G-02/4' | 'G-03' | 'G-04' | 'G-05' | 'G-06' | 'G-07' | 'G-08' | 'G-09' | 'G-10';
+  | 'G-01' | 'G-02/1' | 'G-02/2' | 'G-02/3' | 'G-02/4' | 'G-02/5' | 'G-02/6' | 'G-03' | 'G-04' | 'G-05' | 'G-06' | 'G-07' | 'G-08' | 'G-09' | 'G-10';
 
 export interface SliceGapCopy {
   /** What is missing or replaced, short enough for a status bar. */
@@ -46,6 +46,18 @@ export const SLICE_GAPS: Readonly<Record<SliceGapId, SliceGapCopy>> = Object.fre
     'The original plays a launch cut-scene when you leave a base. This build shows a project placeholder instead and holds the '
       + 'mission after the tick you launched in until it ends: no time passes for the missing cut-scene, and skipping it skips no '
       + 'rule. It ends after 3 seconds of visible time or when you skip it.',
+  ),
+  'G-02/5': gap(
+    'Rescue cut-scene missing (destroyed)',
+    'The original plays a rescue cut-scene after your craft is destroyed. This build shows a project placeholder instead and '
+      + 'holds the mission after the rescue tick until it ends: the rescue already happened by the rules. It ends after 3 '
+      + 'seconds of visible time or when you skip it.',
+  ),
+  'G-02/6': gap(
+    'Rescue cut-scene missing (out of energy)',
+    'The original plays a rescue cut-scene after your craft runs out of energy. This build shows a project placeholder instead '
+      + 'and holds the mission after the rescue tick until it ends: the rescue already happened by the rules. It ends after 3 '
+      + 'seconds of visible time or when you skip it.',
   ),
   'G-03': gap(
     'Communications portraits and animations missing',

@@ -86,7 +86,7 @@ export function startFailureText(failure: MissionStartFailure): { readonly text:
 }
 
 const PHASE: Readonly<Record<GameSessionStatus['phase'], string>> = Object.freeze({
-  idle: 'No run', transition: 'Departure hold', running: 'Running', paused: 'Paused', stopped: 'Stopped', faulted: 'Faulted', disposed: 'Closed',
+  idle: 'No run', transition: 'Departure hold', running: 'Running', paused: 'Paused', stopped: 'Stopped', completed: 'Completed', faulted: 'Faulted', disposed: 'Closed',
 });
 
 /** The status bar's phase text. */

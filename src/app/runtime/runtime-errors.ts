@@ -12,6 +12,11 @@ export type GameRuntimeErrorDetails =
    */
   | { readonly kind: 'transition-hold' }
   /**
+   * The formal Runtime ran its run's last tick (`mission-completed`) and refuses input, frames and the barrier's release
+   * for good; reads and the recording's export stay available. Nothing changed.
+   */
+  | { readonly kind: 'completed' }
+  /**
    * `unconfirmed` (formal Runtime only): FIFO command IDs taken into a batch whose result was never delivered, because
    * the failing step may have run part of it or the fault withheld the frame's events.
    */
@@ -33,6 +38,7 @@ export class GameRuntimeError extends Error {
       case 'command-queue-full': message = 'The pending command queue is full'; break;
       case 'recording-capacity': message = 'Runtime stopped: the recording cannot hold another tick'; break;
       case 'transition-hold': message = 'Runtime holds at a transition until the session releases it'; break;
+      case 'completed': message = 'Runtime completed its run; it runs no further tick'; break;
       case 'faulted': message = 'Runtime is faulted; create a new session to recover'; break;
     }
     super(message, 'cause' in details ? { cause: details.cause } : undefined);

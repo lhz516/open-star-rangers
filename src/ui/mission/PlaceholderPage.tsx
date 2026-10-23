@@ -14,7 +14,9 @@ import { GapNote, SkeletonNote } from './MissionParts.tsx';
 import { placeholderKeyAction, placeholderTakesFocus } from './page-keys.ts';
 
 const VARIANT = Object.freeze({ solo: 'Departure without a wingman', wingman: 'Departure with a wingman' });
-const TITLE = Object.freeze({ 'G-02/1': 'Introduction', 'G-02/2': 'Departure', 'G-02/3': 'Docking', 'G-02/4': 'Launch' });
+const TITLE = Object.freeze({ 'G-02/1': 'Introduction', 'G-02/2': 'Departure', 'G-02/3': 'Docking', 'G-02/4': 'Launch',
+  'G-02/5': 'Rescue after destruction', 'G-02/6': 'Rescue after energy loss',
+});
 
 export interface PlaceholderPageProps {
   readonly placeholder: MissionPlaceholder | MissionTransitionPlaceholder;
