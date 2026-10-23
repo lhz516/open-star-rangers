@@ -40,6 +40,7 @@ updated: 2026-10-17
 - `src/ui/mission/mission-copy.ts`：会话阶段 `completed` 的文字。
 - `src/ui/mission/PlaceholderPage.tsx`、`src/ui/mission/slice-gaps-copy.ts`：G-02/5、G-02/6 的最小占位标题与条目，使救援保持呈现可跳过的占位；最终措辞与 G-02/7–10、G-06 归 17。
 - `src/ui/game-input/input-consumer.ts` 及其测试：任何截断帧都不按运行中处理。
+- `src/ui/game/game-store.test.ts`、`src/ui/mission/mission-copy.test.ts`：状态字面量加入 `result: null`，`SLICE_GAPS` 键列表加入 G-02/5、G-02/6。
 
 ## 验收标准
 
