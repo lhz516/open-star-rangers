@@ -27,13 +27,14 @@ import { confirmBase, navigateBase, serviceBase } from './base-interior.ts';
 import { answerCommand } from './base-response.ts';
 import { judgeCommand } from './commands.ts';
 import { deliverCommand } from './communications.ts';
-import { checkDockingWait, depart, dock } from './docking.ts';
+import { depart, dock } from './docking.ts';
 import { delayedPlayerExplosionStage, expireFragment, handOff, releaseHeld, setExplosionState, updateExplosion, updateFragment } from './destruction.ts';
 import { frameEndStage } from './displays.ts';
 import { energyStage } from './energy.ts';
 import { applyAiMatchRequest, applyControlRequest, applyMatchRequest, updatePlayer, type ControlRequest, type MatchSpeedRequest } from './flight-control.ts';
 import { applyMapPoint, applyMapToggle, runMapStep, type MapPointRequest, type MapToggleRequest } from './map.ts';
 import { applySteer, expireMissile, updateMissile } from './missiles.ts';
+import { runMissionFlow } from './mission-flow.ts';
 import { moveEntities } from './movement.ts';
 import { updateObjectSets } from './object-sets.ts';
 import { engageParked } from './parked-engagement.ts';
@@ -598,8 +599,8 @@ const ruleStage = (id: string, run: () => PipelineStage['run']): PipelineStage =
  */
 export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   stage('input-registration', registerInput),
-  // 0x3266c, reading the previous clock: P3-10's docking sub-states (docking.ts); P3-11 adds flow, result and rescue.
-  stage('mission-flow', checkDockingWait),
+  // 0x3266c, reading the previous clock (mission-flow.ts): P3-11's settlement and result, P3-10's docking sub-states.
+  stage('mission-flow', runMissionFlow),
   stage('clock', advanceClock),
   stage('object-update', updateObjects),
   // Dispatcher 0x20d10. A due communications reply (0x2cd60, radio.ts; P3-10).

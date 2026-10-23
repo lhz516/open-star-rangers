@@ -85,7 +85,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [07-sampling-criteria-gate.md](./subtasks/07-sampling-criteria-gate.md) | 04, 06 | blocked |
 | [08-contract-foundation.md](./subtasks/08-contract-foundation.md) | 05 | completed |
 | [09-mission-events-summary.md](./subtasks/09-mission-events-summary.md) | 08 | completed |
-| [10-all-clear-settlement.md](./subtasks/10-all-clear-settlement.md) | 09 | in-progress |
+| [10-all-clear-settlement.md](./subtasks/10-all-clear-settlement.md) | 09 | completed |
 | [11-player-loss.md](./subtasks/11-player-loss.md) | 10 | pending |
 | [12-rescue-failure.md](./subtasks/12-rescue-failure.md) | 11 | pending |
 | [13-wingman-loss-timer.md](./subtasks/13-wingman-loss-timer.md) | 10 | pending |
@@ -122,6 +122,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
   Resume when: 用户明确批准 D-02（全部推荐或逐项修改），且仍没有新版对应结果。协调者把决定转给该 worker，由它写审批记录并提交，随后集成。
 - **2026-10-22 — 08 的交接：** `compare.ts` 已按 ME-13 强制事件次序，09 至 14 须严格按该次序发出事件（例如 `radio-flushed('player-destroyed')` 紧接在 `player-loss-started` 之前），确需改变时由 15 修改比较器。`result` 分区始终就绪，`flow.completedTick` 设置前读作进行中；桥接的结果关键字段改为 `completedTick`。在 16、17 之前，G-02/5、G-02/6 的运行中衔接没有占位页。`docs/engineering/modules/core.md` 仍写快照格式 6、`RULES_VERSION` 7，应为 7、8（replay 格式 3 不变），交 22 订正。
 - **2026-10-22 — 09 的交接：** `reportObjectEvent(context, entity, type)` 是 `0x6977c` 的唯一入口，10 在计数之后接入全清检查并发出 `all-clear`；`selectSummary` 尚无调用者，由 10 在 3→4 接入。偏差：ME-02 要求检查“在 CB-01 之后、`buildSpawnState` 之前”，两者不能同时满足（CB-01 在 `buildSpawnState` 之后），实现放在 `checkSetup` 末尾、`buildSpawnState` 之前，只影响同时出错时的优先次序。`docs/engineering/modules/core.md` 的世界创建第 3 步应补上总结选择值的拒绝，交 22。
+- **2026-10-22 — 10 的交接：** 11 在 `mission-flow.ts` 的 `runMission` 中分派子状态 1（目前 case 1 直接返回）；12 在写入状态 ended、关闭生成且救援计数保持 2 之后调用导出的 `latch(context, { type: 'third-loss', loss })`；13 把僚机计时放在子状态 0 分支中 `missionStatus === 'ended'` 检查之后；14 起锁存后世界停在主状态 0，`compare.ts` 要求锁存 tick 内发出 `teardown-started`。“状态 4/5 中的损失既不救援也不失败”的入口测试留给 11/12。交 22：`core.md` 阶段表的 `mission-flow` 行应写明 `runMissionFlow`，并提到 `reportObjectEvent` 中的全清入口；`player-state.ts` 中 `heavyDamage` 的注释应改为只供 P4 勋章（ME-18）。
 
 ## 审批
 
