@@ -89,7 +89,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [11-player-loss.md](./subtasks/11-player-loss.md) | 10 | completed |
 | [12-rescue-failure.md](./subtasks/12-rescue-failure.md) | 11 | completed |
 | [13-wingman-loss-timer.md](./subtasks/13-wingman-loss-timer.md) | 10 | completed |
-| [14-teardown-completion.md](./subtasks/14-teardown-completion.md) | 12, 13 | pending |
+| [14-teardown-completion.md](./subtasks/14-teardown-completion.md) | 12, 13 | in-progress |
 | [15-projection-replay.md](./subtasks/15-projection-replay.md) | 14 | pending |
 | [16-runtime-session-ending.md](./subtasks/16-runtime-session-ending.md) | 15 | pending |
 | [17-result-page-ui.md](./subtasks/17-result-page-ui.md) | 16 | pending |
