@@ -87,7 +87,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [09-mission-events-summary.md](./subtasks/09-mission-events-summary.md) | 08 | completed |
 | [10-all-clear-settlement.md](./subtasks/10-all-clear-settlement.md) | 09 | completed |
 | [11-player-loss.md](./subtasks/11-player-loss.md) | 10 | completed |
-| [12-rescue-failure.md](./subtasks/12-rescue-failure.md) | 11 | pending |
+| [12-rescue-failure.md](./subtasks/12-rescue-failure.md) | 11 | in-progress |
 | [13-wingman-loss-timer.md](./subtasks/13-wingman-loss-timer.md) | 10 | pending |
 | [14-teardown-completion.md](./subtasks/14-teardown-completion.md) | 12, 13 | pending |
 | [15-projection-replay.md](./subtasks/15-projection-replay.md) | 14 | pending |
