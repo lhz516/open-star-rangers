@@ -19,7 +19,7 @@ import { COMMAND_TYPES, type Command, type CommandType, type TickInput } from '.
 import { CoreFaultError, CoreInputError } from '../src/core/errors.ts';
 import { compareReplayResults, type ReplayComparison } from '../src/core/replay/compare.ts';
 import {
-  GAME_REPLAY_FORMAT, GAME_REPLAY_VERSION, PRODUCER_MAX_LENGTH, type ReplayCheckpoint, type ReplayRecord, type ReplayResult,
+  completedRun, GAME_REPLAY_FORMAT, GAME_REPLAY_VERSION, PRODUCER_MAX_LENGTH, type ReplayCheckpoint, type ReplayRecord, type ReplayResult,
 } from '../src/core/replay/recording.ts';
 import { replayRecord, type ReplayContent } from '../src/core/replay/replay.ts';
 import { RULES_VERSION } from '../src/core/replay/rules-version.ts';
@@ -33,7 +33,8 @@ import { importPackage, InputReadError, type ImportedPackage, type PackageCheckO
 // Local replay check (P3-04 S-08, AC-16): replays a Core Recording that the development build exported, as compact
 // JSON, on the content the production import job converts from a CloneCD file set, and compares the results. Output
 // holds only the error code and structural location, the content identity key, the mission Asset ID, the setup hash,
-// counts and Core's comparison: never names, coordinates, events, host paths or host error text.
+// counts, Core's comparison and whether the replayed run completed: never names, coordinates, events, host paths or
+// host error text.
 
 /** The closed set of failure codes. */
 export const REPLAY_CHECK_ERROR_CODES = Object.freeze([
@@ -54,7 +55,8 @@ export interface ReplayCheckFailure {
 /** Every report has every field; a field the check did not reach is null. */
 export interface ReplayCheckReport {
   readonly format: 'osr-replay-check';
-  readonly version: 1;
+  /** 2 since P3-11 added `completed` (docs/plan/p3/04/spec.md, 终局与救援衔接). */
+  readonly version: 2;
   /** True only when the replay's result matches the recording's in full. */
   readonly passed: boolean;
   readonly error: ReplayCheckFailure | null;
@@ -72,6 +74,11 @@ export interface ReplayCheckReport {
   readonly checkpoints: number | null;
   /** Core's comparison of the recording's result with the replay's, once the replay runs. */
   readonly comparison: ReplayComparison | null;
+  /**
+   * Once the replay runs, whether its final tick holds `mission-completed`: false for a prefix that stopped before the
+   * run's completion, which can still pass but is no complete run (docs/plan/p3/02/spec.md, ME-12).
+   */
+  readonly completed: boolean | null;
 }
 
 /**
@@ -550,10 +557,12 @@ type Phase = 'recording' | 'record' | 'result' | 'import' | 'content' | 'replay'
 type ReportFields = { -readonly [Field in keyof Omit<ReplayCheckReport, 'format' | 'version' | 'passed'>]?: ReplayCheckReport[Field] };
 
 const report = (fields: ReportFields): ReplayCheckReport => {
-  const { error = null, identity = null, mission = null, setupHash = null, finalTick = null, events = null, checkpoints = null, comparison = null } = fields;
+  const {
+    error = null, identity = null, mission = null, setupHash = null, finalTick = null, events = null, checkpoints = null, comparison = null, completed = null,
+  } = fields;
   return {
-    format: 'osr-replay-check', version: 1, passed: error === null && comparison?.match === true,
-    error, identity, mission, setupHash, finalTick, events, checkpoints, comparison,
+    format: 'osr-replay-check', version: 2, passed: error === null && comparison?.match === true,
+    error, identity, mission, setupHash, finalTick, events, checkpoints, comparison, completed,
   };
 };
 
@@ -580,6 +589,7 @@ export async function runReplayCheck(recordingPath: string, discPaths: readonly 
     const content = replayContent(groups, identity, (record as ReplayRecord).run);
     phase = 'replay';
     const actual = replay(record, content);
+    fields.completed = completedRun(actual);
     phase = 'comparison';
     fields.comparison = compareReplayResults(result, actual);
     if (!fields.comparison.match) throw new CheckStop('replay-mismatch', 'comparison');

@@ -22,8 +22,10 @@ import { CORE_LIMITS } from '../src/core/contracts/limits.ts';
 import { COMMAND_TYPES, readTickInput, type Command, type TickInput } from '../src/core/contracts/tick-input.ts';
 import { CoreInputError } from '../src/core/errors.ts';
 import { compareReplayResults } from '../src/core/replay/compare.ts';
-import { createRecordingSession, GAME_REPLAY_VERSION, type Recording } from '../src/core/replay/recording.ts';
-import { roundTrip } from '../src/core/replay/replay.test-support.ts';
+import { createRecordingSession, GAME_REPLAY_VERSION, type Recording, type ReplayResult } from '../src/core/replay/recording.ts';
+import { recordToCompletion, successInput, successScript } from '../src/core/replay/mission-end.test-support.ts';
+import { contentOf, roundTrip } from '../src/core/replay/replay.test-support.ts';
+import type * as ReplayModule from '../src/core/replay/replay.ts';
 import { replayRecord, type ReplayContent } from '../src/core/replay/replay.ts';
 import { RULES_VERSION } from '../src/core/replay/rules-version.ts';
 import { instantiableModelIds, type CreateWorldInput } from '../src/core/world/create-world.ts';
@@ -46,12 +48,20 @@ vi.mock('node:fs/promises', async importOriginal => {
   return { ...actual, open: vi.fn(actual.open) };
 });
 
+// Core's replay entry, which a test can replace for one check's replay (not its record validation): no recording on the
+// synthetic disc reaches its mission's end, as the scenario's player neither runs dry nor meets an enemy.
+vi.mock('../src/core/replay/replay.ts', async importOriginal => {
+  const actual = await importOriginal<typeof ReplayModule>();
+  return { ...actual, replayRecord: vi.fn(actual.replayRecord) };
+});
+
+
 const SCENARIO = 'mission-startable';
 const DIRECTORY_MARKER = 'PRIVATE-MARKER-replay-check';
 const directory = mkdtempSync(join(tmpdir(), `osr-replay-check-${DIRECTORY_MARKER}-`));
 afterAll(() => rmSync(directory, { recursive: true, force: true }));
 
-const REPORT_KEYS = ['format', 'version', 'passed', 'error', 'identity', 'mission', 'setupHash', 'finalTick', 'events', 'checkpoints', 'comparison'];
+const REPORT_KEYS = ['format', 'version', 'passed', 'error', 'identity', 'mission', 'setupHash', 'finalTick', 'events', 'checkpoints', 'comparison', 'completed'];
 const TICKS = 40;
 const INTERVAL = 8;
 
@@ -66,8 +76,8 @@ function printed(report: ReplayCheckReport): string {
 
 /** A report that failed with `code` at `location` before reaching anything. */
 const nothing = (code: string, location: string) => ({
-  format: 'osr-replay-check', version: 1, passed: false, error: { code, location },
-  identity: null, mission: null, setupHash: null, finalTick: null, events: null, checkpoints: null, comparison: null,
+  format: 'osr-replay-check', version: 2, passed: false, error: { code, location },
+  identity: null, mission: null, setupHash: null, finalTick: null, events: null, checkpoints: null, comparison: null, completed: null,
 });
 
 /** Writes the scenario's CloneCD file set under `into` and returns its paths. */
@@ -196,7 +206,9 @@ describe('replay check', () => {
     const report = await runReplayCheck(path, disc, { catalog });
     printed(report);
     expect(report).toEqual({
-      format: 'osr-replay-check', version: 1, passed: true, error: null, identity, ...validated(), comparison: { match: true },
+      format: 'osr-replay-check', version: 2, passed: true, error: null, identity, ...validated(), comparison: { match: true },
+      // The run stops before its mission ends (P3-11): it passes, but not as a completed run.
+      completed: false,
     });
     expect(report.mission).toBe(PRODUCTION_MISSION);
     expect(exitCode(report)).toBe(0);
@@ -321,10 +333,10 @@ describe('replay check', () => {
     ])('rejects a record with %s without replaying it', async (_, edit, location) => {
       const report = await check(edited(edit));
       expect(report).toEqual({
-        format: 'osr-replay-check', version: 1, passed: false, error: { code: 'replay-failed', location }, identity, ...validated(),
+        format: 'osr-replay-check', version: 2, passed: false, error: { code: 'replay-failed', location }, identity, ...validated(),
         mission: location === 'record.mission' ? 'mission/other' : PRODUCTION_MISSION,
         setupHash: location === 'record.setupHash' ? '0123456789abcdef' : recording.record.setupHash,
-        comparison: null,
+        comparison: null, completed: null,
       });
     });
 
@@ -355,8 +367,8 @@ describe('replay check', () => {
       const report = await runReplayCheck(path, disc, { catalog });
       printed(report);
       expect(report).toEqual({
-        format: 'osr-replay-check', version: 1, passed: false, error: { code: 'replay-mismatch', location: 'comparison' }, identity, ...validated(),
-        comparison: { match: false, ...difference },
+        format: 'osr-replay-check', version: 2, passed: false, error: { code: 'replay-mismatch', location: 'comparison' }, identity, ...validated(),
+        comparison: { match: false, ...difference }, completed: false,
       });
       expect(exitCode(report)).toBe(1);
       expect(readFileSync(path, 'utf8')).toBe(text);
@@ -391,6 +403,57 @@ describe('replay check', () => {
 
     it('reports an unexpected exception as an internal error of its phase, without its text', async () => {
       expect(await check(JSON.stringify(recording), { job: IMPORT_SCENARIOS['job-throws']() })).toEqual({ ...nothing('internal-error', 'import'), ...validated() });
+    });
+  });
+});
+
+describe('replay check of a mission\'s end (P3-11, docs/plan/p3/04/spec.md, 终局与救援衔接)', () => {
+  // Core's own recording of a synthetic success, replayed by Core to the same result (src/core/replay/mission-end-replay.test.ts).
+  let ended: Recording;
+  beforeAll(() => { ended = recordToCompletion(successInput(), successScript, 50); });
+
+  /**
+   * Checks `content` as a recording file, validating its record with Core (a missing content) but replaying with
+   * `replay`, given the content the check converted and Core's replay entry.
+   */
+  async function checkReplaying(content: string, replay: (converted: ReplayContent, core: typeof replayRecord) => ReplayResult): Promise<ReplayCheckReport> {
+    const core = vi.mocked(replayRecord).getMockImplementation()!;
+    vi.mocked(replayRecord).mockImplementation((record, converted) => (converted === null ? core(record, converted) : replay(converted, core)));
+    try {
+      return await check(content);
+    } finally {
+      vi.mocked(replayRecord).mockImplementation(core);
+    }
+  }
+
+  it('passes a recording that ends with its completion and reports it completed', async () => {
+    const report = await checkReplaying(JSON.stringify({ record: recording.record, result: ended.result }), (converted, core) => {
+      expect(converted.identity).toEqual(recording.record.content);
+      return core(ended.record, contentOf(successInput()));
+    });
+    expect(report).toEqual({
+      format: 'osr-replay-check', version: 2, passed: true, error: null, identity,
+      mission: recording.record.mission, setupHash: recording.record.setupHash,
+      finalTick: ended.result.finalTick, events: ended.result.events.length, checkpoints: ended.result.checkpoints.length,
+      comparison: { match: true }, completed: true,
+    });
+    expect(exitCode(report)).toBe(0);
+  });
+
+  it('reports a recording whose replay completes before its last tick as a failed replay at the tick after the completion', async () => {
+    const location = `record.ticks[${TICKS - 1}]`;
+    const report = await checkReplaying(JSON.stringify(recording), () => { throw new CoreInputError(location, 'after-completion'); });
+    expect(report).toEqual({
+      ...nothing('replay-failed', location), identity, ...validated(),
+    });
+  });
+
+  it('reports a replay that stops short of the completion its recording holds as a mismatch, not completed', async () => {
+    const prefix = { ...ended.record, ticks: ended.record.ticks.slice(0, -1) };
+    const report = await checkReplaying(JSON.stringify({ record: recording.record, result: ended.result }), (_, core) => core(prefix, contentOf(successInput())));
+    expect(report).toMatchObject({
+      passed: false, error: { code: 'replay-mismatch', location: 'comparison' },
+      comparison: { match: false, tick: ended.result.finalTick, kind: 'length' }, completed: false,
     });
   });
 });

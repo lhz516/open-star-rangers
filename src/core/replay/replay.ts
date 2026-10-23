@@ -20,6 +20,7 @@ import type { WorldState } from '../world/world-state.ts';
 import {
   GAME_REPLAY_FORMAT,
   GAME_REPLAY_VERSION,
+  isCompletionTick,
   readCheckpointInterval,
   readHash,
   readProducer,
@@ -136,14 +137,18 @@ export function startReplay(record: unknown, content: ReplayContent): { readonly
 /**
  * Replays `record` on `content` in a new world and returns the result recording would: the events, the checkpoints
  * and the final tick. See the module comment for the checks and errors; a CoreInputError of a tick, such as the
- * recording capacity, is at `record.ticks[k]`.
+ * recording capacity, is at `record.ticks[k]`. A tick after the one that completed the run (ME-12) is rejected before it
+ * runs, at `record.ticks[k]` with reason `after-completion`, never dropped; a record that stops before its completion
+ * replays as the incomplete prefix it is.
  */
 export function replayRecord(record: unknown, content: ReplayContent): ReplayResult {
   const { record: replayed, state } = startReplay(record, content);
   const session = recordState(state, { producer: replayed.producer, checkpointInterval: replayed.checkpointInterval });
+  let completed = false;
   replayed.ticks.forEach((input, index) => {
+    if (completed) throw new CoreInputError(`record.ticks[${index}]`, 'after-completion');
     try {
-      session.step(input);
+      completed = isCompletionTick(session.step(input));
     } catch (error) {
       throw movedTo(error, `record.ticks[${index}]`);
     }

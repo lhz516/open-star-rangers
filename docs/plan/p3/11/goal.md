@@ -90,7 +90,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [12-rescue-failure.md](./subtasks/12-rescue-failure.md) | 11 | completed |
 | [13-wingman-loss-timer.md](./subtasks/13-wingman-loss-timer.md) | 10 | completed |
 | [14-teardown-completion.md](./subtasks/14-teardown-completion.md) | 12, 13 | completed |
-| [15-projection-replay.md](./subtasks/15-projection-replay.md) | 14 | in-progress |
+| [15-projection-replay.md](./subtasks/15-projection-replay.md) | 14 | completed |
 | [16-runtime-session-ending.md](./subtasks/16-runtime-session-ending.md) | 15 | pending |
 | [17-result-page-ui.md](./subtasks/17-result-page-ui.md) | 16 | pending |
 | [18-browser-verification.md](./subtasks/18-browser-verification.md) | 17 | pending |
@@ -127,6 +127,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 - **2026-10-23 — 12 的交接：** `resolvePlayerLoss(context, loss)` 在 `systems/rescue.ts`，接在 `destruction.ts` 的 `expireFragment`（`followedEntity := null` 之后、待移除之前）与 `mission-flow` 子状态 1（`flushRadio('beacon-expired')` 之后）；第三次损失写入状态 ended、关闭生成，救援计数保持 2 时调用 `latch`。恢复规则在 `rules/rescue.ts`；救援油门越界在 `'rescue.throttle'` 报 Core 故障（ME-17 决定 7）。13：僚机损失计时仍未接入。14/16：`game-runtime-recording` 的 131072 tick 运行现在经过一次能量救援（G-02/6，测试中释放屏障），到达救援的会话级运行会遇到 16 必须接纳的 G-02/5、G-02/6 保持。交 22：`core.md` 第 770、774 行与约 1010–1027 行已过时；已知差异列表应补上媒体零用时、不建模扇区预算（决定 8）与 G-2 的 Warp 油门故障。
 - **2026-10-23 — 13 的交接：** 0x32dec 接在 `damage.ts` 的 `destroy` 中（`destroyPlayer` 的 else 分支之后、停靠测试之前）；子状态 0 的检查为 `mission-flow` 中 `missionStatus === 'ended'` 之后的 `checkWingmanLossTimer`；`RULES_VERSION` 与快照格式不变（08 已递增，字段已序列化）。交 22：`core.md` 约第 408、1010、1023、1029 行仍把 0x32dec 与僚机损失消息写成待接入。
 - **2026-10-23 — 14 的交接：** 退场在锁存 tick 的 `mission-teardown` 开始，下一 tick 完成；跨过锁存继续步进的测试现在会看到主状态 1，须在完成时停止。完成后 `world.step` 在读取输入之前抛出 `CoreInputError('step', 'mission-completed')`，不锁存。主状态 0、1 中的命令为 `ignored`/`mission-ended`；锁存 tick 中轴向输入仍生效（轴是输入，不是命令）。15：ME-12 的“录制会话同理”（录制会话在容量检查之前拒绝完成后的 step）与 `replayRecord` 的 `after-completion` 拒绝仍未实现。16：到达锁存的会话级运行现在会得到 `mission-completed`，须停止步进。交 22：`core.md` 第 280 行（`mission-teardown` 仍写“空”）、873、1007、1010 行（0x339cc 仍写“待加入”）已过时，须补上退场/完成、`mission-ended` 门禁与完成后的 `CoreInputError`；`src/core/rules/radio.ts:27` 的注释（“P3-11 adds it”）已过时。
+- **2026-10-23 — 15 的交接：** ME-12 的录制会话拒绝（完成后的 step 在读取输入与容量检查之前以 `mission-completed` 拒绝）与 `replayRecord` 在 `record.ticks[k]` 以 `after-completion` 拒绝已实现；replay-check 报告升到版本 2，加入 `completed: boolean | null`。合成光盘的任务不能靠输入到达结束（131072 tick 内无能量损失、无敌机），工具测试只替换工具的 replay 调用，改用 Core 对合成的、输入驱动的成功运行的真实 replay。合成机型记录的玩家 +0xC0 为 −2，能量救援会落入 `rescue.throttle` 故障，测试中设为 2；16、19 复用该记录时须注意。11 交来的 Warp 页变化次序保持不变（ME-13 不规定该页事件的次序）。交 22：`core.md` 的录制与 replay 小节补上上述拒绝与 `isCompletionTick`/`completedRun`；`docs/guides/tools.md` 第 20、153 行改为报告版本 2；P3-04 spec 第 454 行持久化表的 `version: 1` 已被“终局与救援衔接”的修订取代。
 
 ## 审批
 
