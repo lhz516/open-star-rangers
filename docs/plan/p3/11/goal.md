@@ -85,7 +85,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [07-sampling-criteria-gate.md](./subtasks/07-sampling-criteria-gate.md) | 04, 06 | blocked |
 | [08-contract-foundation.md](./subtasks/08-contract-foundation.md) | 05 | completed |
 | [09-mission-events-summary.md](./subtasks/09-mission-events-summary.md) | 08 | completed |
-| [10-all-clear-settlement.md](./subtasks/10-all-clear-settlement.md) | 09 | pending |
+| [10-all-clear-settlement.md](./subtasks/10-all-clear-settlement.md) | 09 | in-progress |
 | [11-player-loss.md](./subtasks/11-player-loss.md) | 10 | pending |
 | [12-rescue-failure.md](./subtasks/12-rescue-failure.md) | 11 | pending |
 | [13-wingman-loss-timer.md](./subtasks/13-wingman-loss-timer.md) | 10 | pending |
