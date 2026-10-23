@@ -83,7 +83,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [05-shared-contract-gate.md](./subtasks/05-shared-contract-gate.md) | 04 | completed |
 | [06-evidence-reuse-audit.md](./subtasks/06-evidence-reuse-audit.md) | 01, 02 | completed |
 | [07-sampling-criteria-gate.md](./subtasks/07-sampling-criteria-gate.md) | 04, 06 | blocked |
-| [08-contract-foundation.md](./subtasks/08-contract-foundation.md) | 05 | in-progress |
+| [08-contract-foundation.md](./subtasks/08-contract-foundation.md) | 05 | completed |
 | [09-mission-events-summary.md](./subtasks/09-mission-events-summary.md) | 08 | pending |
 | [10-all-clear-settlement.md](./subtasks/10-all-clear-settlement.md) | 09 | pending |
 | [11-player-loss.md](./subtasks/11-player-loss.md) | 10 | pending |
@@ -120,6 +120,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
   Evidence: 草稿在 worker 会话“P3-11 · 07 d-02 drafting”的工作树 `fictional-disco`（未提交）：本 spec 的“D-02 定稿（待用户批准）”，B-003“原版运行时测量：成功链（P3-11）”，B-005“原版运行时测量：失败链与救援（P3-11）”。时间链以游戏写入的到期为锚，分辨率 2 单位，归一化后精确；只开 F（无僚机：被毁→能量→地图打开时第三次损失）与 S（僚机 1：击杀至全清，0x140 等待内 Warp）两族。待批准的推荐：D2-1 启动预算 F 计划 1/最多 2、S 计划 1/最多 3，总计不超过 5 次，各阶段游戏/宿主时间上限；D2-2 F 的损失顺序；D2-3 预实验 t2-01 与 E-2、E-3 同样只作首次救援后的离散状态复用；D2-4 #6、#7（停靠、基地视角、Warp）、#8 仍为必需，在 F/S 中顺带捕获，取不到则 blocked，运行后由用户逐项决定；D2-5 僚机损失计时只在 S 中顺带捕获；D2-6 区分情形未出现时不加跑，只在报告中披露。
   Affected acceptance: AC-01（D-02 部分）、AC-15；07 的全部验收；19、20、21、22、23 依赖它。08 至 18 不依赖它，照常执行。
   Resume when: 用户明确批准 D-02（全部推荐或逐项修改），且仍没有新版对应结果。协调者把决定转给该 worker，由它写审批记录并提交，随后集成。
+- **2026-10-22 — 08 的交接：** `compare.ts` 已按 ME-13 强制事件次序，09 至 14 须严格按该次序发出事件（例如 `radio-flushed('player-destroyed')` 紧接在 `player-loss-started` 之前），确需改变时由 15 修改比较器。`result` 分区始终就绪，`flow.completedTick` 设置前读作进行中；桥接的结果关键字段改为 `completedTick`。在 16、17 之前，G-02/5、G-02/6 的运行中衔接没有占位页。`docs/engineering/modules/core.md` 仍写快照格式 6、`RULES_VERSION` 7，应为 7、8（replay 格式 3 不变），交 22 订正。
 
 ## 审批
 

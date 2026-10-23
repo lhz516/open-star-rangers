@@ -149,7 +149,7 @@ describe('the presentation sub-step (CB-09; D-03 item 3; RQ5, RQ8)', () => {
     expect(world.step(tickInput())).toEqual([
       { type: 'incoming-ended', tick: 73, message: STATUS, speaker: null, callback: 'docking-reply', countdownStarted: true },
     ]);
-    expect(state.flow).toEqual({ mainState: 3, subState: 4, dockingDeadline: 146 + 0x200 });
+    expect(state.flow).toMatchObject({ mainState: 3, subState: 4, dockingDeadline: 146 + 0x200 });
     expect(state.player.leftDisplay.page).toBe(0);
   });
 
@@ -162,7 +162,7 @@ describe('the presentation sub-step (CB-09; D-03 item 3; RQ5, RQ8)', () => {
       if (subState !== 0) state.player.dockingObject = addActive(scene, BASE_KIND_BIT).id;
       stepQuietly(world, 72);
       expect(world.step(tickInput()).at(-1)).toMatchObject({ type: 'incoming-ended', countdownStarted: false });
-      expect(state.flow).toEqual({ mainState: 3, subState, dockingDeadline: 5000 });
+      expect(state.flow).toMatchObject({ mainState: 3, subState, dockingDeadline: 5000 });
     }
   });
 
@@ -177,7 +177,7 @@ describe('the presentation sub-step (CB-09; D-03 item 3; RQ5, RQ8)', () => {
     const world = constructWorld(state);
     stepQuietly(world, 72);
     expect(world.step(tickInput()).at(-1)).toMatchObject({ type: 'incoming-ended', speaker: snapshotOf(first), countdownStarted: true });
-    expect(state.flow).toEqual({ mainState: 3, subState: 4, dockingDeadline: 146 + 0x200 });
+    expect(state.flow).toMatchObject({ mainState: 3, subState: 4, dockingDeadline: 146 + 0x200 });
     expect(state.player.dockingObject).toBe(second.id);
   });
 

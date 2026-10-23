@@ -1,12 +1,10 @@
 /**
  * Projection of formal Core (docs/plan/p3/02/spec.md, Projection 与 Render State): deeply frozen plain data, detached
  * from the world, in partitions. clock, mission and player are ready, and so are both groups of the flight partition:
- * motion (docs/plan/p3/06/spec.md, D-05; P3-06) and combat (P3-07, combat.ts), and so are map (P3-09, map.ts) and
- * communications (docs/plan/p3/02/spec.md, CB-14; P3-10, communications.ts). result fixes the boundary its owner fills;
- * until a rule makes it ready it is `not-implemented`, never an empty list, a zero value or a victory. The projection
- * gives only what the original shows or a rule needs, never the list of all entities. Fields the spec leaves to an
- * owner's research are `never` here: the owner defines them by revising the spec (扩展规则) before its partition can
- * become ready.
+ * motion (docs/plan/p3/06/spec.md, D-05; P3-06) and combat (P3-07, combat.ts), and so are map (P3-09, map.ts),
+ * communications (docs/plan/p3/02/spec.md, CB-14; P3-10, communications.ts) and result (P3-11, ME-14): in progress until
+ * the teardown completed, then the frozen latched result, never a victory made up from the state. The projection gives
+ * only what the original shows or a rule needs, never the list of all entities.
  */
 import type { AssetId } from '../../content/asset-id.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
@@ -24,7 +22,18 @@ import {
   type ObjectValue,
   type TargetMode,
 } from '../world/player-state.ts';
-import type { MessageIdentity, MissionStatus, MissionSubState, SpeakerSnapshot, WorldState } from '../world/world-state.ts';
+import type {
+  EndingGap,
+  MessageIdentity,
+  MissionFlow,
+  MissionResult,
+  MissionStatus,
+  MissionSubState,
+  ResultReason,
+  SpeakerSnapshot,
+  SummaryReference,
+  WorldState,
+} from '../world/world-state.ts';
 import { projectCombat } from './combat.ts';
 import { projectCommunications } from './communications.ts';
 import { projectMap } from './map.ts';
@@ -44,7 +53,17 @@ export interface MissionProjection {
   /** Null, or the index of the selected wingman option. */
   readonly wingman: number | null;
   readonly status: MissionStatus;
+  readonly phase: MissionPhase;
 }
+
+/**
+ * The mission flow's phase (ME-14): main state 3 by sub-state, 0 `normal`, 1 `beacon-wait`, 2 `destruction-sequence`,
+ * 3–5 `docking`; 4 `settlement-wait`; 5 `result-delay`; 0 and 1 `teardown`; `completed` once the teardown completed.
+ * The rescue count, the section-2 counters, the deadlines and the settlement are not given (the original does not show
+ * them in flight; diagnostics read the snapshot).
+ */
+export type MissionPhase =
+  | 'normal' | 'beacon-wait' | 'destruction-sequence' | 'docking' | 'settlement-wait' | 'result-delay' | 'teardown' | 'completed';
 
 export interface PlayerProjection {
   /** Null before the player is instantiated and after its entity is removed. */
@@ -374,18 +393,26 @@ export interface CommunicationsProjection {
   readonly player: CommunicationsPlayer | null;
 }
 
-/** A final result's rule reason and its content message: P3-11. */
-export type ResultReason = never;
-export type ResultMessageReference = never;
+export type { EndingGap, ResultReason };
+/** The summary a successful result shows: a range of the mission Asset's event triggers, not its text (ME-05). */
+export type ResultMessageReference = SummaryReference;
 
-/** The mission result (P3-11); destruction or rescue is not a default failure. */
-export type ResultReady =
+/**
+ * The mission result (P3-11, ME-14): `in-progress` until the teardown completed, the latch and the teardown included;
+ * then the frozen latched result. Destruction or rescue is not a default failure.
+ */
+export type ResultProjection =
   | { readonly readiness: 'ready'; readonly outcome: 'in-progress' }
   | {
       readonly readiness: 'ready';
-      readonly outcome: 'success' | 'failure';
+      readonly outcome: MissionResult['outcome'];
       readonly reason: ResultReason;
-      readonly message: ResultMessageReference;
+      readonly summary: ResultMessageReference | null;
+      readonly rescuesUsed: MissionResult['rescuesUsed'];
+      readonly endingGaps: readonly EndingGap[];
+      readonly playerKills: number;
+      readonly latchTick: number;
+      readonly completedTick: number;
     };
 
 export interface Projection {
@@ -395,10 +422,44 @@ export interface Projection {
   readonly flight: FlightProjection;
   readonly map: MapPartition;
   readonly communications: NotImplementedPartition | CommunicationsProjection;
-  readonly result: NotImplementedPartition | ResultReady;
+  readonly result: ResultProjection;
 }
 
-const NOT_IMPLEMENTED: NotImplementedPartition = Object.freeze({ readiness: 'not-implemented' });
+const IN_PROGRESS: ResultProjection = Object.freeze({ readiness: 'ready', outcome: 'in-progress' });
+
+/** The flow's phase (ME-14). */
+function missionPhase({ mainState, subState, completedTick }: MissionFlow): MissionPhase {
+  if (completedTick !== null) return 'completed';
+  switch (mainState) {
+    case 3:
+      return subState === 0 ? 'normal' : subState === 1 ? 'beacon-wait' : subState === 2 ? 'destruction-sequence' : 'docking';
+    case 4:
+      return 'settlement-wait';
+    case 5:
+      return 'result-delay';
+    case 0:
+    case 1:
+      return 'teardown';
+  }
+}
+
+/** The result partition (ME-14): the latched result exists whenever the teardown completed, or Core is at fault. */
+function resultProjection({ result, completedTick }: MissionFlow): ResultProjection {
+  if (completedTick === null) return IN_PROGRESS;
+  if (result === null) throw new CoreFaultError('invariant-violated', 'projection.result');
+  const { outcome, reason, summary, rescuesUsed, endingGaps, playerKills, latchTick } = result;
+  return Object.freeze({
+    readiness: 'ready',
+    outcome,
+    reason: Object.freeze({ ...reason }),
+    summary: summary === null ? null : Object.freeze({ ...summary }),
+    rescuesUsed,
+    endingGaps: Object.freeze(endingGaps.map((gap) => Object.freeze({ ...gap }))),
+    playerKills,
+    latchTick,
+    completedTick,
+  });
+}
 
 /**
  * The player's motion, or null without a player entity. A player entity always has its control state, and its steered
@@ -444,6 +505,7 @@ export function projectWorld(world: WorldState): Projection {
       rawDifficulty: config.rawDifficulty,
       wingman: config.wingman,
       status: world.missionStatus,
+      phase: missionPhase(world.flow),
     }),
     player: Object.freeze({
       entityId: player.entityId,
@@ -455,6 +517,6 @@ export function projectWorld(world: WorldState): Projection {
     flight: flightProjection(world),
     map: projectMap(world),
     communications: projectCommunications(world),
-    result: NOT_IMPLEMENTED,
+    result: resultProjection(world.flow),
   });
 }

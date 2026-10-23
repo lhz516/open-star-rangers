@@ -145,6 +145,11 @@ const LONGEST_COMMANDS: { readonly [Type in CommandType]: Extract<Command, { rea
   'drop-transponder': { type: 'drop-transponder' },
 };
 
+/** The longest Asset ID, a mission's (ASSET_ID_LIMITS.totalLength). */
+const LONGEST_MISSION = `mission/${'a'.repeat(32)}/${'b'.repeat(32)}/${'c'.repeat(32)}/${'d'.repeat(21)}` as AssetId;
+/** A summary of the longest mission, the last trigger and range (P3-11, ME-05). */
+const LONGEST_SUMMARY = { mission: LONGEST_MISSION, trigger: 1, range: 7 } as const;
+
 /** The longest form of every event variant, likewise. */
 const LONGEST_EVENTS: { readonly [Type in DomainEvent['type']]: Extract<DomainEvent, { readonly type: Type }> } = {
   'command-result': {
@@ -244,7 +249,7 @@ const LONGEST_EVENTS: { readonly [Type in DomainEvent['type']]: Extract<DomainEv
   'incoming-ended': {
     type: 'incoming-ended', tick: LAST_TICK, message: LONGEST_MESSAGE, speaker: LONGEST_SPEAKER, callback: 'docking-reply', countdownStarted: false,
   },
-  'radio-flushed': { type: 'radio-flushed', tick: LAST_TICK, cause: 'docking-cancel', removed: CORE_LIMITS.radioQueueItems, interrupted: 'loading' },
+  'radio-flushed': { type: 'radio-flushed', tick: LAST_TICK, cause: 'completion-message', removed: CORE_LIMITS.radioQueueItems, interrupted: 'loading' },
   'docking-requested': {
     type: 'docking-requested', tick: LAST_TICK, playerEntityId: SAFE, dockingObject: SAFE, previousSubState: 0, deadlineClock: SAFE, commandIndex: LAST_COMMAND,
   },
@@ -269,6 +274,30 @@ const LONGEST_EVENTS: { readonly [Type in DomainEvent['type']]: Extract<DomainEv
     type: 'transponder-deployed', tick: LAST_TICK, entityId: SAFE, creatorEntityId: SAFE, position: { x: LONGEST_F32, y: LONGEST_F32, z: LONGEST_F32 },
     orientation: Array.from({ length: 9 }, () => LONGEST_F32) as unknown as Matrix3,
   },
+  // P3-11's events (ME-13): a two-digit kind of the entry set, a selector of −128 with a summary, a destruction loss
+  // from view 0xFF, a success with both ending gaps, and the entity limit as a count.
+  'all-clear': { type: 'all-clear', tick: LAST_TICK, entityId: SAFE, kindBit: 19, eventClass: 2 },
+  'settlement-started': { type: 'settlement-started', tick: LAST_TICK, outcome: 'success', summary: LONGEST_SUMMARY, summarySelector: -128, dueClock: SAFE },
+  'settlement-deferred': { type: 'settlement-deferred', tick: LAST_TICK, dueClock: SAFE },
+  'flight-message': { type: 'flight-message', tick: LAST_TICK, message: 'missionComplete' },
+  'player-loss-started': {
+    type: 'player-loss-started', tick: LAST_TICK, playerEntityId: SAFE, loss: 'destroyed', previousSubState: 0, previousViewMode: LONGEST_VIEW_MODE,
+    viewSwitched: true,
+  },
+  'player-rescued': {
+    type: 'player-rescued', tick: LAST_TICK, playerEntityId: SAFE, loss: 'destroyed', rescues: 2, baseEntityId: SAFE, candidates: CORE_LIMITS.entities,
+    position: LONGEST_VECTOR, orientation: Array.from({ length: 9 }, () => LONGEST_NUMBER) as unknown as Matrix3,
+  },
+  'result-latched': {
+    type: 'result-latched', tick: LAST_TICK, result: {
+      outcome: 'success', reason: { type: 'all-clear' }, summary: LONGEST_SUMMARY, rescuesUsed: 2,
+      endingGaps: [{ gap: 'G-02/8', variant: 'wingman' }, { gap: 'G-02/9', row: 19 }], playerKills: 0x7fffffff, latchTick: LAST_TICK,
+    },
+  },
+  'teardown-started': { type: 'teardown-started', tick: LAST_TICK, entities: CORE_LIMITS.entities },
+  'mission-completed': { type: 'mission-completed', tick: LAST_TICK, outcome: 'success' },
+  'wingman-loss-timer-started': { type: 'wingman-loss-timer-started', tick: LAST_TICK, wingmanEntityId: SAFE, dueClock: SAFE },
+  'wingman-loss-timer-expired': { type: 'wingman-loss-timer-expired', tick: LAST_TICK, queued: false },
 };
 
 /** The content identity of every package the production import job converts. */
@@ -286,7 +315,7 @@ export const LONGEST_RECORDING_PARTS = Object.freeze({
     // A control character is written as a six-character escape, the most any UTF-16 code unit takes.
     producer: '\u0000'.repeat(PRODUCER_MAX_LENGTH),
     content: PRODUCTION_IDENTITY,
-    mission: `mission/${'a'.repeat(32)}/${'b'.repeat(32)}/${'c'.repeat(32)}/${'d'.repeat(21)}` as AssetId,
+    mission: LONGEST_MISSION,
     setupHash: HASH,
     // World creation admits a raw difficulty of 0 to 100, null or a roster index below 16, a uint32 seed and a positive even safe step.
     run: { rawDifficulty: 100, wingman: null, seed: 0xffffffff, clockUnitsPerTick: SAFE - 1 },

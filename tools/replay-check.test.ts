@@ -428,6 +428,9 @@ describe('recording size limit', () => {
       'incoming-started', 'radio-flushed', 'radio-queued', 'radio-taken', 'transition',
       // P3-08's.
       'transponder-deployed', 'wingman-command-consumed',
+      // P3-11's.
+      'all-clear', 'flight-message', 'mission-completed', 'player-loss-started', 'player-rescued', 'result-latched', 'settlement-deferred',
+      'settlement-started', 'teardown-started', 'wingman-loss-timer-expired', 'wingman-loss-timer-started',
     ].sort());
     // P3-09's arrival is the longest event (docs/plan/p3/02/spec.md, MW-05).
     expect(Math.max(...Object.values(events).map((event) => JSON.stringify(event).length))).toBe(JSON.stringify(events['warp-completed']).length);
@@ -465,6 +468,33 @@ describe('recording size limit', () => {
       finalTick: checkpoint.tick,
     };
     expect(compareReplayResults(result, result)).toEqual({ match: true });
+    // P3-11's (ME-11, ME-13), each in its causal place over the last seven ticks: the wingman loss message's expiry, the
+    // player's destruction with its page change, flush and loss, the wingman's destruction with its timer and a world
+    // exit with the all-clear; the escape pod's rescue; the settlement and its deferral; the completion message; the
+    // result's due, its latch and the teardown; the completion in the final tick.
+    const safe = Number.MAX_SAFE_INTEGER;
+    const at = <Event extends { readonly tick: number }>(event: Event, ticks: number, change: Partial<Event> = {}): Event =>
+      ({ ...event, ...change, tick: checkpoint.tick - ticks });
+    const destruction = (entityId: number, kindBit: number) => [
+      at(events.hit, 6, { victimEntityId: entityId, victimKindBit: kindBit }), at(events['object-destroyed'], 6, { entityId, kindBit }),
+    ];
+    const mission = {
+      events: [
+        at(events['wingman-loss-timer-expired'], 6), ...destruction(safe, 0), at(events['left-page-changed'], 6),
+        at(events['radio-flushed'], 6, { cause: 'player-destroyed' }), at(events['player-loss-started'], 6),
+        ...destruction(safe - 1, 1), at(events['wingman-loss-timer-started'], 6, { wingmanEntityId: safe - 1 }),
+        at(events['object-left-world'], 6, { kindBit: 19 }), at(events['all-clear'], 6),
+        at(events['fragment-expired'], 5, { outcome: 'escape-pod' }), at(events['weapon-selected'], 5), at(events['player-rescued'], 5),
+        at(events.transition, 5, { gap: 'G-02/5' }),
+        at(events['settlement-started'], 4), at(events['settlement-deferred'], 3), at(events['radio-flushed'], 2), at(events['flight-message'], 2),
+        at(events['radio-flushed'], 1, { cause: 'result-due' }),
+        at(events['result-latched'], 1, { result: { ...events['result-latched'].result, latchTick: checkpoint.tick - 1 } }),
+        at(events['teardown-started'], 1), events['mission-completed'],
+      ],
+      checkpoints: [{ tick: 0, hash: checkpoint.hash }, checkpoint],
+      finalTick: checkpoint.tick,
+    };
+    expect(compareReplayResults(mission, mission)).toEqual({ match: true });
   });
 });
 

@@ -56,6 +56,21 @@ function sliceWith(change: (mission: MissionDraft) => void): MissionDraft {
 }
 
 describe('world creation (P3-02 AC-02, 运行配置与世界创建)', () => {
+  it('starts P3-11\'s flow in main state 3, sub-state 0, with nothing pending, and one zero counter set per section-2 trigger (ME-03, ME-04)', () => {
+    const flow = {
+      mainState: 3, subState: 0, dockingDeadline: 0, beaconDeadline: 0, settlementDeadline: 0, rescues: 0,
+      wingmanLoss: { pending: false, dueClock: 0 }, settlement: null, result: null, completedTick: null,
+    };
+    const plain = create();
+    expect(plain.flow).toEqual(flow);
+    expect(plain.missionEvents).toEqual({ triggers: [] });
+    const events = create({ mission: eventMission() });
+    expect(events.flow).toEqual(flow);
+    expect(events.missionEvents).toEqual({ triggers: [{ instantiated: 0, destroyed: 0, left: 0 }, { instantiated: 0, destroyed: 0, left: 0 }] });
+    // Each trigger has its own counters.
+    expect(events.missionEvents.triggers[0]).not.toBe(events.missionEvents.triggers[1]);
+  });
+
   it('builds tick 0: clock 0, no entities, view mode 0xC, mission built, the queue ready and the run configuration in effect', () => {
     const state = create();
     expect(state).toMatchObject({ tick: 0, clock: 0, missionStatus: 'built', player: { entityId: null, viewMode: 0xc, previousViewMode: 0xc, subMode: 0 } });

@@ -17,6 +17,12 @@ function unboundBridge(consumers: readonly GameRunConsumer[] = [], ownerId = 2) 
 
 const throwingConsumer = (cause: unknown): GameRunConsumer => ({ attach: () => { throw cause; } });
 
+/** A completed run's result (docs/plan/p3/02/spec.md, ME-14). */
+const FINAL_RESULT: Projection['result'] = Object.freeze({
+  readiness: 'ready', outcome: 'failure', reason: Object.freeze({ type: 'third-loss', loss: 'destroyed' }), summary: null, rescuesUsed: 2,
+  endingGaps: Object.freeze([Object.freeze({ gap: 'G-02/7', variant: 'destroyed' })]), playerKills: 3, latchTick: 50, completedTick: 51,
+});
+
 /** A started bridge with its first frame anchored at clock 0. */
 function running() {
   const context = setupBridge();
@@ -440,7 +446,7 @@ describe('game session bridge: key facts published at the end of their frame', (
       player: Object.freeze({ ...base.player }),
       // New motion and combat readings within their ready groups are sampled, not published at once.
       flight: Object.freeze({ motion: Object.freeze({ readiness: 'ready' as const, player: null }), combat: Object.freeze({ readiness: 'ready' as const, player: null }) }),
-      result: Object.freeze({ readiness: 'not-implemented' as const }),
+      result: Object.freeze({ readiness: 'ready' as const, outcome: 'in-progress' as const }),
     });
     expect(log).toEqual([]);
     deliver(1100);
@@ -449,9 +455,9 @@ describe('game session bridge: key facts published at the end of their frame', (
 
   it.each<[string, (base: Projection) => Partial<Omit<Projection, 'clock'>>]>([
     ['the interaction context', (base) => ({ player: Object.freeze({ ...base.player, interactionContext: 'map' as const }) })],
-    // P3-11 adds mission statuses; the double stands for one.
-    ['the mission status', (base) => ({ mission: Object.freeze({ ...base.mission, status: 'running' as unknown as MissionStatus }) })],
-    ['the result readiness', () => ({ result: Object.freeze({ readiness: 'ready' as const, outcome: 'in-progress' as const }) })],
+    // P3-11's status after the all-clear or a failure (ME-04).
+    ['the mission status', (base) => ({ mission: Object.freeze({ ...base.mission, status: 'ended' as MissionStatus }) })],
+    ['the result\'s completion', () => ({ result: FINAL_RESULT })],
     // A partition readiness: P3-06 splits the flight partition into groups, each ready on its own (P3-06 motion, P3-07 combat).
     ['the flight motion group readiness', (base) => ({
       flight: Object.freeze({ motion: Object.freeze({ readiness: 'not-implemented' as const }), combat: base.flight.combat }),
@@ -495,14 +501,16 @@ describe('game session bridge: key facts published at the end of their frame', (
     expect(log).toEqual([[2, 1010], [4, 1030], [5, 1040], [7, 1060]]);
   });
 
-  it('publishes a change of result content inside a ready result', () => {
+  it('publishes the result\'s completion inside the ready result at once, and no copy of either state', () => {
     const { log, deliver } = doubles();
+    // The real projection's result is ready and in progress from the start (ME-14).
     const inProgress = Object.freeze({ readiness: 'ready' as const, outcome: 'in-progress' as const });
     deliver(1010, { result: inProgress });
     deliver(1020, { result: Object.freeze({ ...inProgress }) });
-    // P3-11 defines the reason and message references; the double stands for a final result.
-    deliver(1030, { result: Object.freeze({ readiness: 'ready', outcome: 'failure', reason: 'r', message: 'm' }) as unknown as Projection['result'] });
-    expect(log).toEqual([[2, 1010], [4, 1030]]);
+    deliver(1030, { result: FINAL_RESULT });
+    // The final result is frozen once completed: a copy is no change.
+    deliver(1040, { result: Object.freeze({ ...FINAL_RESULT }) });
+    expect(log).toEqual([[4, 1030]]);
   });
 });
 

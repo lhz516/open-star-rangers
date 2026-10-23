@@ -1,4 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
+import type { AssetId } from '../../content/asset-id.ts';
 import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import { snapshotHash } from '../replay/snapshot.ts';
 import { constructWorld } from '../world/world.ts';
@@ -6,7 +7,7 @@ import {
   addPlayerEntity, entityInit, expectFault, stillEntityInit, testState, thrownBy, tickInput, TEST_ORIENTATION,
 } from '../world/world.test-support.ts';
 import type { SteeredMovementBlock } from '../world/entity-table.ts';
-import type { WorldState } from '../world/world-state.ts';
+import type { MissionResult, WorldState } from '../world/world-state.ts';
 import {
   PLAYER_SPEED_LIMIT_STATUS,
   projectWorld,
@@ -28,18 +29,18 @@ import {
   type MapPlayer,
   type MapReady,
   type MenuContentReference,
+  type MissionPhase,
   type MotionPlayer,
   type MotionReady,
   type NotImplementedPartition,
   type Projection,
-  type ResultReady,
+  type ResultMessageReference,
+  type ResultProjection,
   type SpeedLimitStatus,
   type WeaponListReading,
   type WarpRequestReading,
   type WeaponRecordReference,
 } from './projection.ts';
-
-const NOT_IMPLEMENTED = { readiness: 'not-implemented' };
 
 /** The motion group's player reading. */
 function motionPlayer(projection: Projection): MotionPlayer | null {
@@ -61,7 +62,7 @@ function assistedState(): WorldState {
 }
 
 describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-05)', () => {
-  it('has the clock, mission, player, map and communications partitions and both flight groups ready, result not implemented', () => {
+  it('has every partition and both flight groups ready, the result in progress', () => {
     const state = testState({ clockUnitsPerTick: 4, wingman: 3, rawDifficulty: 50, group: 1, slot: 2 });
     const world = constructWorld(state);
     world.step(tickInput());
@@ -69,7 +70,7 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
     Object.assign(player.movement!, { speed: 30.5, commandedSpeed: 41.25 });
     expect(world.projection()).toEqual({
       clock: { tick: 1, clock: 4, clockUnitsPerTick: 4 },
-      mission: { mission: 'mission/first-campaign', group: 1, slot: 2, rawDifficulty: 50, wingman: 3, status: 'built' },
+      mission: { mission: 'mission/first-campaign', group: 1, slot: 2, rawDifficulty: 50, wingman: 3, status: 'built', phase: 'normal' },
       player: { entityId: player.id, viewMode: 0x0c, previousViewMode: 0x0c, subMode: 0, interactionContext: 'flight' },
       flight: {
         motion: {
@@ -93,7 +94,78 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
       map: { readiness: 'ready', player: { state: 'closed', destination: null, markerEntityId: null, warpRequest: { accepted: false, reason: 'player-unavailable' } } },
       // P3-10 CB-14; its readings have their own tests (communications.test.ts).
       communications: { readiness: 'ready', player: expect.objectContaining({ entityId: player.id, menu: null, incoming: null, base: null }) },
-      result: NOT_IMPLEMENTED,
+      // P3-11 ME-14: in progress until the teardown completed.
+      result: { readiness: 'ready', outcome: 'in-progress' },
+    });
+  });
+
+  describe('mission phase and result (P3-11 ME-14)', () => {
+    const latched: MissionResult = {
+      outcome: 'success',
+      reason: { type: 'all-clear' },
+      summary: { mission: 'mission/first-campaign' as AssetId, trigger: 1, range: 2 },
+      rescuesUsed: 1,
+      endingGaps: [{ gap: 'G-02/8', variant: 'wingman' }, { gap: 'G-02/9', row: 16 }],
+      playerKills: 7,
+      latchTick: 40,
+    };
+
+    it('maps main state 3 by sub-state, states 4, 5, 0 and 1, and the completion to the phase', () => {
+      const state = testState();
+      const cases: readonly [Pick<WorldState['flow'], 'mainState' | 'subState'>, MissionPhase][] = [
+        [{ mainState: 3, subState: 0 }, 'normal'],
+        [{ mainState: 3, subState: 1 }, 'beacon-wait'],
+        [{ mainState: 3, subState: 2 }, 'destruction-sequence'],
+        [{ mainState: 3, subState: 3 }, 'docking'],
+        [{ mainState: 3, subState: 4 }, 'docking'],
+        [{ mainState: 3, subState: 5 }, 'docking'],
+        // State 4 and 5 ignore the sub-state, which 0x333b4 can still set to 3 (ME-03).
+        [{ mainState: 4, subState: 3 }, 'settlement-wait'],
+        [{ mainState: 5, subState: 0 }, 'result-delay'],
+        [{ mainState: 0, subState: 2 }, 'teardown'],
+        [{ mainState: 1, subState: 0 }, 'teardown'],
+      ];
+      for (const [flow, phase] of cases) {
+        Object.assign(state.flow, flow);
+        expect(projectWorld(state).mission.phase, JSON.stringify(flow)).toBe(phase);
+        expect(projectWorld(state).result).toEqual({ readiness: 'ready', outcome: 'in-progress' });
+      }
+      state.missionStatus = 'ended';
+      Object.assign(state.flow, { mainState: 1, result: latched, completedTick: 41 });
+      expect(projectWorld(state).mission).toMatchObject({ status: 'ended', phase: 'completed' });
+    });
+
+    it('keeps the latched result in progress through the teardown and gives it, frozen and detached, once completed', () => {
+      const state = testState();
+      state.missionStatus = 'ended';
+      Object.assign(state.flow, { mainState: 0, result: latched, rescues: 0 });
+      expect(projectWorld(state).result).toEqual({ readiness: 'ready', outcome: 'in-progress' });
+      Object.assign(state.flow, { mainState: 1, completedTick: 41 });
+      const { result } = projectWorld(state);
+      expect(result).toEqual({ readiness: 'ready', ...latched, completedTick: 41 });
+      expect(deepFrozen(result)).toBe(true);
+      if (result.outcome === 'in-progress') throw new Error('The result must be final');
+      expect(result.summary).not.toBe(latched.summary);
+      expect(result.endingGaps).not.toBe(latched.endingGaps);
+      // The rescue count, the section-2 counters, the deadlines and the settlement stay out of the projection.
+      expect(JSON.stringify(projectWorld(state))).not.toMatch(/rescues"|instantiated|Deadline|settlement|dueClock/);
+    });
+
+    it('gives a failure\'s reason and its one ending gap', () => {
+      const state = testState();
+      state.missionStatus = 'ended';
+      const failure: MissionResult = {
+        outcome: 'failure', reason: { type: 'third-loss', loss: 'energy' }, summary: null, rescuesUsed: 2,
+        endingGaps: [{ gap: 'G-02/7', variant: 'energy' }], playerKills: 0, latchTick: 9,
+      };
+      Object.assign(state.flow, { mainState: 1, result: failure, completedTick: 10 });
+      expect(projectWorld(state).result).toEqual({ readiness: 'ready', ...failure, completedTick: 10 });
+    });
+
+    it('faults on a completion without a latched result', () => {
+      const state = testState();
+      Object.assign(state.flow, { mainState: 1, completedTick: 3 });
+      expectFault(() => projectWorld(state), 'invariant-violated', 'projection.result');
     });
   });
 
@@ -255,7 +327,15 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
     expectTypeOf<Extract<WarpRequestReading, { accepted: false }>['reason']>()
       .toEqualTypeOf<'player-unavailable' | 'wrong-context' | 'no-destination' | 'cooldown' | 'insufficient-energy'>();
     expectTypeOf<Projection['communications']>().toEqualTypeOf<NotImplementedPartition | CommunicationsProjection>();
-    expectTypeOf<Projection['result']>().toEqualTypeOf<NotImplementedPartition | ResultReady>();
+    // P3-11 ME-14: the result partition is always ready, in progress or final.
+    expectTypeOf<Projection['result']>().toEqualTypeOf<ResultProjection>();
+    expectTypeOf<keyof Extract<ResultProjection, { outcome: 'success' | 'failure' }>>().toEqualTypeOf<
+      'readiness' | 'outcome' | 'reason' | 'summary' | 'rescuesUsed' | 'endingGaps' | 'playerKills' | 'latchTick' | 'completedTick'
+    >();
+    expectTypeOf<keyof ResultMessageReference>().toEqualTypeOf<'mission' | 'trigger' | 'range'>();
+    expectTypeOf<Projection['mission']['phase']>().toEqualTypeOf<
+      'normal' | 'beacon-wait' | 'destruction-sequence' | 'docking' | 'settlement-wait' | 'result-delay' | 'teardown' | 'completed'
+    >();
     expectTypeOf<MotionReady['readiness']>().toEqualTypeOf<'ready'>();
     // P3-07 CR-12: the combat group is the flight partition's, ready with the player's readings or null without one.
     expectTypeOf<FlightCombat>().toEqualTypeOf<NotImplementedPartition | CombatReady>();

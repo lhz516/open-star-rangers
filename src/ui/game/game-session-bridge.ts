@@ -115,8 +115,8 @@ interface KeyFacts {
   /** The base page's selection and order (P3-10, G-05): the cursor row and the rows' records; null outside the base view. */
   readonly baseSelection: string | null;
   readonly outcome: unknown;
-  readonly reason: unknown;
-  readonly message: unknown;
+  /** The final result is frozen from the completion on (docs/plan/p3/02/spec.md, ME-14), so its tick stands for its content. */
+  readonly completedTick: number | null;
   /** Null when the map is not ready or has no player. */
   readonly mapState: MapPlayer['state'] | null;
   /** The committed destination's coordinates, not its object: each read builds a new one. */
@@ -148,8 +148,7 @@ function keyFacts(projection: Projection, warpSerial: number | null): KeyFacts {
     result: result.readiness,
     baseSelection: base && `${base.cursor}:${base.rows.map(({ record }) => record).join(',')}`,
     outcome: ready ? result.outcome : null,
-    reason: ready && 'reason' in result ? result.reason : null,
-    message: ready && 'message' in result ? result.message : null,
+    completedTick: ready && 'completedTick' in result ? result.completedTick : null,
     mapState: mapPlayer?.state ?? null,
     destinationX: destination?.x ?? null, destinationY: destination?.y ?? null, destinationZ: destination?.z ?? null,
     markerEntityId: mapPlayer?.markerEntityId ?? null,

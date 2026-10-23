@@ -889,7 +889,8 @@ class Owner implements MissionOwner {
    */
   #followHold(status: GameSessionStatus, runId: number): void {
     const { transition } = status;
-    if (status.phase === 'transition' && transition !== null && transition.gap !== 'G-02/2') {
+    // G-02/5 and G-02/6 holds and placeholders are P3-11's later work (docs/plan/p3/04/spec.md, 终局与救援衔接).
+    if (status.phase === 'transition' && transition !== null && (transition.gap === 'G-02/3' || transition.gap === 'G-02/4')) {
       this.#next({ type: 'transition-held' });
       const current = this.#timing?.page;
       if (current && isHold(current) && current.transitionId === transition.transitionId) return;
