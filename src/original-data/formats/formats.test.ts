@@ -109,7 +109,7 @@ describe('SCEN parsing', () => {
           { lower: -7, upper: 39, messages: [`${MARKER}-held `, `${MARKER}-lost`], summarySelector: 0 },
         ],
       },
-      { ranges: [{ lower: 0, upper: 0, messages: [`${MARKER}-ended`], summarySelector: 6 }] },
+      { ranges: [{ lower: 0, upper: 0, messages: [`${MARKER}-ended`], summarySelector: 16 }] },
     ]);
     expect(groups).toEqual([
       { template: 1, members: [4, 4], spawnCount: 2, layout: [{ x: 0, y: 0, z: 0 }, { x: 30, y: 0, z: 0 }] },

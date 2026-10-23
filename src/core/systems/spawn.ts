@@ -35,6 +35,7 @@ import { COCKPIT_VIEW_MODE, initialPlayerControl, initialPlayerTargeting } from 
 import type { RuntimeRecord, SpawnEntry, SpawnSourceType } from '../world/spawn-state.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { reportEnemyAppears } from './comm-reactions.ts';
+import { reportObjectEvent } from './mission-events.ts';
 import { emit, type TickContext } from './pipeline.ts';
 
 /** Message 0x4000: one spawn request of a firing queue entry. */
@@ -126,7 +127,10 @@ function entityRuleInputs({ percentB, percentC, percentD, aiValueA, aiValueB, ai
   return { percentB, percentC, percentD, aiValueA, aiValueB, aiValueC };
 }
 
-/** Instantiation `0x67938` of `record` at a placed position and attitude; emits `object-instantiated`. */
+/**
+ * Instantiation `0x67938` of `record` at a placed position and attitude; emits `object-instantiated`, then reports the
+ * object event (mission-events.ts).
+ */
 function instantiate(context: TickContext, record: RuntimeRecord, source: EntitySource, position: Vector3, attitude: AttitudeRows, rand: RandSource): Entity {
   const { world } = context;
   const declaration = (source.collection === 'mission' ? world.setup.declarations : world.setup.wingmanOptions)[source.index];
@@ -181,6 +185,7 @@ function instantiate(context: TickContext, record: RuntimeRecord, source: Entity
     world.player.statusDisplay.redraw = true;
   }
   emit(context, { type: 'object-instantiated', tick: world.tick, entityId: entity.id, kindBit, source: entity.source as EntitySource, position: entity.position });
+  reportObjectEvent(context, entity, 3);
   return entity;
 }
 

@@ -84,7 +84,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [06-evidence-reuse-audit.md](./subtasks/06-evidence-reuse-audit.md) | 01, 02 | completed |
 | [07-sampling-criteria-gate.md](./subtasks/07-sampling-criteria-gate.md) | 04, 06 | blocked |
 | [08-contract-foundation.md](./subtasks/08-contract-foundation.md) | 05 | completed |
-| [09-mission-events-summary.md](./subtasks/09-mission-events-summary.md) | 08 | in-progress |
+| [09-mission-events-summary.md](./subtasks/09-mission-events-summary.md) | 08 | completed |
 | [10-all-clear-settlement.md](./subtasks/10-all-clear-settlement.md) | 09 | pending |
 | [11-player-loss.md](./subtasks/11-player-loss.md) | 10 | pending |
 | [12-rescue-failure.md](./subtasks/12-rescue-failure.md) | 11 | pending |
@@ -121,6 +121,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
   Affected acceptance: AC-01（D-02 部分）、AC-15；07 的全部验收；19、20、21、22、23 依赖它。08 至 18 不依赖它，照常执行。
   Resume when: 用户明确批准 D-02（全部推荐或逐项修改），且仍没有新版对应结果。协调者把决定转给该 worker，由它写审批记录并提交，随后集成。
 - **2026-10-22 — 08 的交接：** `compare.ts` 已按 ME-13 强制事件次序，09 至 14 须严格按该次序发出事件（例如 `radio-flushed('player-destroyed')` 紧接在 `player-loss-started` 之前），确需改变时由 15 修改比较器。`result` 分区始终就绪，`flow.completedTick` 设置前读作进行中；桥接的结果关键字段改为 `completedTick`。在 16、17 之前，G-02/5、G-02/6 的运行中衔接没有占位页。`docs/engineering/modules/core.md` 仍写快照格式 6、`RULES_VERSION` 7，应为 7、8（replay 格式 3 不变），交 22 订正。
+- **2026-10-22 — 09 的交接：** `reportObjectEvent(context, entity, type)` 是 `0x6977c` 的唯一入口，10 在计数之后接入全清检查并发出 `all-clear`；`selectSummary` 尚无调用者，由 10 在 3→4 接入。偏差：ME-02 要求检查“在 CB-01 之后、`buildSpawnState` 之前”，两者不能同时满足（CB-01 在 `buildSpawnState` 之后），实现放在 `checkSetup` 末尾、`buildSpawnState` 之前，只影响同时出错时的优先次序。`docs/engineering/modules/core.md` 的世界创建第 3 步应补上总结选择值的拒绝，交 22。
 
 ## 审批
 
