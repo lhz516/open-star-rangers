@@ -80,7 +80,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [02-loss-rescue-research.md](./subtasks/02-loss-rescue-research.md) | — | completed |
 | [03-messages-manual-research.md](./subtasks/03-messages-manual-research.md) | — | completed |
 | [04-original-facts.md](./subtasks/04-original-facts.md) | 01, 02, 03 | completed |
-| [05-shared-contract-gate.md](./subtasks/05-shared-contract-gate.md) | 04 | in-progress |
+| [05-shared-contract-gate.md](./subtasks/05-shared-contract-gate.md) | 04 | completed |
 | [06-evidence-reuse-audit.md](./subtasks/06-evidence-reuse-audit.md) | 01, 02 | completed |
 | [07-sampling-criteria-gate.md](./subtasks/07-sampling-criteria-gate.md) | 04, 06 | pending |
 | [08-contract-foundation.md](./subtasks/08-contract-foundation.md) | 05 | pending |
@@ -115,6 +115,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
   Affected acceptance: AC-01；05 的全部验收；08 至 23 依赖它，07 与它写入范围重叠。
   Resume when: 用户明确批准 D-01（全部推荐或逐项修改）。协调者把决定转给该 worker，由它写审批记录并提交，随后集成。
 - **2026-10-22 — Subtask 05 resumed:** 用户原话“批准 D-01 全部推荐”。协调者已把该决定转给 05 worker。
+- **2026-10-22 — D-01 定稿：** 05 已写入 P3-02（ME-01–ME-19）、P3-04（终局与救援衔接）和 P3-11 spec 的审批记录；状态 5 的失败竞态按原因 `settlement-failed` 忠实复现；P3-03 不需要修订。
 
 ## 审批
 
