@@ -41,6 +41,7 @@ updated: 2026-10-17
 - `src/core/world/setup-check.ts`：创建时语义检查。
 - `src/core/world/*.test.ts`：创建拒绝的测试。
 - `src/core/systems/*.test.ts`：受影响的既有测试。
+- `src/core/world/create-world.test-support.ts`：`eventMission` 的总结选择值改为创建时检查接受的值（ME-02）。
 
 ## 验收标准
 
