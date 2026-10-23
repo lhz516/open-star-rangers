@@ -2,7 +2,7 @@
  * The player's losses (docs/plan/p3/02/spec.md, ME-09, ME-13; docs/original/formats/executable.md, destruction entry
  * `0x32d74` and energy loss and the beacon wait, P3-11/02): the two entries that start a loss. Both take effect only
  * while the mission runs (main state 3), so a loss in states 4 and 5 neither rescues nor fails; the loss handling and
- * the rescue that end the loss are P3-11/12's.
+ * the rescue that end the loss are rescue.ts's, at the escape pod's expiry (destruction.ts) and the beacon's due.
  *
  * - destroyPlayer, `0x32d74`, from damage.ts at the player's destruction (after its object event and kill counters,
  *   before the delayed explosion): in any sub-state but 2, sub-state 2 and the radio flush; the destruction view 0x11

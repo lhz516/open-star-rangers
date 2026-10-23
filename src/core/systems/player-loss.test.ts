@@ -22,7 +22,8 @@ import { addActive, BASE_KIND_BIT, HOSTILE_KIND_BIT, radioItem, radioScene, type
 // scene's missile in docked-systems.test.ts); the map and Warp cases run P3-09's created synthetic chain
 // (map-warp.test-support.ts) to the map or the Warp first. Expected ticks and clocks are worked out by hand: a tick is 2
 // clock units unless set otherwise, the mission flow reads the previous tick's clock c′, and the beacon's due is
-// reached at c′ ≥ due (non-strict). The loss handling and the rescue are P3-11/12's: here a loss ends in sub-state 2.
+// reached at c′ ≥ due (non-strict). The loss handling and the rescue that end a loss are rescue.ts's (rescue.test.ts);
+// where a test runs past the escape pod's expiry or the beacon's due, it checks only that one rescue ends the loss.
 
 const DESTRUCTION_VIEW = 0x11;
 const WARP_VIEW = 1;
@@ -88,9 +89,19 @@ function depleteNow(state: WorldState, player: Entity): void {
   Object.assign(craftOf(player), { energy: 0, charge: 2 ** 30, nextEnergyClock: state.clock + state.config.clockUnitsPerTick });
 }
 
-/** The radio scene after its first tick, which gives the player its resources; its world steps on from tick 2. */
-function readyScene(): RadioScene & { readonly world: World } {
+/** The player entity's declaration, whose runtime record a rescue rewrites (rescue.ts). */
+const PLAYER_SOURCE = Object.freeze({ collection: 'mission', index: 0, group: null } as const);
+
+/** The radio scene with the player's source set, so that a loss may end in a rescue. */
+function rescuableScene(): RadioScene {
   const scene = radioScene();
+  Object.assign(scene.player, { source: PLAYER_SOURCE });
+  return scene;
+}
+
+/** The rescuable scene after its first tick, which gives the player its resources; its world steps on from tick 2. */
+function readyScene(): RadioScene & { readonly world: World } {
+  const scene = rescuableScene();
   const world = constructWorld(scene.state);
   world.step(tickInput());
   return { ...scene, world };
@@ -200,15 +211,16 @@ describe('the destruction entry 0x32d74 (ME-09; AC-04)', () => {
       { type: 'left-page-changed', tick, page: ENERGY_PAGE, previousPage: 0, commandIndex: null },
     ]);
     expect([state.player.viewMode, state.player.previousViewMode, player.inWarp, player.warpClock]).toEqual([DESTRUCTION_VIEW, DESTRUCTION_VIEW, true, warpClock]);
-    // The abandoned Warp never completes (MW-09).
+    // The abandoned Warp never completes (MW-09), not even after the escape pod's rescue leaves 0x11 for 0xC.
     for (let step = 0; step < 700; step++) log.push(...world.step(tickInput()));
     expect(ofType(log, 'warp-completed')).toEqual([]);
-    expect([state.player.viewMode, state.flow.subState]).toEqual([DESTRUCTION_VIEW, 2]);
+    expect(ofType(log, 'player-rescued').map(({ loss }) => loss)).toEqual(['destroyed']);
+    expect([state.player.viewMode, state.flow.subState, player.inWarp]).toEqual([COCKPIT_VIEW_MODE, 0, true]);
     expectContractOrder(log, state.tick);
   });
 
   it('in the docking wait: overrides sub-state 3, releases the object, flushes the base\'s reply; no docking follows', () => {
-    const scene = radioScene();
+    const scene = rescuableScene();
     const { state, player } = scene;
     const base = addActive(scene, BASE_KIND_BIT);
     base.communications.face = 0;
@@ -225,9 +237,11 @@ describe('the destruction entry 0x32d74 (ME-09; AC-04)', () => {
     expect(ofType(events, 'player-loss-started')).toEqual([expect.objectContaining({ previousSubState: 3 })]);
     expect([state.flow.subState, state.player.dockingObject, state.flow.dockingDeadline, state.communications.queue]).toEqual([2, null, deadline, []]);
     for (let tick = 0; tick < 0x780; tick++) log.push(...world.step(tickInput()));
-    const docking = new Set(['radio-taken', 'incoming-ended', 'docking-cancelled', 'docked', 'transition']);
+    const docking = new Set(['radio-taken', 'incoming-ended', 'docking-cancelled', 'docked']);
     expect(log.filter(({ type, tick }) => tick > 4 && docking.has(type))).toEqual([]);
-    expect([state.flow.subState, player.activity, state.player.viewMode]).toEqual([2, 'active', DESTRUCTION_VIEW]);
+    // The only transition is the escape pod's rescue (G-02/5), which ends the loss in sub-state 0.
+    expect(ofType(log, 'transition').map(({ gap }) => gap)).toEqual(['G-02/5']);
+    expect([state.flow.subState, player.activity, state.player.viewMode]).toEqual([0, 'active', COCKPIT_VIEW_MODE]);
     expectContractOrder(log, state.tick);
   });
 
@@ -238,10 +252,11 @@ describe('the destruction entry 0x32d74 (ME-09; AC-04)', () => {
     expect([state.flow.subState, state.flow.beaconDeadline]).toEqual([1, 4 + BEACON_WAIT]);
     log.push(...destroyInTick(state, player));
     expect(ofType(log, 'player-loss-started').map(({ loss, previousSubState }) => [loss, previousSubState])).toEqual([['energy', 0], ['destroyed', 1]]);
-    // Well past the old due: no beacon flush, still sub-state 2.
+    // Well past the old due: no beacon flush; the loss ends once, on the escape pod's path.
     for (let tick = 0; tick < BEACON_WAIT; tick++) log.push(...world.step(tickInput()));
     expect(ofType(log, 'radio-flushed').map(({ cause }) => cause)).toEqual(['player-destroyed']);
-    expect(state.flow.subState).toBe(2);
+    expect(ofType(log, 'player-rescued').map(({ loss, rescues }) => [loss, rescues])).toEqual([['destroyed', 1]]);
+    expect(state.flow.subState).toBe(0);
     expectContractOrder([...log], state.tick);
   });
 });
@@ -270,13 +285,15 @@ describe('the energy entry 0x33464 and the beacon wait (ME-07, ME-09; AC-05)', (
       { type: 'left-page-changed', tick: 483, page: 0, previousPage: ENERGY_PAGE, commandIndex: null },
       { type: 'radio-flushed', tick: 483, cause: 'beacon-expired', removed: 0, interrupted: 'none' },
     ]);
-    expect(state.flow.subState).toBe(2);
+    // The energy loss's handling follows at once: a rescue (rescue.test.ts) back to sub-state 0.
+    expect(ofType(expiry, 'player-rescued').map(({ loss }) => loss)).toEqual(['energy']);
+    expect(state.flow.subState).toBe(0);
     expectContractOrder(log, state.tick);
   });
 
   it('compares non-strictly with any step: c′ equal to the due ends the wait', () => {
     const state = testState({ clockUnitsPerTick: 0x140 });
-    const player = addPlayerEntity(state);
+    const player = addPlayerEntity(state, { source: PLAYER_SOURCE });
     player.state = 'active';
     state.player.targeting!.autoTargetDueClock = 1e15;
     const world = constructWorld(state);

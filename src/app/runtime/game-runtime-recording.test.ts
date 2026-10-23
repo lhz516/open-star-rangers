@@ -153,15 +153,26 @@ describe('GameRuntime recording capacity', { timeout: 30_000 }, () => {
   });
 
   it(`stops at ${CORE_LIMITS.recordedTicks} recorded ticks, refusing the next one`, () => {
-    const runtime = createGameRuntime(runtimeSpec({ mission: playerOnlyMission(), recording: recordingOptions(CORE_LIMITS.recordedTicks) }));
+    const spec = runtimeSpec({ mission: playerOnlyMission(), recording: recordingOptions(CORE_LIMITS.recordedTicks) });
+    // The player's craft decelerates (+0xC0 = 2): with the shared synthetic −2 a depleted player speeds up past +0xB8,
+    // and the energy rescue of this long run would meet a throttle beyond the table, a Core fault (ME-10, ME-17 decision 7).
+    (spec.craftInfo as { content: { craft: { atC0: number }[] } }).content.craft[0].atC0 = 2;
+    const runtime = createGameRuntime(spec);
     let now = 0;
     runtime.frame(now);
-    const frames = Math.floor(CORE_LIMITS.recordedTicks / 5);
-    for (let frame = 0; frame < frames; frame++) {
-      now += 5 * TICK_MS;
-      runtime.frame(now);
+    // Up to five ticks a frame until two remain; a rescue's transition cuts its frame, and the test releases the hold
+    // as the Session would.
+    const recorded = () => runtime.projection().clock.tick;
+    const gaps: string[] = [];
+    while (CORE_LIMITS.recordedTicks - recorded() > 2) {
+      now += Math.min(5, CORE_LIMITS.recordedTicks - 2 - recorded()) * TICK_MS;
+      const report = runtime.frame(now);
+      if (report.cut === null) continue;
+      gaps.push(...report.transitions.map(({ gap }) => gap));
+      runtime.releaseTransitionBarrier();
     }
-    const remaining = CORE_LIMITS.recordedTicks - frames * 5;
+    expect(gaps.length).toBeGreaterThan(0);
+    const remaining = CORE_LIMITS.recordedTicks - recorded();
     now += (remaining + 2) * TICK_MS;
     expect(runtime.frame(now)).toEqual({ ticks: remaining, capped: false, stop: 'recording-capacity', cut: null, transitions: [] });
     expect(runtime.projection().clock.tick).toBe(CORE_LIMITS.recordedTicks);

@@ -120,7 +120,8 @@ export function placeWorldRecord(world: WorldState, record: RuntimeRecord, rand:
   return placeRecord(placementRecord, world.spawn.frame, rand);
 }
 
-const matrixOf = ([first, second, third]: AttitudeRows): Matrix3 =>
+/** A placement's attitude rows as an entity's orientation; also for P3-11's rescue. */
+export const matrixOf = ([first, second, third]: AttitudeRows): Matrix3 =>
   Object.freeze([first.x, first.y, first.z, second.x, second.y, second.z, third.x, third.y, third.z]) as unknown as Matrix3;
 
 function entityRuleInputs({ percentB, percentC, percentD, aiValueA, aiValueB, aiValueC }: RuntimeRecord['ruleInputs']): EntityRuleInputs {

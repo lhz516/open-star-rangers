@@ -260,9 +260,11 @@ describe('attribution once the shooter is gone (H4, CR-06)', () => {
   });
 });
 
-describe('the hand-offs to P3-11 without P3-11 (CR-13, X2, X7, D14)', () => {
-  it('takes the player from its death to the escape pod\'s expiry and stops there: never removed, its kills still counted, no rescue or failure', () => {
+describe('the hand-offs to P3-11 (CR-13, X2, X7, D14)', () => {
+  it('takes the player from its death to the escape pod\'s expiry and its rescue there: never removed, its kills still counted, no failure', () => {
     const { state, player } = scene();
+    // The player entity's declaration, whose runtime record the rescue rewrites (rescue.ts).
+    Object.assign(player, { source: { collection: 'mission', index: 0, group: null } });
     Object.assign(player.combat, { shield: 0, hull: 1 });
     const shooter = craftAt(state, 7, at(0, 500, 0));
     missileAt(state, at(0, 0, 0), shooter);
@@ -291,16 +293,23 @@ describe('the hand-offs to P3-11 without P3-11 (CR-13, X2, X7, D14)', () => {
     until(101);
     expect(log.at(-1)).toMatchObject({ type: 'object-destroyed', entityId: victim.id, attacker: { type: 'shooter', entityId: player.id, kindBit: 0 }, eventClass: 0 });
     expect(state.player.kills[7]).toBe(1);
-    // The pod expires at clock 518 (tick 259), ends the follow and leaves; nothing stands in for P3-11's rescue.
+    // The pod expires at clock 518 (tick 259), ends the follow and leaves; P3-11's loss handling rescues the same
+    // entity there (rescue.test.ts has the rescue's own expectations).
     const before = log.length;
-    until(400);
+    expect([player.state, player.destroyed, player.combat.hull]).toEqual(['destroyed-source', true, 1 - BLAST]);
+    until(259);
     expect(log.slice(before).filter(({ type }) => type === 'fragment-expired')).toEqual([{
       type: 'fragment-expired', tick: 259, entityId: pod.id, sourceKindBit: 0, part: 0, position: expect.anything(), outcome: 'escape-pod',
     }]);
-    expect(log.filter(({ tick }) => tick > 259)).toEqual([]);
+    expect(log.filter(({ type }) => type === 'player-rescued' || type === 'transition')).toEqual([
+      expect.objectContaining({ type: 'player-rescued', tick: 259, playerEntityId: player.id, loss: 'destroyed', rescues: 1 }),
+      { type: 'transition', tick: 259, gap: 'G-02/5' },
+    ]);
+    expect([state.player.entityId, state.player.followedEntity, state.missionStatus, state.flow.subState]).toEqual([player.id, null, 'built', 0]);
+    expect([state.entities.get(player.id), player.state, player.destroyed]).toEqual([player, 'active', false]);
+    until(400);
     expect(state.entities.get(pod.id)).toBeUndefined();
-    expect([state.player.entityId, state.player.followedEntity, state.missionStatus, state.flow.subState]).toEqual([player.id, null, 'built', 2]);
-    expect([state.entities.get(player.id), player.state, player.destroyed, player.combat.hull]).toEqual([player, 'destroyed-source', true, 1 - BLAST]);
+    expect(ofType(log, 'result-latched')).toEqual([]);
     expect(ofType(log, 'object-destroyed').map(({ entityId }) => entityId)).toEqual([player.id, victim.id]);
   });
 

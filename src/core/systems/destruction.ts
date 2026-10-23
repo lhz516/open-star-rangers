@@ -28,6 +28,7 @@ import { PLAYER_KIND_BIT } from '../rules/spawn-schedule.ts';
 import type { Entity, ExplosionCombat, FragmentCombat } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { emit, type PipelineStage, type RequestOf, type TickContext } from './pipeline.ts';
+import { resolvePlayerLoss } from './rescue.ts';
 
 const fault = (site: string): CoreFaultError => new CoreFaultError('invariant-violated', `destruction.${site}`);
 
@@ -184,8 +185,8 @@ export function setExplosionState(context: TickContext, entity: Entity, explosio
 
 /**
  * `0x256e4`, a fragment's expiry (X7), after `fragment-expired`: a flagged fragment becomes the held source of its own
- * explosion; the player's pod ends the follow (+0x90), where P3-11 adds its rescue `0x32e14(1)` (CR-13), then leaves
- * as any other fragment does (`0x2574c`: pending removal).
+ * explosion; the player's pod ends the follow (+0x90) and the destruction's loss handling `0x32e14(1)` (rescue.ts,
+ * CR-13), then leaves as any other fragment does (`0x2574c`: pending removal).
  */
 export function expireFragment(context: TickContext, entity: Entity, fragment: FragmentCombat, _request: RequestOf<'expire'>): void {
   const outcome = expiryOutcome(fragment);
@@ -202,7 +203,10 @@ export function expireFragment(context: TickContext, entity: Entity, fragment: F
     constructExplosion(context, entity);
     return;
   }
-  if (outcome === 'escape-pod') context.world.player.followedEntity = null;
+  if (outcome === 'escape-pod') {
+    context.world.player.followedEntity = null;
+    resolvePlayerLoss(context, 'destroyed');
+  }
   entity.state = 'pending-removal';
 }
 
