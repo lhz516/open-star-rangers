@@ -82,7 +82,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [04-original-facts.md](./subtasks/04-original-facts.md) | 01, 02, 03 | completed |
 | [05-shared-contract-gate.md](./subtasks/05-shared-contract-gate.md) | 04 | completed |
 | [06-evidence-reuse-audit.md](./subtasks/06-evidence-reuse-audit.md) | 01, 02 | completed |
-| [07-sampling-criteria-gate.md](./subtasks/07-sampling-criteria-gate.md) | 04, 06 | in-progress |
+| [07-sampling-criteria-gate.md](./subtasks/07-sampling-criteria-gate.md) | 04, 06 | completed |
 | [08-contract-foundation.md](./subtasks/08-contract-foundation.md) | 05 | completed |
 | [09-mission-events-summary.md](./subtasks/09-mission-events-summary.md) | 08 | completed |
 | [10-all-clear-settlement.md](./subtasks/10-all-clear-settlement.md) | 09 | completed |
