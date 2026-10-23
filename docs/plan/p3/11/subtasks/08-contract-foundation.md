@@ -41,6 +41,10 @@ updated: 2026-10-17
 - `src/ui/game/**`：类型扩展导致失效的桥接测试替身。
 - `src/app/**/*.test.ts`：类型扩展导致失效的测试。
 - `src/app/**/*.test-support.ts`：类型扩展导致失效的测试辅助。
+- `src/core/systems/{base-response,communications,docking,radio}.test.ts`：`flow` 增加字段后改用 `toMatchObject` 比较 CB-02 字段，不改变断言含义。
+- `src/app/runtime/game-event-bus.ts`：新事件类型加入穷尽登记（测试已在 `src/app/**/*.test.ts` 内）。
+- `src/ui/dev/event-log.ts`、`src/ui/dev/event-log.test.ts`：新事件的字段行。
+- `src/app/mission/mission-owner.ts`：运行中衔接的占位守卫收窄为 G-02/3、G-02/4（G-02/5、G-02/6 的衔接与占位归 16、17）。
 
 ## 验收标准
 
