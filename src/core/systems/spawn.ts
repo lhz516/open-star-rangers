@@ -36,6 +36,7 @@ import type { RuntimeRecord, SpawnEntry, SpawnSourceType } from '../world/spawn-
 import type { WorldState } from '../world/world-state.ts';
 import { reportEnemyAppears } from './comm-reactions.ts';
 import { reportObjectEvent } from './mission-events.ts';
+import { passesTeardownGate } from './mission-teardown.ts';
 import { emit, type TickContext } from './pipeline.ts';
 
 /** Message 0x4000: one spawn request of a firing queue entry. */
@@ -224,11 +225,12 @@ function dispatchGroup(context: TickContext, index: number, request: number, ran
 
 /**
  * Request handling of a spawn request (`0x67678`): a section-1 record or the wingman places and instantiates one
- * object and counts it in its record; a group instantiates its members. The original instantiates nothing while its
- * main flow is in state 1 (`0x339cc`), a state P3-11 introduces with its gate.
+ * object and counts it in its record; a group instantiates its members. In main state 1, the teardown, the gate
+ * `0x339cc` drops the request without an event (ME-11).
  */
 export function dispatchSpawn(context: TickContext, request: SpawnRequest): void {
   const { world } = context;
+  if (!passesTeardownGate(world.flow)) return;
   const rand = worldRand(world);
   if (request.source === 'group') {
     dispatchGroup(context, request.index, request.request, rand);

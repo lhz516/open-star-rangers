@@ -259,13 +259,16 @@ describe('the mission flow: settlement, completion and result (ME-05, ME-07)', (
         },
       },
     ]);
-    expect(state.flow).toMatchObject({ mainState: 0, rescues: 0, result: (result.events[1] as { result: unknown }).result });
+    // The teardown starts in the latch's tick (P3-11/14), main state 1.
+    expect(state.flow).toMatchObject({ mainState: 1, rescues: 0, result: (result.events[1] as { result: unknown }).result });
     // The result stays private until the teardown completes (ME-14).
     expect(world.projection()).toMatchObject({ mission: { phase: 'teardown' }, result: { readiness: 'ready', outcome: 'in-progress' } });
 
-    // The flow does nothing more in main state 0: one completion message and one latch in the run.
-    for (let tick = 0; tick < 20; tick++) expect(flowEvents(world.step(tickInput()))).toEqual([]);
-    expect(state.flow.mainState).toBe(0);
+    // The next tick completes the run: no further flow event, one completion message and one latch in the run.
+    const last = world.step(tickInput());
+    expect(flowEvents(last)).toEqual([]);
+    expect(ofType(last, 'mission-completed')).toEqual([{ type: 'mission-completed', tick: latchTick + 1, outcome: 'success' }]);
+    expect(state.flow.completedTick).toBe(latchTick + 1);
   });
 
   it('compares strictly with any step: c′ equal to the due waits one more tick', () => {
@@ -407,7 +410,8 @@ describe('the return variant and the latch (ME-05)', () => {
     Object.assign(state.player, { kills: { ...state.player.kills, 7: 3, 16: 2, 19: 1 } });
     const [latched] = ofType(run.world.step(tickInput()), 'result-latched');
     expect(latched.result).toMatchObject({ rescuesUsed: 2, playerKills: 3 + 2 + 1, latchTick: state.tick });
-    expect([state.flow.rescues, state.flow.mainState, Object.isFrozen(state.flow.result)]).toEqual([0, 0, true]);
+    // The teardown follows in the same tick (P3-11/14).
+    expect([state.flow.rescues, state.flow.mainState, Object.isFrozen(state.flow.result)]).toEqual([0, 1, true]);
     expectFault(() => latch(contextOf(state), { type: 'all-clear' }), 'invariant-violated', 'mission-flow.latch');
   });
 

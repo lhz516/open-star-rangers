@@ -241,9 +241,9 @@ describe('the timer against the all-clear (ME-07)', () => {
     for (const entity of enemiesOf(state)) entity.state = 'pending-removal';
     const events = timerEvents(world.step(tickInput()));
     expect(events.map(({ type }) => type)).toEqual(['settlement-started']);
-    for (let tick = 0; tick < 2000 && state.flow.mainState !== 0; tick++) expect(ofType(world.step(tickInput()), 'wingman-loss-timer-expired')).toEqual([]);
-    // The flag stays set and the due unread through states 4, 5 and the latch.
-    expect([state.flow.mainState, state.flow.wingmanLoss]).toEqual([0, { pending: true, dueClock: due }]);
+    for (let tick = 0; tick < 2000 && state.flow.result === null; tick++) expect(ofType(world.step(tickInput()), 'wingman-loss-timer-expired')).toEqual([]);
+    // The flag stays set and the due unread through states 4, 5, the latch and the teardown (P3-11/14).
+    expect([state.flow.mainState, state.flow.wingmanLoss]).toEqual([1, { pending: true, dueClock: due }]);
   });
 
   it('queues it when the all-clear comes later in the due tick: the mission flow runs first, and settles at the next', () => {

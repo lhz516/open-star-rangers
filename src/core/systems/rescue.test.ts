@@ -370,10 +370,14 @@ describe('the loss handling 0x32e14 at its callers (ME-07, ME-10, ME-13; AC-06, 
       outcome: 'failure', reason: { type: 'third-loss', loss: 'destroyed' }, summary: null, rescuesUsed: 2,
       endingGaps: [{ gap: 'G-02/7', variant: 'destroyed' }], playerKills: 0, latchTick: state.tick,
     };
-    expect(after(latched, isPodExpiry)).toEqual([{ type: 'result-latched', tick: state.tick, result }]);
-    expect([state.missionStatus, state.spawn.enabled, state.flow.mainState, state.flow.rescues, state.flow.result]).toEqual(['ended', false, 0, 0, result]);
-    expect([player.destroyed, player.state, state.player.viewMode]).toEqual([true, 'destroyed-source', DESTRUCTION_VIEW]);
-    // Main state 0 takes no further loss: no second latch, no rescue.
+    expect(after(latched, isPodExpiry)).toEqual([
+      { type: 'result-latched', tick: state.tick, result },
+      { type: 'teardown-started', tick: state.tick, entities: state.entities.size },
+    ]);
+    // The teardown starts in the latch's tick (P3-11/14): main state 1, the view 0x13 and every entity pending removal.
+    expect([state.missionStatus, state.spawn.enabled, state.flow.mainState, state.flow.rescues, state.flow.result]).toEqual(['ended', false, 1, 0, result]);
+    expect([player.destroyed, player.state, state.player.viewMode, state.player.previousViewMode]).toEqual([true, 'pending-removal', 0x13, DESTRUCTION_VIEW]);
+    // The ended run takes no further loss: no second latch, no rescue.
     const context = requestContext(state);
     resolvePlayerLoss(context, 'energy');
     expect(context.events).toEqual([]);
@@ -394,7 +398,8 @@ describe('the loss handling 0x32e14 at its callers (ME-07, ME-10, ME-13; AC-06, 
         },
       },
     ]);
-    expect([state.flow.mainState, state.flow.subState, state.flow.rescues, state.missionStatus, state.spawn.enabled, player.state]).toEqual([0, 2, 0, 'ended', false, 'active']);
+    // The teardown follows in the same tick (P3-11/14).
+    expect([state.flow.mainState, state.flow.subState, state.flow.rescues, state.missionStatus, state.spawn.enabled, player.state]).toEqual([1, 2, 0, 'ended', false, 'pending-removal']);
   });
 
   it('after an all-clear during the destruction sequence: the rescue returns to sub-state 0 and the next tick settles; a third loss fails instead', () => {

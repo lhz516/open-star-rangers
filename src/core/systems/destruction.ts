@@ -27,6 +27,7 @@ import { RandStream } from '../rules/original-random.ts';
 import { PLAYER_KIND_BIT } from '../rules/spawn-schedule.ts';
 import type { Entity, ExplosionCombat, FragmentCombat } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { passesTeardownGate } from './mission-teardown.ts';
 import { emit, type PipelineStage, type RequestOf, type TickContext } from './pipeline.ts';
 import { resolvePlayerLoss } from './rescue.ts';
 
@@ -35,12 +36,14 @@ const fault = (site: string): CoreFaultError => new CoreFaultError('invariant-vi
 /**
  * The producer `0x24d78(source, 3)` (X6): one discriminator-3 fragment per part of list 1 of the source's model, in part
  * order, each allocated as it is made; the player's pod becomes the followed entity (+0x90). False, with nothing made,
- * when the model has no such part.
+ * when the model has no such part. In main state 1, the teardown, the gate `0x339cc` drops every fragment's message 0x10,
+ * so nothing is made or drawn, but the source still counts as shed (ME-11).
  */
 function shedFragments(world: WorldState, source: Entity): boolean {
   const kind = world.ruleData.craft[source.kindBit];
   if (kind === null || kind === undefined || source.presentation.type !== 'model') throw fault('source');
   if (kind.parts <= 0) return false;
+  if (!passesTeardownGate(world.flow)) return true;
   const rand = new RandStream(world.rngState);
   for (let part = 0; part < kind.parts; part++) {
     const init = fragmentInit(source, source.presentation.model, kind.debris, part, rand);
