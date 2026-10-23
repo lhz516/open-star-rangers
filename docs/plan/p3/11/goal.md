@@ -93,7 +93,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [15-projection-replay.md](./subtasks/15-projection-replay.md) | 14 | completed |
 | [16-runtime-session-ending.md](./subtasks/16-runtime-session-ending.md) | 15 | completed |
 | [17-result-page-ui.md](./subtasks/17-result-page-ui.md) | 16 | completed |
-| [18-browser-verification.md](./subtasks/18-browser-verification.md) | 17 | in-progress |
+| [18-browser-verification.md](./subtasks/18-browser-verification.md) | 17 | completed |
 | [19-real-content-check.md](./subtasks/19-real-content-check.md) | 07, 15 | pending |
 | [20-original-formal-runs.md](./subtasks/20-original-formal-runs.md) | 07 | pending |
 | [21-comparison-conclusions.md](./subtasks/21-comparison-conclusions.md) | 19, 20 | pending |
@@ -130,6 +130,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 - **2026-10-23 — 15 的交接：** ME-12 的录制会话拒绝（完成后的 step 在读取输入与容量检查之前以 `mission-completed` 拒绝）与 `replayRecord` 在 `record.ticks[k]` 以 `after-completion` 拒绝已实现；replay-check 报告升到版本 2，加入 `completed: boolean | null`。合成光盘的任务不能靠输入到达结束（131072 tick 内无能量损失、无敌机），工具测试只替换工具的 replay 调用，改用 Core 对合成的、输入驱动的成功运行的真实 replay。合成机型记录的玩家 +0xC0 为 −2，能量救援会落入 `rescue.throttle` 故障，测试中设为 2；16、19 复用该记录时须注意。11 交来的 Warp 页变化次序保持不变（ME-13 不规定该页事件的次序）。交 22：`core.md` 的录制与 replay 小节补上上述拒绝与 `isCompletionTick`/`completedRun`；`docs/guides/tools.md` 第 20、153 行改为报告版本 2；P3-04 spec 第 454 行持久化表的 `version: 1` 已被“终局与救援衔接”的修订取代。
 - **2026-10-23 — 16 的交接：** 合成数据的真实运行：成功在 tick 647 完成；失败运行经过两次 G-02/6 保持（transitionId 1、2），以 G-02/7 energy（transitionId 3）完成。17：`game-session-bridge.ts` 的 `#sync` 缺少 `completed` 分支，完成时会分离运行并清空投影，须在 `stopped` 旁加入；MissionPage 须呈现 `ending`（owner 快照的 `endingPlaceholder`：G-02/7 变体、G-02/8 变体、G-02/9 行，带 runId/transitionId/index/count）与 `result`（`snapshot.session.result`），重试为在 `result` 中调用 `owner.restart()`，返回照旧经任务槽；替换 `slice-gaps-copy.ts` 与 PlaceholderPage 中 G-02/5、G-02/6 的最小文字。测试辅助：`transition-injection.test-support.ts` 提供 `injection.complete(step, injectedResult(endingGaps))` 与 G-02/5、G-02/6；`src/app/runtime/mission-end.test-support.ts` 提供 Core 成功与第三次损失运行的默认步长 Runtime 规格。交 22：`docs/engineering/modules/app.md` 第 20–21、32、35–36、62、73、78 行与 `ui.md` 第 29–30 行已过时。
 - **2026-10-23 — 17 的交接：** 结果页有 data-testid `mission-result`（`data-outcome`、`data-reason`，如 `third-loss:energy`）、`mission-result-summary`（`data-summary` 为 text、empty、none、failure 或 failed）、`mission-result-rescues` 与 `mission-result-kills`；终局占位带 `data-gap` G-02/7、G-02/8 或 G-02/9，`mission-placeholder-variant` 带 `data-variant`。合成光盘的任务不能靠输入到达终局，18 需要短程合成初始数据。交 22：`ui.md` 第 13、20 行，`app.md`（`app/resources/mission-texts.ts`、`flightMessagesInput`、`MissionScreenParts.texts`），`slice-gaps.md`（G-02/5–G-02/10 与 G-06 的呈现）。
+- **2026-10-23 — 18 的交接：** 合成变体替换 mission-startable 的任务与机型载荷（玩家 +0xC0 = 2）：failure 约 1,400 tick（G-02/5 → G-02/6 → G-02/7 energy），success 646 tick（G-02/8 solo，空总结），success-cutscene（G-02/8 wingman + G-02/9 第 16 行，带文本总结），均与种子无关。限制：页面隐藏时运行暂停，终局占位无法在隐藏页面挂载，所以“隐藏页面不取焦点”对终局与结果页只由 17 的 Node 测试覆盖。交 22：`docs/engineering/README.md`（约第 177、186 行）与 `source-structure.md`（约第 532 行）补上 `e2e/support/mission-result.ts`、`production-cache.ts` 的 `seedRecords`/`storeSeed` 与 `ai-wingman.ts` 的 `withPayloads`。
 
 ## 审批
 
