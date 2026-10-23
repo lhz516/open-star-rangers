@@ -23,8 +23,8 @@
  *   `0x2a5fc` after `0x2a694`, when the hull is below 0 (so a collision kill below 0 calls it twice, D5);
  * - `0x6977c` (P3-11, mission-events.ts): right after that `0x3c0f4` and `object-destroyed`, with its event class;
  *   handled at once;
- * - `0x32d74` (P3-11) for the player, before the destruction entry, and `0x32dec` (P3-11) for the wingman, before the
- *   parked test; the kill counters come before both.
+ * - `0x32d74` (P3-11, player-loss.ts) for the player, before the destruction entry, and `0x32dec` (P3-11) for the
+ *   wingman, before the parked test; the kill counters come before both.
  */
 import type { Attacker, HitEvent } from '../contracts/domain-events.ts';
 import { CoreFaultError } from '../errors.ts';
@@ -42,6 +42,7 @@ import { reactToDestruction, reactToHit } from './comm-reactions.ts';
 import { destroyEntity } from './destruction.ts';
 import { reportObjectEvent } from './mission-events.ts';
 import { emit, type TickContext } from './pipeline.ts';
+import { destroyPlayer } from './player-loss.ts';
 
 /** Where a projectile struck: the `hit` event's impact. */
 export type HitImpact = NonNullable<HitEvent['impact']>;
@@ -102,8 +103,8 @@ function countKill(world: WorldState, kindBit: number): void {
 /**
  * The destruction in `0x2a694` (D2, D8): the destroyed flag; `0x3c0f4`; `object-destroyed` and the object event
  * `0x6977c` (mission-events.ts), class 0 for the player's kill; the player's kill counter by the victim's kind, for
- * victims other than the player and the wingman; then a parked victim waits for removal without exploding, and any
- * other goes to the destruction entry.
+ * victims other than the player and the wingman; the player's destruction entry `0x32d74` (player-loss.ts); then a
+ * parked victim waits for removal without exploding, and any other goes to the destruction entry.
  */
 function destroy(context: TickContext, victim: CraftEntity, { attacker, source }: Blow): void {
   const { world } = context;
@@ -127,6 +128,7 @@ function destroy(context: TickContext, victim: CraftEntity, { attacker, source }
   });
   reportObjectEvent(context, victim, eventClass);
   if (byPlayer && !player && victim.kindBit !== WINGMAN_KIND_BIT) countKill(world, victim.kindBit);
+  if (player) destroyPlayer(context, victim);
   if (outcome === 'removed') victim.state = 'pending-removal';
   else destroyEntity(context, victim);
 }

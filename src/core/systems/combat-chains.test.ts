@@ -200,7 +200,7 @@ describe('one death per object (H4, CR-06, AC-13)', () => {
     const [first, second] = [projectileAt(state, at(0, 0, -10), at(0, 0, 640), shooter), projectileAt(state, at(0.5, 0, -10), at(0, 0, 640), shooter)];
     const world = constructWorld(state);
     const events = world.step(tickInput());
-    expect(types(events)).toEqual(['missile-ended', 'hit', 'hit', 'hit', 'object-destroyed', 'hit']);
+    expect(types(events)).toEqual(['missile-ended', 'hit', 'hit', 'hit', 'object-destroyed', 'radio-flushed', 'player-loss-started', 'hit']);
     expect(ofType(events, 'hit').map(({ victimEntityId, cause, damage }) => [victimEntityId, cause, damage])).toEqual([
       [player.id, 'missile', BLAST], [contact.id, 'missile', 630], [player.id, 'projectile', GUN_DAMAGE], [contact.id, 'collision', expect.any(Number)],
     ]);
@@ -299,22 +299,26 @@ describe('the hand-offs to P3-11 without P3-11 (CR-13, X2, X7, D14)', () => {
     }]);
     expect(log.filter(({ tick }) => tick > 259)).toEqual([]);
     expect(state.entities.get(pod.id)).toBeUndefined();
-    expect([state.player.entityId, state.player.followedEntity, state.missionStatus]).toEqual([player.id, null, 'built']);
+    expect([state.player.entityId, state.player.followedEntity, state.missionStatus, state.flow.subState]).toEqual([player.id, null, 'built', 2]);
     expect([state.entities.get(player.id), player.state, player.destroyed, player.combat.hull]).toEqual([player, 'destroyed-source', true, 1 - BLAST]);
     expect(ofType(log, 'object-destroyed').map(({ entityId }) => entityId)).toEqual([player.id, victim.id]);
   });
 
-  it('reports the player\'s depletion once and fakes no beacon or failure (D14)', () => {
+  it('reports the player\'s depletion once and starts one beacon wait, without a failure (D14; P3-11, ME-09)', () => {
     const { state, player } = scene();
     Object.assign(player.combat, { energy: 0, nextEnergyClock: 0 });
     const world = constructWorld(state);
     const events = world.step(tickInput());
-    expect(events).toEqual([{ type: 'energy-depleted', tick: 1, entityId: player.id, kindBit: 0, position: at(0, 0, 0) }]);
-    expect([player.combat.energy, player.combat.depleted, player.destroyed, state.missionStatus]).toEqual([0, true, false, 'built']);
-    // Its next update (the player's interval later) is depleted again, without a second event.
+    expect(events).toEqual([
+      { type: 'energy-depleted', tick: 1, entityId: player.id, kindBit: 0, position: at(0, 0, 0) },
+      { type: 'flight-message', tick: 1, message: 'beacon' },
+      { type: 'player-loss-started', tick: 1, playerEntityId: player.id, loss: 'energy', previousSubState: 0, deadlineClock: 2 + 0x3c0 },
+    ]);
+    expect([player.combat.energy, player.combat.depleted, player.destroyed, state.missionStatus, state.flow.subState]).toEqual([0, true, false, 'built', 1]);
+    // Its next update (the player's interval later) is depleted again, without a second event: sub-state 1 holds.
     const next = player.combat.nextEnergyClock;
     while (state.clock <= next) expect(world.step(tickInput())).toEqual([]);
-    expect([player.combat.depleted, player.combat.nextEnergyClock > next, state.missionStatus]).toEqual([true, true, 'built']);
+    expect([player.combat.depleted, player.combat.nextEnergyClock > next, state.missionStatus, state.flow.beaconDeadline]).toEqual([true, true, 'built', 2 + 0x3c0]);
   });
 });
 

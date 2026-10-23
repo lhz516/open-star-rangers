@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "11"
-updated: 2026-10-22
+updated: 2026-10-23
 related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010, U-014, U-021, U-022, U-028, U-031]
 ---
 
@@ -86,7 +86,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [08-contract-foundation.md](./subtasks/08-contract-foundation.md) | 05 | completed |
 | [09-mission-events-summary.md](./subtasks/09-mission-events-summary.md) | 08 | completed |
 | [10-all-clear-settlement.md](./subtasks/10-all-clear-settlement.md) | 09 | completed |
-| [11-player-loss.md](./subtasks/11-player-loss.md) | 10 | in-progress |
+| [11-player-loss.md](./subtasks/11-player-loss.md) | 10 | completed |
 | [12-rescue-failure.md](./subtasks/12-rescue-failure.md) | 11 | pending |
 | [13-wingman-loss-timer.md](./subtasks/13-wingman-loss-timer.md) | 10 | pending |
 | [14-teardown-completion.md](./subtasks/14-teardown-completion.md) | 12, 13 | pending |
@@ -123,6 +123,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 - **2026-10-22 — 08 的交接：** `compare.ts` 已按 ME-13 强制事件次序，09 至 14 须严格按该次序发出事件（例如 `radio-flushed('player-destroyed')` 紧接在 `player-loss-started` 之前），确需改变时由 15 修改比较器。`result` 分区始终就绪，`flow.completedTick` 设置前读作进行中；桥接的结果关键字段改为 `completedTick`。在 16、17 之前，G-02/5、G-02/6 的运行中衔接没有占位页。`docs/engineering/modules/core.md` 仍写快照格式 6、`RULES_VERSION` 7，应为 7、8（replay 格式 3 不变），交 22 订正。
 - **2026-10-22 — 09 的交接：** `reportObjectEvent(context, entity, type)` 是 `0x6977c` 的唯一入口，10 在计数之后接入全清检查并发出 `all-clear`；`selectSummary` 尚无调用者，由 10 在 3→4 接入。偏差：ME-02 要求检查“在 CB-01 之后、`buildSpawnState` 之前”，两者不能同时满足（CB-01 在 `buildSpawnState` 之后），实现放在 `checkSetup` 末尾、`buildSpawnState` 之前，只影响同时出错时的优先次序。`docs/engineering/modules/core.md` 的世界创建第 3 步应补上总结选择值的拒绝，交 22。
 - **2026-10-22 — 10 的交接：** 11 在 `mission-flow.ts` 的 `runMission` 中分派子状态 1（目前 case 1 直接返回）；12 在写入状态 ended、关闭生成且救援计数保持 2 之后调用导出的 `latch(context, { type: 'third-loss', loss })`；13 把僚机计时放在子状态 0 分支中 `missionStatus === 'ended'` 检查之后；14 起锁存后世界停在主状态 0，`compare.ts` 要求锁存 tick 内发出 `teardown-started`。“状态 4/5 中的损失既不救援也不失败”的入口测试留给 11/12。交 22：`core.md` 阶段表的 `mission-flow` 行应写明 `runMissionFlow`，并提到 `reportObjectEvent` 中的全清入口；`player-state.ts` 中 `heavyDamage` 的注释应改为只供 P4 勋章（ME-18）。
+- **2026-10-23 — 11 的交接：** `destroyPlayer`（0x32d74）接在 `damage.ts` 的 `destroy` 中，在击杀计数之后、`destroyEntity` 之前；`startBeaconWait`（0x33464）接在玩家每次耗尽更新之后；`mission-flow` 子状态 1 在 c′ ≥ 期限时置子状态 2 并 `flushRadio('beacon-expired')`，12 在其后调用 `resolvePlayerLoss('energy')`，并在逃生舱到期处接入 `'destroyed'`。损失停在子状态 2，等待 12。Warp 中被毁时，`switchView` 恢复 `savedLeftPage` 的 `left-page-changed` 在 `player-loss-started` 之后发出（比较器要求 `player-loss-started` 紧接其清空，同 MW-05 先例），15 若修改比较器可再议。“状态 4/5 中的损失不进入”的入口测试已在 `player-loss.test.ts` 覆盖，12 只需覆盖救援与失败一侧（主状态 ≠ 3 时 `resolvePlayerLoss` 直接返回）。测试注意：`radioScene` 在第一个 tick 才初始化玩家资源，耗尽须在其后设置。交 22：`core.md` 第 774 行与约 1010–1027 行的交接段落已过时（0x32d74、0x33464 已接入）。
 
 ## 审批
 

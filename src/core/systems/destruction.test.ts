@@ -278,7 +278,11 @@ describe('the player\'s delayed explosion and escape pod (X2, X7, CR-04, AC-12)'
     const { state, player } = world();
     Object.assign(player.combat, { shield: 0, hull: 1 });
     const destroyedAt = tick(state, { collision: (context) => applyContactDamage(context, player, 5, 'collision') });
-    expect(destroyedAt.at(-1)).toMatchObject({ type: 'object-destroyed', entityId: player.id, outcome: 'delayed' });
+    // The destruction entry 0x32d74's flush and loss event follow it (P3-11, ME-13).
+    expect(destroyedAt.slice(-3)).toMatchObject([
+      { type: 'object-destroyed', entityId: player.id, outcome: 'delayed' }, { type: 'radio-flushed', cause: 'player-destroyed' },
+      { type: 'player-loss-started', loss: 'destroyed' },
+    ]);
     const destruction = state.tick;
     expect(state.player.delayedExplosionClock).toBe(state.clock + 0xc0);
     runTo(state, destruction + 96);

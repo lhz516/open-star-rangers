@@ -288,6 +288,8 @@ describe('the mission flow: settlement, completion and result (ME-05, ME-07)', (
       // A valid docking object and a far deadline keep the docking sub-states where they are (DK1).
       state.player.dockingObject = base.id;
       state.flow.dockingDeadline = 1e9;
+      // A far beacon due keeps sub-state 1 waiting (P3-11/11).
+      state.flow.beaconDeadline = 1e9;
       for (let tick = 0; tick < 200; tick++) expect(flowEvents(run.world.step(tickInput()))).toEqual([]);
       expect([state.flow.mainState, state.flow.subState, state.flow.settlement]).toEqual([3, subState, null]);
       state.flow.subState = 0;
