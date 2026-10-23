@@ -36,6 +36,8 @@ updated: 2026-10-17
 - `src/ui/mission/**`：占位、结果页、文案与测试。
 - `src/ui/game/**`：桥接与 store 及测试。
 - `src/app/resources/**`：总结与消息内容的装配及测试。
+- `src/app/composition/use-mission-owner.ts`、`src/app/MissionScreen.tsx`：从任务所有者绑定的同一资源包取得结果页文字（AC-09）。
+- `src/app/app.css`：结果页在 4:3 视图中的样式。
 
 ## 验收标准
 
