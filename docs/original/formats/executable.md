@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-18
+updated: 2026-10-24
 related: [U-001, U-007, U-008, U-009, U-010, U-011, U-012, U-014, U-017, U-021, U-022, U-024, U-025, U-026, U-027, U-028, U-029, U-031, U-032]
 ---
 
@@ -196,7 +196,7 @@ Evidence: ignored `local/research/p3-01/failure/` (`ghidra_scripts/FailProbe.jav
 
 ### Mission events, ending, loss and rescue (P3-11)
 
-Static answers to Q-01–Q-11 of the [P3-11 spec](../../plan/p3/11/spec.md#原版研究), 2026-10-18. They refine, and in places correct, [mission result](#mission-result-success-path-and-campaign-restart-p3-0104), [mission failure](#mission-failure-player-loss-and-rescue-p3-0105) and [C3](#c3-cross-frame-consumption-by-the-main-flow--confirmed-code); the corrections are listed [at the end](#corrections-and-evidence-p3-1104). Every item marked Confirmed (code) was read from native instructions; callers come from raw scans of rel32 calls and of 32-bit values. Items resting on decompiles are marked Likely. No original run was made: none of these chains has been observed at run time unless stated (U-031).
+Static answers to Q-01–Q-11 of the [P3-11 spec](../../plan/p3/11/spec.md#原版研究), 2026-10-18. They refine, and in places correct, [mission result](#mission-result-success-path-and-campaign-restart-p3-0104), [mission failure](#mission-failure-player-loss-and-rescue-p3-0105) and [C3](#c3-cross-frame-consumption-by-the-main-flow--confirmed-code); the corrections are listed [at the end](#corrections-and-evidence-p3-1104). Every item marked Confirmed (code) was read from native instructions; callers come from raw scans of rel32 calls and of 32-bit values. Items resting on decompiles are marked Likely. No original run was made for this section; P3-11/21 later checked the success and failure chains at run time against it, with no disagreement ([B-003](../behavior/B-003-campaign-flow.md#测量结果p3-1121), [B-005](../behavior/B-005-campaign-rescue.md#测量结果p3-1121); U-031). Chains not listed there remain unobserved.
 
 Notation: s(N) = frame N's sample `0x186414`; `0x3266c` runs before `0x25894` and so compares s(N−1), while the update walk, the dispatcher and the energy stage see s(N). ps = player-state block (`0x52694`); P = the player object (ps +0x8C); rec = P +0x190, its SCEN kind-1 record; mb = movement block (object +8). Object fields: +2 activity, +3 state, +4 kind, +0xD8 dead flag, +0x190 source record. Result block at `0x18685c`: +0 result word, +4 summary pointer (`0x186860`), +8 selector byte (`0x186864`), +0x0C–+0x23 six dwords (`0x186868`–`0x18687f`).
 
@@ -453,7 +453,7 @@ Meaning of the arguments (drawer `0x4e6c0`, expiry `0x4e964`):
 - **Destroyed player's sector entry:** removed and not re-added by the rescue; its only effect is on the per-sector budget, which Core does not model. Rule effect Unconfirmed.
 - **Coverage:** reachability scans follow direct calls; pointer calls are bounded by the stored-address analysis (no stored callback can draw or is a rule entry point). Resume only if a computed code address is found.
 - **Ratio precision in general** (U-009) and the page internals of 0xC, 0xD and 0xF (they cannot feed back into the latched mission).
-- **Not observed:** the state-5 race, the docked-destruction chain, the docking override of the beacon wait and every rescue in a Warp are code chains only. The failure chain at run time belongs to P3-11/20–21 (U-031).
+- **Not observed:** the state-5 race, the docked-destruction chain, the docking override of the beacon wait and every rescue in a Warp are code chains only. P3-11/21 observed, in one run each (fixed 40000, SCEN 3019): the destruction entry in flight and with the map open, the pod expiry, the beacon wait, both rescue entries field by field (base pick and placement included; in both reads the bit-17 list ran from the earliest-instantiated base in instantiation order; the per-sector test passed both times, rows written), the counter chain and the failure handler; and the all-clear by a world exit, the state-4 wait with two Warp deferrals, the completion message, the state-5 due and the success handler. All agreed with this section (U-031).
 
 #### Corrections and evidence (P3-11/04)
 
