@@ -38,6 +38,8 @@ updated: 2026-10-17
 - `docs/engineering/slice-gaps.md`：G 项记录。
 - `docs/engineering/keyboard-input.md`：输入说明的更新（如有）。
 - `docs/guides/tools.md`：工具用法的更新（如有）。
+- `docs/engineering/README.md`、`docs/engineering/source-structure.md`：E2E 合成数据与观察辅助（18 的交接）。
+- `src/core/world/player-state.ts`、`src/core/rules/radio.ts`：仅过时注释（`heavyDamage` 只供 P4 勋章，ME-18；radio 的“P3-11 adds it”）。
 
 ## 验收标准
 
