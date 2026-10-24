@@ -24,7 +24,7 @@ export const hasKind = (mask: number, kindBit: number): boolean => ((mask >>> ki
 /** Clock units from the end of a docking reply to sub-state 4's due clock (`0x333d4`). */
 export const DOCKING_COUNTDOWN = 0x200;
 
-/** The sub-state in which `0x3336c` holds the queue (P3-11 adds it). */
+/** The sub-state in which `0x3336c` holds the queue: the destruction sequence (P3-11, ME-03). */
 const QUEUE_HELD_SUB_STATE: number = 2;
 
 /** `0x3336c`, the take's flow gate: main-flow state 3 and sub-state other than 2. */
