@@ -94,7 +94,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [16-runtime-session-ending.md](./subtasks/16-runtime-session-ending.md) | 15 | completed |
 | [17-result-page-ui.md](./subtasks/17-result-page-ui.md) | 16 | completed |
 | [18-browser-verification.md](./subtasks/18-browser-verification.md) | 17 | completed |
-| [19-real-content-check.md](./subtasks/19-real-content-check.md) | 07, 15 | in-progress |
+| [19-real-content-check.md](./subtasks/19-real-content-check.md) | 07, 15 | completed |
 | [20-original-formal-runs.md](./subtasks/20-original-formal-runs.md) | 07 | in-progress |
 | [21-comparison-conclusions.md](./subtasks/21-comparison-conclusions.md) | 19, 20 | pending |
 | [22-docs-handoff.md](./subtasks/22-docs-handoff.md) | 17, 18, 21 | pending |
@@ -132,6 +132,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 - **2026-10-23 — 17 的交接：** 结果页有 data-testid `mission-result`（`data-outcome`、`data-reason`，如 `third-loss:energy`）、`mission-result-summary`（`data-summary` 为 text、empty、none、failure 或 failed）、`mission-result-rescues` 与 `mission-result-kills`；终局占位带 `data-gap` G-02/7、G-02/8 或 G-02/9，`mission-placeholder-variant` 带 `data-variant`。合成光盘的任务不能靠输入到达终局，18 需要短程合成初始数据。交 22：`ui.md` 第 13、20 行，`app.md`（`app/resources/mission-texts.ts`、`flightMessagesInput`、`MissionScreenParts.texts`），`slice-gaps.md`（G-02/5–G-02/10 与 G-06 的呈现）。
 - **2026-10-23 — 18 的交接：** 合成变体替换 mission-startable 的任务与机型载荷（玩家 +0xC0 = 2）：failure 约 1,400 tick（G-02/5 → G-02/6 → G-02/7 energy），success 646 tick（G-02/8 solo，空总结），success-cutscene（G-02/8 wingman + G-02/9 第 16 行，带文本总结），均与种子无关。限制：页面隐藏时运行暂停，终局占位无法在隐藏页面挂载，所以“隐藏页面不取焦点”对终局与结果页只由 17 的 Node 测试覆盖。交 22：`docs/engineering/README.md`（约第 177、186 行）与 `source-structure.md`（约第 532 行）补上 `e2e/support/mission-result.ts`、`production-cache.ts` 的 `seedRecords`/`storeSeed` 与 `ai-wingman.ts` 的 `withPayloads`。
 - **2026-10-23 — Subtask 07 resumed:** 用户原话“批准 D-02 全部推荐”。此时 `local/research/p3-11/` 仍没有新版对应结果（只有 flow、messages、rescue、reuse）。协调者已把该决定转给 07 worker。
+- **2026-10-23 — 19 的交接（给 21）：** 真实内容（SCEN 3019、默认步长、原始难度 19、只用 TickInput）上 16 次正式 Core 运行，均无故障，15 次到达终局并通过 replay-check。正式集合：s1–s6（S，僚机 1，含 Warp 推迟窗口）、s1-nowarp、sk1（C-13 窗口）、sk2（世界出口全清）、f1（被毁救援 → 能量救援 → 地图中第三次被毁，标准 F 链）、f3/f6、f5（信标被被毁覆盖）、f2/fstill1（候选 0 的救援，即 #8）、f4（到上限，无终局）。窗口与锚在 `local/research/p3-11/real-content/out/windows.json`（63 个窗口），各运行的 `anchors.json`/`trace.json`；tick t 的取样为 2t，`mission-flow` 阶段读 2(t−1)。未取得：C-17、C-18，以及停靠、基地视角、Warp 中被毁。F 第 1 阶段用“全速接近以玩家为目标的敌机、不开火、护盾 0”，与 D-02 中原版一侧的自动驾驶写法不同；配对按窗口类型，21 不受影响。
 
 ## 审批
 
