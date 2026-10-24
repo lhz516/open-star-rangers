@@ -96,7 +96,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [18-browser-verification.md](./subtasks/18-browser-verification.md) | 17 | completed |
 | [19-real-content-check.md](./subtasks/19-real-content-check.md) | 07, 15 | completed |
 | [20-original-formal-runs.md](./subtasks/20-original-formal-runs.md) | 07 | completed |
-| [21-comparison-conclusions.md](./subtasks/21-comparison-conclusions.md) | 19, 20 | pending |
+| [21-comparison-conclusions.md](./subtasks/21-comparison-conclusions.md) | 19, 20 | in-progress |
 | [22-docs-handoff.md](./subtasks/22-docs-handoff.md) | 17, 18, 21 | pending |
 | [23-final-alignment.md](./subtasks/23-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 | pending |
 
