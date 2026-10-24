@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "11"
-updated: 2026-10-23
+updated: 2026-10-24
 related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010, U-014, U-021, U-022, U-028, U-031]
 ---
 
@@ -95,7 +95,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 | [17-result-page-ui.md](./subtasks/17-result-page-ui.md) | 16 | completed |
 | [18-browser-verification.md](./subtasks/18-browser-verification.md) | 17 | completed |
 | [19-real-content-check.md](./subtasks/19-real-content-check.md) | 07, 15 | completed |
-| [20-original-formal-runs.md](./subtasks/20-original-formal-runs.md) | 07 | in-progress |
+| [20-original-formal-runs.md](./subtasks/20-original-formal-runs.md) | 07 | completed |
 | [21-comparison-conclusions.md](./subtasks/21-comparison-conclusions.md) | 19, 20 | pending |
 | [22-docs-handoff.md](./subtasks/22-docs-handoff.md) | 17, 18, 21 | pending |
 | [23-final-alignment.md](./subtasks/23-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 | pending |
@@ -134,6 +134,7 @@ related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010
 - **2026-10-23 — Subtask 07 resumed:** 用户原话“批准 D-02 全部推荐”。此时 `local/research/p3-11/` 仍没有新版对应结果（只有 flow、messages、rescue、reuse）。协调者已把该决定转给 07 worker。
 - **2026-10-23 — 19 的交接（给 21）：** 真实内容（SCEN 3019、默认步长、原始难度 19、只用 TickInput）上 16 次正式 Core 运行，均无故障，15 次到达终局并通过 replay-check。正式集合：s1–s6（S，僚机 1，含 Warp 推迟窗口）、s1-nowarp、sk1（C-13 窗口）、sk2（世界出口全清）、f1（被毁救援 → 能量救援 → 地图中第三次被毁，标准 F 链）、f3/f6、f5（信标被被毁覆盖）、f2/fstill1（候选 0 的救援，即 #8）、f4（到上限，无终局）。窗口与锚在 `local/research/p3-11/real-content/out/windows.json`（63 个窗口），各运行的 `anchors.json`/`trace.json`；tick t 的取样为 2t，`mission-flow` 阶段读 2(t−1)。未取得：C-17、C-18，以及停靠、基地视角、Warp 中被毁。F 第 1 阶段用“全速接近以玩家为目标的敌机、不开火、护盾 0”，与 D-02 中原版一侧的自动驾驶写法不同；配对按窗口类型，21 不受影响。
 - **2026-10-23 — 20 暂停（用户要求）：** 协调者在 20 worker 工作树 `refactored-waddle` 中启动 f-01，约 2 分钟后按用户“stop it. i will resume later”停止（停在进入路线的 `ky-title`，未进入任务）；已确认没有遗留的 DOSBox-X 或工具进程。f-01 计入 D2-1 的启动预算（F 已用 1/2，总计 1/5）。工具改动（opt-in 的 `until.at`、刺激 `at`、暂停 `jump`，协调者已按 D-02 接受）与配方仍未提交，留在该工作树。恢复时：f-01 不合格，按 D-02 §7 判断是否以 f-02 重做，再进行 s-01；19 已完成，21 等待 20。
+- **2026-10-24 — 20 的结果（给 21）：** 启动 3/5：f-01 在用户要求停止时取消（不合格），f-02 与 s-01 合格（`complete`）；按 D-02 §7 不需要 S 重做。已覆盖：R-20 C-4（F 与 S）、R-21a C-1、R-21b #1 #2 C-2、#3 C-3（观察到的分支）、R-22a C-5–C-7（C-6 的逃生舱窗口沿用 E-1）、R-22b C-9–C-12、#4 C-8、#7 的地图情形。按 D2-4/D2-5 保持 blocked 的顺带项：#5 C-13；#6(a) C-16、#6(b) C-17、#6(c) C-18；#7 停靠、基地视角、Warp；#8。恢复条件：之后任何合格的原版运行取得它们，或用户逐项决定（加跑 / 代码与 Node 的限定结论 / 继续 blocked）。工具改动（opt-in 的 `until.at`、刺激 `at`、暂停 `jump`；未用这些键的配方行为与指纹不变）随 20 提交。
 
 ## 审批
 
