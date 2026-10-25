@@ -7,7 +7,7 @@ updated: 2026-10-24
 
 # 项目进度
 
-**当前阶段：P3 完整玩法切片**（任务拆分已于 2026-10-08 批准；P3-01 至 P3-10 已完成。P2 退出评审与 P1 本地退出评审已通过，P0 其余项目并行收尾）
+**当前阶段：P3 完整玩法切片**（任务拆分已于 2026-10-08 批准；P3-01 至 P3-11 已完成。P2 退出评审与 P1 本地退出评审已通过，P0 其余项目并行收尾）
 
 本文件是项目总进度入口，只记录当前阶段、阶段状态摘要、任务索引入口、下一步与项目级阻塞，不跟踪阶段退出条件或任务执行状态。阶段范围和退出条件由[总计划 §12](./plan/master-plan.md#12-开发阶段与验收条件)定义，任务状态见各 goal，验收证据见 subtask 文档，最终退出判定见[阶段评审](./reviews/)。
 
@@ -18,7 +18,7 @@ updated: 2026-10-24
 | P0 基准与可行性 | 可行性评审已通过，其余项目并行收尾 | —（未设置任务索引） | [P0-feasibility](./reviews/P0-feasibility.md) |
 | P1 工程与运行骨架 | 本地退出评审已通过 | [P1 tasks](./plan/p1/tasks.md) | [P1-exit](./reviews/P1-exit.md) |
 | P2 玩法所需资源管线 | 退出评审已通过 | [P2 tasks](./plan/p2/tasks.md) | [P2-exit](./reviews/P2-exit.md) |
-| P3 完整玩法切片 | 进行中：P3-01 至 P3-11 已完成（P3-11 尚在分支 `p3-11-mission-events-spec`，未合入 main） | [P3 tasks](./plan/p3/tasks.md) | — |
+| P3 完整玩法切片 | 进行中：P3-01 至 P3-11 已完成 | [P3 tasks](./plan/p3/tasks.md) | — |
 | P4 Classic 内容完成 | 未开始 | [P4 tasks](./plan/p4/tasks.md) | — |
 | P5 Classic 1.0 发布 | 未开始 | [P5 tasks](./plan/p5/tasks.md) | — |
 | P6 Enhanced 美化 | 未开始 | [P6 tasks](./plan/p6/tasks.md) | — |
@@ -53,7 +53,7 @@ updated: 2026-10-24
    - **P3-08、P3-09、P3-10 于 2026-10-16 合入 main。** P3-09 与 P3-10（实现子任务至 24）已于 2026-10-15 先合入 P3-08 的分支，作为 P3-08 实现的基础（共享契约的衔接见 [P3-02 spec 的合并说明](./plan/p3/02/spec.md#审批)）；P3-10 其后的 25–28（原版运行、对照结论与文档，只改测量工具与文档）在合入 main 时再次合并。
      - 合并后 `RULES_VERSION` 为 7、快照格式 6、replay 格式 3、切片定义 6，`ConverterVersion` 为 `osr-import.graphics-5.logic-4.audio-2.models-4`：旧缓存须重新导入。
      - 未决的跨任务项（见 [Core 模块说明](./engineering/modules/core.md)）：已知差异中的 P3-09 × P3-10 两个联合故障（停靠倒计时到期与 `request-warp` 同 tick、同批 `[launch, request-warp]`，负责修订 MW-04 或 CB-07）；交接中仍未接入的尾随警告攻击者遍历（P3-08 × P3-10：CR-16 的 `isClosingMissileLock` 未实现，与 CB-09 的条件须先统一）与地图标签的威胁闪烁（P3-09 × P3-10：`MapLabel` 尚无 `threatStamp`）。
-   - [P3-11](./plan/p3/11/spec.md)（任务事件、结果、救援与重试）的 goal 已于 2026-10-24 执行完成，结论与证据见 [goal](./plan/p3/11/goal.md) 与 [23 最终对齐](./plan/p3/11/subtasks/23-final-alignment.md#完成证据)；在分支 `p3-11-mission-events-spec` 上，未推送、未合入 main。
+   - [P3-11](./plan/p3/11/spec.md)（任务事件、结果、救援与重试）的 goal 已于 2026-10-24 执行完成，结论与证据见 [goal](./plan/p3/11/goal.md) 与 [23 最终对齐](./plan/p3/11/subtasks/23-final-alignment.md#完成证据)。2026-10-24 合入 main。
      - 段 2 事件与任务总结、全清与结算（含正常玩法可达的状态 5 结算失败 `settlement-failed`）、被毁与能量耗尽、两次救援与第三次损失失败、僚机损失计时、退场与完成都是 Core 规则；会话新增 `completed` 阶段、终局占位 G-02/7 至 G-02/9 与 G-06 结果页（重试与返回）。API、已知差异与交接见 [Core 模块说明](./engineering/modules/core.md)。
      - D-01（[P3-02 spec](./plan/p3/02/spec.md#审批) 的 ME-01 至 ME-19、[P3-04 spec](./plan/p3/04/spec.md#审批) 的终局与救援衔接）与 D-02 均由用户明确批准。`RULES_VERSION` 8、快照格式 7，replay 格式 3 不变，replay-check 报告版本 2。
      - 与原版的对照见 [B-003](./original/behavior/B-003-campaign-flow.md) 与 [B-005](./original/behavior/B-005-campaign-rescue.md)：2 次合格原版运行（失败链 f-02、成功链 s-01，fixed 40000 cycles，受 U-021 约束），两层判定全部一致。按 D-02 只能顺带取得、本次未出现的分支保持 blocked，待用户逐项决定：僚机损失计时（#5）、三项交叉分支（#6）、停靠、基地视角与 Warp 中被毁（#7）、无基地的缺省放置（#8）。
