@@ -26,12 +26,15 @@ export interface RecordRuleInputs extends EntityRuleInputs {
 /** One record of the mission (a declaration) or the selected wingman option, as the world holds it. */
 export interface RuntimeRecord {
   readonly declaration: DeclarationReference;
-  /** +0x24–+0x2C in runtime units: a section-1 record's converted once, any other's as stored. */
-  readonly position: Vector3;
+  /**
+   * +0x24–+0x2C in runtime units: a section-1 record's converted once, any other's as stored. Writable, like `region`
+   * and `anchor`, only for the rescue, which replaces the player record's in place (docs/plan/p3/02/spec.md, ME-06).
+   */
+  position: Vector3;
   /** +0x44 in runtime units, or null. */
-  readonly region: SpawnRegion | null;
+  region: SpawnRegion | null;
   /** +0x48 after the defaults: a mission declaration index, or null. A wingman's is the player record. */
-  readonly anchor: number | null;
+  anchor: number | null;
   /** +0x40 as declared; world creation rejects anything but 0 on every record placement uses. */
   readonly gridSpacing: number;
   readonly ruleInputs: RecordRuleInputs;

@@ -38,6 +38,11 @@
       and takes the first hit whose test passes; the others count as skippedHits (stop.json `until`, report `probes`).
       A stimulus's "if" (same test over its pause's readings and earlier pauses') applies it only when true; a false
       test records `condition-false`, an unknown one (unqualified reading) rejects the stimulus.
+      Hit sites and jumps (P3-11/20): "until" may name "at": [offset, ...] (the alternatives it probes; a hit at
+      another alternative is the pause unprobed); a stimulus may name "at" (applied only for a hit at those sites);
+      a pause may carry "jump": [{"to": "<later pause>" | "end": true, "at": [...], "all"|"any": [...]}, ...]: the
+      first rule matching the accepted hit and its readings skips to that pause (or ends the run), and the pauses
+      passed over plan no sample or stimulus.
       Pre-existing files under the whole research root must stay unchanged during a run. --evidence narrows that check
       to one directory that contains the run (for runs while other sessions write elsewhere under local/research/);
       the baseline installation and the private copy stay fully protected.

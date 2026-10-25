@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "02"
-updated: 2026-10-17
+updated: 2026-10-24
 related: [ADR-0004, ADR-0006, ADR-0015, B-003, B-004, B-006, U-008, U-009, U-010, U-011, U-021, U-022, U-023]
 ---
 
@@ -609,7 +609,7 @@ kills: Readonly<Record<7 | 8 | 9 | 10 | 11 | 12 | 16 | 19, number>>;
                                     // ps +0x30…+0x5C 的 8 个按种类击杀计数，键为种类位，初值 0（D8）。只计玩家击杀的非玩家、非僚机；救援不清
 shots: { projectilesFired: number; projectileHits: number; missilesFired: number; missileHits: number };
                                     // ps +0x38、+0x3C、+0x40、+0x44，初值 0；救援不清。读者归 P3-11/P4
-heavyDamage: -1 | 0 | 1;            // 0x176710：初值 −1；0x2a830 的阈值写入（D4、D11）；救援不清；P3-11 的成功总结读取
+heavyDamage: -1 | 0 | 1;            // 0x176710：初值 −1；0x2a830 的阈值写入（D4、D11）；救援不清；只供 P4 的勋章（0x69e1c → 0x3b8dc），P3-11 不读（ME-18）
 leftDisplay: { page: 0 | 1 | 2 | 3 | 4 | 5 | 6 }; // 0x1a9dc8，初值 0（D15）。P3-07 写 0、1 之间的切换；页 2–6 及保存的页由 P3-09、P3-10 的修订加入
 statusDisplay: { blink: 0 | 1; blinkDueClock: number; redraw: boolean };
                                     // 0x4d0e0 的闪烁相位与计时，以及玩家对象的 +0xF0。初值 0、0、true；redraw 由玩家的子系统受损、
@@ -706,7 +706,7 @@ type Attacker =
 |---|---|
 | `target-changed` | 请求处理中每应用一个 `select-target` 发出一次，对应原版消息 2 的音效项（T1）。目标的清除（失效、停放、Warp 开始、基地视角、被毁视角）原版不给反馈，不发此事件；持续的目标由 projection 给出 |
 | `target-cleared` | 只由帧尾的右显示屏清除发出（CR-10）。`warp` 对应原版右显示屏的离开提示 |
-| `weapon-selected` | 玩家的选择命令被接受时紧随其结果发出，`changed` 表示当前挂点是否改变（冲突 32，P3-14 的音效 11381）。`commandIndex: null` 是原版在消息循环中处理的无命令选择，即请求处理中对玩家的完全修理（P3-11 的救援）；基地服务步的补弹不发（CB-11）。（措辞由 [FA-06](#fa-06-weapon-selected-的无命令来源) 更正，2026-10-17，P3-14/08） |
+| `weapon-selected` | 玩家的选择命令被接受时紧随其结果发出，`changed` 表示当前挂点是否改变（冲突 32，P3-14 的音效 11381）。`commandIndex: null` 是原版在消息循环中处理的无命令选择，即选择消息在消息循环结束前被处理的对玩家的完全修理（P3-11 的两种救援，ME-18 改写的 CB-10）；基地服务步的补弹不发（CB-11）。（措辞由 [FA-06](#fa-06-weapon-selected-的无命令来源) 更正，2026-10-17，P3-14/08） |
 | `shot-fired` | 请求处理中构造弹丸或导弹之后发出；主通道也可发射导弹，消费者按 `family` 选择音效 |
 | `hit` | 每次原版投递受击表现项（`0x2a40c`、`0x2a5fc`），或停放交战实际施加伤害时，在护盾与船体结算之后、被毁处理之前发出一次。`gated` 为玩家被毁视角门禁挡下的命中（原版仍投递受击项）。受击者已被毁时原版不投递，也不发事件。碎片受击不发事件（原版没有受击项）。`projectile` 为弹丸的结局：跳弹或移除；导弹与其他原因为 null。`shieldWasEmpty` 是原版受击项 +0x0C（受击前护盾 ≤ 0，选择音效槽 3 或 4） |
 | `object-destroyed` | 每个对象从存活到被毁只发一次（被毁标志门禁），在 `hit` 之后。`eventClass` 是原版对象事件的类别：攻击者种类为 1 时为 0，否则为 1。`outcome`：停放对象为 `removed`，玩家为 `delayed`，其他为 `explodes`。AI 范围伤害的自爆（`0x6313c`）不置被毁标志，不发此事件 |
@@ -2473,6 +2473,334 @@ interface HitEvent {
 | P3-13 | 指示灯与警告音读同一对分区级标志 `communications.warnings`（不再是 `player.warnings`），闪烁仍归 P3-13 |
 | P3-15 | 联合 replay 的事件含 FA-05 的新字段与 `object-retired` |
 
+
+### P3-11 的契约修订（D-01）
+
+本节由 P3-11 的子任务 05 起草（2026-10-18），定稿 [P3-11 spec](../11/spec.md#实施关卡) 的关卡 D-01 中属于本 spec 的部分；Runtime、会话与应用流程的部分在 [P3-04 的 P3-11 修订](../04/spec.md#终局与救援衔接p3-11-的修订)。它建立在 P3-06、P3-07、P3-05、P3-08、P3-09 与 P3-10 的修订之上，那些修订已定的项不变；前文与本节不一致时以本节为准（被本节改写的前文各句见 ME-18）。编号 ME-01 至 ME-19 只供引用本节，不与 CR、MW、CB 重叠。用户于 2026-10-22 批准本节（见[审批](#审批)），P3-11 的 08 起的实现依本节进行。
+
+原版事实只记在 executable 的 [Mission events, ending, loss and rescue (P3-11)](../../../original/formats/executable.md#mission-events-ending-loss-and-rescue-p3-11) 与 scenario 的 [Summary selection: rule meaning](../../../original/formats/scenario.md#summary-selection-rule-meaning-p3-11)（下文按小节名引用），不重复。定稿依据是 P3-11 子任务 01 至 04 与 06 的完成证据。
+
+**记法与通则：** 沿用 [P3-10 修订](#p3-10-的契约修订d-01)的记法（种类掩码、取样、c′、玩家可用、时钟不复现 u32 回绕、故障、快照与“静态”）。另外：
+
+- **c′** 是 `mission-flow` 读到的上一 tick 的时钟（原版的 s(N−1)）；**取样**是本 tick 的 `world.clock`（s(N)）。
+- **种类集合**按实体的 `kindBit`（即内容的 `craftType`）判定：**敌方入口集** `0x93780`（位 7–10、12、13、16、19）、**全清集** `0x91780`（入口集去掉位 13）、**基地类** `0x68000`（位 15、17、18）。不用 `side` 推导：`side: 'enemy'` 比入口集粗（[All-clear and summary selection](../../../original/formats/executable.md#all-clear-and-summary-selection-p3-1101)）。
+- **损失类型** `PlayerLoss = 'destroyed' | 'energy'`，对应原版 `0x32e14(p)` 的 p = 1、0。
+- 新状态都由 Core 拥有，进入快照规范文本与状态哈希；静态规则数据不进快照。
+
+#### ME-01 范围与不变的部分
+
+- **加入：** 主状态 0、1、4、5 与子状态 1、2；任务状态 `ended`；段 2 运行计数；预结算、结果锁存与退场完成；救援计数；信标、结算与僚机损失的期限；CR-13 中归 P3-11 的六个调用点与救援；`mission-teardown` 阶段；`mission` 与 `result` 分区；领域事件与原因码。
+- **不加入：** 主状态 2 与新任务构建（重试是 app 创建的新世界）；子状态 6（P3 没有结束战役入口）；调试结果请求 `0x186838` 与消息 0x800；练习模式分支；按种类计数表 `0x1b45b4`、玩家击杀计数 `0x1b46ec`、出现标志 `0x176744`/`0x176748` 与扇区资源簿记 `0x6a2b0`（没有本任务的读者，Q-02/Q-08）；`0x69e1c` 与得分、统计行、勋章、晋升（只供 P4，ME-17 决定 9）。
+- **不变：** 阶段表的次序；`CORE_LIMITS`（ME-16）；replay 记录的形状与格式版本（ME-16）；Core 的输入（不新增规则输入：僚机损失消息用已有的 `commMessages`，完成与信标消息只发消息键，总结只发引用）。
+
+#### ME-02 世界创建：语义检查
+
+在 P3-10 CB-01 的检查之后、`buildSpawnState` 之前增加一项 `CoreInputError` 检查（路径为规范内容的 `eventTriggers[i].ranges[k].summarySelector`，不回显值）：
+
+- **总结选择值：** 每个触发的每个区间的 `summarySelector`（读取器已保证为 i8）须 ≤ 0 或在 13–19 之内。1–11 会选非任务过场行，12 与“无”的哨兵 0xFF 冲突，20–35 是勋章、晋升与结局行，≥ 36 越出 36 行的表（[scenario 的选择值域](../../../original/formats/scenario.md#summary-selection-rule-meaning-p3-11)）；52 个任务只用 0 与 13–19。取值见 ME-17 决定 5。
+- 区间上下界不检查（任意 i32 都有定义，lower > upper 永不匹配）；消息总长受规范读取器的上限约束。全清集与入口集由 `kindBit` 推导，不需检查。玩家记录的网格放置（+0x40）已由 P3-02 在创建时拒绝，所以救援放置不会走网格路径。
+
+#### ME-03 任务流程 `flow`
+
+CB-02 的 `flow` 改为：
+
+```ts
+flow: {
+  mainState: MainState;              // 0x1863ac
+  subState: MissionSubState;         // 0x186881
+  dockingDeadline: number;           // 0x186824，CB-02 不变
+  beaconDeadline: number;            // 0x186854
+  settlementDeadline: number;        // 0x18681c：主状态 4、5 共用
+  rescues: 0 | 1 | 2;                // 0x186830
+  wingmanLoss: { pending: boolean; dueClock: number };  // 0x18682c、0x186818
+  settlement: Settlement | null;     // 0x18685c 的结果字、总结与选择字节（ME-05）
+  result: MissionResult | null;      // 项目字段：锁存的结果摘要（ME-05）
+  completedTick: number | null;      // 项目字段：退场完成的 tick（ME-11）
+};
+type MainState = 0 | 1 | 3 | 4 | 5;  // 3 任务进行中；4 结算等待；5 结果延时；0 已锁存、待退场；1 退场中。不加入 2
+type MissionSubState = 0 | 1 | 2 | 3 | 4 | 5;  // 1 信标等待；2 被毁序列（或信标到期后的损失处理）；3–5 停靠（CB-02）。不加入 6
+```
+
+| 字段 | 单位与范围 | 初值 | 写入者（阶段） | 读者 | 救援 | 锁存与退场 |
+|---|---|---|---|---|---|---|
+| `mainState` | 封闭联合 | 3 | `mission-flow`：3→4、4→5、5→0；损失处理的失败分支 3→0（`mission-flow` 或 `request-handling`）；`mission-teardown`：0→1 | 谓词（下）、所有流程入口 | 不变 | 见左 |
+| `subState` | 封闭联合 | 0 | CB-02 的停靠写入者；`0x32d74` → 2（伤害所在阶段）；`0x33464` → 1（`energy`）；子状态 1 到期 → 2（`mission-flow`）；救援 → 0 | `mission-flow` 的分派、CB-02 谓词 | := 0 | 不再写；保留锁存时的值 |
+| `beaconDeadline` | 时钟 | 0 | 只由 `0x33464`：取样 + 0x3C0 | 只在子状态 1 | 不写（陈旧值无害） | 不读 |
+| `settlementDeadline` | 时钟 | 0 | `mission-flow`：3→4 时 c′ + 0x140；主状态 4 的 Warp 推迟 c′ + 0x140；4→5 时 c′ + 0x3C0 | 只在主状态 4、5 | — | 不读 |
+| `rescues` | 0–2 | 0 | 救援 + 1；锁存 := 0（先由 `rescuesUsed` 捕获） | 只由损失处理 | + 1 | := 0 |
+| `wingmanLoss` | 布尔、时钟 | false、0 | `0x32dec`：未挂起时 true、取样 + 0x780（任何主状态，伤害所在阶段）；`mission-flow` 子状态 0 到期 → false | 只在主状态 3、子状态 0 且任务状态为 `built` | 不变 | 不变（不再读） |
+| `settlement` | ME-05 | null | 只由 `mission-flow` 的 3→4 写入一次 | 主状态 5 到期、锁存 | — | 保留 |
+| `result` | ME-05 | null | 只由锁存写入一次 | projection（完成后）、Runtime 不读 | — | 冻结 |
+| `completedTick` | tick | null | 只由 `mission-teardown` 写入一次 | `step` 的完成门禁、projection | — | — |
+
+- **谓词：** `inMission` = 主状态 3；`0x3336c` = 3 且子状态 ≠ 2；`0x33390` = 3 且子状态 0；`0x339cc` = 主状态 ≠ 1（ME-11）。都按原条件读新取值，不写成常真。
+- **不变量（违反为 Core 故障 `invariant-violated`）：** 主状态 ∈ {3, 4, 5} ⇔ `result` 为 null；主状态 3 ⇒ `settlement` 为 null；主状态 4、5 ⇒ `settlement` 非 null 且任务状态为 `ended`；主状态 0、1 ⇒ 任务状态为 `ended`、`rescues` 为 0；`completedTick` 非 null ⇒ 主状态 1 且实体表为空。子状态 3–5 的停靠对象规则仍按 CB-02，只在主状态 3 中检查（主状态 4、5 中 `0x333b4` 仍可写入子状态 3，但不被分派，[Gates in states 4 and 5](../../../original/formats/executable.md#gates-in-states-4-and-5-p3-1101)）。
+- **到期比较：** 子状态 0 的僚机计时与子状态 1 的信标为 c′ ≥ 期限；主状态 4、5 为 **c′ > 期限**（严格，[Numbers on the flow and rescue paths](../../../original/formats/executable.md#numbers-on-the-flow-and-rescue-paths-p3-110102)）。生产步长下主状态 4 在 3→4 的 tick 之后持续 161 tick，主状态 5 持续 481 tick。
+- **序列化：** 全部字段进快照规范文本，按上表次序；`settlement`、`result` 按 ME-05 的字段次序。
+
+#### ME-04 任务状态与段 2 运行状态
+
+- **`WorldState.missionStatus`**（`0x1b46fc`）改为 `'built' | 'ended'`。`ended` 对应原版的 4：由全清（ME-08）或失败分支（ME-10）写入，写入时同时 `disableSpawning`；此后永不回到 `built`。原版的 0（构建中）在 Core 中不可见。
+- **`WorldState.missionEvents`**（段 2 触发的 +0x08、+0x0C、+0x10）：
+
+  ```ts
+  missionEvents: { triggers: readonly { instantiated: number; destroyed: number; left: number }[] };
+  // 与 setup.eventTriggers 等长、同次序；非负 i32，初值 0
+  ```
+
+  只由 `0x6977c`（ME-08）加 1；救援、锁存与退场都不清。上界：每个计数 ≤ 本次运行的实例化总数（`spawnExpansion` 1,024 加玩家与僚机），不会越出 i32；越界为故障。生成配对（`0x695c0` 的配对部分）在原始解析边界已拒绝，不建模。
+
+#### ME-05 预结算、结果锁存与完成
+
+```ts
+interface Settlement {                 // 状态 3→4 的 0x69c54(EDX = 0)，写入一次
+  outcome: 'success' | 'failure';      // 结果字：全清判定无剩余为 1，否则 0（ME-17 决定 1）
+  summary: SummaryReference | null;    // 成功且有匹配区间时；failure 恒为 null
+  summarySelector: number;             // i8：匹配区间的 summarySelector；无匹配或 failure 为 −1（状态 2 写的 0xFF）
+}
+interface SummaryReference { mission: AssetId; trigger: number; range: number } // 本次任务 Asset 的 eventTriggers[trigger].ranges[range]
+interface MissionResult {              // 锁存时写入一次，之后不变
+  outcome: 'success' | 'failure';
+  reason: ResultReason;
+  summary: SummaryReference | null;    // success 时取 settlement.summary；failure 为 null
+  rescuesUsed: 0 | 1 | 2;              // 锁存前的 rescues
+  endingGaps: readonly EndingGap[];    // 1 或 2 项，按显示次序
+  playerKills: number;                 // 玩家 8 个击杀计数之和（0x3af04 写的 ps +0x68），非负 i32
+  latchTick: number;
+}
+type ResultReason =
+  | { type: 'all-clear' }                              // 主状态 5 到期且 settlement 为 success
+  | { type: 'third-loss'; loss: PlayerLoss }           // 救援计数为 2 时的损失处理
+  | { type: 'settlement-failed' };                     // 主状态 5 到期且 settlement 为 failure（ME-17 决定 1）
+type EndingGap =
+  | { gap: 'G-02/7'; variant: PlayerLoss }             // 失败过场的首片：third-loss 取其损失类型；settlement-failed 按原版 p = 1 为 destroyed
+  | { gap: 'G-02/8'; variant: 'solo' | 'wingman' }     // 成功返航
+  | { gap: 'G-02/9'; row: number };                    // 任务专属过场：CINC 行 = summarySelector（13–19）
+```
+
+- **预结算（`mission-flow`，主状态 3、子状态 0、任务状态 `ended`）：** 以不排除任何对象的全清判定（ME-08）重新判断。有剩余 → `{ failure, null, −1 }`；没有 → 成功，并按 [summary selection](../../../original/formats/scenario.md#summary-selection-rule-meaning-p3-11) 选择：按段次序取第一个 `instantiated` 或 `destroyed` 非零的触发；比例 = `instantiated` > 0 时 `Math.trunc((destroyed / instantiated) * 100)`（f64 除法与乘法，向零截断为 i32；ME-17 决定 6），否则 0；取第一个 lower ≤ 比例 ≤ upper（有符号）的区间；无匹配则试下一个触发。选中区间时 `summary` 为其引用（**即使其消息总长为 0**，原版此时不分配文字但仍复制选择字节；UI 把它显示为空总结），`summarySelector` 为其值。都不匹配时 `{ success, null, −1 }`。之后的事件不改变 `settlement`。
+- **锁存（`latch(outcome, reason)`）：** 只在主状态 3（损失处理的失败分支）或主状态 5 到期时调用，依次：
+  1. `endingGaps`：
+     - success：`G-02/8`，种类 2 遍历的第一个实体存在且状态为 `active` 或 `projectile-hit`（≥ 7）时为 `wingman`，否则 `solo`（读锁存时的对象状态，不读活动、船体或出发选择）；然后 `summarySelector` > 0 时加 `{ G-02/9, row }`。
+     - failure：`{ G-02/7, variant }`。
+  2. `result` := 上述摘要，`rescuesUsed` := `rescues`，`playerKills` := 击杀计数之和，`latchTick` := 本 tick；然后 `rescues` := 0。
+  3. `mainState` := 0；发出 `result-latched`（ME-13）。
+  原版两个结果处理器中其余的写入（得分、统计行、勋章、晋升、页面与 `0x330fc`）不进入 Core（ME-01）；它们在原版中也不回写本任务的任何规则状态（[Result handlers](../../../original/formats/executable.md#result-handlers-score-statistics-and-medals-p3-1101)）。
+- **完成：** 见 ME-11。`result` 在完成前不公开（ME-14）。
+
+#### ME-06 玩家状态与运行时来源记录
+
+- **`PlayerState`：** 不增加字段。救援改写的玩家字段见 ME-10。`heavyDamage` 只供 P4 的勋章（ME-18 改写 CR-04 的注释）；`kills`、`shots`、`heavyDamage`、`communications.thanks` 救援与锁存都不清（原版的统计重置 `0x3b734` 属于下一次构建，Core 不进入）。
+- **玩家的运行时来源记录（`spawn.records` 中玩家声明的 `RuntimeRecord`）：** 救援按原版就地改写 rec +0x24–+0x2C、+0x44、+0x48（ME-10 第 6、7 步）：`RuntimeRecord` 的 `position`、`region`、`anchor` 由只读改为可写（与已可写的 `aiTarget`、`spawnCount` 同样就地改变），唯一的写入者是救援，写入后 `position` 为选中位置（或零向量）、`region` 与 `anchor` 为 null；其余字段（含 `gridSpacing`、`ruleInputs`）不变。`spawn.records` 的槽位与记录身份不变，按索引引用该记录的别名都看到改变；`MissionSetup`、导入 payload 与 setupHash 不变。原版的 +0x4C 路径已在内容契约中拒绝，不建模。快照的 `SnapshotRecord` 已覆盖这些字段，形状不变。
+- **放置序号：** 每次救援放置使玩家的 `placementSerial` 加 1（Render State 不跨此插值）。
+
+#### ME-07 `mission-flow` 阶段（`0x3266c`）
+
+每个 tick 至多执行下面一个分支（原版每帧一个状态步；Core 不进入主状态 2，所以也没有同帧的 1→2→3）：
+
+| 主状态 | 子状态 | c′ 的条件 | 效果 |
+|---|---|---|---|
+| 3 | 0 | 任务状态为 `ended` | 预结算（ME-05），`settlementDeadline` := c′ + 0x140，主状态 := 4，发出 `settlement-started`。本 tick 不检查僚机计时，此后也不再检查 |
+| 3 | 0 | 否则，`wingmanLoss.pending` 且 c′ ≥ `dueClock` | `pending` := false；查找表 20983 第 6 项（无头像、无说话者、无抽取，CB-12 的查找）；有消息时 `queueRadio(…, 'none', null)`；发出 `wingman-loss-timer-expired` |
+| 3 | 1 | c′ ≥ `beaconDeadline` | 子状态 := 2，`flushRadio('beacon-expired')`，损失处理 `resolvePlayerLoss('energy')`（ME-10） |
+| 3 | 2 | — | 无（不轮询任务状态与僚机计时） |
+| 3 | 3–5 | — | CB-02 |
+| 4 | — | c′ > `settlementDeadline` | 玩家的视角为 1（Warp）→ `settlementDeadline` := c′ + 0x140，发出 `settlement-deferred`；否则 `flushRadio('completion-message')`，发出 `flight-message`（`missionComplete`），主状态 := 5，`settlementDeadline` := c′ + 0x3C0 |
+| 5 | — | c′ > `settlementDeadline` | `flushRadio('result-due')`，然后 `settlement` 为 success → `latch(success, all-clear)`，否则 `latch(failure, settlement-failed)` |
+| 0、1 | — | — | 无（退场在 `mission-teardown`，ME-11） |
+
+主状态 4 的推迟只读玩家状态的视角（ps +0x28）恰为 1，不读上一视角或 Warp 进度；玩家实体不存在时视角仍可读（ps 恒存在）。
+
+#### ME-08 对象事件 `0x6977c` 与全清判定 `0x69a70`
+
+- **调用点（CR-13 的三处正常玩法入口）：** 被毁——`0x2a694` 中 `0x3c0f4` 之后、`object-destroyed` 所在位置，类型为该事件的 `eventClass`（0 或 1）；离开世界——`parked-update` 中 `object-left-world` 所在位置，类型 2（僚机已由 P3-06 排除）；实例化——实例化扩展点的最后一步，类型 3。调试路径 0x800 不实现。
+- **处理（`reportObjectEvent(context, entity, type)`）：**
+  1. `entity.source` 为 null（运行时构造：导弹、弹丸、爆炸、碎片、动态 Xpon、地图标记）→ 什么都不做。
+  2. 来源声明的 `eventTrigger` 非 null → 该触发的 `instantiated`（3）、`destroyed`（0、1）或 `left`（2）加 1。僚机名单项的 `eventTrigger` 恒为 null。
+  3. 类型 0–2、任务状态为 `built`、`kindBit` 在入口集中 → 以该实体为排除项做全清判定；没有剩余 → 任务状态 := `ended`，`disableSpawning`，发出 `all-clear`。
+- **全清判定（`hasRemainingEnemies(world, exclude)`）：** 以下任一存在即“有剩余”：
+  1. `kindBit` 在全清集中、不是排除项、`destroyed` 为 false、状态不是 `pending-removal` 的实体（原版的被毁标志为 0 且状态 ≠ 6）：任何活动（停放、活动、停靠）、Warp 中与其余状态（含 `new`、`area-switch`）都算；
+  2. 生成队列中的项（不看到期时刻）：`record` 来源的声明 `craftType` 在全清集中，或 `group` 来源的任一成员声明的 `craftType` 在全清集中；`wingman` 来源恒不算。
+
+  已由 `spawn-queue-check` 移出队列、尚未在 `request-handling` 中处理的生成请求**不算**（照原版；ME-17 决定 1）。原版的第 3 类（生成配对词）在支持集中恒不存在。
+
+#### ME-09 被毁、能量耗尽与僚机损失的入口
+
+- **`0x32d74`（种类 1 被毁）：** 位于伤害处理中玩家的 `object-destroyed`（及其 ME-08 处理）之后、爆炸构造之前。
+  1. 主状态 ≠ 3 或子状态为 2 → 返回。
+  2. 记 `previousSubState`；子状态 := 2；`flushRadio('player-destroyed')`。
+  3. 视角为 0x11 且子模式为 8 → 跳过第 4 步（正常玩法不可达）。
+  4. 记 old := 视角；视角 := 0x11，**上一视角 := 0x11**（原版两次调用 `0x3104c`，[Destruction entry](../../../original/formats/executable.md#destruction-entry-0x32d74-p3-1102)），子模式 := 8；玩家目标 := null（不发 `target-changed`，同 CR-06 的决定 6）；`switchView(world, 0x11, old)`（真实的旧视角；离开 1 时按 MW-09 放弃 Warp，`inWarp` 保持）。
+  5. `dockingObject` := null。
+  6. 发出 `player-loss-started`（`destroyed`）。
+
+  不改：任何实体的活动（停靠中被毁时保持 `docked`）、`inWarp`、`warpClock`、地图记录、停靠期限、信标期限、僚机计时、救援计数与任务状态。
+- **`0x33464`（玩家能量耗尽）：** 位于 `energy` 阶段玩家**每次**到期的能量更新钳 0（并锁定移动块）之后，不订阅只发一次的 `energy-depleted`。主状态 3 且子状态 0 时：发出 `flight-message`（`beacon`）；子状态 := 1；`beaconDeadline` := 取样 + 0x3C0；发出 `player-loss-started`（`energy`）。其他子状态与主状态中什么都不做；子状态回到 0 而能量仍 ≤ 0 时，下一次到期的耗尽更新重新进入（[Energy loss and the beacon wait](../../../original/formats/executable.md#energy-loss-and-the-beacon-wait-p3-1102)）。
+- **`0x32dec`（种类 2 被毁）：** 位于僚机的 `object-destroyed`（及其 ME-08 处理）之后、停放判定与爆炸构造之前；不看主状态与子状态。`wingmanLoss.pending` 为 false 时 := true，`dueClock` := 取样 + 0x780，发出 `wingman-loss-timer-started`；否则什么都不做。
+
+#### ME-10 损失处理与救援（`0x32e14`、`0x67b98`）
+
+`resolvePlayerLoss(context, loss)` 的两个调用点：`destroyed`——`request-handling` 中玩家第 0 部件碎片（逃生舱）到期的处理，在清除 `followedEntity` 之后、该碎片进入待移除之前（CR-13）；`energy`——`mission-flow` 子状态 1 到期（ME-07）。依次：
+
+1. 主状态 ≠ 3 → 返回（主状态 4、5 中的损失既不救援也不失败；被毁的玩家保持被毁到退场）。
+2. `rescues` 为 2 → 任务状态 := `ended`，`disableSpawning`；`latch(failure, { third-loss, loss })`；返回。被毁路径中同一请求处理阶段的其余请求（含已投递的生成请求）照常处理，退场在本 tick 的 `mission-teardown` 开始。
+3. 玩家实体为 null → Core 故障（任务进行中不可达）。
+4. old := 视角。
+5. **恢复（`0x67b98`，次序不可调换）：** `destroyed` := false；`fullRepair(context, player, true)`（ME-18 改写其标志的含义：两种救援的挂点选择消息都在消息循环结束前被处理，都发 `weapon-selected`）；`rebuildWeaponBlock`（锁定等级 := 0）；`initialiseResources(player, craft, clock, rand)`，百分比取玩家运行时记录的 +0x68、+0x64 与 100（**1 次世界抽取**：rand % 64）；视角 := 0xC，上一视角 := 0xC（子模式不变）。机型记录在 Core 中按种类静态取得，原版的重新取得没有可观察效果。
+6. **选择基地：** count := 种类遍历中基地类集合的**全部实体**（不看状态、活动、被毁标志与待移除，只要仍在实体表中，[Rescue](../../../original/formats/executable.md#rescue-0x32e14-and-0x67b98-p3-1102)）。count > 0：**1 次世界抽取** r ∈ [0, 32767]，k := r % count，取遍历中第 k 个实体；位置 := 其位置，z := `Math.fround(z + 2000)`。count = 0：位置 := (0, 0, 0)，不抽取。
+7. **放置：** 按 ME-06 替换玩家的运行时记录，再以 `placeWorldRecord` 放置：count > 0 时走存储位置路径（0 次抽取）；count = 0 时位置为零，走全世界缺省（**2 次世界抽取**，x 再 y）。世界检查与象限姿态照 P3-02 的放置服务。玩家位置与姿态 := 放置结果（逐位），`placementSerial` 加 1。Core 没有扇区预算，放置不会失败（ME-17 决定 8）。
+8. `switchView(world, 0xC, old)`（离开 1 时按 MW-09 放弃 Warp）。
+9. 玩家状态 := `active`；子状态 := 0。
+10. **移动块：** 在当前位姿以模式 0 重建：最大速度沿用第 5 步的结果；油门 := chop(F(速度 ÷ 机型 +0xB8) × 128.0)（f64，[Rescue](../../../original/formats/executable.md#rescue-0x32e14-and-0x67b98-p3-1102) 第 13 步），速度 := 由油门表得到的指令速度；控制锁定、转动速率与扰动偏置清零。油门落在油门表之外为 Core 故障（ME-17 决定 7）。
+11. `clearCommunicationLimits`；`rescues` += 1。
+12. 发出 `player-rescued`，随后 `transition`（`destroyed` 为 `G-02/5`，`energy` 为 `G-02/6`）。
+
+- **保留：** 实体 ID；活动（停靠中被毁的玩家救援后仍为 `docked`，DK4）；`inWarp`、`warpClock`；玩家目标（能量救援保留，被毁救援时已为 null）；`control`、`targeting`；击杀、射击、`heavyDamage`、`thanks`；任务状态、段 2 计数、生成队列、僚机计时、信标期限（陈旧）、停靠期限；其他全部实体与 AI 控制器；无线电队列（已由调用前的清空处理）。
+- **抽取次序：** `initialiseResources` 的 1 次 → 基地选择的 1 次（或全世界缺省的 2 次）。没有其他抽取：被毁与救援的视角切换不抽取（D12 的更正）。
+- **媒体：** Core 不计 G-02/5、G-02/6 的用时（P3-02 技术决定 2）。原版能量救援的媒体用时计入同一主循环迭代的取样，被毁救援的计入下一迭代（C3）；两者都是零值差异，披露于 Core 模块说明。
+
+#### ME-11 锁存之后：退场与完成
+
+- **锁存 tick 的剩余阶段：** 锁存可发生在 `mission-flow`（成功、结算失败、信标的第三次损失）或 `request-handling`（逃生舱的第三次损失）。之后本 tick 的阶段照常以主状态 0 运行，不提前返回：对象更新、AI、运动、碰撞、伤害与能量照常（流程入口都要求主状态 3，所以不再有被毁视角、信标、救援或失败）；`request-handling` 中已投递的生成、碎片与发射请求照常处理（`0x339cc` 在主状态 0 放行）；无线电不取出（`0x3336c`）。命令按 ME-12 忽略。
+- **退场开始（`mission-teardown`，主状态 0，`0x334bc`）：** old := 视角；视角 := 0x13，上一视角 := old，`switchView(world, 0x13, old)`；主状态 := 1；**每个实体**的状态 := `pending-removal`（不看活动、状态、被毁标志或 Warp；原版的 `0x21694` 与状态 1 的强制状态 6）；发出 `teardown-started`。
+- **下一 tick（主状态 1）：** 每个实体在 `object-update` 中经既有的通用路径提出 `leave`（机体、标记、导弹、弹丸、爆炸、碎片与 Xpon 的待移除分支；Warp 过境的保持只在状态 0–3 生效，不阻挡待移除），在同 tick 的 `request-handling` 中移除（引用失效、玩家实体引用清空、AI 控制器与脚本缓存的使用随实体释放）。
+- **`0x339cc`（主状态 1 时为假）的项目映射：** `request-handling` 中的 `spawn`（原版消息 0x4000）与 `launch`（消息 8）请求被丢弃，不发事件；原版的碎片消息 0x10 在 Core 中没有请求，由碎片的直接构造入口（`shedFragments`）在主状态 1 时不构造任何碎片。不新增请求类型。正常流程中三者在主状态 1 都不出现（生成已关闭，待移除的实体不开火、不脱落碎片），门禁是防御性的照原版实现。
+- **完成（`mission-teardown`，主状态 1）：** 实体表为空且 `world.ai.parseCache` 为空（没有活的脚本使用） → `completedTick` := 本 tick，发出 `mission-completed`；这是本运行的最后一个 tick，`result` 分区在本 tick 的提交中变为终态。否则 → Core 故障（`invariant-violated`，site `mission-teardown`），不发布完成。原版在下一帧的状态 1 才发现对象已清空；Core 在移除的 tick 完成（ME-17 决定 2）。
+- **保留：** 历史事件、`result`、`settlement`、段 2 计数、生成状态与玩家状态的其余字段可以保留不可再解析的旧 ID；不反向清理它们。
+
+#### ME-12 命令与 `step`
+
+- **原因码：** `COMMAND_RESULT_REASONS` 增加 `mission-ended`。命令判定（`object-update`）时主状态为 0 或 1，则每条结构合法的命令都是 `ignored`/`mission-ended`，先于其他全部判定（含 MW-04 的地图开关与 `player-unavailable`）；不投递请求，不改变任何状态。这只发生在 `mission-flow` 锁存的 tick 与退场 tick：逃生舱的第三次损失在 `request-handling` 锁存，该 tick 的命令已在锁存前按主状态 3 判定，其结果与已投递的请求保留，不重新判定。主状态 3–5 中的命令照旧判定：被毁序列中玩家不可用（`player-unavailable`）；信标等待与主状态 4、5 中照常飞行（[Gates in states 4 and 5](../../../original/formats/executable.md#gates-in-states-4-and-5-p3-1101)）。ME-17 决定 3。
+- **完成后的 `step`：** `completedTick` 非 null 时，`step` 在读取输入与录制容量检查之前抛出 `CoreInputError`（path `step`，reason `mission-completed`），世界与录制不变，**不锁存**；`projection()`、`renderState()`、`snapshot()` 与录制导出照常可用。ME-17 决定 4。录制会话同理。
+- **replay：** `replayRecord` 在完成之后仍有 tick 时，于执行该 tick 之前以 `CoreInputError`（path `ticks[k]`，reason `after-completion`）拒绝，不丢弃后缀；比较照旧逐事件与检查点进行。
+
+#### ME-13 领域事件与次序
+
+```ts
+| { type: 'all-clear'; tick; entityId: EntityId; kindBit: number; eventClass: 0 | 1 | 2 }  // 触发全清的对象
+| { type: 'settlement-started'; tick; outcome: 'success' | 'failure'; summary: SummaryReference | null;
+    summarySelector: number; dueClock: number }
+| { type: 'settlement-deferred'; tick; dueClock: number }                                   // Warp 中的推迟
+| { type: 'flight-message'; tick; message: 'missionComplete' | 'beacon' }                  // data/flight-messages 的字段名
+| { type: 'player-loss-started'; tick; playerEntityId: EntityId; loss: 'destroyed';
+    previousSubState: MissionSubState; previousViewMode: number; viewSwitched: boolean }
+| { type: 'player-loss-started'; tick; playerEntityId: EntityId; loss: 'energy'; previousSubState: 0; deadlineClock: number }
+| { type: 'player-rescued'; tick; playerEntityId: EntityId; loss: PlayerLoss; rescues: 1 | 2;
+    baseEntityId: EntityId | null; candidates: number; position: Vec3; orientation: Matrix3 }
+| { type: 'result-latched'; tick; result: MissionResult }
+| { type: 'teardown-started'; tick; entities: number }
+| { type: 'mission-completed'; tick; outcome: 'success' | 'failure' }
+| { type: 'wingman-loss-timer-started'; tick; wingmanEntityId: EntityId; dueClock: number }
+| { type: 'wingman-loss-timer-expired'; tick; queued: boolean }
+| { type: 'transition'; tick; gap: 'G-02/3' | 'G-02/4' | 'G-02/5' | 'G-02/6' }
+| { type: 'radio-flushed'; tick; cause: 'docking-cancel' | 'player-destroyed' | 'beacon-expired' | 'completion-message' | 'result-due';
+    removed: number; interrupted: 'none' | 'loading' | 'playing' }
+```
+
+- 字段沿用 CR-06 的通则：脱离世界的快照，不另带 `clock`，不含内容文字。`result-latched` 的 `result` 是 ME-05 的冻结副本。段 2 计数没有专门事件（没有消费者）。
+- **一个 tick 内的次序（在 CB-13 之上）：**
+  - `mission-flow`：CB-02 的停靠事件；或 `settlement-started`；或 `wingman-loss-timer-expired`（其前为 `radio-queued`）；或子状态 1 到期的 `left-page-changed`、`radio-flushed`，然后救援事件（下）或 `result-latched`；或主状态 4 的 `settlement-deferred`，或 `left-page-changed`、`radio-flushed`、`flight-message`；或主状态 5 的 `left-page-changed`、`radio-flushed`、`result-latched`。
+  - **救援：** `weapon-selected`（`fullRepair` 的每次前进）→ `player-rescued` → `transition`。
+  - **被毁：** 同一对象的 `object-destroyed` → `all-clear`（若有）→ 玩家：`left-page-changed`、`radio-flushed`、`player-loss-started`；僚机：`wingman-loss-timer-started` → 爆炸等 P3-07 的事件。
+  - **离开世界：** `object-left-world` → `all-clear`（若有）。实例化不产生本节的事件。
+  - **逃生舱到期：** `fragment-expired` → 救援事件或 `result-latched`。
+  - **能量：** 该次能量更新既有的事件之后，`flight-message`（`beacon`）→ `player-loss-started`。
+  - **退场：** `mission-teardown` 中 `left-page-changed`（若 `switchView` 写页）→ `teardown-started`；下一 tick 的同一阶段为 `mission-completed`，它是本运行的最后一个事件之一（之后只有 `area-check` 与 `frame-end` 在空世界中运行，不产生事件）。
+- **每 tick 的上界：** `all-clear`、`settlement-started`、`settlement-deferred`、`flight-message`、`result-latched`、`teardown-started`、`mission-completed`、`wingman-loss-timer-started`、`wingman-loss-timer-expired` 各 ≤ 1；`player-loss-started` ≤ 2（保守值：被毁的阶段都在 `energy` 之前，被毁后子状态为 2，能量入口不再生效）；`player-rescued` ≤ 1（被毁救援要求子状态 2、能量救援要求子状态 1，互斥）；`radio-flushed` 仍 ≤ 2。
+- **`transition` 的上界仍为 2：** 救援的 `G-02/5`/`G-02/6` 至多 1 个，且与停靠或离港的衔接不在同一 tick（被毁救援要求子状态 2，`dock` 与自动离港要求子状态 4、5，命令离港要求玩家可用；能量救援要求子状态 1，停靠的玩家没有能量更新）。锁存与完成的 tick 都没有 `transition`（主状态 3 以外没有子状态分派，失败分支不救援）；Core 以断言保证，违反为故障。
+- 比较器的事件字段表随之扩展（`result-latched` 的 `result` 与 `player-rescued` 的位姿按字段逐项比较）。
+
+#### ME-14 Projection 与 Render State
+
+- **`mission` 分区：** `status` 改为 `'built' | 'ended'`；增加 `phase: MissionPhase`：
+
+  ```ts
+  type MissionPhase = 'normal' | 'beacon-wait' | 'destruction-sequence' | 'docking'
+    | 'settlement-wait' | 'result-delay' | 'teardown' | 'completed';
+  // 主状态 3：子状态 0 normal、1 beacon-wait、2 destruction-sequence、3–5 docking；4 settlement-wait；5 result-delay；
+  // 0、1 teardown；completedTick 非 null 时 completed
+  ```
+
+  不公开救援计数、段 2 计数、各期限与 `settlement`（原版飞行中不可见；开发诊断经快照读取）。
+- **`result` 分区就绪，**取代 `ResultReason`、`ResultMessageReference` 的 `never` 占位：
+
+  ```ts
+  type ResultMessageReference = SummaryReference;
+  type ResultProjection =
+    | { readiness: 'ready'; outcome: 'in-progress' }                       // completedTick 为 null 时，含锁存后的退场
+    | { readiness: 'ready'; outcome: 'success' | 'failure'; reason: ResultReason; summary: ResultMessageReference | null;
+        rescuesUsed: 0 | 1 | 2; endingGaps: readonly EndingGap[]; playerKills: number; latchTick: number; completedTick: number };
+  ```
+
+  终态取自冻结的 `flow.result`，不从已移除的玩家反算。原先的 `message` 字段改名为 `summary`。读取不改变状态、不抽取。
+- **Render State：** 形状不变。救援放置使玩家的放置序号加 1；退场开始时视角为 0x13（P3-12：没有可呈现的世界）；被毁源在移除前照常列出。
+
+#### ME-15 系统流水线与 CR-13 的接入
+
+阶段表不变。各阶段中 P3-11 的部分：
+
+| 阶段 | P3-11 的部分 |
+|---|---|
+| `mission-flow` | ME-07 的分派（CB-02 的停靠分支在同一跳转之内） |
+| `object-update` | 命令判定的 `mission-ended` 门禁（ME-12）；退场中的通用 `leave`（既有） |
+| `request-handling` | 实例化最后一步的 `0x6977c`（类型 3）；逃生舱到期的 `0x32e14(1)`；`0x339cc` 对 `spawn` 与 `launch` 请求的门禁；请求处理中被毁（导弹起爆等）的 `0x6977c`、`0x32d74`、`0x32dec` |
+| 碎片的直接构造（`shedFragments`，任何阶段） | `0x339cc` 对原版消息 0x10 的门禁（ME-11） |
+| 伤害所在的其他阶段（`movement`、`collision` 等） | `0x6977c`（类型 0、1）、`0x32d74`、`0x32dec` |
+| `energy` | `0x33464` |
+| `parked-update` | 离开世界的 `0x6977c`（类型 2） |
+| `mission-teardown` | 退场开始与完成（ME-11） |
+
+CR-13 中归 P3-11 的各行按上表接入；“`0x339cc`：发射请求的处理”扩展为生成与发射请求以及碎片的直接构造（[Gates in states 4 and 5](../../../original/formats/executable.md#gates-in-states-4-and-5-p3-1101)）。
+
+#### ME-16 容量、快照与版本
+
+- **事件：** 每 tick 新增至多约 530（保守值）：ME-13 的各项共约 15，救援的 `weapon-selected` 至多两张列表各一整圈（≤ 2 × 挂点数，按 CR-14 的 M = 256 取 512；实际玩家 ≤ 36），退场的页事件 ≤ 2。与 CR-14、MW-14、CB-16 的约 8,930 相加仍远在 `eventsPerTick`（32,768）之内。
+- **请求：** 不新增请求类型；退场 tick 的 `leave` 至多每个实体 1 个（≤ `entities` 2,048），已含在 CR-14 的“每个存活对象自身更新至多 2 个请求”之内。
+- **`CORE_LIMITS` 不变；** 会话的每 tick 衔接上限仍为 2（ME-13），终局占位至多 2 项（`endingGaps`）。
+- **快照：** 覆盖 ME-03 的 `flow` 全部字段、`missionStatus` 的新取值、`missionEvents` 与救援替换后的玩家运行时记录；约增加 1 KiB 加每个触发 30 字符，在 `canonicalTextLength` 之内。
+- **版本：** `RULES_VERSION` 与快照格式版本相对实现时的当前值各递增一次（由首个实现共享形状的子任务 P3-11/08 递增，此后本 goal 内不再递增）。replay 记录的形状不变（命令联合、运行配置与输入都不变），事件联合的扩展由 `rulesVersion` 区分，**replay 格式版本不变**（与 CB-16 同理；ME-17 决定 10）。旧规则版本的记录在任何 tick 之前拒绝。
+
+#### ME-17 定稿的决定、已批准的差异与被排除的方案
+
+以下推荐方案经用户 2026-10-22 批准（见[审批](#审批)）；每条写明所选、理由与被排除的方案。“差异”写入 Core 模块说明的已知差异与 R-20 至 R-22 的对照结论。
+
+1. **主状态 5 的失败分支照原版复现（研究推翻 P3-11 spec 的前提）：** 子任务 01 证明它在正常玩法中可达：导弹击毁最后一个存活敌机恰好发生在某编组到期的同一帧，生成请求已移出队列而尚未处理，全清成立后该编组仍被实例化，下一次预结算判为失败（[State-5 failure in normal play](../../../original/formats/executable.md#state-5-failure-in-normal-play-p3-1101)）。Core 的固定流水线与原版次序相同，照 ME-08 实现即自然复现。所选：`settlement.outcome` 可以为 failure，主状态 5 到期时锁存 `{ failure, settlement-failed }`，G-02/7 取 `destroyed` 变体（原版以 p = 1 调用失败处理），完成消息照常发出。被排除：
+   - **视为 Core 故障**（P3-11 spec 原先的不变量）：健康的正常运行会以故障结束，无法重试或导出。
+   - **把已投递未处理的生成请求计入全清判定**（差异）：消除竞态，使该情形变为编组被消灭后才成功，改变原版可达的结果。
+   - **预结算失败时回到主状态 3 并恢复生成**：发明原版没有的规则。
+   - **附上“第三次损失”原因**：并未发生损失，原因不实。
+2. **完成在移除的 tick 发布：** 退场开始的下一 tick 中全部实体移除，同一 tick 的 `mission-teardown` 即发布完成；仍有实体为故障。原版要在再下一帧的状态 1 才发现清空并进入状态 2，此后没有本任务的规则，所以少一帧不影响任何结果。被排除：照原版多运行一个空 tick（只多一个无内容的录制 tick）；不设上界地等待清空（会掩盖退场缺陷）。
+3. **锁存后的命令一律 `ignored`/`mission-ended`（差异）：** 原版锁存帧仍在状态 0 中轮询按键，按键的效果随即被退场清除。所选使“锁存后不再接受改变玩法的意图”成为明确契约，UI 不会在结果已定后看到新的射击等反馈。被排除：照原版在锁存 tick 照常判定（结果锁存后仍出现新的 `shot-fired`、发射与地图请求，只为一个即将清除的 tick）。
+4. **完成后的 `step` 以不锁存的 `CoreInputError` 拒绝：** 与录制容量拒绝同类（调用者错误，世界不变），健康终局的读取与导出不被污染。被排除：沿用 `CoreFaultError`（锁存后无法读取或导出）；新增错误类（Runtime 与工具都要增加分支，而语义与 `CoreInputError` 相同）。
+5. **总结选择值只接受 ≤ 0 与 13–19：** 这是 52 个任务实际使用的值域，正值都对应“任务专属过场”（G-02/9）。被排除：只拒绝 1–12 与 ≥ 36（研究给出的下限）——会接受 20–35，使 G-02/9 播放勋章、晋升或结局片段，与 G-02/10 混淆；只接受 0 与 16（所选任务的值）——无规则理由地拒绝 6 个已发货的任务过场值。
+6. **总结比例以 f64 计算：** 按原生指令次序（除、乘 100、向零截断）。原版 x87 精度控制在一般情形下未确认（U-009）；所选任务的可达比例 0、25、50、75、100 在二进制中精确，结果与精度无关。被排除：以整数精确计算 trunc(100 × d ÷ i)——同样无法证明等于原版，且偏离指令次序；记录在已知差异中。
+7. **救援后油门越出油门表时为故障：** 能量救援发生在 Warp 中时，模式 3 的速度能否超过机型 +0xB8 尚未确认（研究缺口 G-2）。被排除：钳到表尾（发明数值）。若正常运行触发该故障，按缺口的恢复条件补研究后修订本条。
+8. **扇区预算不建模，救援放置不会失败（差异）：** 原版 `0x6a11c` 失败时会把未初始化的姿态写入玩家（缺口 G-1，何时可达未确认）。Core 没有扇区预算，沿用 P3-02 的放置服务。被排除：为此引入扇区预算模型（无其他读者，超出范围）。
+9. **只供 P4 的状态不建模（研究强制）：** `0x69e1c` 只影响勋章，按种类表、`0x1b46ec` 与出现标志没有读者；得分、统计行、勋章与晋升（含其 1 次抽取）发生在结果锁存之后，不回写本任务的规则（[Result handlers](../../../original/formats/executable.md#result-handlers-score-statistics-and-medals-p3-1101)）。`heavyDamage` 继续记录（P3-07 已有），只供 P4。
+10. **replay 格式版本不变：** 记录形状不变，新事件由 `rulesVersion` 隔离（CB-16 的先例）。被排除：为事件联合递增格式版本（与 `rulesVersion` 的拒绝重复）。完成状态由最后一个 tick 的 `mission-completed` 表达，`tools/replay-check.ts` 的报告另加字段（P3-04 的修订）。
+11. **退场写视角 0x13（照原版）：** `0x334bc` 的视角切换随后由退场清除，代价只是一次 `switchView`；保留它使最后的 projection 与原版一致。
+
+#### ME-18 对前文各节的修订
+
+- **CR-04：** `heavyDamage` 的注释“P3-11 的成功总结读取”改为“只供 P4 的勋章（`0x69e1c` → `0x3b8dc`），P3-11 不读”（已在 CR-04 中改写）。
+- **CR-13：** `0x339cc` 一行扩展为生成与发射请求以及碎片的直接构造（ME-11、ME-15）。
+- **spawn-state 的 `RuntimeRecord`：** `position`、`region`、`anchor` 改为可写，唯一写入者为救援（ME-06）。
+- **CB-02：** `MissionSubState` 的注释“P3-11 加入 1、2、6”改为加入 1、2（子状态 6 不加入，ME-01）；`flow` 的形状以 ME-03 为准；子状态 0 的 P3-11 部分见 ME-07。
+- **CB-06：** 清空的调用者为停靠失效取消、被毁 `0x32d74`、信标到期、完成消息与结果到期；不再列“任务开始”（Core 的世界创建时队列为空，不清空）。
+- **CB-10：** `fullRepair(context, entity, inRequestHandling)` 的第三个参数改为“选择消息在本帧的消息循环结束前被处理”：请求处理与 `mission-flow`（能量救援、P3-08 的同类调用）为 true，消息循环之后的调用者（僚机到达基地）为 false（BS9 的更正）。现有调用者的取值不变。
+- **Projection 与 Render State 一节的 `result` 行：** 由 ME-14 定稿。
+
+#### ME-19 交接
+
+| 任务 | 交接 |
+|---|---|
+| P3-04 | [终局与救援衔接](../04/spec.md#终局与救援衔接p3-11-的修订)：`G-02/5`、`G-02/6` 的运行中保持，`mission-completed` 的完成截断、终局序列与结果位置 |
+| P3-12 | 被毁视角 0x11/子模式 8 的进入（`player-loss-started`）与结束（`player-rescued` 或退场）；救援与退场的放置序号；退场的视角 0x13 |
+| P3-13 | `flight-message` 的两个消息键与 [Q-09 的常量](../../../original/formats/executable.md#completion-and-beacon-messages-p3-1103)（颜色 0x0C、模式 1、未绘出过期 0x280 / 0x3C0）；每次 `radio-flushed` 与信标消息之前都丢弃消息行的队首（`0x4e9b0`）；被毁视角名称标签 |
+| P3-14 | `player-loss-started`、`player-rescued`、`result-latched` 与完成处的音乐与采样停止（`0x55fe8`、`0x53978`）、救援后的任务音乐重启；结局片段的歌曲 |
+| P3-15 | 闭环复验与 R-20 至 R-22 的汇总 |
+| P4 | `0x69e1c`、得分 `0x3af04`、统计行与勋章 `0x3b8dc`（含其抽取）、按种类表与出现标志 |
+
 ### 原版研究
 
 执行时以只读静态分析为主，必要时用运行时读数。事实写入 executable 或 scenario（英文），带置信度与证据，不含原版内容或反编译输出。
@@ -2737,3 +3065,32 @@ interface HitEvent {
 - **仍阻塞与移交：** 依赖 P3-11 的部分（拆除时的 `object-retired`、没有玩家实体时警告标志在拆除与重开中的处理、失利处理、救援入口与结果延迟）仍然阻塞，等 P3-11 的契约；05 (c) 的 4、5、8 交 07（D-02）。
 - **所选方案与被排除的方案：** 见 P3-14 spec 的 D-01 定稿表，此处不重复。
 - 本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。
+
+**2026-10-22 修订（P3-11 的 D-01，经用户明确批准）：**
+
+- **批准与用户原话：** 用户于 2026-10-22 明确批准 P3-11 关卡 D-01 的全部推荐方案（“批准 D-01 全部推荐”），由 P3-11 的协调者转达。这是用户本人的批准。
+- **范围：** 新增“[P3-11 的契约修订（D-01）](#p3-11-的契约修订d-01)”一节（ME-01 至 ME-19）与本条记录，并按 ME-18 改写前文：CR-04 中 `heavyDamage` 的注释（只供 P4 的勋章）、CR-13 的 `0x339cc` 一行、CB-02 的子状态注释、CB-06 的清空调用者、CB-10 中 `fullRepair` 第三个参数的含义，以及 `RuntimeRecord` 的 `position`、`region`、`anchor` 改为可写（唯一写入者为救援）。版本：`RULES_VERSION` 与快照格式版本相对实现时的当前值各递增一次，replay 格式版本不变（ME-16）。P3-06 至 P3-10 已定的项不变；本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。
+- **研究强制的项（不是选择）：** 主状态 5 的失败分支在正常玩法中可达；0x3C0 是消息行未画出的过期时间；救援的基地计数包括仍在 `0x68000` 种类表中的全部对象；`0x69e1c`、出现标志与 `heavyDamage` 只供勋章；全清的种类集合由 `kindBit` 推导；主状态 4、5 的严格比较；被毁视角的上一视角为 0x11；两种救援发出相同的挂点选择事件。
+- **所选方案（ME-17 决定 1–11）与被排除的方案：**
+  1. 主状态 5 的结算失败照原版复现，原因为 `settlement-failed`。被排除：视为 Core 故障；把已投递未处理的生成请求计入全清；预结算失败后回到主状态 3；冒用“第三次损失”原因。
+  2. 完成在退场开始的下一 tick、实体移除的同一 tick 发布，仍有实体或脚本缓存为故障。被排除：照原版多运行一个空 tick；不设上界地等待清空。
+  3. 锁存后的命令为 `ignored`/`mission-ended`（差异）。被排除：在锁存 tick 照常判定。
+  4. 完成后的 `step` 以不锁存的 `CoreInputError` 拒绝。被排除：`CoreFaultError`；新增错误类。
+  5. 总结选择值只接受 ≤ 0 与 13–19。被排除：只拒绝 1–12 与 ≥ 36；只接受 0 与 16。
+  6. 总结比例以 f64 按指令次序计算。被排除：整数精确计算。
+  7. 救援后油门越出油门表时为故障。被排除：钳到表尾。
+  8. 扇区预算不建模，救援放置不失败（差异）。被排除：引入扇区预算模型。
+  9. 只供 P4 的状态不建模（研究强制）。
+  10. replay 格式版本不变。被排除：为事件联合递增格式版本。
+  11. 退场写视角 0x13（照原版）。
+- Runtime、会话与应用流程的部分记在 [P3-04 的终局与救援衔接](../04/spec.md#终局与救援衔接p3-11-的修订)；对 P3-11 spec 方向的改动记在 [P3-11 spec 的 D-01 定稿](../11/spec.md#d-01-定稿已批准)。
+
+**2026-10-24 说明（P3-14 分支合入含 P3-11 的 main）：** 不新增决定，两节的契约都不变。
+两个分支各自把 `RULES_VERSION` 由 7 递增为 8，合并后为 9；
+快照格式取 P3-11 的 7（P3-14 不改快照），replay 格式仍为 3。
+FA-07 中依赖 P3-11 的拆除一项随合并接入：`mission-teardown` 经 object-state.ts 的 `retire` 写入待移除，活动的实体各发一个 `object-retired`，都在 `teardown-started` 之前；
+逃生舱到期时它的 `object-retired` 在救援的 `transition` 之后，即写入状态之处。
+P3-11 的测试夹具中的 `hit` 补上 FA-05 的字段。
+CR-06 中 `weapon-selected` 一行的 FA-06 措辞按 ME-18 改写的 CB-10 对齐：两种救援（请求处理与 `mission-flow`）的无命令选择都可听到，与 A-10 一致。
+没有玩家实体时警告标志在重开中是否重置，以及失利处理、救援与结果延迟中的音效门禁，仍由 P3-14 的 07（D-02）定稿。
+

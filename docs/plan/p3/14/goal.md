@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "14"
-updated: 2026-10-17
+updated: 2026-10-24
 ---
 
 # P3-14：飞行音效触发 — Goal
@@ -118,6 +118,7 @@ updated: 2026-10-17
   Affected acceptance: AC-05、AC-07、AC-09、AC-14 及 S-05、S-06 的接线；07 的三项验收；依赖 07 的 13、14、15，以及其后的 16–23、25–28。
   Resume when: P3-12 的相机/效果接口合入 main（或其 spec 的听者与 EXPL 交接节在 main 上可读），且 P3-13 的共享 HUD 与 P3-11 的失利/救援/结果衔接各有已批准 spec；届时协调者起草 D-02 并取得用户批准。
 - **2026-10-17 — 集成时交给 27 的文档提议：** 09、12 建议在 [app 分册](../../../engineering/modules/app.md)新增 flight-audio 一节（content.ts 的 `bindFlightSounds` 等 API、12 的声部账本）；12 建议在 audio A-03 的漂移边缘一条补注“从一致的计数出发，分配、回收、句柄停止与全部停止都到不了该边缘（高概率：代码规则推理与模拟）”；11 的三处暂停/恢复解释已写入 platform 分册，16/17 以此为准。11 首次集成因 12 的控制器替身缺 `pause`/`resume` 失败，扩展 11 的写入范围后重做通过。
+- **2026-10-24 — 合并含 P3-11 的 main：** 两边各把 `RULES_VERSION` 由 7 递增为 8，合并后为 9；快照格式取 P3-11 的 7，replay 格式仍为 3。P3-11 的退场开始改经 `retire`，活动实体各发 `object-retired`（FA-07 中原先阻塞的拆除一项）；P3-11 测试中的 `hit` 补上 FA-05 字段，若干事件次序断言加入 `object-retired`。记录见 [P3-02 审批的 2026-10-24 说明](../02/spec.md#审批)。P3-11 的 spec 现已在 main，07 仍等 P3-12 与 P3-13 的接口。
 
 ## 审批
 

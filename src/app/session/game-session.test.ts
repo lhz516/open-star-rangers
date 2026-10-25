@@ -24,7 +24,7 @@ describe('session creation and start', () => {
     const { host, session } = sessionSetup();
     expect(session.status()).toEqual({
       phase: 'idle', runId: null, environmentVisible: true, pauseReason: null, transition: null,
-      resumeRequired: false, stopReason: null, cleanupFailed: false, error: null,
+      resumeRequired: false, stopReason: null, result: null, cleanupFailed: false, error: null,
     });
     expect(Object.isFrozen(session.status())).toBe(true);
     expect(session.currentRun()).toBeNull();
@@ -207,7 +207,7 @@ describe('initial departure hold', () => {
     expect(session.status()).toMatchObject({ phase: 'running', transition: null, resumeRequired: false });
     expect(host.pending.size).toBe(1);
     host.deliver(5000);
-    expect(frames).toEqual([expect.objectContaining({ runId: 1, phase: 'running', report: { ticks: 0, capped: false, stop: null, cut: null, transitions: [] } })]);
+    expect(frames).toEqual([expect.objectContaining({ runId: 1, phase: 'running', report: { ticks: 0, capped: false, stop: null, cut: null, transitions: [], completion: null } })]);
     expect(tickOf(run)).toBe(0);
     host.deliver(5000 + TICK_MS);
     expect(tickOf(run)).toBe(1); expect(events.length).toBeGreaterThan(0);

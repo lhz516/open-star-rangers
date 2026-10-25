@@ -1,13 +1,14 @@
 /**
  * Owner-scoped bridge from one formal Session to that owner's UI store (docs/plan/p3/04/spec.md: UI 桥接与命令反馈;
  * the attachment and clock rules of docs/plan/p1/06/spec.md). It writes:
- * - status changes, a new run, and a pause, hold or stop boundary at once;
+ * - status changes, a new run, and a pause, hold, stop or completion boundary at once; a completed run stays attached,
+ *   so its final projection and frozen result stay readable until the run ends;
  * - the projection on the session's existing frame notifications, sampled every 100 ms and never twice for the same
  *   owner, run and tick; it creates no session, host, animation frame or timer;
- * - at the end of the frame, without waiting for the sample, a change of `mission.status`, `player.interactionContext`,
- *   a partition's readiness (each of the flight partition's motion and combat groups on its own), the base page's
- *   selection or order (P3-10, G-05), the result's content, or the map's key state (docs/plan/p3/09/spec.md, 地图
- *   projection; docs/plan/p3/02/spec.md, MW-15): the map open, closed or without a player, the committed destination
+ * - at the end of the frame, without waiting for the sample, a change of `mission.status` or `mission.phase` (P3-11),
+ *   `player.interactionContext`, a partition's readiness (each of the flight partition's motion and combat groups on its
+ *   own), the base page's selection or order (P3-10, G-05), the result's outcome, reason, summary and completion, or the
+ *   map's key state (docs/plan/p3/09/spec.md, 地图 projection; docs/plan/p3/02/spec.md, MW-15): the map open, closed or without a player, the committed destination
  *   and marker, the `warpRequest` result and reason, view mode 1 and its Warp transit's serial, compared by those fields
  *   rather than by object identity. A hover only moves the cursor and its readings, which are sampled;
  * - what run consumers settle at the end of a frame (command results), together with the frame-end projection.
@@ -24,6 +25,7 @@ import type { SessionCleanup } from '../../app/session/session-host.ts';
 import type { Command } from '../../core/contracts/tick-input.ts';
 import type { MapPlayer, Projection, WarpRequestReading } from '../../core/projections/projection.ts';
 import type { RenderState } from '../../core/projections/render-state.ts';
+import type { PlayerLoss, ResultReason } from '../../core/world/world-state.ts';
 import { WARP_VIEW_MODE } from '../../core/systems/view-switch.ts';
 import { attemptAll } from '../../render/scene/cleanup.ts';
 import { projectedBase, type GameChange, type GameRunStore, type UiCommandSettlement } from './game-store.ts';
@@ -106,6 +108,7 @@ export interface GameSessionBridge {
 /** The projection facts published at the end of their frame, whatever the sample. */
 interface KeyFacts {
   readonly missionStatus: Projection['mission']['status'];
+  readonly missionPhase: Projection['mission']['phase'];
   readonly interactionContext: Projection['player']['interactionContext'];
   readonly motion: Projection['flight']['motion']['readiness'];
   readonly combat: Projection['flight']['combat']['readiness'];
@@ -114,9 +117,19 @@ interface KeyFacts {
   readonly result: Projection['result']['readiness'];
   /** The base page's selection and order (P3-10, G-05): the cursor row and the rows' records; null outside the base view. */
   readonly baseSelection: string | null;
-  readonly outcome: unknown;
-  readonly reason: unknown;
-  readonly message: unknown;
+  readonly outcome: Projection['result']['outcome'];
+  /** The final result's reason and a third loss's kind; null in progress or for another reason. */
+  readonly reason: ResultReason['type'] | null;
+  readonly loss: PlayerLoss | null;
+  /** The final result's summary reference; null in progress or without one. */
+  readonly summaryMission: string | null;
+  readonly summaryTrigger: number | null;
+  readonly summaryRange: number | null;
+  /**
+   * The final result is frozen from the completion on (docs/plan/p3/02/spec.md, ME-14), so its tick stands for the rest
+   * of its content: the counts and the ending items.
+   */
+  readonly completedTick: number | null;
   /** Null when the map is not ready or has no player. */
   readonly mapState: MapPlayer['state'] | null;
   /** The committed destination's coordinates, not its object: each read builds a new one. */
@@ -137,19 +150,22 @@ const warpSerialOf = (render: RenderState): number | null => render.warp?.serial
 
 function keyFacts(projection: Projection, warpSerial: number | null): KeyFacts {
   const { mission, player, flight, map, communications, result } = projection;
-  const ready = result.readiness === 'ready';
+  const final = result.outcome === 'in-progress' ? null : result;
+  const summary = final?.summary ?? null;
   const mapPlayer = map.readiness === 'ready' ? map.player : null;
   const destination = mapPlayer === null ? null : mapPlayer.state === 'open' ? mapPlayer.destination?.position ?? null : mapPlayer.destination;
   const request = mapPlayer?.warpRequest ?? null;
   const base = projectedBase(projection);
   return {
-    missionStatus: mission.status, interactionContext: player.interactionContext,
+    missionStatus: mission.status, missionPhase: mission.phase, interactionContext: player.interactionContext,
     motion: flight.motion.readiness, combat: flight.combat.readiness, map: map.readiness, communications: communications.readiness,
     result: result.readiness,
     baseSelection: base && `${base.cursor}:${base.rows.map(({ record }) => record).join(',')}`,
-    outcome: ready ? result.outcome : null,
-    reason: ready && 'reason' in result ? result.reason : null,
-    message: ready && 'message' in result ? result.message : null,
+    outcome: result.outcome,
+    reason: final?.reason.type ?? null,
+    loss: final?.reason.type === 'third-loss' ? final.reason.loss : null,
+    summaryMission: summary?.mission ?? null, summaryTrigger: summary?.trigger ?? null, summaryRange: summary?.range ?? null,
+    completedTick: final?.completedTick ?? null,
     mapState: mapPlayer?.state ?? null,
     destinationX: destination?.x ?? null, destinationY: destination?.y ?? null, destinationZ: destination?.z ?? null,
     markerEntityId: mapPlayer?.markerEntityId ?? null,
@@ -330,7 +346,8 @@ class Bridge implements GameSessionBridge {
   #sync(status: GameSessionStatus, caller: AttachCaller): void {
     const run = this.#session?.currentRun() ?? null;
     switch (status.phase) {
-      case 'transition': case 'running': case 'paused': case 'stopped':
+      // A completed run stays bound: its ending and result pages read its frozen final projection.
+      case 'transition': case 'running': case 'paused': case 'stopped': case 'completed':
         if (run && this.#binding?.runId !== run.runId) this.#attach(status, run, caller);
         else this.#store.commit({ status });
         return;

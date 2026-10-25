@@ -3,7 +3,8 @@ import {
   FLOW_SESSION_PHASES, INITIAL_MISSION_FLOW, nextMissionFlow, preselectWingman, type MissionFlowInput, type MissionFlowPosition, type MissionFlowState,
 } from './mission-flow.ts';
 
-// P3-04 S-03/S-04 (docs/plan/p3/04/spec.md, 应用流程): the pure mission flow and the start page's preselection.
+// P3-04 S-03/S-04 (docs/plan/p3/04/spec.md, 应用流程; 终局与救援衔接 for the ending and result positions): the pure
+// mission flow and the start page's preselection.
 
 const at = (position: MissionFlowPosition, change: Partial<MissionFlowState> = {}): MissionFlowState =>
   Object.freeze({ ...INITIAL_MISSION_FLOW, position, ...change });
@@ -16,6 +17,8 @@ const INPUTS: readonly MissionFlowInput[] = [
   { type: 'departure-ended' },
   { type: 'transition-held' },
   { type: 'transition-ended' },
+  { type: 'run-completed' },
+  { type: 'ending-ended' },
   { type: 'menu-opened' },
   { type: 'menu-closed' },
   { type: 'run-ended', reason: 'faulted' },
@@ -31,10 +34,13 @@ const APPLIES: Readonly<Record<MissionFlowInput['type'], readonly MissionFlowPos
   'departure-ended': ['departure'],
   'transition-held': ['flight'],
   'transition-ended': ['transition'],
+  // A completion happens only while the run steps; the ending offers no restart or return, only skips.
+  'run-completed': ['flight'],
+  'ending-ended': ['ending'],
   'menu-opened': ['flight'],
   'menu-closed': ['menu'],
-  'run-ended': ['departure', 'flight', 'transition', 'menu'],
-  restarted: ['flight', 'menu', 'ended'],
+  'run-ended': ['departure', 'flight', 'transition', 'menu', 'ending', 'result'],
+  restarted: ['flight', 'menu', 'result', 'ended'],
 };
 
 describe('mission flow', () => {
@@ -55,6 +61,11 @@ describe('mission flow', () => {
       [{ type: 'restarted' }, { position: 'intro', runId: null, ended: null, selection: null }],
       // The selection stays until the next start page sets its own preselection.
       [{ type: 'intro-ended', preselection: 2 }, { position: 'config', selection: 2 }],
+      [{ type: 'started', runId: 5 }, { position: 'departure', runId: 5 }],
+      [{ type: 'departure-ended' }, { position: 'flight' }],
+      [{ type: 'run-completed' }, { position: 'ending', runId: 5, ended: null }],
+      [{ type: 'ending-ended' }, { position: 'result', runId: 5, ended: null }],
+      [{ type: 'restarted' }, { position: 'intro', runId: null, selection: 2 }],
     ];
     for (const [input, expected] of steps) {
       const next = nextMissionFlow(state, input);
@@ -90,7 +101,7 @@ describe('mission flow', () => {
   it('pairs each position with the session phases it runs beside', () => {
     expect(FLOW_SESSION_PHASES).toEqual({
       intro: ['idle'], config: ['idle'], departure: ['transition'], flight: ['running', 'paused'], transition: ['transition'], menu: ['paused'],
-      ended: ['faulted', 'stopped', 'idle'],
+      ending: ['completed'], result: ['completed'], ended: ['faulted', 'stopped', 'idle'],
     });
   });
 });

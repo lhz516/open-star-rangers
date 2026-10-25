@@ -8,6 +8,11 @@
  * Capacity (CORE_LIMITS.recorded*): a step the recording could not hold is refused with CoreInputError before it runs,
  * leaving the world and the recording unchanged (requireRecordingCapacity). After a Core fault (CoreFaultError) every
  * call, export included, throws the fault: the session never exports a prefix that looks like a complete run.
+ *
+ * Completion (docs/plan/p3/02/spec.md, ME-11 and ME-12): the recording holds the latch and every teardown tick and ends
+ * at the tick whose `mission-completed` commits the teardown, its final checkpoint taken once. Every later step throws a
+ * non-latching CoreInputError (path `step`, reason `mission-completed`) before it reads its input or checks capacity,
+ * changing nothing; reads and the export go on. A run stopped by the capacity or a fault never ends this way.
  */
 import type { AssetId } from '../../content/asset-id.ts';
 import type { ContentIdentity } from '../../content/content-identity.ts';
@@ -71,6 +76,13 @@ export interface Recording {
   readonly result: ReplayResult;
 }
 
+/** Whether a tick's events complete the run (ME-11): its `mission-completed`. */
+export const isCompletionTick = (events: readonly DomainEvent[]): boolean => events.some(({ type }) => type === 'mission-completed');
+
+/** Whether a run ended with its completion: its final tick holds `mission-completed` (ME-13; P3-04's replay check). */
+export const completedRun = ({ events, finalTick }: ReplayResult): boolean =>
+  events.some(({ type, tick }) => type === 'mission-completed' && tick === finalTick);
+
 export interface RecordingOptions {
   readonly producer: string;
   readonly checkpointInterval: number;
@@ -133,15 +145,18 @@ class CoreRecordingSession implements RecordingSession {
   readonly #checkpoints: ReplayCheckpoint[] = [];
   #commands = 0;
   #fault: CoreFaultError | null = null;
+  #completed: boolean;
 
-  constructor(world: World, header: RecordHeader) {
+  constructor(world: World, header: RecordHeader, completed: boolean) {
     this.#world = world;
     this.#header = header;
+    this.#completed = completed;
     this.#checkpoints.push(this.#checkpoint(0));
   }
 
   step(tickInput: TickInput): readonly DomainEvent[] {
     this.#throwIfFaulted();
+    if (this.#completed) throw new CoreInputError('step', 'mission-completed');
     // Read the caller's input once and step with that copy, so the record holds exactly what ran.
     const input = readTickInput(tickInput);
     requireRecordingCapacity({ ticks: this.#ticks.length, commands: this.#commands, events: this.#events.length }, input.commands.length);
@@ -149,6 +164,7 @@ class CoreRecordingSession implements RecordingSession {
     this.#ticks.push(input);
     this.#commands += input.commands.length;
     for (const event of events) this.#events.push(event);
+    this.#completed = isCompletionTick(events);
     const tick = this.#ticks.length;
     if (tick % this.#header.checkpointInterval === 0) this.#checkpoints.push(this.#checkpoint(tick));
     return events;
@@ -227,7 +243,7 @@ export function recordState(state: WorldState, options: RecordingOptions): Recor
     run: Object.freeze({ rawDifficulty, wingman, seed, clockUnitsPerTick }),
     checkpointInterval: readCheckpointInterval(checkpointInterval, 'options.checkpointInterval'),
   });
-  return new CoreRecordingSession(constructWorld(state), header);
+  return new CoreRecordingSession(constructWorld(state), header, state.flow.completedTick !== null);
 }
 
 /**

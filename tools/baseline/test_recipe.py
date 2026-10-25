@@ -944,6 +944,90 @@ class RecipeTests(unittest.TestCase):
         self.assertFalse(self.accepts(limit(self.waiting(), low + probe - 1)))
         self.assertTrue(self.accepts(limit(self.waiting(), low + probe)))
 
+    # -- hit sites and jumps (P3-11/20) ----------------------------------------------------------------------------
+    def branching(self, change=None):
+        """The scenario plus "pick" (alternatives 0x1F90/0x1FA0, reads scenario and flag) and "mid" (0x1F90) between
+        `start` and `end`; "pick" jumps to `end` from 0x1FA0, ends the run when flag is 1, and probes its `until`
+        only at 0x1F90; a key at "pick" is limited to 0x1F90."""
+        def apply(d):
+            d["pauses"][1:1] = [
+                {"id": "pick", "stop": {"kind": "breakpoint", "object": 2, "offsets": [0x1F90, 0x1FA0],
+                                        "until": {"every": 2, "at": [0x1F90], "all": [{"field": "flag", "eq": 0}]}},
+                 "fields": ["scenario", "flag"],
+                 "jump": [{"to": "end", "at": [0x1FA0]}, {"end": True, "all": [{"field": "flag", "eq": 1}]}]},
+                {"id": "mid", "stop": {"kind": "breakpoint", "object": 2, "offset": 0x1F90}, "fields": ["scenario"]}]
+            d["stimuli"] = [{"id": "key", "pause": "pick", "kind": "key", "ascii": 13, "scan": 28, "at": [0x1F90]}]
+            if change is not None:
+                change(d)
+        return self.mutated(apply)
+
+    def test_hit_sites_and_jumps(self):
+        recipe = parse_recipe(text(self.branching()))
+        pick = recipe.pause("pick")
+        self.assertEqual([site.offset for site in pick.stop.until.sites], [0x1F90])
+        self.assertEqual(pick.stop.until.to_json(), {"every": 2, "all": [{"field": "flag", "eq": 0}], "at": ["1f90"]})
+        self.assertEqual([site.offset for site in recipe.stimuli[0].sites], [0x1F90])
+        first, second = pick.jumps
+        self.assertEqual((first.to, [site.offset for site in first.sites], first.test), ("end", [0x1FA0], None))
+        self.assertEqual((second.to, second.sites, second.test.fields()), (None, (), ("flag",)))
+        self.assertEqual(second.to_json(), {"end": True, "all": [{"field": "flag", "eq": 1}]})
+        self.assertEqual(recipe.jump_skips("pick", first), ("mid",))
+        self.assertEqual(recipe.jump_skips("pick", second), ("mid", "end"))
+        self.assertEqual(recipe.planned(frozenset({"mid"})),
+                         tuple(item for item in recipe.planned() if item[0] != "mid"))
+        self.assertEqual(pick.hit_site(0x1FA0).offset, 0x1FA0)
+        self.assertEqual(recipe.pause("mid").jumps, ())
+        plain = parse_recipe(text(self.branching(lambda d: d["pauses"][1].pop("jump"))))
+        self.assertNotEqual(plain.fingerprint, recipe.fingerprint)
+        always = parse_recipe(text(self.branching(lambda d: d["pauses"][1].update(jump=[{"to": "end"}]))))
+        self.assertEqual(always.pause("pick").jumps[0].to_json(), {"to": "end"})
+        named = parse_recipe(text(self.branching(lambda d: d["pauses"][1].update(
+            jump=[{"end": True, "outcome": "cap-reached"}]))))
+        self.assertEqual(named.pause("pick").jumps[0].outcome, "cap-reached")
+        self.assertEqual(named.pause("pick").jumps[0].to_json(), {"end": True, "outcome": "cap-reached"})
+
+    def test_hit_site_and_jump_rejections(self):
+        def pick(**changes):
+            return self.branching(lambda d: d["pauses"][1].update(changes))
+
+        def until(value):
+            return self.branching(lambda d: d["pauses"][1]["stop"].update(until=value))
+
+        def stimulus(**changes):
+            return self.branching(lambda d: d["stimuli"][0].update(changes))
+
+        cases = [
+            ("recipe-reference-invalid", pick(jump=[{"to": "start"}])),  # backwards
+            ("recipe-reference-invalid", pick(jump=[{"to": "mid"}])),  # passes over nothing
+            ("recipe-reference-invalid", pick(jump=[{"to": "nowhere"}])),
+            ("recipe-value-invalid", pick(jump=[{"to": "end", "end": True}])),
+            ("recipe-key-missing", pick(jump=[{"at": [0x1FA0]}])),
+            ("recipe-value-invalid", pick(jump=[{"end": False}])),
+            ("recipe-key-unknown", pick(jump=[{"to": "end", "outcome": "cap"}])),  # outcome only on an end rule
+            ("recipe-value-invalid", pick(jump=[{"end": True, "outcome": "cap reached"}])),
+            ("recipe-key-unknown", pick(jump=[{"to": "end", "when": 1}])),
+            ("recipe-empty", pick(jump=[])),
+            ("recipe-type-invalid", pick(jump={"to": "end"})),
+            ("recipe-budget-exceeded", pick(jump=[{"to": "end"}] * 9)),
+            ("recipe-value-invalid", pick(jump=[{"to": "end", "at": [0x1FB0]}])),
+            ("recipe-value-invalid", pick(jump=[{"to": "end", "at": [0x1FA0, 0x1FA0]}])),
+            ("recipe-reference-invalid", pick(jump=[{"to": "end", "all": [{"field": "ticks", "eq": 0}]}])),  # unread
+            ("recipe-reference-invalid", pick(jump=[{"to": "end", "all": [
+                {"field": "flag", "eq": {"pause": "end", "field": "ticks"}}]}])),
+            ("recipe-key-unknown", self.branching(lambda d: d["pauses"][2].update(jump=[{"to": "end", "at": [0x1F90]}]))),
+            ("recipe-value-invalid", self.branching(lambda d: d["pauses"][3].update(jump=[{"end": True}]))),  # last
+            ("recipe-key-unknown", self.branching(lambda d: d["pauses"][2]["stop"].update(
+                until={"at": [0x1F90], "all": [{"field": "flag", "eq": 0}]}))),  # one site
+            ("recipe-value-invalid", until({"at": [0x1F90, 0x1FA0], "all": [{"field": "flag", "eq": 0}]})),  # not strict
+            ("recipe-value-invalid", until({"at": [0x2000], "all": [{"field": "flag", "eq": 0}]})),
+            ("recipe-value-invalid", stimulus(at=[0x1F90, 0x1FA0])),
+            ("recipe-value-invalid", stimulus(at=[])),
+            ("recipe-key-unknown", self.branching(lambda d: d["stimuli"][0].update(pause="mid"))),
+        ]
+        for code, document in cases:
+            with self.subTest(code=code, pauses=document["pauses"][1:3], stimuli=document["stimuli"]):
+                self.assertRejected(code, document)
+
     def accepts(self, document):
         try:
             parse_recipe(text(document))

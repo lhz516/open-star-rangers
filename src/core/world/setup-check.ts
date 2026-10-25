@@ -1,7 +1,8 @@
 /**
  * Semantic checks of world creation (docs/plan/p3/02/spec.md, 运行配置与世界创建 and 任务实例化). `loadMission` proves
  * only its own content and cross-Asset contracts; a formal world additionally needs the original kinds and bindings Core
- * implements, convertible coordinates, canonical rule inputs, no path outside the slice and spawns within the budget.
+ * implements, convertible coordinates, canonical rule inputs, no path outside the slice, spawns within the budget and
+ * summary selectors with a supported meaning.
  * Every failure is a CoreInputError at the offending structure's path with a fixed reason that never repeats a name, a
  * coordinate or other imported value.
  */
@@ -105,6 +106,21 @@ function checkExpansion(setup: MissionSetup, wingman: number | null): void {
 }
 
 /**
+ * The summary selectors Core supports (docs/plan/p3/02/spec.md, ME-02; ME-17 decision 5): at most 0 (no mission clip)
+ * or 13–19, the mission clips the 52 missions use. 1–11 select clip rows that are not mission clips, 12 collides with
+ * the "none" sentinel, 20–35 are medal, promotion and ending rows and 36 and above leave the 36-row table
+ * (docs/original/formats/scenario.md, summary selection: rule meaning).
+ */
+function checkSummarySelectors(setup: MissionSetup): void {
+  setup.eventTriggers.forEach(({ ranges }, trigger) => {
+    ranges.forEach(({ summarySelector }, range) => {
+      if (summarySelector <= 0 || (summarySelector >= 13 && summarySelector <= 19)) return;
+      throw new CoreInputError(`${MISSION_PATH}.eventTriggers[${trigger}].ranges[${range}].summarySelector`, 'selects no mission clip Core supports (only 0 or below, or 13 to 19)');
+    });
+  });
+}
+
+/**
  * Checks a loaded setup for world creation with the selected wingman option (an index already checked against the
  * roster) and returns its coordinates in runtime units.
  */
@@ -135,6 +151,7 @@ export function checkSetup(setup: MissionSetup, wingman: number | null): Runtime
     wingmanPosition = position;
   });
   checkExpansion(setup, wingman);
+  checkSummarySelectors(setup);
   return Object.freeze({ frame, positions: Object.freeze(positions), wingmanPosition, regions: Object.freeze(regions), layouts: Object.freeze(layouts) });
 }
 

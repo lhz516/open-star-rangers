@@ -245,6 +245,62 @@ class ReportTests(unittest.TestCase):
         self.assertNotIn("stimuli", plain)
         self.assertNotIn("stimuliPlanned", plain["counts"])
 
+    def test_jumps_unplan_the_pauses_they_pass_over(self):
+        """P3-11/20: the samples of pauses a recorded jump passed over are not planned; jump records must match the
+        recipe's rules exactly."""
+        def branch(d):
+            d["pauses"][1:1] = [{"id": "pick", "stop": {"kind": "breakpoint", "object": 2, "offset": 0x1F90},
+                                 "fields": ["scenario"], "jump": [{"to": "end"}]},
+                                {"id": "mid", "stop": {"kind": "breakpoint", "object": 2, "offset": 0x1F90},
+                                 "fields": ["scenario"]}]
+        recipe = self.parse(branch)
+        samples = self.samples(recipe, ("start", "pick", "end"))
+        record = {"pause": "pick", "rule": 0, "to": "end", "skipped": ["mid"]}
+        report = self.build(recipe=recipe, samples=samples, jumps=[record])
+        self.assertEqual((report["status"], report["jumps"]), ("complete", [record]))
+        self.assertEqual((report["counts"]["planned"], report["counts"]["jumps"], report["counts"]["pausesSkipped"]),
+                         (len(samples), 1, 1))
+        self.assertFailed(self.build(recipe=recipe, samples=samples, jumps=[]), "samples-order")
+        for bad in ({**record, "skipped": []}, {**record, "rule": 1}, {**record, "to": "mid"},
+                    {"pause": "pick", "rule": 0, "end": True, "skipped": ["mid", "end"]}, {**record, "pause": "mid"},
+                    {**record, "pause": "nowhere"}, "pick"):
+            with self.subTest(record=bad), self.assertRaises(BaselineError) as caught:
+                self.build(recipe=recipe, samples=samples, jumps=[bad])
+            self.assertEqual(caught.exception.code, "report-invalid")
+        with self.assertRaises(BaselineError) as caught:
+            self.build(recipe=recipe, samples=samples, jumps=[record, record])
+        self.assertEqual(caught.exception.code, "report-invalid")
+        with self.assertRaises(BaselineError) as caught:  # a recipe without jump rules records none
+            self.build(jumps=[record])
+        self.assertEqual(caught.exception.code, "report-invalid")
+        self.assertNotIn("jumps", self.build())
+
+    def test_jump_records_must_carry_their_evidence(self):
+        """P3-11/20: a jump record must show the site and the passing test of its rule, and an `end` rule's outcome."""
+        def branch(d):
+            d["pauses"][1:1] = [
+                {"id": "pick", "stop": {"kind": "breakpoint", "object": 2, "offsets": [0x1F90, 0x1FA0]},
+                 "fields": ["scenario"], "jump": [{"to": "end", "at": [0x1FA0]},
+                                                  {"end": True, "outcome": "cap", "all": [{"field": "scenario",
+                                                                                           "gt": 0}]}]},
+                {"id": "mid", "stop": {"kind": "breakpoint", "object": 2, "offset": 0x1F90}, "fields": ["scenario"]}]
+        recipe = self.parse(branch)
+        samples = self.samples(recipe, ("start", "pick", "end"))
+        site = {"pause": "pick", "rule": 0, "to": "end", "hitOffset": "1fa0", "skipped": ["mid"]}
+        self.assertEqual(self.build(recipe=recipe, samples=samples, jumps=[site])["status"], "complete")
+        ended = {"pause": "pick", "rule": 1, "end": True, "outcome": "cap", "hitOffset": "1f90",
+                 "skipped": ["mid", "end"], "if": {"all": [{"field": "scenario", "gt": 0}],
+                                                   "readings": {"scenario": 4242}, "references": {}, "result": True}}
+        report = self.build(recipe=recipe, samples=self.samples(recipe, ("start", "pick")), jumps=[ended])
+        self.assertEqual((report["status"], report["jumps"][0]["outcome"]), ("complete", "cap"))
+        for bad in ({**site, "hitOffset": "1f90"}, {**ended, "outcome": "other"}, {k: v for k, v in ended.items()
+                                                                                  if k != "if"},
+                    {**ended, "if": {**ended["if"], "readings": {"scenario": -1}}},
+                    {**ended, "if": {**ended["if"], "result": None}}):
+            with self.subTest(record=bad), self.assertRaises(BaselineError) as caught:
+                self.build(recipe=recipe, samples=samples, jumps=[bad])
+            self.assertEqual(caught.exception.code, "report-invalid")
+
     def test_serialization_rejects_non_finite_numbers(self):
         report = self.build()
         report["environment"]["drift"] = float("inf")

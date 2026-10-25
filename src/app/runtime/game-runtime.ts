@@ -16,8 +16,15 @@
  * `transition` is the frame's last tick. The frame reports the cut and that tick's transitions, raises a barrier that
  * refuses input and frames, and only then delivers its events as usual; the Session releases the barrier when its hold
  * ends. Nothing is checked per tick from outside.
+ *
+ * Completion (docs/plan/p3/04/spec.md, 终局与救援衔接（P3-11 的修订）): a successful step whose events include
+ * `mission-completed` is the run's last tick. The frame reports the cut and the completion, raises a barrier that is
+ * never lowered, and then delivers its events as usual: input, frames, the clock's re-anchoring and the transition
+ * barrier's release are refused with `completed` from then on, while reads, the recording's export and the Session's
+ * lifecycle clean-up stay available. A tick with both `transition` and `mission-completed` breaks Core's contract and
+ * faults the Runtime.
  */
-import type { DomainEvent, TransitionEvent } from '../../core/contracts/domain-events.ts';
+import type { DomainEvent, MissionCompletedEvent, TransitionEvent } from '../../core/contracts/domain-events.ts';
 import { CORE_LIMITS } from '../../core/contracts/limits.ts';
 import { readTickInput, type Command, type TickAxes, type TickInput } from '../../core/contracts/tick-input.ts';
 import { CLOCK_UNITS_PER_SECOND } from '../../core/contracts/time.ts';
@@ -63,16 +70,27 @@ export interface FrameTransition {
   readonly tick: number;
 }
 
+/** The run's completion, from the `mission-completed` event of its last tick. */
+export interface FrameCompletion {
+  readonly tick: number;
+  readonly outcome: MissionCompletedEvent['outcome'];
+}
+
 /** `ticks` counts successful steps only. */
 export interface FrameReport {
   readonly ticks: number;
   /** The clock dropped due ticks beyond MAX_TICKS_PER_FRAME; false in a cut frame. */
   readonly capped: boolean;
   readonly stop: 'recording-capacity' | null;
-  /** `transition` when a tick with transition events ended the frame early: it ran to that tick, and the run is healthy. */
-  readonly cut: 'transition' | null;
-  /** That tick's transition events in event order, as frozen copies taken from the step's output; empty without a cut. */
+  /**
+   * Why a tick ended the frame early, the run healthy: `transition` for a tick with transition events, `completed` for
+   * the run's last tick.
+   */
+  readonly cut: 'transition' | 'completed' | null;
+  /** That tick's transition events in event order, as frozen copies taken from the step's output; empty unless cut at a transition. */
   readonly transitions: readonly FrameTransition[];
+  /** Set exactly when cut at the completion. */
+  readonly completion: FrameCompletion | null;
 }
 
 export interface GameRuntime {
@@ -80,12 +98,14 @@ export interface GameRuntime {
    * Advances by the ticks due at `nowMs` (monotonic milliseconds; the first call only anchors), at most
    * MAX_TICKS_PER_FRAME, then delivers the frame's events. Throws invalid-argument for a non-finite, backward or
    * unconvertible time, changing nothing; reentrant-call during the frame; listener-failed after the whole delivery;
-   * faulted (see the module comment), once stopped recording-capacity, and transition-hold behind the barrier.
+   * faulted (see the module comment), once stopped recording-capacity, completed after the run's last tick, and
+   * transition-hold behind the barrier.
    */
   frame(nowMs: number): FrameReport;
   /**
-   * Keeps `intent` from the next tick on, until set again or cleared. Allowed in delivery; rejected once faulted or
-   * stopped, and with transition-hold behind the barrier (from the cut frame's delivery on), changing nothing.
+   * Keeps `intent` from the next tick on, until set again or cleared. Allowed in delivery; rejected once faulted,
+   * stopped or completed (from the completed frame's delivery on), and with transition-hold behind the barrier (from
+   * the cut frame's delivery on), changing nothing.
    */
   setIntent(intent: GameIntent): void;
   /**
@@ -99,20 +119,20 @@ export interface GameRuntime {
   /** The last complete tick's projection, the same object until the next successful step. */
   projection(): Projection;
   renderFrame(): RenderFrame;
-  /** An on-demand Core read outside the frame; a Core fault it finds faults the Runtime. Allowed when stopped. */
+  /** An on-demand Core read outside the frame; a Core fault it finds faults the Runtime. Allowed when stopped or completed. */
   snapshot(): GameSnapshot;
   /** The recording so far, or null without one; as snapshot(). */
   exportRecording(): Recording | null;
   // Lifecycle operations for the Session, outside the frame (reentrant-call otherwise) and in any state. They never
   // touch Core, its RNG, entity IDs or the recording.
-  /** Discards all host time progress: the next frame only anchors. */
+  /** Discards all host time progress: the next frame only anchors. Refused with `completed` after the run's last tick. */
   resetClock(): void;
   /** Clears the intent and the short-press mark and returns the queued, never executed IDs in FIFO order. */
   clearIntent(): readonly number[];
   /** previous = current, alpha = 0. */
   foldRenderState(): void;
   clearSubscriptions(): void;
-  /** Lowers the barrier a cut frame raised; input and frames are accepted again. */
+  /** Lowers the barrier a transition cut raised; input and frames are accepted again. Refused with `completed`. */
   releaseTransitionBarrier(): void;
 }
 
@@ -172,11 +192,24 @@ const submitted = (ids: readonly (number | null)[]): number[] => ids.filter((id)
 
 const NO_TRANSITIONS: readonly FrameTransition[] = Object.freeze([]);
 
-/** Frozen copies of a tick's `transition` events, in event order; most ticks have none and allocate nothing. */
-function transitionsOf(events: readonly DomainEvent[]): readonly FrameTransition[] {
+/** What ends a frame at one tick: its `transition` events in event order, or its completion; most ticks allocate nothing. */
+interface TickCut {
+  readonly cut: FrameReport['cut'];
+  readonly transitions: readonly FrameTransition[];
+  readonly completion: FrameCompletion | null;
+}
+const NO_CUT: TickCut = Object.freeze({ cut: null, transitions: NO_TRANSITIONS, completion: null });
+
+function cutOf(events: readonly DomainEvent[]): TickCut {
   let found: FrameTransition[] | null = null;
-  for (const event of events) if (event.type === 'transition') (found ??= []).push(Object.freeze({ gap: event.gap, tick: event.tick }));
-  return found ? Object.freeze(found) : NO_TRANSITIONS;
+  let completion: FrameCompletion | null = null;
+  for (const event of events) {
+    if (event.type === 'transition') (found ??= []).push(Object.freeze({ gap: event.gap, tick: event.tick }));
+    else if (event.type === 'mission-completed') completion = Object.freeze({ tick: event.tick, outcome: event.outcome });
+  }
+  if (found && completion) throw new RangeError('A tick produced both transition and mission-completed');
+  if (completion) return { cut: 'completed', transitions: NO_TRANSITIONS, completion };
+  return found ? { cut: 'transition', transitions: Object.freeze(found), completion: null } : NO_CUT;
 }
 
 class Runtime implements GameRuntime {
@@ -194,8 +227,10 @@ class Runtime implements GameRuntime {
   #current: RenderState;
   #renderFrame: RenderFrame;
   #inFrame = false;
-  /** Raised by a cut frame before its delivery; only the Session lowers it. */
-  #barrier = false;
+  /**
+   * Raised by a cut frame before its delivery: a transition's until the Session lowers it, the completion's for good.
+   */
+  #barrier: 'transition' | 'completed' | null = null;
   #stop: GameRuntimeError | null = null;
   #fault: GameRuntimeError | null = null;
 
@@ -209,8 +244,8 @@ class Runtime implements GameRuntime {
   }
 
   frame(nowMs: number): FrameReport {
-    // A receiver of the cut frame meets the barrier first.
-    if (this.#inFrame && this.#barrier) throw new GameRuntimeError({ kind: 'transition-hold' });
+    // A receiver of a cut frame meets the barrier first.
+    if (this.#inFrame) this.#requireNoBarrier();
     this.#requireOutsideFrame();
     this.#requireRunnable();
     const timing = this.#clock.advance(nowMs);
@@ -219,19 +254,23 @@ class Runtime implements GameRuntime {
       const pending: PendingDelivery[] = [];
       const undelivered: number[] = [];
       let ticks = 0;
-      let transitions = NO_TRANSITIONS;
+      let found = NO_CUT;
       while (ticks < timing.ticks) {
         const events = this.#tick(pending, undelivered);
         if (events === null) break;
         ticks++;
-        transitions = transitionsOf(events);
-        if (transitions.length > 0) break;
+        try {
+          found = cutOf(events);
+        } catch (cause) {
+          throw this.#failRun(cause, undelivered);
+        }
+        if (found.cut !== null) break;
       }
-      const cut = transitions.length > 0;
-      // Before the delivery, so no receiver adds input behind the transition tick.
-      if (cut) this.#barrier = true;
+      const { cut, transitions, completion } = found;
+      // Before the delivery, so no receiver adds input behind the cut tick.
+      this.#barrier = cut;
       if (this.#stop) this.#previous = this.#current;
-      this.#renderFrame = this.#publish(this.#stop || cut ? 0 : timing.alpha);
+      this.#renderFrame = this.#publish(this.#stop || cut !== null ? 0 : timing.alpha);
       // Only running out of command IDs in a receiver can fault the Runtime during delivery; that fault outranks the
       // receiver failures it causes.
       if (pending.length > 0) {
@@ -243,8 +282,7 @@ class Runtime implements GameRuntime {
       }
       if (this.#fault) throw this.#fault;
       return Object.freeze({
-        ticks, capped: timing.capped && !cut, stop: this.#stop ? 'recording-capacity' : null, cut: cut ? 'transition' : null,
-        transitions,
+        ticks, capped: timing.capped && cut === null, stop: this.#stop ? 'recording-capacity' : null, cut, transitions, completion,
       });
     } finally {
       this.#inFrame = false;
@@ -309,6 +347,7 @@ class Runtime implements GameRuntime {
 
   resetClock(): void {
     this.#requireOutsideFrame();
+    this.#requireIncomplete();
     this.#clock.reset();
   }
 
@@ -334,7 +373,8 @@ class Runtime implements GameRuntime {
 
   releaseTransitionBarrier(): void {
     this.#requireOutsideFrame();
-    this.#barrier = false;
+    this.#requireIncomplete();
+    this.#barrier = null;
   }
 
   /**
@@ -408,7 +448,16 @@ class Runtime implements GameRuntime {
   #requireRunnable(): void {
     if (this.#fault) throw this.#fault;
     if (this.#stop) throw this.#stop;
-    if (this.#barrier) throw new GameRuntimeError({ kind: 'transition-hold' });
+    this.#requireNoBarrier();
+  }
+
+  #requireNoBarrier(): void {
+    if (this.#barrier === 'completed') throw new GameRuntimeError({ kind: 'completed' });
+    if (this.#barrier === 'transition') throw new GameRuntimeError({ kind: 'transition-hold' });
+  }
+
+  #requireIncomplete(): void {
+    if (this.#barrier === 'completed') throw new GameRuntimeError({ kind: 'completed' });
   }
 }
 

@@ -908,6 +908,238 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
     });
   });
 
+  describe('P3-11 mission flow, loss, rescue, result and teardown events (docs/plan/p3/02/spec.md, ME-13)', () => {
+    const point = () => ({ x: 1, y: -2, z: 0.5 });
+    const orientation = () => [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    const summary = (): Mutable => ({ mission: 'mission/first-campaign', trigger: 1, range: 7 });
+    const pageChanged = (tick: number): Mutable => ({ type: 'left-page-changed', tick, page: 0, previousPage: 5, commandIndex: null });
+    const flushed = (tick: number, cause: string): Mutable => ({ type: 'radio-flushed', tick, cause, removed: 0, interrupted: 'none' });
+    const hit = (tick: number, victimEntityId: number, victimKindBit: number): Mutable => ({
+      type: 'hit', tick, victimEntityId, victimKindBit, victimPosition: point(), victimForward: { x: 0, y: 0, z: 1 }, victimSpeed: null, cause: 'collision', sourceEntityId: null, attacker: { type: 'none' }, damage: 40,
+      gated: false, shield: { before: 0, after: 0 }, hull: { before: 10, after: -30 }, shieldWasEmpty: true, impact: null, projectile: null,
+    });
+    const destroyed = (tick: number, entityId: number, kindBit: number): Mutable => ({
+      type: 'object-destroyed', tick, entityId, kindBit, source: null, position: point(), activity: 'active', attacker: { type: 'none' }, eventClass: 1,
+      outcome: 'explodes',
+    });
+    const destroyedLoss = (tick: number): Mutable =>
+      ({ type: 'player-loss-started', tick, playerEntityId: 1, loss: 'destroyed', previousSubState: 0, previousViewMode: 0xc, viewSwitched: true });
+    const energyLoss = (tick: number): Mutable =>
+      ({ type: 'player-loss-started', tick, playerEntityId: 1, loss: 'energy', previousSubState: 0, deadlineClock: 0x3c6 });
+    const weaponSelected = (tick: number): Mutable => ({ type: 'weapon-selected', tick, entityId: 1, list: 0, index: 0, mount: 1, changed: true, commandIndex: null });
+    const rescued = (tick: number, loss: string, overrides: Mutable = {}): Mutable => ({
+      type: 'player-rescued', tick, playerEntityId: 1, loss, rescues: 1, baseEntityId: 4, candidates: 2, position: point(), orientation: orientation(), ...overrides,
+    });
+    const result = (overrides: Mutable = {}): Mutable => ({
+      outcome: 'success', reason: { type: 'all-clear' }, summary: summary(), rescuesUsed: 2,
+      endingGaps: [{ gap: 'G-02/8', variant: 'solo' }, { gap: 'G-02/9', row: 16 }], playerKills: 9, latchTick: 8, ...overrides,
+    });
+    const settlement = (tick: number, overrides: Mutable = {}): Mutable =>
+      ({ type: 'settlement-started', tick, outcome: 'success', summary: summary(), summarySelector: 16, dueClock: 0x14a, ...overrides });
+
+    /**
+     * Nine ticks in the contract's order. Tick 1: the wingman loss message queued and its timer's expiry in the mission
+     * flow; the player's destruction with its flush and loss, the wingman's with its timer, and a world exit with the
+     * all-clear. Tick 2: the escape pod's expiry and the rescue's weapon selection, rescue and G-02/5. Tick 3: the beacon
+     * and the energy loss in the energy stage. Tick 4: the beacon's expiry in the mission flow, its rescue and G-02/6.
+     * Tick 5: the settlement; tick 6 its deferral; tick 7 the completion message; tick 8 the result's due, its latch, a
+     * command ignored after it and the teardown; tick 9 the completion.
+     */
+    function missionRun(): Result {
+      const events = [
+        { type: 'radio-queued', tick: 1, message: { table: 20983, face: null, index: 6 }, callback: 'none', speaker: null, position: 'sorted', length: 1 },
+        { type: 'wingman-loss-timer-expired', tick: 1, queued: true },
+        hit(1, 1, 0),
+        destroyed(1, 1, 0),
+        pageChanged(1),
+        flushed(1, 'player-destroyed'),
+        destroyedLoss(1),
+        hit(1, 2, 1),
+        destroyed(1, 2, 1),
+        { type: 'wingman-loss-timer-started', tick: 1, wingmanEntityId: 2, dueClock: 0x782 },
+        { type: 'object-left-world', tick: 1, entityId: 5, kindBit: 7, source: null },
+        { type: 'all-clear', tick: 1, entityId: 5, kindBit: 7, eventClass: 2 },
+        { type: 'fragment-expired', tick: 2, entityId: 12, sourceKindBit: 0, part: 0, position: point(), outcome: 'escape-pod' },
+        weaponSelected(2),
+        rescued(2, 'destroyed'),
+        { type: 'transition', tick: 2, gap: 'G-02/5' },
+        { type: 'flight-message', tick: 3, message: 'beacon' },
+        energyLoss(3),
+        pageChanged(4),
+        flushed(4, 'beacon-expired'),
+        weaponSelected(4),
+        rescued(4, 'energy', { rescues: 2, baseEntityId: null, candidates: 0 }),
+        { type: 'transition', tick: 4, gap: 'G-02/6' },
+        settlement(5),
+        { type: 'settlement-deferred', tick: 6, dueClock: 0x28a },
+        pageChanged(7),
+        flushed(7, 'completion-message'),
+        { type: 'flight-message', tick: 7, message: 'missionComplete' },
+        pageChanged(8),
+        flushed(8, 'result-due'),
+        { type: 'result-latched', tick: 8, result: result() },
+        commandResult(8, 0, { commandType: 'fire', outcome: 'ignored', reason: 'mission-ended' }),
+        { type: 'teardown-started', tick: 8, entities: 3 },
+        { type: 'mission-completed', tick: 9, outcome: 'success' },
+      ];
+      return { events, checkpoints: [{ tick: 0, hash: hashOf(0) }, { tick: 9, hash: hashOf(9) }], finalTick: 9 };
+    }
+
+    it('accepts and matches every type in the contract\'s order, after a JSON round trip', () => {
+      const types = new Set(missionRun().events.map(({ type }) => type));
+      expect([...types].filter((type) => [
+        'all-clear', 'settlement-started', 'settlement-deferred', 'flight-message', 'player-loss-started', 'player-rescued', 'result-latched',
+        'teardown-started', 'mission-completed', 'wingman-loss-timer-started', 'wingman-loss-timer-expired',
+      ].includes(String(type)))).toHaveLength(11);
+      expect(compareReplayResults(missionRun(), JSON.parse(JSON.stringify(missionRun())))).toEqual({ match: true });
+    });
+
+    it.each([
+      ['loss view', 6, (event: Mutable) => { event.previousViewMode = 0x11; }],
+      ['wingman due clock', 9, (event: Mutable) => { event.dueClock = 0x784; }],
+      ['rescue position', 14, (event: Mutable) => { (event.position as Mutable).z = 2000.5; }],
+      ['rescue orientation', 14, (event: Mutable) => { (event.orientation as number[])[0] = -1; }],
+      ['beacon deadline', 17, (event: Mutable) => { event.deadlineClock = 0x3c8; }],
+      ['settlement range', 23, (event: Mutable) => { (event.summary as Mutable).range = 6; }],
+      ['deferred due clock', 24, (event: Mutable) => { event.dueClock = 0x28c; }],
+      ['result kills', 30, (event: Mutable) => { (event.result as Mutable).playerKills = 10; }],
+      ['result ending', 30, (event: Mutable) => { ((event.result as Mutable).endingGaps as Mutable[])[0].variant = 'wingman'; }],
+      ['teardown entities', 32, (event: Mutable) => { event.entities = 2; }],
+    ])('reports a different %s at its tick', (_, index, change) => {
+      const actual = missionRun();
+      change(actual.events[index]);
+      expect(compareReplayResults(missionRun(), actual)).toEqual({ match: false, tick: actual.events[index].tick, kind: 'events' });
+    });
+
+    it('accepts the bounds of selectors, indexes, rescues and ending gaps, and two losses in one tick', () => {
+      const accepts = (change: (result: Result) => void): void => {
+        const changed = missionRun();
+        change(changed);
+        expect(compareReplayResults(changed, structuredClone(changed))).toEqual({ match: true });
+      };
+      for (const summarySelector of [13, 19, 0, -0x80]) accepts((run) => { run.events[23].summarySelector = summarySelector; });
+      accepts((run) => Object.assign(run.events[23], { outcome: 'failure', summary: null, summarySelector: -1 }));
+      accepts((run) => Object.assign(run.events[23], { summary: null, summarySelector: -1 }));
+      accepts((run) => { (run.events[23].summary as Mutable).trigger = 0; (run.events[23].summary as Mutable).range = 0; });
+      // A success without a mission cutscene has its one gap; a failed settlement's is destroyed, a third loss's its loss.
+      accepts((run) => { run.events[30].result = result({ endingGaps: [{ gap: 'G-02/8', variant: 'wingman' }], rescuesUsed: 0, summary: null }); });
+      accepts((run) => {
+        run.events[30].result = result({
+          outcome: 'failure', reason: { type: 'settlement-failed' }, summary: null, endingGaps: [{ gap: 'G-02/7', variant: 'destroyed' }],
+        });
+        run.events[33].outcome = 'failure';
+      });
+      // A third energy loss latches after the beacon's flush; a third destruction at the escape pod's expiry.
+      accepts((run) => {
+        run.events[29].cause = 'beacon-expired';
+        run.events[30].result = result({
+          outcome: 'failure', reason: { type: 'third-loss', loss: 'energy' }, summary: null, endingGaps: [{ gap: 'G-02/7', variant: 'energy' }],
+        });
+        run.events[33].outcome = 'failure';
+      });
+      accepts((run) => {
+        const latch = { ...run.events[30], result: result({
+          outcome: 'failure', reason: { type: 'third-loss', loss: 'destroyed' }, summary: null, endingGaps: [{ gap: 'G-02/7', variant: 'destroyed' }],
+        }) };
+        run.events.splice(28, 4, commandResult(8, 0, { commandType: 'fire' }), { ...run.events[12], tick: 8 }, latch);
+        run.events[32].outcome = 'failure';
+      });
+      // The destruction and the energy entries in one tick: two losses, the limit.
+      accepts((run) => void run.events.splice(16, 0, hit(3, 1, 0), destroyed(3, 1, 0), pageChanged(3), flushed(3, 'player-destroyed'), destroyedLoss(3)));
+      accepts((run) => Object.assign(run.events[6], { previousSubState: 1 }));
+      // The destruction view kept, from view 0x11 with sub-mode 8.
+      accepts((run) => Object.assign(run.events[6], { previousViewMode: 0x11, viewSwitched: false }));
+      accepts((run) => { run.events[14].candidates = CORE_LIMITS.entities; });
+      accepts((run) => { run.events[32].entities = CORE_LIMITS.entities; });
+      accepts((run) => { (run.events[30].result as Mutable).playerKills = 0x7fffffff; });
+    });
+
+    const invalid: [string, (result: Result) => void, string][] = [
+      ['a radio flush of an unknown cause', (run) => { run.events[5].cause = 'player-rescued'; }, '.events[5].cause'],
+      ['an all-clear of a kind outside the entry set', (run) => { run.events[11].kindBit = 1; }, '.events[11].kindBit'],
+      ['an all-clear of another object', (run) => { run.events[11].entityId = 6; }, '.events[11]'],
+      ['an all-clear of a destruction class', (run) => { run.events[11].eventClass = 1; }, '.events[11]'],
+      ['an all-clear without its object event', (run) => void run.events.splice(10, 1), '.events[10]'],
+      ['a destruction loss without its flush', (run) => void run.events.splice(5, 1), '.events[5]'],
+      ['a destruction loss from sub-state 2', (run) => { run.events[6].previousSubState = 2; }, '.events[6].previousSubState'],
+      ['a destruction loss with a beacon deadline', (run) => { run.events[6].deadlineClock = 0; }, '.events[6]'],
+      ['an energy loss from sub-state 3', (run) => { run.events[17].previousSubState = 3; }, '.events[17].previousSubState'],
+      ['an energy loss without its beacon', (run) => void run.events.splice(16, 1), '.events[16]'],
+      ['a third loss in a tick', (run) => void run.events.splice(
+        16, 0, hit(3, 1, 0), destroyed(3, 1, 0), pageChanged(3), flushed(3, 'player-destroyed'), destroyedLoss(3),
+        hit(3, 3, 0), destroyed(3, 3, 0), flushed(3, 'player-destroyed'), { ...destroyedLoss(3), playerEntityId: 3 },
+      ), '.events[26]'],
+      ['a destruction loss of another player entity', (run) => { run.events[6].playerEntityId = 3; }, '.events[6]'],
+      ['a destruction loss apart from the destruction', (run) => void run.events.splice(4, 0, { ...run.events[0], length: 2 }), '.events[7]'],
+      ['a kept view outside view 0x11', (run) => { run.events[6].viewSwitched = false; }, '.events[6].viewSwitched'],
+      ['a wingman timer after another kind\'s destruction', (run) => {
+        Object.assign(run.events[7], { victimKindBit: 7 });
+        Object.assign(run.events[8], { kindBit: 7 });
+      }, '.events[9]'],
+      ['a wingman timer apart from its destruction', (run) => void run.events.splice(9, 0, pageChanged(1)), '.events[10]'],
+      ['a queued expiry without its message', (run) => void run.events.splice(0, 1), '.events[0]'],
+      ['a rescue without its transition', (run) => void run.events.splice(15, 1), '.events[14]'],
+      ['a destruction rescue with G-02/6', (run) => { run.events[15].gap = 'G-02/6'; }, '.events[15]'],
+      ['a transition without its event', (run) => void run.events.splice(14, 1), '.events[14]'],
+      ['a third rescue', (run) => { run.events[21].rescues = 3; }, '.events[21].rescues'],
+      ['a rescue base without candidates', (run) => { run.events[21].baseEntityId = 4; }, '.events[21].baseEntityId'],
+      ['a rescue with more candidates than entities', (run) => { run.events[14].candidates = CORE_LIMITS.entities + 1; }, '.events[14].candidates'],
+      ['a summary selector of 12', (run) => { run.events[23].summarySelector = 12; }, '.events[23].summarySelector'],
+      ['a summary selector of 20', (run) => { run.events[23].summarySelector = 20; }, '.events[23].summarySelector'],
+      ['a summary selector below an i8', (run) => { run.events[23].summarySelector = -0x81; }, '.events[23].summarySelector'],
+      ['a selector without a summary', (run) => { run.events[23].summary = null; }, '.events[23].summarySelector'],
+      ['a failed settlement with a summary', (run) => { run.events[23].outcome = 'failure'; }, '.events[23].summary'],
+      ['a summary of a third trigger', (run) => { (run.events[23].summary as Mutable).trigger = 2; }, '.events[23].summary.trigger'],
+      ['a summary of a ninth range', (run) => { (run.events[23].summary as Mutable).range = 8; }, '.events[23].summary.range'],
+      ['a summary of another Asset kind', (run) => { (run.events[23].summary as Mutable).mission = 'data/first-campaign'; }, '.events[23].summary.mission'],
+      ['a summary of an invalid Asset ID', (run) => { (run.events[23].summary as Mutable).mission = 'Mission'; }, '.events[23].summary.mission'],
+      ['a second settlement in a tick', (run) => void run.events.splice(24, 0, settlement(5)), '.events[24]'],
+      ['a completion message without its flush', (run) => void run.events.splice(26, 1), '.events[26]'],
+      ['a result latched in another tick', (run) => { (run.events[30].result as Mutable).latchTick = 7; }, '.events[30].result.latchTick'],
+      ['an all-clear reason for a failure', (run) => { (run.events[30].result as Mutable).outcome = 'failure'; }, '.events[30].result.reason.type'],
+      ['a failure with a summary', (run) => { run.events[30].result = result({ outcome: 'failure', reason: { type: 'settlement-failed' } }); }, '.events[30].result.summary'],
+      ['a third loss with one rescue used', (run) => {
+        run.events[30].result = result({
+          outcome: 'failure', reason: { type: 'third-loss', loss: 'energy' }, summary: null, rescuesUsed: 1, endingGaps: [{ gap: 'G-02/7', variant: 'energy' }],
+        });
+      }, '.events[30].result.rescuesUsed'],
+      ['three rescues used', (run) => { (run.events[30].result as Mutable).rescuesUsed = 3; }, '.events[30].result.rescuesUsed'],
+      ['a third loss of another variant', (run) => {
+        run.events[30].result = result({
+          outcome: 'failure', reason: { type: 'third-loss', loss: 'energy' }, summary: null, endingGaps: [{ gap: 'G-02/7', variant: 'destroyed' }],
+        });
+      }, '.events[30].result.endingGaps'],
+      ['a success without G-02/8 first', (run) => { ((run.events[30].result as Mutable).endingGaps as Mutable[]).reverse(); }, '.events[30].result.endingGaps'],
+      ['a mission cutscene without a summary', (run) => { (run.events[30].result as Mutable).summary = null; }, '.events[30].result.endingGaps[1]'],
+      ['a mission cutscene row of 12', (run) => { ((run.events[30].result as Mutable).endingGaps as Mutable[])[1].row = 12; }, '.events[30].result.endingGaps[1].row'],
+      ['three ending gaps', (run) => { ((run.events[30].result as Mutable).endingGaps as Mutable[]).push({ gap: 'G-02/9', row: 13 }); }, '.events[30].result.endingGaps'],
+      ['negative kills', (run) => { (run.events[30].result as Mutable).playerKills = -1; }, '.events[30].result.playerKills'],
+      ['kills beyond an i32', (run) => { (run.events[30].result as Mutable).playerKills = 0x80000000; }, '.events[30].result.playerKills'],
+      ['a teardown of more entities than the limit', (run) => { run.events[32].entities = CORE_LIMITS.entities + 1; }, '.events[32].entities'],
+      ['a latch without its due flush', (run) => { run.events[29].cause = 'beacon-expired'; }, '.events[30]'],
+      ['a third energy loss after the result\'s due', (run) => {
+        run.events[30].result = result({
+          outcome: 'failure', reason: { type: 'third-loss', loss: 'energy' }, summary: null, endingGaps: [{ gap: 'G-02/7', variant: 'energy' }],
+        });
+      }, '.events[30]'],
+      ['a latch without its teardown', (run) => void run.events.splice(32, 1), '.events[30]'],
+      ['a teardown without a latch', (run) => void run.events.splice(30, 1), '.events[31]'],
+      ['a completion of another outcome', (run) => { run.events[33].outcome = 'failure'; }, '.events[33].outcome'],
+      ['a completion before the final tick', (run) => Object.assign(run, { finalTick: 10, checkpoints: [{ tick: 0, hash: hashOf(0) }, { tick: 10, hash: hashOf(10) }] }), '.finalTick'],
+      ['a result latched after request handling', (run) => void run.events.splice(30, 0, { type: 'energy-depleted', tick: 8, entityId: 1, kindBit: 0, position: point() }), '.events[31]'],
+      ['a teardown before the commands', (run) => void run.events.splice(31, 2, run.events[32], run.events[31]), '.events[32]'],
+      ['a completion in the teardown\'s tick', (run) => { run.events[33].tick = 8; }, '.events[33]'],
+      ['an event after the completion', (run) => void run.events.push({ type: 'flight-message', tick: 9, message: 'beacon' }), '.events[34]'],
+      ['a docking request from sub-state 2', (run) => void run.events.splice(31, 1, commandResult(8, 0, { commandType: 'select-number', outcome: 'accepted', reason: null }),
+        pageChanged(8), { ...pageChanged(8), commandIndex: 0 },
+        { type: 'docking-requested', tick: 8, playerEntityId: 1, dockingObject: 4, previousSubState: 2, deadlineClock: 0x782, commandIndex: 0 }), '.events[34].previousSubState'],
+    ];
+
+    it.each(invalid)('rejects %s on either side', (_, change, path) => {
+      expectInvalidOnEitherSide(missionRun, change, path);
+    });
+  });
+
   describe('P3-14 retirement event (docs/plan/p3/02/spec.md, FA-07)', () => {
     const retired = (tick: number, entityId: number, state: string): Mutable => ({ type: 'object-retired', tick, entityId, kindBit: 7, state });
 

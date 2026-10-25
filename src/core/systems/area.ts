@@ -6,7 +6,7 @@
  *   builds the movement block;
  * - stage 13, the parked update (`0x2f1b0`): its cadence, the Warp transit (`0x2f298`, which also holds the generic
  *   part of an entity's own update) and the parked travel (`0x2f314`) with the parked Warp jump, the formation snap and
- *   the world exit, the one true exit, which emits `object-left-world`.
+ *   the world exit, the one true exit, which emits `object-left-world` and reports P3-11's object event.
  *
  * None of them bounds an active object: it may fly anywhere, and only parking hands it to the parked update. Until
  * P3-08 the parked travel follows the AI state instantiation wrote; the parked combat (P3-07) follows the travel. A
@@ -48,6 +48,7 @@ import type { WorldState } from '../world/world-state.ts';
 import { fullRepair } from './base-interior.ts';
 import { reportParkedEnemy } from './comm-reactions.ts';
 import { retire } from './object-state.ts';
+import { reportObjectEvent } from './mission-events.ts';
 import { emit, type TickContext } from './pipeline.ts';
 
 /** Kinds the area check walks: every kind but the player's, `0x1fffffe`. */
@@ -174,7 +175,8 @@ function repairArrivingWingman(context: TickContext, entity: Entity, target: Ent
  * The arrival branch of `0x2f314`, which writes no position: the wingman's arrival repair first; then the entity's own
  * target offset is cleared when there is a target, an entity without a leader in AI mode 4 takes a new goal, it is no
  * longer in Warp, and an entity other than the wingman whose subject stands outside the inset world rectangle leaves the
- * world: pending removal at once and one `object-left-world`; its own update asks for the removal at the next tick.
+ * world: pending removal at once, one `object-left-world` and the object event `0x6977c` of type 2
+ * (mission-events.ts); its own update asks for the removal at the next tick.
  */
 function arrive(context: TickContext, entity: Entity, subject: Entity, leader: Entity | null, target: Entity | null, rand: RandSource): void {
   const { world } = context;
@@ -185,6 +187,7 @@ function arrive(context: TickContext, entity: Entity, subject: Entity, leader: E
   if (entity.kindBit === WINGMAN_KIND_BIT || !isOutsideExitBounds(world.spawn.frame, subject.position)) return;
   retire(context, entity, 'pending-removal');
   emit(context, { type: 'object-left-world', tick: world.tick, entityId: entity.id, kindBit: entity.kindBit, source: entity.source });
+  reportObjectEvent(context, entity, 2);
 }
 
 /**

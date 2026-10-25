@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-16
+updated: 2026-10-24
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -46,6 +46,7 @@ src/
     resources/
       mission-diagnostics.ts
       mission-input.ts
+      mission-texts.ts
       resource-holder.ts
       resource-status.ts
     runtime/
@@ -102,6 +103,7 @@ src/
       ai-support.ts
       ai-targeting.ts
       ai-wingman.ts
+      all-clear.ts
       base-service.ts
       collision-shapes.ts
       collision.ts
@@ -128,6 +130,7 @@ src/
       map-frame.ts
       map-icons.ts
       map-visibility.ts
+      mission-summary.ts
       mounts.ts
       movement-builders.ts
       name-assignment.ts
@@ -140,6 +143,7 @@ src/
       radio.ts
       random-direction.ts
       record-defaults.ts
+      rescue.ts
       spawn-schedule.ts
       speed-match.ts
       startup-rotations.ts
@@ -167,17 +171,23 @@ src/
       launch.ts
       map.ts
       missiles.ts
+      mission-events.ts
+      mission-flow.ts
+      mission-teardown.ts
       movement.ts
       object-sets.ts
       parked-engagement.ts
       pipeline.ts
+      player-loss.ts
       projectiles.ts
       radio.ts
+      rescue.ts
       spawn.ts
       targeting.ts
       view-switch.ts
       warp.ts
       weapons.ts
+      wingman-loss.ts
       xpon.ts
     world/
       comm-input.ts
@@ -418,11 +428,13 @@ src/
       MissionParts.tsx
       MissionShell.tsx
       PlaceholderPage.tsx
+      ResultPage.tsx
       StartConfigPage.tsx
       base-page.ts
       input-notices.ts
       mission-copy.ts
       page-keys.ts
+      result-page.ts
       slice-gaps-copy.ts
       use-input-focus.ts
     pages/
@@ -447,12 +459,12 @@ src/
 
 | 分册 | 内容 |
 |---|---|
-| [core](./modules/core.md) | 模块边界；Core 任务载入；正式 Core 的创建、规则数据输入与静态规则数据、世界、契约、流水线，飞行控制、运动与停放，战斗规则，地图与 Warp，通讯、停靠与基地服务，原版规则辅助、读模型、快照与 replay，上限、扩展规则、已知差异与交接 |
+| [core](./modules/core.md) | 模块边界；Core 任务载入；正式 Core 的创建、规则数据输入与静态规则数据、世界、契约、流水线，飞行控制、运动与停放，战斗规则，地图与 Warp，通讯、停靠与基地服务，AI 与僚机，任务事件、结果、救援与退场，原版规则辅助、读模型、快照与 replay，上限、扩展规则、已知差异与交接 |
 | [content](./modules/content.md) | 基础契约与切片定义，图形、状态显示屏文字、模型与效果 payload，规范 JSON 与规则数据、飞行数据、视角标签、HUD 文字与地图几何 payload |
 | [original-data](./modules/original-data.md) | 光盘、封包、版本识别与来源映射，任务、规则与飞行数据解析，图形、逻辑、规则数据、音频、模型、效果与飞行数据转换 |
 | [workers](./modules/workers.md) | 导入 Worker 的协议、宿主、作业与生产包配置 |
-| [app](./modules/app.md) | 正式 Runtime 与游戏会话，任务流程、所有者与槽位，资源持有者，查看器音频与所有者 |
-| [ui](./modules/ui.md) | 游戏 store、会话桥接与命令反馈，任务页面、基地页面与缺省标注文字，开发诊断，失败文案 |
+| [app](./modules/app.md) | 正式 Runtime 与游戏会话（含运行中衔接与终局），任务流程、所有者与槽位，资源持有者与任务文字，查看器音频与所有者 |
+| [ui](./modules/ui.md) | 游戏 store、会话桥接与命令反馈，任务页面、基地页面、终局占位与结果页及缺省标注文字，开发诊断，失败文案 |
 | [render](./modules/render.md) | 视口、WebGL 表面与资源查看渲染 |
 | [platform](./modules/platform.md) | 资源缓存、音频播放、任务端口的浏览器适配与键盘源 |
 
@@ -464,7 +476,7 @@ P1-09 的 [platform/input/](../../src/platform/input/) 提供通用事件、按�
 |---|---|---|
 | `app/` | 应用装配、页面流转、跨模块导入/启动/保存流程 | 游戏规则、GPU 实现、浏览器解析器 |
 | [app/runtime/](../../src/app/runtime/) | 固定步长、连续意图与按住开火、命令队列与每 tick 批次、调用 Core、帧后事件、同 tick 读模型与两帧 Render State、开发录制 | DOM 监听、第二条游戏循环、UI 成功状态 |
-| [app/session/](../../src/app/session/) | 控制通道、唯一帧调度许可、运行身份、出发保持与停止、通知边界、运行级消费者与清理 | 重复模拟世界、媒体/Worker 空实现 |
+| [app/session/](../../src/app/session/) | 控制通道、唯一帧调度许可、运行身份、出发与运行中保持、停止与完成（终局序列与冻结结果）、通知边界、运行级消费者与清理 | 重复模拟世界、媒体/Worker 空实现 |
 | [app/mission/](../../src/app/mission/) | 开始资格、任务流程、占位计时、运行创建、重开与返回、所有者级资源与离页保护的所有权（DOM-free，宿主能力经端口） | React、DOM、规则判定、运行中的 Core 衔接 |
 | [ui/game-input/](../../src/ui/game-input/) | 生产键位表、上下文解析、游戏输入消费者、宿主能力与地图输入；通过 app 所有者 input 阶段使用运行句柄 | 平台事件采集、Core 规则实现、第二条调度循环 |
 | [render/map/](../../src/render/map/) | 地图输入与显示共用的纯 CSS 像素几何、地图光标绘制 | 地图规则、DOM 事件采集、游戏调度 |
@@ -529,7 +541,7 @@ Core 消费规范化逻辑数据，不认识原版封包。持续事实走投影
 仓库根 [e2e/](../../e2e/)属于测试，不是 app/platform 模块，也不进入网站导入链。[配置](../../playwright.config.ts)和[独立tsconfig](../../tsconfig.e2e.json)允许 Node runner 与 evaluate 的 DOM 类型，但 Core/Node 程序仍无 DOM。命令、已有浏览器准备、origin/端口所有权、headed CDP 与输出清理见[工程约定](./README.md#本地浏览器-runner)。
 
 - bootstrap、probe-contract、interaction-render、joint-resources、browser-replay、native-lifecycle、webgl-unavailable 各自承担独立验收面；P3-04 起，页面、生命周期与图形的验收已迁到正式任务流程或查看器，各用例按下列当前路径验证（各旧用例的去向见 [P3-04/11](../plan/p3/04/subtasks/11-e2e-lifecycle-resources.md#完成证据) 与 [P3-04/12](../plan/p3/04/subtasks/12-e2e-shell-production.md#完成证据)）：bootstrap 载入应用菜单，没有资源包时任务入口禁用并说明原因；probe-contract 核对探针（含应用的单次计时器）不干扰页面，并读取任务画面的只读属性，生产中没有诊断元素；interaction-render 为只用键盘的任务流程（原生控件、非绑定键无效）与任务画面、查看器画布的同所有者 resize；browser-replay 在浏览器与 Node 中以正式 Core 的 `replayRecord`/`compareReplayResults` 得到相同结果并同样拒绝不符的记录；webgl-unavailable 在查看器上核对 WebGL 2 不可用时的降级与两次进出的释放，任务流程照常且没有画布；native-lifecycle 为任务飞行与出发保持中的原生隐藏、显式继续与不补跑；joint-resources 为三次任务往返（各含重开）的资源平衡；mission-flow.development/production 为完整任务流程、离页确认、开发诊断与录制下载后的 Node 核对；base-interaction.development（P3-10/23，只在开发构建中运行，因为测试入口只在开发构建中）经真实模块 Worker 导入合成光盘 `mission-docking`（[synthetic-import.test-support.ts](../../src/workers/synthetic-import.test-support.ts)，场景表在 [import-scenarios.test-support.ts](../../src/workers/import-scenarios.test-support.ts)：基地在停靠门禁之内，菜单含状态查询与停靠），以输入区中的可信按键走通讯菜单、停靠请求、G-02/3 与 G-02/4 的保持占位、G-05 基地页面与离港，并把基地页面与 Node 中重放导出录制的 projection 比较；菜单协议只经开发事件日志核对，不验证正式通讯画面（P3-13）。P1-12增加rights DOM和仅production的许可产物可读性用例。[P1-10覆盖/历史适用性](../plan/p1/10/subtasks/07-evidence-docs-alignment.md#完成证据)、[P1-12相关证据](../plan/p1/12/subtasks/08-local-evidence-docs.md#完成证据)及[P1-14当前完整回归](../plan/p1/14/subtasks/03-browser-exit-checks.md#完成证据)分别保留各候选的实际结果，阶段判定见[退出评审](../reviews/P1-exit.md)。
-- `e2e/support/`按测试能力放 environment、只读宿主探针、错误fixture、DOM/采样、截图/布局与CDP relay，不建立生产debug/world写入API。输入走可信UI/浏览器协议；任务画面只经只读的 `data-owner`/`data-run`/`data-tick`/`data-position` 属性与开发诊断面板取证（[mission-observations.ts](../../e2e/support/mission-observations.ts)）；P3-09 的地图与 Warp 证据另经 [map-warp.ts](../../e2e/support/map-warp.ts) 从任务画面元素的 React fiber 找到组件持有的任务 UI store，只调用它的 `getState`/`subscribe` 读取会话桥接发布的状态，不写 store、世界或 projection；P3-08 的 AI 与 `b` 证据另经 [ai-wingman.ts](../../e2e/support/ai-wingman.ts)：在 Node 中由合成光盘的转换结果生成规则数据 payload 变体，只写入测试自己的隔离缓存，并在 Node 中重放浏览器导出的录制以读取诊断面板不显示的 Core 状态；replay只导入公开纯模块创建独立世界。
+- `e2e/support/`按测试能力放 environment、只读宿主探针、错误fixture、DOM/采样、截图/布局与CDP relay，不建立生产debug/world写入API。输入走可信UI/浏览器协议；任务画面只经只读的 `data-owner`/`data-run`/`data-tick`/`data-position` 属性与开发诊断面板取证（[mission-observations.ts](../../e2e/support/mission-observations.ts)）；P3-09 的地图与 Warp 证据另经 [map-warp.ts](../../e2e/support/map-warp.ts) 从任务画面元素的 React fiber 找到组件持有的任务 UI store，只调用它的 `getState`/`subscribe` 读取会话桥接发布的状态，不写 store、世界或 projection；P3-08 的 AI 与 `b` 证据另经 [ai-wingman.ts](../../e2e/support/ai-wingman.ts)：在 Node 中由合成光盘的转换结果生成规则数据 payload 变体，只写入测试自己的隔离缓存，并在 Node 中重放浏览器导出的录制以读取诊断面板不显示的 Core 状态；P3-11 的救援、终局与结果页证据另经 [mission-result.ts](../../e2e/support/mission-result.ts)：在 Node 中以 ai-wingman.ts 的 `withPayloads` 替换合成包的任务与 craft-info payload，得到由运行自身规则结束的短程变体，只经 DOM、开发面板与 Node 中的重放观察，原生 CDP 目标的预置用 [production-cache.ts](../../e2e/support/production-cache.ts) 的 `seedRecords` 与页面函数 `storeSeed`；replay只导入公开纯模块创建独立世界。
 - Node 单元测试继续证明纯规则、通知/旧回调、注册失败/回滚/稀有错误；持久E2E证明真实DOM/图形/宿主生命周期与联合资源。仍适用的人工HMR/window/DPR证据直接复用，不自动改源码，不把本机Chromium结果说成Safari/系统快捷键/目标GPU/原版保真。
 - `tools/e2e-configuration.test.ts`是 Node 接入与项目设置回归：读取 Playwright 配置并列出用例，不启动浏览器或需要已安装浏览器；真正浏览器验收独立运行`pnpm test:e2e`，不由`pnpm check`替代。报告与合成截图只有ignored测试目录，不是产品资源。
 

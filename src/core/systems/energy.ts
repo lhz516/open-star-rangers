@@ -14,10 +14,10 @@
  * craft kinds 0xffffe in walk order, skipping docked ones: a parked one in any state without a block, an active one
  * only in state 7 or above with its block. An update runs once the clock reaches its due clock (D14). A depleted update
  * clamps the energy to 0 and locks the movement block it was passed (`0x21ba0`), at every such update; for the player
- * P3-11's `0x33464` follows the clamp there (CR-13), not implemented before P3-11. `energy-depleted` marks only the
- * transition: the latch is set by a depleted update and cleared by one that ends with energy above 0. The original's
- * energy-page redraw flag +0x44 is display state only and not kept; the typed cheat that multiplies a parked object's
- * interval by 8 does not exist in Core.
+ * P3-11's `0x33464` (player-loss.ts) follows there, after this update's events (CR-13, ME-09). `energy-depleted`
+ * marks only the transition: the latch is set by a depleted update and cleared by one that ends with energy above 0.
+ * The original's energy-page redraw flag +0x44 is display state only and not kept; the typed cheat that multiplies a
+ * parked object's interval by 8 does not exist in Core.
  */
 import type { CraftRecord } from '../../content/rule-data/craft-info.ts';
 import { CoreFaultError } from '../errors.ts';
@@ -32,6 +32,7 @@ import { isActiveState, type CraftCombat, type Entity, type SteeredMovementBlock
 import type { WorldState } from '../world/world-state.ts';
 import { combatCommandPlayer, emitCommandResult, type CommandOf } from './commands.ts';
 import { emit, type PipelineStage, type TickContext } from './pipeline.ts';
+import { startBeaconWait } from './player-loss.ts';
 
 /** The craft kinds the stage updates after the player: kind bits 1–19. */
 const OTHER_ENERGY_KINDS = 0xffffe;
@@ -127,6 +128,7 @@ function updateEnergy(context: TickContext, entity: Entity, block: SteeredMoveme
   if (depleted) {
     if (block !== null) lockMovement(block);
     if (!combat.depleted) emit(context, { type: 'energy-depleted', tick: context.time.tick, entityId: entity.id, kindBit: entity.kindBit, position: entity.position });
+    if (player) startBeaconWait(context, entity);
   }
   combat.depleted = depleted;
   const interval = player ? PLAYER_ENERGY_INTERVAL : block === null ? BLOCKLESS_ENERGY_INTERVAL : BLOCK_ENERGY_INTERVAL;

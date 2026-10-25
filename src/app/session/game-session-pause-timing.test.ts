@@ -84,7 +84,7 @@ describe('R-13 control subset: ticks and the clock follow only executed ticks', 
     expect(session.status().phase).toBe('running');
     const resumedAt = 3.5 * TICK_MS + 2 * lengthMs;
     host.deliver(resumedAt);
-    expect(frames.at(-1)?.report).toEqual({ ticks: 0, capped: false, stop: null, cut: null, transitions: [] });
+    expect(frames.at(-1)?.report).toEqual({ ticks: 0, capped: false, stop: null, cut: null, transitions: [], completion: null });
     expect(clock()).toEqual(clockAt(3));
     host.deliver(resumedAt + 0.75 * TICK_MS);
     expect(clock()).toEqual(clockAt(3));

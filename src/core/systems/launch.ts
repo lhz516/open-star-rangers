@@ -5,8 +5,8 @@
  *
  * The new entity is allocated active, so its own update in the next tick asks for state 7 (CR-08); in this tick it is
  * neither moved nor collision-tested. A launch whose shooter no longer resolves creates nothing, as any request whose
- * subject is gone: the original would read the pose of a cleared handle. The mission-flow gate `0x339cc` on these
- * requests belongs to P3-11 (CR-13).
+ * subject is gone: the original would read the pose of a cleared handle. In main state 1, the teardown, the
+ * mission-flow gate `0x339cc` drops the request without an event (ME-11).
  */
 import { CoreFaultError } from '../errors.ts';
 import { missileMaximumSpeed, runtimeKindDefaults } from '../rules/combat-init.ts';
@@ -17,6 +17,7 @@ import { RandStream } from '../rules/original-random.ts';
 import { PLAYER_KIND_BIT } from '../rules/spawn-schedule.ts';
 import { MISSILE_KIND_BIT, PROJECTILE_KIND_BIT, type Entity, type Matrix3, type MissileProgram } from '../world/entity-table.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
+import { passesTeardownGate } from './mission-teardown.ts';
 import { emit, type RequestOf, type TickContext } from './pipeline.ts';
 
 const fault = (site: string): CoreFaultError => new CoreFaultError('invariant-violated', `launch.${site}`);
@@ -113,6 +114,7 @@ function constructMissile(context: TickContext, shooter: Entity, request: Missil
  */
 export function applyLaunchRequest(context: TickContext, request: RequestOf<'launch'>): void {
   const { world } = context;
+  if (!passesTeardownGate(world.flow)) return;
   const shooter = world.entities.get(request.shooter);
   if (shooter === undefined) return;
   if (shooter.combat.type !== 'craft') throw fault('shooter');

@@ -68,11 +68,11 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
     expect(deepFrozen(PIPELINE)).toBe(true);
   });
 
-  it('implements only the stages P3-02, P3-06, P3-07, P3-09 and P3-10 own so far and fakes no rule system', () => {
+  it('implements every stage, P3-11\'s teardown included, and fakes no rule system', () => {
     expect(PIPELINE.filter(({ run }) => run !== null).map(({ id }) => id)).toEqual([
       'input-registration', 'mission-flow', 'clock', 'object-update', 'communications-reply', 'spawn-queue-check', 'request-handling', 'movement', 'collision',
       'delayed-player-explosion', 'energy',
-      'object-sets', 'parked-update', 'warp-completion', 'base-interior', 'area-check', 'frame-end', 'commit',
+      'object-sets', 'parked-update', 'warp-completion', 'base-interior', 'mission-teardown', 'area-check', 'frame-end', 'commit',
     ]);
   });
 
