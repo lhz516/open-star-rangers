@@ -173,13 +173,18 @@ export async function waitForTickAfter(page: Page, tick: number): Promise<number
   return frame.tick;
 }
 
-/** Submits a one-off dev recording download and parses only its public tick input. */
-export async function exportedTickInputs(page: Page, path: string): Promise<readonly TickInput[]> {
+/** Downloads the development panel's recording of the current run to `path`. */
+export async function saveRecording(page: Page, path: string): Promise<void> {
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.getByTestId('dev-recording-export').click(),
   ]);
   await download.saveAs(path);
   if (await download.failure()) throw new Error('The browser failed to save the recording');
+}
+
+/** Submits a one-off dev recording download and parses only its public tick input. */
+export async function exportedTickInputs(page: Page, path: string): Promise<readonly TickInput[]> {
+  await saveRecording(page, path);
   return readExportedTickInputs(path);
 }

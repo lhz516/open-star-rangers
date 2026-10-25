@@ -322,8 +322,9 @@ describe('the flight presentation and picture with Core (AC-17)', () => {
     expect(presentation.map(({ tick }) => tick.tick)).toEqual(Array.from({ length: TICKS }, (_, at) => at + 1));
     const activations = presentation.flatMap(({ tick }) => tick.activations);
     expect(new Set(activations.map(({ key }) => key)).size).toBe(activations.length);
-    // Eight Core explosions and twelve extra ones, whose ticks and choices come from the presentation's random source.
-    expect(activations.map(({ origin }) => origin.type).sort()).toEqual([...Array(8).fill('core'), ...Array(12).fill('extra')]);
+    // Eight Core explosions and fifteen extra ones, whose ticks and choices come from the presentation's random source
+    // (P3-11's destruction entry switches to the view 0x11 at tick 2, whose camera the later extras use).
+    expect(activations.map(({ origin }) => origin.type).sort()).toEqual([...Array(8).fill('core'), ...Array(15).fill('extra')]);
     expect(new Set(activations.map(({ selection }) => selection.item)).size).toBeGreaterThan(2);
     expect([...drawn.keys()]).toEqual(BLOCK_ENDS);
     // The flight content names the player's model as a pod model, and its escape pod's three parts are drawn from

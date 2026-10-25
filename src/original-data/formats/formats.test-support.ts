@@ -248,7 +248,8 @@ export function syntheticScenario(spec: ScenarioSpec): SyntheticBlock & { readon
  * A mission shaped like the slice's: placement only by rectangle, anchor or layout, member back-references, an AI
  * target, a name pool and one record with name candidates. Two message-only triggers: the first has three ranges, with
  * one message and a negative selector, without messages, and with two messages, and two records reference it; the
- * second has one range with one message and a positive selector.
+ * second has one range with one message and a positive selector, 16, one Core's world creation accepts (only 0 or
+ * below and 13–19; docs/plan/p3/02/spec.md, ME-02).
  */
 export function defaultScenarioSpec(): ScenarioSpec {
   return {
@@ -273,7 +274,7 @@ export function defaultScenarioSpec(): ScenarioSpec {
           { lower: -7, upper: 39, messages: [`${MARKER}-held `, `${MARKER}-lost`] },
         ],
       },
-      { ranges: [{ lower: 0, upper: 0, messages: [`${MARKER}-ended`], selector: 6 }] },
+      { ranges: [{ lower: 0, upper: 0, messages: [`${MARKER}-ended`], selector: 16 }] },
     ],
     groups: [
       { spawnCount: 2, layout: 0, template: 1, members: [4, 4] },

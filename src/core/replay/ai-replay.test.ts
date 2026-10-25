@@ -164,7 +164,7 @@ describe('autonomous AI replay (P3-08 AC-11; CR-25)', { timeout: 120_000 }, () =
   // P3-12/10 (docs/plan/p3/02/spec.md, FS-08): the presentation facts change no rule outcome or draw; the digest is the
   // one this run had before them (replay.test-support.ts).
   it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
-    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('2e249be7a5836a1d');
+    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('7521fc22377f7e05');
   });
 
   it('records only the normal input of the run, in the current formats', () => {

@@ -217,7 +217,12 @@ describe('the full repair entry (CB-10, CB-12; BS9)', () => {
     combat.energy = -100;
     const events: DomainEvent[] = [];
     while (!combat.depleted) events.push(...world.step(tickInput()));
-    expect(events).toEqual([expect.objectContaining({ type: 'energy-depleted', entityId: player.id })]);
+    // In sub-state 0 the depleted update also starts the beacon wait (P3-11, ME-09).
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'energy-depleted', entityId: player.id }),
+      expect.objectContaining({ type: 'flight-message', message: 'beacon' }),
+      expect.objectContaining({ type: 'player-loss-started', loss: 'energy', playerEntityId: player.id }),
+    ]);
   });
 
   it('repairs the docking wingman and announces nothing', () => {

@@ -6,7 +6,7 @@
  */
 import type { EventDelivery } from '../../app/runtime/game-event-bus.ts';
 import type { Attacker, DomainEvent, ShotTrigger, Vec3 } from '../../core/contracts/domain-events.ts';
-import type { MessageIdentity, SpeakerSnapshot } from '../../core/world/world-state.ts';
+import type { MessageIdentity, SpeakerSnapshot, SummaryReference } from '../../core/world/world-state.ts';
 import { describeName, describeSource } from './entity-inspection.ts';
 
 export const EVENT_LOG_LIMIT = 500;
@@ -55,6 +55,9 @@ function describeTrigger(trigger: ShotTrigger): string {
       return 'automatic';
   }
 }
+
+/** `mission/first-campaign 1/0` (trigger, range), or null without a summary. */
+const describeSummary = (summary: SummaryReference | null): string | null => (summary === null ? null : `${summary.mission} ${summary.trigger}/${summary.range}`);
 
 /** `20011/2#3` (table, portrait, index) or `20983#6` for the direct list. */
 function describeMessage({ table, face, index }: MessageIdentity): string {
@@ -201,6 +204,44 @@ function fieldsOf(event: DomainEvent): Fields {
       ];
     case 'transponder-deployed':
       return [['entityId', event.entityId], ['creatorEntityId', event.creatorEntityId], ...positionOf(event.position)];
+    // P3-11's (docs/plan/p3/02/spec.md, ME-13).
+    case 'all-clear':
+      return [['entityId', event.entityId], ['kindBit', event.kindBit], ['eventClass', event.eventClass]];
+    case 'settlement-started':
+      return [['outcome', event.outcome], ['summary', describeSummary(event.summary)], ['summarySelector', event.summarySelector], ['dueClock', event.dueClock]];
+    case 'settlement-deferred':
+      return [['dueClock', event.dueClock]];
+    case 'flight-message':
+      return [['message', event.message]];
+    case 'player-loss-started':
+      return event.loss === 'destroyed'
+        ? [
+            ['playerEntityId', event.playerEntityId], ['loss', event.loss], ['previousSubState', event.previousSubState],
+            ['previousViewMode', event.previousViewMode], ['viewSwitched', event.viewSwitched],
+          ]
+        : [['playerEntityId', event.playerEntityId], ['loss', event.loss], ['previousSubState', event.previousSubState], ['deadlineClock', event.deadlineClock]];
+    case 'player-rescued':
+      return [
+        ['playerEntityId', event.playerEntityId], ['loss', event.loss], ['rescues', event.rescues], ['baseEntityId', event.baseEntityId],
+        ['candidates', event.candidates], ...positionOf(event.position),
+      ];
+    case 'result-latched': {
+      const { result } = event;
+      return [
+        ['outcome', result.outcome], ['reason', result.reason.type === 'third-loss' ? `third-loss ${result.reason.loss}` : result.reason.type],
+        ['summary', describeSummary(result.summary)], ['rescuesUsed', result.rescuesUsed],
+        ['endingGaps', result.endingGaps.map((gap) => `${gap.gap} ${gap.gap === 'G-02/9' ? gap.row : gap.variant}`).join(', ')],
+        ['playerKills', result.playerKills],
+      ];
+    }
+    case 'teardown-started':
+      return [['entities', event.entities]];
+    case 'mission-completed':
+      return [['outcome', event.outcome]];
+    case 'wingman-loss-timer-started':
+      return [['wingmanEntityId', event.wingmanEntityId], ['dueClock', event.dueClock]];
+    case 'wingman-loss-timer-expired':
+      return [['queued', event.queued]];
     // P3-12's (docs/plan/p3/02/spec.md, FS-03): the construction position as x, y, z, the switch's player pose by name.
     case 'explosion-created':
       return [

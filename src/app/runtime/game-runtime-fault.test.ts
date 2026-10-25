@@ -210,7 +210,7 @@ describe('GameRuntime failure frames', () => {
     // Nothing was executed for the queued rest; the Runtime itself has not faulted.
     expect(runtime.clearIntent()).toEqual(ids(64, 100));
     runtime.clearSubscriptions();
-    expect(runtime.frame(2 * TICK_MS)).toEqual({ ticks: 1, capped: false, stop: null, cut: null, transitions: [], outputs: [expect.objectContaining({ tick: 2 })] });
+    expect(runtime.frame(2 * TICK_MS)).toEqual({ ticks: 1, capped: false, stop: null, cut: null, transitions: [], completion: null, outputs: [expect.objectContaining({ tick: 2 })] });
   });
 
   it('reports each tick\'s Render State as the read model extracted it, intermediate ticks included', () => {
@@ -231,7 +231,7 @@ describe('GameRuntime failure frames', () => {
     const cause = new CoreInputError('recording', 'would exceed 131072 recorded ticks');
     injection.arm('step', 3, () => { throw cause; });
     const report = runtime.frame(5 * TICK_MS);
-    expect(report).toEqual({ ticks: 2, capped: false, stop: 'recording-capacity', cut: null, transitions: [], outputs: [expect.objectContaining({ tick: 1 }), expect.objectContaining({ tick: 2 })] });
+    expect(report).toEqual({ ticks: 2, capped: false, stop: 'recording-capacity', cut: null, transitions: [], completion: null, outputs: [expect.objectContaining({ tick: 1 }), expect.objectContaining({ tick: 2 })] });
     expectSameDeliveries(report, deliveries);
     expect(new Set(delivered.map((event) => event.tick))).toEqual(new Set([1, 2]));
     expect(delivered.filter((event) => event.type === 'command-result')).toHaveLength(128);

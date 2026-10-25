@@ -33,8 +33,12 @@ export interface WorldConfig {
   readonly clockUnitsPerTick: number;
 }
 
-/** The original mission status byte `0x1b46fc`: 1 once the mission is built. P3-11 adds the later states. */
-export type MissionStatus = 'built';
+/**
+ * The original mission status byte `0x1b46fc` (docs/plan/p3/02/spec.md, ME-04): 1 (`built`) once the mission is built, 4
+ * (`ended`) once the all-clear or the failure branch closed it; never back to `built`. The original's 0 (building) is
+ * not visible in Core.
+ */
+export type MissionStatus = 'built' | 'ended';
 
 /**
  * The craft object sets (`0x174b74`, `0x174b78`; docs/plan/p3/02/spec.md, MW-02, MW-06): the `object-sets` stage
@@ -60,18 +64,105 @@ export interface MapIcon {
 }
 
 /**
- * The mission sub-state `0x186881` (docs/plan/p3/02/spec.md, CB-02): 0 normal; 3 a docking request awaits its reply; 4
- * the countdown after the reply; 5 docking delivered or the base interior. P3-11 adds 1, 2 and 6 to this closed union.
+ * The main-flow state `0x1863ac` (ME-03): 3 the mission runs; 4 the settlement wait; 5 the result delay; 0 latched, the
+ * teardown due; 1 tearing down. Core never enters 2, which builds the next mission.
  */
-export type MissionSubState = 0 | 3 | 4 | 5;
+export type MainState = 0 | 1 | 3 | 4 | 5;
 
-/** The mission flow (CB-02); P3-11 extends both states rather than adding a competing flow state. */
+/**
+ * The mission sub-state `0x186881` (docs/plan/p3/02/spec.md, CB-02, ME-03): 0 normal; 1 the beacon wait; 2 the
+ * destruction sequence (or the loss handling after the beacon's expiry); 3 a docking request awaits its reply; 4 the
+ * countdown after the reply; 5 docking delivered or the base interior. Sub-state 6 is not added (ME-01).
+ */
+export type MissionSubState = 0 | 1 | 2 | 3 | 4 | 5;
+
+/** The player's loss (ME-01): the original's `0x32e14(p)` with p = 1 (`destroyed`) or 0 (`energy`). */
+export type PlayerLoss = 'destroyed' | 'energy';
+
+/** A range of a section-2 event trigger of the run's mission Asset (ME-05): `eventTriggers[trigger].ranges[range]`. */
+export interface SummaryReference {
+  readonly mission: AssetId;
+  readonly trigger: number;
+  readonly range: number;
+}
+
+/** The pre-settlement of the state 3→4 step (`0x69c54` with EDX = 0, ME-05), written once. */
+export interface Settlement {
+  /** The result word: 1 (`success`) when the all-clear check finds nothing left, otherwise 0. */
+  readonly outcome: 'success' | 'failure';
+  /** The matched range on a success; always null on a failure. */
+  readonly summary: SummaryReference | null;
+  /** i8: the matched range's selector; −1 (state 2's 0xFF) without a match or on a failure. */
+  readonly summarySelector: number;
+}
+
+/** Why the result was latched (ME-05). */
+export type ResultReason =
+  /** State 5 expired with a successful settlement. */
+  | { readonly type: 'all-clear' }
+  /** A loss with the rescue count at 2. */
+  | { readonly type: 'third-loss'; readonly loss: PlayerLoss }
+  /** State 5 expired with a failed settlement (ME-17 decision 1). */
+  | { readonly type: 'settlement-failed' };
+
+/** An ending placeholder, in display order (ME-05). */
+export type EndingGap =
+  /** The failure cutscene's first clip: a third loss's kind; `destroyed` for a failed settlement (the original's p = 1). */
+  | { readonly gap: 'G-02/7'; readonly variant: PlayerLoss }
+  /** The successful return. */
+  | { readonly gap: 'G-02/8'; readonly variant: 'solo' | 'wingman' }
+  /** The mission's own cutscene: CINC row = the settlement's summarySelector (13–19). */
+  | { readonly gap: 'G-02/9'; readonly row: number };
+
+/** The latched result summary (ME-05), written once at the latch and frozen. */
+export interface MissionResult {
+  readonly outcome: 'success' | 'failure';
+  readonly reason: ResultReason;
+  /** The settlement's summary on a success; null on a failure. */
+  readonly summary: SummaryReference | null;
+  /** The rescue count before the latch. */
+  readonly rescuesUsed: 0 | 1 | 2;
+  /** One or two items. */
+  readonly endingGaps: readonly EndingGap[];
+  /** The sum of the player's eight kill counters (ps +0x68), a non-negative i32. */
+  readonly playerKills: number;
+  readonly latchTick: number;
+}
+
+/** The mission flow (CB-02, ME-03); P3-11 extends both states rather than adding a competing flow state. */
 export interface MissionFlow {
-  /** `0x1863ac`: a world exists only while the mission runs, state 3; P3-11 adds its main-flow states. */
-  readonly mainState: 3;
+  /** `0x1863ac`; 3 at creation. */
+  mainState: MainState;
+  /** `0x186881`; 0 at creation. */
   subState: MissionSubState;
   /** `0x186824`, a clock: sub-state 3's deadline and 4's due clock; 0 at creation, read only in sub-states 3 and 4. */
   dockingDeadline: number;
+  /** `0x186854`, a clock: the beacon's expiry; 0 at creation, read only in sub-state 1. */
+  beaconDeadline: number;
+  /** `0x18681c`, a clock shared by main states 4 and 5; 0 at creation, read only there. */
+  settlementDeadline: number;
+  /** `0x186830`: rescues so far; the latch zeroes it after capturing it. */
+  rescues: 0 | 1 | 2;
+  /** `0x18682c` and `0x186818`: the wingman loss message's timer; read only in main state 3, sub-state 0, status `built`. */
+  readonly wingmanLoss: { pending: boolean; dueClock: number };
+  /** `0x18685c`'s result word, summary and selector byte; written once by the 3→4 step. */
+  settlement: Settlement | null;
+  /** A project field: the latched result summary, written once by the latch. */
+  result: MissionResult | null;
+  /** A project field: the tick the teardown completed, written once. */
+  completedTick: number | null;
+}
+
+/** One section-2 trigger's run counters (+0x08, +0x0C, +0x10; ME-04): non-negative i32, 0 at creation. */
+export interface MissionEventCounts {
+  instantiated: number;
+  destroyed: number;
+  left: number;
+}
+
+/** The section-2 run state (ME-04): as long as `setup.eventTriggers` and in its order; neither rescue nor teardown clears it. */
+export interface MissionEvents {
+  readonly triggers: readonly MissionEventCounts[];
 }
 
 /**
@@ -211,6 +302,8 @@ export interface WorldState {
   /** The world's own Mulberry32 generator; every rule draw comes from it. */
   rngState: RngState;
   missionStatus: MissionStatus;
+  /** ME-04. */
+  readonly missionEvents: MissionEvents;
   readonly entities: EntityTable;
   readonly player: PlayerState;
   readonly spawn: SpawnState;
@@ -218,11 +311,27 @@ export interface WorldState {
   objectSets: ObjectSets;
   /** The map icon list (MW-02, MW-07): built by a view mode 8 frame end, emptied by any other; empty at creation. */
   mapIcons: readonly MapIcon[];
-  /** P3-10's world state (docs/plan/p3/02/spec.md, CB-02, CB-05, CB-11), from here on. */
+  /** P3-10's world state (docs/plan/p3/02/spec.md, CB-02, CB-05, CB-11), from here on; P3-11 extends the flow (ME-03). */
   readonly flow: MissionFlow;
   readonly communications: WorldCommunications;
   readonly ai: WorldAi;
   baseService: BaseService | null;
+}
+
+/** The mission flow of a new world (ME-03). */
+function createMissionFlow(): MissionFlow {
+  return {
+    mainState: 3,
+    subState: 0,
+    dockingDeadline: 0,
+    beaconDeadline: 0,
+    settlementDeadline: 0,
+    rescues: 0,
+    wingmanLoss: { pending: false, dueClock: 0 },
+    settlement: null,
+    result: null,
+    completedTick: null,
+  };
 }
 
 /** The communications state of a new world: nothing queued, the channel idle, no portrait taken, every limit at 0. */
@@ -239,8 +348,9 @@ export function createWorldCommunications(): WorldCommunications {
 /**
  * The state of a world just created: tick 0, clock 0, no entities, view mode 0xC, with the spawn state and the RNG
  * state the build's defaults left (spawn-schedule.ts), the map cursor at its start pixel, empty object sets and no map
- * icons; the mission running in sub-state 0, with P3-10's state at its creation values (CB-02, CB-05, CB-11) and an
- * empty parse cache (CR-19).
+ * icons; the mission running in main state 3 and sub-state 0 with every flow deadline, the rescue count and the
+ * section-2 counters at 0, no wingman loss timer, settlement, result or completion (ME-03, ME-04), P3-10's state at its
+ * creation values (CB-02, CB-05, CB-11) and an empty parse cache (CR-19).
  */
 export function createWorldState(
   config: WorldConfig,
@@ -260,12 +370,13 @@ export function createWorldState(
     clock: 0,
     rngState,
     missionStatus: 'built',
+    missionEvents: { triggers: setup.eventTriggers.map(() => ({ instantiated: 0, destroyed: 0, left: 0 })) },
     entities: new EntityTable(),
     player: createPlayerState(ruleData.map.startPixel),
     spawn,
     objectSets: Object.freeze({ friendly: Object.freeze([]), hostile: Object.freeze([]) }),
     mapIcons: Object.freeze([]),
-    flow: { mainState: 3, subState: 0, dockingDeadline: 0 },
+    flow: createMissionFlow(),
     communications: createWorldCommunications(),
     ai: { friendlyFire: { accumulated: 0, windowEnd: 0 }, parseCache: [] },
     baseService: null,

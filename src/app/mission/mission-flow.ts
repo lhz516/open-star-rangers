@@ -1,5 +1,5 @@
 /**
- * The mission flow (docs/plan/p3/04/spec.md: 应用流程, 任务开始配置, 衔接占位, 任务菜单、暂停与退出): where a mission
+ * The mission flow (docs/plan/p3/04/spec.md: 应用流程, 任务开始配置, 衔接占位, 任务菜单、暂停与退出, 终局与救援衔接): where a mission
  * owner is between the G-02/1 introduction and the end of its runs, the wingman selection its start page shows, the last
  * start failure and the current run. Pure and DOM-free; the mission owner drives it with the session's outcomes, and
  * React reads it from the owner's snapshot.
@@ -9,13 +9,17 @@ import type { GameSessionPhase } from '../session/session-errors.ts';
 
 /**
  * `intro` is the G-02/1 placeholder, `config` the start page (G-04, G-07), `departure` the G-02/2 placeholder over the
- * held run, `flight` the running or paused run, `transition` the G-02/3 or G-02/4 placeholders over a run held after a
- * transition tick (P3-10), `menu` the pausing mission menu (G-07), and `ended` a run that faulted or stopped, or a
- * restart whose cleanup failed.
+ * held run, `flight` the running or paused run, `transition` the G-02/3 to G-02/6 placeholders over a run held after a
+ * transition tick (P3-10, P3-11), `menu` the pausing mission menu (G-07), `ending` the G-02/7 to G-02/9 placeholders of
+ * a completed run, `result` its result page (G-06), and `ended` a run that faulted or stopped, or a restart whose
+ * cleanup failed.
  */
-export type MissionFlowPosition = 'intro' | 'config' | 'departure' | 'flight' | 'transition' | 'menu' | 'ended';
+export type MissionFlowPosition = 'intro' | 'config' | 'departure' | 'flight' | 'transition' | 'menu' | 'ending' | 'result' | 'ended';
 
-/** Why `ended`: the session faulted or stopped, or exiting the run for a restart failed to clean up (latched). */
+/**
+ * Why `ended`: the session faulted or stopped, or exiting the run for a restart failed to clean up (latched). A
+ * completion is no abnormal end: it leads to `ending` and `result`.
+ */
 export type MissionEndReason = 'faulted' | 'stopped' | 'cleanup-failed';
 
 /** Why confirming the start page created no run; the page stays and a retry may follow unless a cleanup failure latched. */
@@ -57,6 +61,10 @@ export type MissionFlowInput =
   | { readonly type: 'transition-held' }
   /** The hold's last item ended; the run runs or waits paused. */
   | { readonly type: 'transition-ended' }
+  /** The run completed: its ending placeholders follow. */
+  | { readonly type: 'run-completed' }
+  /** The last ending placeholder ended: the result page follows. */
+  | { readonly type: 'ending-ended' }
   | { readonly type: 'menu-opened' }
   | { readonly type: 'menu-closed' }
   | { readonly type: 'run-ended'; readonly reason: MissionEndReason }
@@ -75,11 +83,13 @@ export const FLOW_SESSION_PHASES: Readonly<Record<MissionFlowPosition, readonly 
   flight: Object.freeze(['running', 'paused']),
   transition: Object.freeze(['transition']),
   menu: Object.freeze(['paused']),
+  ending: Object.freeze(['completed']),
+  result: Object.freeze(['completed']),
   ended: Object.freeze(['faulted', 'stopped', 'idle']),
 } satisfies Record<MissionFlowPosition, readonly GameSessionPhase[]>);
 
-const RUN_POSITIONS: ReadonlySet<MissionFlowPosition> = new Set(['departure', 'flight', 'transition', 'menu']);
-const RESTART_POSITIONS: ReadonlySet<MissionFlowPosition> = new Set(['flight', 'menu', 'ended']);
+const RUN_POSITIONS: ReadonlySet<MissionFlowPosition> = new Set(['departure', 'flight', 'transition', 'menu', 'ending', 'result']);
+const RESTART_POSITIONS: ReadonlySet<MissionFlowPosition> = new Set(['flight', 'menu', 'result', 'ended']);
 
 /** Returns the next state, or the same object when the input does not apply where the flow is. */
 export function nextMissionFlow(state: MissionFlowState, input: MissionFlowInput): MissionFlowState {
@@ -106,6 +116,12 @@ export function nextMissionFlow(state: MissionFlowState, input: MissionFlowInput
     case 'transition-ended':
       if (position !== 'transition') return state;
       return Object.freeze({ ...state, position: 'flight' });
+    case 'run-completed':
+      if (position !== 'flight') return state;
+      return Object.freeze({ ...state, position: 'ending' });
+    case 'ending-ended':
+      if (position !== 'ending') return state;
+      return Object.freeze({ ...state, position: 'result' });
     case 'menu-opened':
       if (position !== 'flight') return state;
       return Object.freeze({ ...state, position: 'menu' });

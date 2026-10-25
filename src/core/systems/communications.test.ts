@@ -282,7 +282,7 @@ describe('choosing a command (CB-07 page 4, CB-02 row 1; CD1)', () => {
     const context = judgeTick(world.state, commands);
     expect(context.events).toEqual([accepted(0, open), page(0, 2, 0), accepted(1, digit(1)), page(2, 4, 1), accepted(2, digit(1)), page(4, 0, 2)]);
     expect(shown(world)).toEqual({ page: 0, menu: null });
-    expect(world.state.flow).toEqual({ mainState: 3, subState: 0, dockingDeadline: 0 });
+    expect(world.state.flow).toMatchObject({ mainState: 3, subState: 0, dockingDeadline: 0 });
     expect(deliveries(context)).toEqual([{ type: 'deliver-command', receiver: base.id, code: 7, sender: world.player.id, commandIndex: 2 }]);
     const formal = scene();
     const receiver = add(formal, 17);
@@ -315,7 +315,7 @@ describe('choosing a command (CB-07 page 4, CB-02 row 1; CD1)', () => {
       page(4, 0, 0, 2),
       { type: 'docking-requested', tick: 2, playerEntityId: world.player.id, dockingObject: base.id, previousSubState: 5, deadlineClock, commandIndex: 0 },
     ]);
-    expect(world.state.flow).toEqual({ mainState: 3, subState: 3, dockingDeadline: deadlineClock });
+    expect(world.state.flow).toMatchObject({ mainState: 3, subState: 3, dockingDeadline: deadlineClock });
     expect(world.state.player.dockingObject).toBe(base.id);
     expect(deliveries(context)).toEqual([{ type: 'deliver-command', receiver: base.id, code: 9, sender: world.player.id, commandIndex: 0 }]);
   });

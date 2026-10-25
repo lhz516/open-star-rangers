@@ -164,6 +164,56 @@ describe('event log', () => {
     ]);
   });
 
+  it('summarizes P3-11\'s mission flow, loss, rescue, result and teardown events by their own scalar fields, in a fixed order', () => {
+    const summary = (event: DomainEvent) => summarizeEvent(event, NO_COMMAND, 1).fields;
+    const reference = { mission: 'mission/first-campaign', trigger: 1, range: 0 };
+    expect([
+      { type: 'all-clear', tick: 7, entityId: 5, kindBit: 7, eventClass: 2 },
+      { type: 'settlement-started', tick: 7, outcome: 'success', summary: reference, summarySelector: 16, dueClock: 0x14a },
+      { type: 'settlement-deferred', tick: 7, dueClock: 0x28a },
+      { type: 'flight-message', tick: 7, message: 'beacon' },
+      { type: 'player-loss-started', tick: 7, playerEntityId: 1, loss: 'destroyed', previousSubState: 4, previousViewMode: 12, viewSwitched: true },
+      { type: 'player-loss-started', tick: 7, playerEntityId: 1, loss: 'energy', previousSubState: 0, deadlineClock: 0x3c6 },
+      {
+        type: 'player-rescued', tick: 7, playerEntityId: 1, loss: 'energy', rescues: 2, baseEntityId: null, candidates: 0, position: { x: 1, y: 2, z: 3 },
+        orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      },
+      {
+        type: 'result-latched', tick: 7, result: {
+          outcome: 'success', reason: { type: 'all-clear' }, summary: reference, rescuesUsed: 1,
+          endingGaps: [{ gap: 'G-02/8', variant: 'wingman' }, { gap: 'G-02/9', row: 16 }], playerKills: 4, latchTick: 7,
+        },
+      },
+      {
+        type: 'result-latched', tick: 7, result: {
+          outcome: 'failure', reason: { type: 'third-loss', loss: 'energy' }, summary: null, rescuesUsed: 2, endingGaps: [{ gap: 'G-02/7', variant: 'energy' }],
+          playerKills: 0, latchTick: 7,
+        },
+      },
+      { type: 'teardown-started', tick: 7, entities: 3 },
+      { type: 'mission-completed', tick: 8, outcome: 'failure' },
+      { type: 'wingman-loss-timer-started', tick: 7, wingmanEntityId: 2, dueClock: 0x782 },
+      { type: 'wingman-loss-timer-expired', tick: 7, queued: false },
+    ].map((event) => summary(event as DomainEvent))).toEqual([
+      [['entityId', 5], ['kindBit', 7], ['eventClass', 2]],
+      [['outcome', 'success'], ['summary', 'mission/first-campaign 1/0'], ['summarySelector', 16], ['dueClock', 0x14a]],
+      [['dueClock', 0x28a]],
+      [['message', 'beacon']],
+      [['playerEntityId', 1], ['loss', 'destroyed'], ['previousSubState', 4], ['previousViewMode', 12], ['viewSwitched', true]],
+      [['playerEntityId', 1], ['loss', 'energy'], ['previousSubState', 0], ['deadlineClock', 0x3c6]],
+      [['playerEntityId', 1], ['loss', 'energy'], ['rescues', 2], ['baseEntityId', null], ['candidates', 0], ['x', 1], ['y', 2], ['z', 3]],
+      [
+        ['outcome', 'success'], ['reason', 'all-clear'], ['summary', 'mission/first-campaign 1/0'], ['rescuesUsed', 1],
+        ['endingGaps', 'G-02/8 wingman, G-02/9 16'], ['playerKills', 4],
+      ],
+      [['outcome', 'failure'], ['reason', 'third-loss energy'], ['summary', null], ['rescuesUsed', 2], ['endingGaps', 'G-02/7 energy'], ['playerKills', 0]],
+      [['entities', 3]],
+      [['outcome', 'failure']],
+      [['wingmanEntityId', 2], ['dueClock', 0x782]],
+      [['queued', false]],
+    ]);
+  });
+
   it('summarizes P3-12\'s presentation facts by their own scalar fields, in a fixed order', () => {
     const summary = (event: DomainEvent) => summarizeEvent(event, NO_COMMAND, 1).fields;
     expect(([

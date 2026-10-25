@@ -2,8 +2,8 @@
  * The docking wait, docking and launch (docs/plan/p3/02/spec.md, CB-02, CB-10 `dock` and `depart`;
  * docs/original/formats/executable.md, DK1–DK3; the rules are rules/docking.ts's).
  *
- * The `mission-flow` stage (`checkDockingWait`, `0x3266c`) reads the previous tick's clock. While the mission runs and a
- * player entity exists, it checks the docking object in sub-states 3–5; one that is null there is Core's fault (CB-17
+ * The `mission-flow` stage (`0x3266c`, mission-flow.ts) dispatches sub-states 3–5 of main state 3 to `checkDockingWait`,
+ * which reads the previous tick's clock. While a player entity exists, it checks the docking object there; one that is null there is Core's fault (CB-17
  * decision 3). In 3 and 4 an invalid object releases the wait: the docking object is null, sub-state 0, then
  * `docking-cancelled` (`invalid-object`) and the radio flush with its page write. A valid object times sub-state 3 out
  * to 0 alone, keeping the object, the queue and the page (`timeout`), and makes sub-state 4 post `dock` and enter 5.

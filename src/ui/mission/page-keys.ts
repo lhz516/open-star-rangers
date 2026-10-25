@@ -35,8 +35,11 @@ export const isHeldActivation = ({ key, repeat }: Pick<PageKey, 'key' | 'repeat'
 
 /** What a placeholder page knows as it mounts or fails. */
 export interface PlaceholderFocusFacts {
-  /** It is the placeholder of a running hold (G-02/3, G-02/4), shown in place of the flight shell. */
-  readonly hold: boolean;
+  /**
+   * Whose placeholder it is: the flow's own (G-02/1, G-02/2), a running hold's (G-02/3 to G-02/6), shown in place of the
+   * flight shell, or a completed run's ending (G-02/7 to G-02/9; P3-04, 终局与救援衔接（P3-11 的修订）: 焦点).
+   */
+  readonly placement: 'flow' | 'hold' | 'ending';
   /** Focus rests on nothing: the element that had it, such as the input zone, left with the page that ended. */
   readonly focusDropped: boolean;
   readonly visible: boolean;
@@ -44,8 +47,17 @@ export interface PlaceholderFocusFacts {
 
 /**
  * Whether a placeholder moves focus to its button. The flow's own pages always do, as before P3-10. A running hold's
- * placeholder does only on a visible page whose focus was dropped, so it takes no focus the user put on another
- * control, such as the diagnostics panel, and none from a hidden page.
+ * placeholder does only on a visible page whose focus was dropped, so it takes no focus the user put on another control,
+ * such as the diagnostics panel, and none from a hidden page. Each ending placeholder does on a visible page, and never on
+ * a hidden one.
  */
-export const placeholderTakesFocus = ({ hold, focusDropped, visible }: PlaceholderFocusFacts): boolean =>
-  !hold || (focusDropped && visible);
+export function placeholderTakesFocus({ placement, focusDropped, visible }: PlaceholderFocusFacts): boolean {
+  switch (placement) {
+    case 'flow':
+      return true;
+    case 'hold':
+      return focusDropped && visible;
+    case 'ending':
+      return visible;
+  }
+}

@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-16
+updated: 2026-10-23
 related: [U-021, B-006]
 ---
 
@@ -65,7 +65,7 @@ related: [U-021, B-006]
 | `source` | `baselineVersion` 与 `exeSha256`，照抄 `measure.py baseline-version` 的输出 |
 | `identity` | `mission` 与 `config`：所选任务与配置的身份，各 1–16 个键，值为布尔、整数或受限记号。`checks`：每个暂停点都必须读到且等于给定值的字段列表，用读数证实身份 |
 | `correlation` | `code`：`object`、`size`（64–512，16 的倍数），可选 `offset`；`data`：`object`、`offset`、`size`（16–512）。用于在每个进程中建立 LE 对象与线性地址的对应 |
-| `pauses` | 有序暂停点：`id`、`stop`、`fields`。`stop` 为 `{"kind": "breakpoint", "object": …, "offset": …}` 或 `{"kind": "vrt"}`（下一次垂直回扫）；断点停止可改用 `offsets` 给出备选位置，并可带停止条件 `when`，见[备选位置、停止条件与绑定读数](#备选位置停止条件与绑定读数)，以及读数等待 `until`，见[读数检验：等待与分支](#读数检验等待与分支)。`fields` 可省略或为空：这样的暂停点只停止（并施加其刺激），不读字段、不产生样本，也不等操作者确认 |
+| `pauses` | 有序暂停点：`id`、`stop`、`fields`。`stop` 为 `{"kind": "breakpoint", "object": …, "offset": …}` 或 `{"kind": "vrt"}`（下一次垂直回扫）；断点停止可改用 `offsets` 给出备选位置，并可带停止条件 `when`，见[备选位置、停止条件与绑定读数](#备选位置停止条件与绑定读数)，以及读数等待 `until`，见[读数检验：等待与分支](#读数检验等待与分支)。暂停点可带跳转 `jump`，见[命中位置与跳转](#命中位置与跳转)。`fields` 可省略或为空：这样的暂停点只停止（并施加其刺激），不读字段、不产生样本，也不等操作者确认 |
 | `fields` | `id`；`address`：`object`、`offset`（LE 对象位置），或 `register`、`offset`（断点处寄存器值加偏移，偏移 −65536…65535，在 DS 段内；只能在断点暂停点读取，见下），或 `bound`、`offset`（较早暂停点的一个整数读数加偏移，见[绑定读数](#备选位置停止条件与绑定读数)），以及可选的 `pointers`（每跳解引用后加上的非负偏移）；或 `{"low": n}`：线性页 0 中的地址（实模式中断向量表与 BIOS 数据区，0 ≤ n 且 n + 字段大小 ≤ 0x1000），按线性地址直接读取，不能带指针；`type`：`u8`、`u16`、`u32`、`i16`、`i32` 或 `f32`（小端）；`unit`：非空的受限 ASCII 记号（字母或数字开头，只含字母、数字与 `._/:+-`，至多 64 个字符），例如 `raw`、`tick-1/64s`；`required`：默认为 `true`。每个字段至少被一个暂停点使用 |
 | `limits` | `runSeconds`、`waitSeconds`、`maxPauses`、`maxFields`、`maxChainDepth`、`repeatReads`（≥ 2）、`maxReadBytes`、`maxLogBytes`；可选 `maxSkippedHits`（0–1000000，默认 100000） |
 | `emulator`（可选） | 只接受 `cycles`（1000–2000000）。工具把私有配置中的 cycles 行改为 `fixed <值>` |
@@ -73,7 +73,7 @@ related: [U-021, B-006]
 | `disc`（可选） | 只接受 `omit`：私有光盘副本不含的 1–4 个 manifest 文件路径（如 `MAIN/NAME.EXT`，大写 8.3 名称，带目录），见[私有光盘副本](#私有光盘副本) |
 | `devices`（可选） | 输入设备状态字段：`id`、`address`、`type`（`u8`、`u16`、`u32`、`i16`、`i32`）。`address` 为 `{"object": …, "offset": …}`（LE 对象位置），或 `{"register": "ESI", "offset": …}`（断点处寄存器值加偏移，偏移 −65536…65535，在 DS 段内）。每个设备至少被一个刺激写入 |
 | `injections`（可选） | 受损注入的字段：`id`、`purpose`、`address`、`type`，子系统字段另有 `mask`，见[受损注入](#受损注入) |
-| `stimuli`（可选） | 有序刺激：`id`、`pause`（暂停点 ID）、`kind` 与取值，见[模拟器内输入](#模拟器内输入)；可选 `if`：读数检验（`all`/`any`）只在读数通过时施加，见[读数检验](#读数检验等待与分支)，等值形式（`pause`、`field`、`equals`）见[条件刺激](#条件刺激) |
+| `stimuli`（可选） | 有序刺激：`id`、`pause`（暂停点 ID）、`kind` 与取值，见[模拟器内输入](#模拟器内输入)；可选 `if`：读数检验（`all`/`any`）只在读数通过时施加，见[读数检验](#读数检验等待与分支)，等值形式（`pause`、`field`、`equals`）见[条件刺激](#条件刺激)；可选 `at`：只在指定的命中位置施加，见[命中位置与跳转](#命中位置与跳转) |
 
 形状示意（尖括号处换成实际值；地址取自 `docs/original/` 记录的 LE 对象与偏移）：
 
@@ -146,6 +146,17 @@ related: [U-021, B-006]
 - 记录另有 `if`：检验、`readings`（本暂停点的读数，不可用为 null）、`references`（较早读数）与 `result`。
 - `condition-false` 的刺激在完整性上算作按配方完成（报告不因它记 `stimuli-missing`）；`counts` 另有 `stimuliConditionFalse`，`stimuliApplied` 只计实际施加的刺激。同一暂停点仍至多声明一个按键。
 - 配方作者要保证后续暂停点与所选分支一致，例如未按键的分支不能紧跟只有按键后才命中的暂停点。
+
+### 命中位置与跳转
+
+暂停点按顺序取，无法表达“等到事件或时限，再按发生的是哪一个继续”：一次性的事件（例如玩家被毁）若与轮询放在同一停止的备选位置上，`every` 会把它当作未被探测的命中跳过；事件之后的读数链又只适用于发生的那一支。P3-11/20 为失败链与成功链的配方加入三个可选键。不使用它们的配方解析、运行与指纹都和以前完全相同。
+
+- **`until` 的 `at`：** `{"every": n, "at": [偏移, …], "all"|"any": […]}`，`at` 是备选位置的真子集。只有这些位置上（通过寄存器条件）的命中参加编号与探测；其他备选位置上的命中通过寄存器条件即为暂停点，不探测。例如“轮询每 n 次探测是否到时限，或玩家被毁的那次调用”。`stop.json` 的 `until` 另写 `at`。
+- **刺激的 `at`：** 刺激可带 `"at": [偏移, …]`（所在停止的备选位置的真子集）：被接受的命中不在其中时，什么也不写，状态记为 `condition-false`，记录另有 `at`（`sites` 与命中的 `hit`），先于其他条件判定。用于只在轮询处按键、而在事件位置停下时不按键。
+- **暂停点的 `jump`：** 1–8 条规则的列表，每条为 `{"to": 后面的暂停点}` 或 `{"end": true}`（可加 `"outcome": 记号`，命名这一终点，记入报告），可选 `at`（命中位置，所在停止的备选位置之一或多个）与可选读数检验（`all`/`any`，规则同刺激的 `if`：左侧为本暂停点的读数，`pause` 引用更早的暂停点）。暂停点的读数与刺激完成后，取第一条命中位置相符且检验为真的规则：运行跳到 `to`（须在后面，且中间至少隔一个暂停点），或结束测量（`end`，不能用于最后一个暂停点）；没有规则适用时照常取下一个暂停点。没有 `at` 与检验的规则总是适用。检验未知时运行以 `binding-unavailable` 失败，因为路径无法判定。
+  - 以 `end` 结束的运行在经过的样本全部合格时仍是 `complete`：它说明读数合格，不说明配方的哪条链取得了。哪个终点算作取得某类证据由测量方案规定，报告的 `jumps` 记录（`outcome`、跳转所在的暂停点）是判断依据。
+  - 跳过的暂停点不停止、不读数、不施加刺激，其样本与刺激不计入计划：报告的 `planned`、`requiredPlanned` 与 `stimuliPlanned` 只计实际经过的暂停点，`complete` 照常要求这些全部按顺序取得。报告另有 `jumps`（每次跳转的暂停点、规则序号、`to` 或 `end` 及其 `outcome`、备选位置时的 `hitOffset`、检验时的 `if` 读数与结果，以及跳过的暂停点列表；报告核对它们与配方规则相符），`counts` 另有 `jumps` 与 `pausesSkipped`。
+  - 后面的暂停点若引用跳过的暂停点的读数或寄存器（停止条件、`until`、`if`、绑定字段），在那条路径上会以 `binding-unavailable` 失败。配方作者须保证每个引用都指向所有路径都经过的暂停点；P3-11/20 的配方用私有脚本按跳转图检查这一点。
 
 ### 限值与预算
 
@@ -482,7 +493,7 @@ P3-10/25 依 [P3-10 spec 修订 1](../plan/p3/10/spec.md#受损注入修订-1202
 | `run` | `start` 与 `end`（UTC、`elapsedSeconds`、`endedBy`） |
 | `samples` | 每个样本：暂停点、字段、`status`、类型、单位、`required`、值、原因码与证明引用 |
 | `stimuli` | 只在配方声明了刺激时出现：施加或尝试过的每个刺激，见[刺激记录](#刺激记录) |
-| `counts` | `planned`、`actual`、`qualified`、`requiredPlanned`、`requiredQualified`；声明了刺激时另有 `stimuliPlanned`、`stimuliApplied`（有未选中的条件刺激时另有 `stimuliNotSelected`），有带读数检验 `if` 的刺激时另有 `stimuliConditionFalse`；带停止条件或 `until` 时另有 `skippedHits`，带 `until` 时另有 `probes` |
+| `counts` | `planned`、`actual`、`qualified`、`requiredPlanned`、`requiredQualified`；声明了刺激时另有 `stimuliPlanned`、`stimuliApplied`（有未选中的条件刺激时另有 `stimuliNotSelected`），有带读数检验 `if` 的刺激时另有 `stimuliConditionFalse`；带停止条件或 `until` 时另有 `skippedHits`，带 `until` 时另有 `probes`；带 `jump` 时另有 `jumps` 与 `pausesSkipped`（报告另有 `jumps` 记录） |
 | `integrity` | 保护核对结果与 `privateCopyWrites` |
 | `cleanup` | 回收结果，见下 |
 

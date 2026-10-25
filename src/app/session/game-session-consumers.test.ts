@@ -110,8 +110,8 @@ describe('session notification boundary', () => {
     host.deliver(0); expect(log).toEqual(['A']);
     host.deliver(TICK_MS); expect(log).toEqual(['A', 'A', 'C']);
     session.control({ type: 'pause' }); expect(log).toEqual(['A', 'A', 'C', 'A', 'C']);
-    expect(frames[0]).toMatchObject({ report: { ticks: 0, capped: false, stop: null, cut: null, transitions: [], outputs: [] }, projection: { clock: { tick: 0 } } });
-    expect(frames[1].report).toEqual({ ticks: 1, capped: false, stop: null, cut: null, transitions: [], outputs: [expect.objectContaining({ tick: 1 })] });
+    expect(frames[0]).toMatchObject({ report: { ticks: 0, capped: false, stop: null, cut: null, transitions: [], completion: null, outputs: [] }, projection: { clock: { tick: 0 } } });
+    expect(frames[1].report).toEqual({ ticks: 1, capped: false, stop: null, cut: null, transitions: [], completion: null, outputs: [expect.objectContaining({ tick: 1 })] });
     expect(frames.at(-1)).toMatchObject({ report: null, phase: 'paused', render: { previous: { tick: 1 }, current: { tick: 1 }, alpha: 0 } });
     expect(frames.every(Object.isFrozen)).toBe(true);
     expect(frames[1].projection).toBe(run.projection());

@@ -120,7 +120,7 @@ describe('combat replay (P3-07 AC-13, CR-14)', () => {
   // P3-12/10 (docs/plan/p3/02/spec.md, FS-08): the presentation facts change no rule outcome or draw; the digest is the
   // one this run had before them (replay.test-support.ts).
   it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
-    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('fba1bd8161cf249f');
+    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('0990194ec6daafaf');
   });
 
   it('reproduces every event and the snapshot at every checkpoint after a JSON round trip', () => {

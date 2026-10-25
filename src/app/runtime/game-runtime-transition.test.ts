@@ -36,7 +36,7 @@ type Gap = InjectedGap;
 afterEach(() => { transitions.reset(); });
 
 const transition = (gap: Gap, tick: number) => ({ gap, tick });
-const cut = (ticks: number, ...items: { gap: Gap; tick: number }[]) => ({ ticks, capped: false, stop: null, cut: 'transition', transitions: items, outputs: expect.objectContaining({ length: ticks }) as unknown });
+const cut = (ticks: number, ...items: { gap: Gap; tick: number }[]) => ({ ticks, capped: false, stop: null, cut: 'transition', transitions: items, completion: null, outputs: expect.objectContaining({ length: ticks }) as unknown });
 
 /** A Runtime anchored at time 0 that logs every delivery as `<type>@<tick>` with its command ID. */
 function anchored(recording: RecordingOptions | null = null) {
@@ -100,7 +100,7 @@ describe('the transition cut', () => {
 
   it('reports no cut for frames without transitions', () => {
     const { runtime } = anchored();
-    expect(runtime.frame(3 * TICK_MS)).toEqual({ ticks: 3, capped: false, stop: null, cut: null, transitions: [], outputs: expect.objectContaining({ length: 3 }) });
+    expect(runtime.frame(3 * TICK_MS)).toEqual({ ticks: 3, capped: false, stop: null, cut: null, transitions: [], completion: null, outputs: expect.objectContaining({ length: 3 }) });
   });
 });
 
@@ -156,7 +156,7 @@ describe('the transition barrier', () => {
     runtime.setIntent({ axes: NEUTRAL_AXES, primaryFire: false });
     const id = runtime.submitCommand({ type: 'launch' });
     // An hour of hold: the first frame only anchors.
-    expect(runtime.frame(3_600_000)).toEqual({ ticks: 0, capped: false, stop: null, cut: null, transitions: [], outputs: [] });
+    expect(runtime.frame(3_600_000)).toEqual({ ticks: 0, capped: false, stop: null, cut: null, transitions: [], completion: null, outputs: [] });
     expect(runtime.frame(3_600_000 + 2 * TICK_MS)).toMatchObject({ ticks: 2, cut: null });
     expect({ tick: tickOf(runtime), id }).toEqual({ tick: 3, id: 1 });
   });
@@ -193,6 +193,6 @@ describe('cuts with failures and stops', () => {
     const { runtime } = anchored(recordingOptions(1));
     transitions.plan({ 2: ['G-02/3'] });
     transitions.fail(2, () => new CoreInputError('recording', 'would exceed the recorded tick limit'));
-    expect(runtime.frame(3 * TICK_MS)).toEqual({ ticks: 1, capped: false, stop: 'recording-capacity', cut: null, transitions: [], outputs: [expect.objectContaining({ tick: 1 })] });
+    expect(runtime.frame(3 * TICK_MS)).toEqual({ ticks: 1, capped: false, stop: 'recording-capacity', cut: null, transitions: [], completion: null, outputs: [expect.objectContaining({ tick: 1 })] });
   });
 });

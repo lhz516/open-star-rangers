@@ -37,15 +37,20 @@ export const COMM_MENUS_SCHEMA = RULE_DATA_SCHEMA_VERSIONS['comm-menus'];
 /** Canonical JSON with no content check, so a variant may hold what the strict reader refuses. */
 const UNCHECKED = Object.freeze({ name: 'test rule-data payload', byteLimit: 1 << 30, invalid: 'invalid-logic-payload' as const });
 
-/** The decoded content of the startable package's rule-data Asset `id`. */
-export async function missionRuleData<Content>(id: string): Promise<Content> {
+/** The decoded content of the startable package's Asset `id`, by its payload decoder: rule data unless given. */
+export async function missionAssetContent<Content>(
+  id: string, decode: (bytes: Uint8Array, descriptor: AssetDescriptor) => { readonly content: unknown } = decodeRuleDataPayload,
+): Promise<Content> {
   for (const { manifest, payloads } of await missionPackage()) {
     const asset = readGroupManifest(manifest).assets.find(descriptor => descriptor.id === id);
     const payload = asset && readPayloadRecords(payloads).find(record => record.id === id);
-    if (asset && payload) return decodeRuleDataPayload(payload.bytes, asset).content as Content;
+    if (asset && payload) return decode(payload.bytes, asset).content as Content;
   }
   throw new Error(`The startable package has no ${id}`);
 }
+
+/** The decoded content of the startable package's rule-data Asset `id`. */
+export const missionRuleData = <Content>(id: string): Promise<Content> => missionAssetContent<Content>(id);
 
 /** A replacement rule-data payload: its content as canonical JSON, declared as payload schema `schemaVersion`. */
 interface RuleDataChange {
@@ -53,12 +58,28 @@ interface RuleDataChange {
   readonly schemaVersion: number;
 }
 
+/** A replacement payload: its encoded bytes, declared as payload schema `schemaVersion`. */
+export interface PayloadChange {
+  readonly bytes: Uint8Array;
+  readonly schemaVersion: number;
+}
+
 /** The startable package with the rule-data payloads `changes` names replaced; every other payload is the converted one. */
-export async function withRuleData(changes: Readonly<Record<string, RuleDataChange>>): Promise<readonly HeldGroup[]> {
-  const replaced = new Map(Object.entries(changes).map(([id, { content, schemaVersion }]) => {
-    const bytes = encodeCanonicalJson(content, UNCHECKED);
-    return [id, { bytes, payloadIdentity: { schemaVersion, byteLength: bytes.length, fingerprint: sha256Fingerprint(bytes) } }];
-  }));
+export function withRuleData(changes: Readonly<Record<string, RuleDataChange>>): Promise<readonly HeldGroup[]> {
+  return withPayloads(Object.fromEntries(Object.entries(changes).map(([id, { content, schemaVersion }]) =>
+    [id, { bytes: ruleDataBytes(content), schemaVersion }])));
+}
+
+/** `content` as a rule-data payload's canonical JSON, without the content check the strict reader makes. */
+export const ruleDataBytes = (content: unknown): Uint8Array => encodeCanonicalJson(content, UNCHECKED);
+
+/**
+ * The startable package with the payloads `changes` names replaced by their bytes, each re-identified by its schema
+ * version, length and SHA-256; every other payload is the converted one.
+ */
+export async function withPayloads(changes: Readonly<Record<string, PayloadChange>>): Promise<readonly HeldGroup[]> {
+  const replaced = new Map(Object.entries(changes).map(([id, { bytes, schemaVersion }]) =>
+    [id, { bytes, payloadIdentity: { schemaVersion, byteLength: bytes.length, fingerprint: sha256Fingerprint(bytes) } }]));
   return (await missionPackage()).map(group => {
     const manifest = readGroupManifest(group.manifest);
     return {

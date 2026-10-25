@@ -12,6 +12,12 @@
  *   its own transitionId; `complete-transition` with the runId and the current item's transitionId ends that item
  *   once. After the last, the Runtime's barrier is lowered and its clock re-anchored (nothing is caught up), and the
  *   run continues as after the departure.
+ * - A frame the Runtime cut at the run's last tick (终局与救援衔接（P3-11 的修订）) enters `completed` after its frame
+ *   consumers, unless the run faulted or an exit or dispose is queued: the queue is cancelled once for
+ *   `mission-complete`, the read model folds, the completion tick's result is kept, and a still frame follows. The
+ *   result's ending placeholders (G-02/7 to G-02/9) then hold one by one, with transitionIds from the same counter;
+ *   `complete-transition` ends each once, and after the last only the result remains. Nothing resumes the run: the
+ *   Runtime's completion barrier is permanent. Reads and the recording's export stay available until exit or dispose.
  * - `stopped` follows a recording-capacity stop: the frame's earlier ticks are delivered and reported first, then the
  *   queue is cancelled once and the run stays readable and exportable until exit or dispose.
  * - Input is the Runtime's continuous intent and Core commands, only while running. `clear-input` clears it on focus
@@ -25,7 +31,7 @@ import type { DomainEvent } from '../../core/contracts/domain-events.ts';
 import type { Command } from '../../core/contracts/tick-input.ts';
 import { integerIn, readChoice, readDataRecord, readExactRecord, readNumber, requireExactFields } from '../../core/contracts/validation.ts';
 import { CoreInputError } from '../../core/errors.ts';
-import type { Projection } from '../../core/projections/projection.ts';
+import type { EndingGap, Projection, ResultProjection } from '../../core/projections/projection.ts';
 import type { Recording } from '../../core/replay/recording.ts';
 import type { GameSnapshot } from '../../core/replay/snapshot.ts';
 import { CONTENT_INPUT_FIELDS } from '../../core/world/create-world.ts';
@@ -43,7 +49,7 @@ export interface DepartureTransition {
   readonly variant: 'solo' | 'wingman';
 }
 
-/** One item of a hold a running run entered at a transition tick (G-02/3 docking, G-02/4 launch). */
+/** One item of a hold a running run entered at a transition tick (G-02/3 docking, G-02/4 launch, G-02/5 and G-02/6 rescues). */
 export interface RunningTransition {
   readonly gap: FrameTransition['gap'];
   /** Monotonic within the controller from 1, never reused across runs; not in Core, the recording or replay. */
@@ -56,7 +62,21 @@ export interface RunningTransition {
   readonly count: number;
 }
 
-export type SessionTransition = DepartureTransition | RunningTransition;
+/** One ending placeholder of a completed run, in the order of its result's `endingGaps`. */
+export type EndingTransition = EndingGap & {
+  /** From the counter of `RunningTransition.transitionId`. */
+  readonly transitionId: number;
+  /** The completion tick. */
+  readonly tick: number;
+  readonly index: number;
+  /** The length of `endingGaps`. */
+  readonly count: number;
+};
+
+export type SessionTransition = DepartureTransition | RunningTransition | EndingTransition;
+
+/** The completed run's result: the completion tick's projection of it, frozen; the session reads Core no more. */
+export type SessionResult = Extract<ResultProjection, { readonly outcome: 'success' | 'failure' }>;
 
 /** What `start` takes: the Runtime spec, and the initial departure hold or null. */
 export interface GameRunSpec extends GameRuntimeSpec {
@@ -74,9 +94,11 @@ export type GameSessionControl =
 
 /**
  * Why queued commands were dropped unexecuted. `transition` belongs to a hold a running run entered at a transition
- * tick; the initial hold starts with an empty queue and cancels nothing.
+ * tick; the initial hold starts with an empty queue and cancels nothing. `mission-complete` belongs to the run's
+ * completion.
  */
-export type CancelReason = 'user-pause' | 'hidden' | 'transition' | ClearInputReason | 'recording-capacity' | 'exit' | 'dispose' | 'failure';
+export type CancelReason =
+  | 'user-pause' | 'hidden' | 'transition' | ClearInputReason | 'recording-capacity' | 'mission-complete' | 'exit' | 'dispose' | 'failure';
 
 export interface GameSessionStatus {
   readonly phase: GameSessionPhase;
@@ -86,12 +108,17 @@ export interface GameSessionStatus {
   readonly environmentVisible: boolean;
   /** Set only in paused. */
   readonly pauseReason: 'user' | 'hidden' | null;
-  /** Set only in transition: the departure, or the current item of a running hold. */
+  /**
+   * The departure or the current item of a running hold in transition; the current ending placeholder in completed,
+   * null after the last; otherwise null.
+   */
   readonly transition: SessionTransition | null;
   /** The page was hidden during a hold, so only an explicit resume runs the run; only in transition and paused. */
   readonly resumeRequired: boolean;
   /** Set only in stopped. */
   readonly stopReason: 'recording-capacity' | null;
+  /** Set only in completed. */
+  readonly result: SessionResult | null;
   /** Latched for the controller's life. */
   readonly cleanupFailed: boolean;
   readonly error: GameSessionError | null;
@@ -103,7 +130,7 @@ export interface GameSessionFrame {
    * `transition` is the still frame of a hold a running run entered: the initial hold starts before any run consumer
    * exists, which reads its folded tick-0 model from the run handle when it wires.
    */
-  readonly phase: 'running' | 'paused' | 'transition' | 'stopped';
+  readonly phase: 'running' | 'paused' | 'transition' | 'stopped' | 'completed';
   readonly render: RenderFrame;
   readonly projection: Projection;
   /**
@@ -141,7 +168,7 @@ export interface GameSessionRun {
 export interface GameSession {
   control(control: GameSessionControl): void;
   status(): GameSessionStatus;
-  /** The run in transition, running, paused, stopped or faulted; null in idle and disposed. */
+  /** The run in transition, running, paused, stopped, completed or faulted; null in idle and disposed. */
   currentRun(): GameSessionRun | null;
   onStatus(listener: (status: GameSessionStatus) => undefined): SessionCleanup;
 }
@@ -163,17 +190,24 @@ const SPEC_FIELDS = [...CONTENT_INPUT_FIELDS, 'run', 'recording', 'initialTransi
 const TRANSITION_PATH = 'control.spec.initialTransition';
 /** Core emits at most two transitions in a tick (docs/plan/p3/02/spec.md, CB-16); more breaks its contract. */
 const MAX_TRANSITIONS_PER_TICK = 2;
-const isRunning = (transition: SessionTransition | null): transition is RunningTransition => transition !== null && transition.gap !== 'G-02/2';
+/** A result has one or two ending placeholders (docs/plan/p3/02/spec.md, ME-05); more breaks Core's contract. */
+const MAX_ENDING_PLACEHOLDERS = 2;
+const RUNNING_GAPS: ReadonlySet<SessionTransition['gap']> = new Set<RunningTransition['gap']>(['G-02/3', 'G-02/4', 'G-02/5', 'G-02/6']);
+export const isRunningTransition = (transition: SessionTransition | null): transition is RunningTransition =>
+  transition !== null && RUNNING_GAPS.has(transition.gap);
+export const isEndingTransition = (transition: SessionTransition | null): transition is EndingTransition =>
+  transition !== null && transition.gap !== 'G-02/2' && !RUNNING_GAPS.has(transition.gap);
 const ending = (work: Work): boolean => work.type === 'control' && (work.control.type === 'exit' || work.control.type === 'dispose');
 type LivePhase = GameSessionFrame['phase'];
 /** The phases of a live run: consumers may wire to it and its frames report them. */
-const LIVE_PHASES: ReadonlySet<GameSessionPhase> = new Set<LivePhase>(['transition', 'running', 'paused', 'stopped']);
+const LIVE_PHASES: ReadonlySet<GameSessionPhase> = new Set<LivePhase>(['transition', 'running', 'paused', 'stopped', 'completed']);
 const isLive = (phase: GameSessionPhase): phase is LivePhase => LIVE_PHASES.has(phase);
 /** Runtime refusals that leave the run healthy, and the reason the session reports. */
 const REFUSALS: Partial<Record<GameRuntimeError['kind'], string>> = {
   'command-queue-full': 'command-queue-full',
   'recording-capacity': 'recording-capacity',
   'transition-hold': 'transition-hold',
+  completed: 'completed',
   'reentrant-call': 'unavailable during event delivery',
 };
 
@@ -362,6 +396,7 @@ class Session implements GameSession {
   #transition: SessionTransition | null = null;
   /** The running hold's whole sequence; empty otherwise. */
   #sequence: readonly FrameTransition[] = [];
+  #result: SessionResult | null = null;
   #nextTransitionId = 1;
   #resumeRequired = false;
   #cleanupFailed = false;
@@ -393,7 +428,8 @@ class Session implements GameSession {
     return Object.freeze({
       phase: this.#phase, runId: this.#run?.id ?? null, environmentVisible: this.#environmentVisible(),
       pauseReason: this.#pauseReason, transition: this.#transition, resumeRequired: this.#resumeRequired,
-      stopReason: this.#phase === 'stopped' ? 'recording-capacity' : null, cleanupFailed: this.#cleanupFailed, error: this.#error,
+      stopReason: this.#phase === 'stopped' ? 'recording-capacity' : null, result: this.#result, cleanupFailed: this.#cleanupFailed,
+      error: this.#error,
     });
   }
   currentRun(): GameSessionRun | null { return this.#run?.handle ?? null; }
@@ -573,11 +609,14 @@ class Session implements GameSession {
         return;
       case 'complete-transition': {
         const transition = this.#transition;
-        if (this.#phase !== 'transition' || this.#run?.id !== control.runId || !isRunning(transition) || transition.transitionId !== control.transitionId) {
+        // A running hold's item exists only in transition, an ending's only in completed.
+        const current = isRunningTransition(transition) || isEndingTransition(transition) ? transition : null;
+        if (current === null || this.#run?.id !== control.runId || current.transitionId !== control.transitionId) {
           throw this.#stateError(type, 'requires the current transition of that run');
         }
         if (this.#faulting()) throw this.#stateError(type, 'the run is faulting');
-        this.#completeTransition(transition);
+        if (isEndingTransition(current)) this.#completeEnding(current);
+        else this.#completeTransition(current);
         return;
       }
       case 'clear-input':
@@ -624,6 +663,40 @@ class Session implements GameSession {
     this.#clearIntent('transition');
     this.#run?.runtime?.foldRenderState();
     this.#notifyFrame(null);
+  }
+  /**
+   * Completes the run after the frame its last tick cut: the queue cancelled once, then, unless a cancellation listener
+   * failed, the result kept, the first ending placeholder held, the read model folded and a still frame. The frame
+   * request was consumed by this frame and is not renewed. A completion without a final result, or with no or more than
+   * two ending placeholders, breaks Core's contract and faults the run.
+   */
+  #complete(): void {
+    const runtime = this.#run?.runtime;
+    if (!runtime) return;
+    const result = runtime.projection().result;
+    if (result.outcome === 'in-progress' || result.endingGaps.length === 0 || result.endingGaps.length > MAX_ENDING_PLACEHOLDERS) {
+      this.#fault('runtime', new RangeError('A completed run needs a final result with one or two ending placeholders'));
+      return;
+    }
+    if (this.#nextTransitionId > Number.MAX_SAFE_INTEGER - result.endingGaps.length) {
+      this.#fault('runtime', new RangeError('transitionId exhausted'));
+      return;
+    }
+    this.#clearIntent('mission-complete');
+    if (this.#faulting()) return;
+    this.#phase = 'completed'; this.#result = result;
+    this.#holdEnding(0);
+    runtime.foldRenderState();
+    this.#notifyFrame(null);
+  }
+  #holdEnding(index: number): void {
+    const result = this.#result!;
+    this.#transition = Object.freeze({ ...result.endingGaps[index], transitionId: this.#nextTransitionId++, tick: result.completedTick, index, count: result.endingGaps.length });
+  }
+  /** Moves to the next ending placeholder, or leaves the result alone after the last; the run never resumes. */
+  #completeEnding(transition: EndingTransition): void {
+    if (transition.index + 1 < transition.count) this.#holdEnding(transition.index + 1);
+    else this.#transition = null;
   }
   /** A fault of the current run waits in this boundary; it outranks holding and ending a hold. */
   #faulting(): boolean {
@@ -678,6 +751,7 @@ class Session implements GameSession {
   /** Enters a phase without a pause, hold or stop. */
   #settle(phase: 'idle' | 'faulted' | 'disposed'): void {
     this.#phase = phase; this.#pauseReason = null; this.#transition = null; this.#sequence = []; this.#resumeRequired = false;
+    this.#result = null;
   }
   #clearIntent(reason: CancelReason): void {
     const run = this.#run;
@@ -737,13 +811,16 @@ class Session implements GameSession {
       let report: FrameReport;
       try { report = runtime.frame(nowMs); } catch (cause) { this.#fault(framePhase(cause), cause); return; }
       this.#notifyFrame(report);
-      // A consumer failure in this frame outranks the stop or hold: the run faults instead and nothing stays exportable.
+      // A consumer failure in this frame outranks the stop, hold or completion: the run faults instead and nothing stays
+      // exportable.
       if (this.#faulting()) return;
       if (report.stop !== null) this.#stop();
       else if (report.transitions.length > MAX_TRANSITIONS_PER_TICK) {
         this.#fault('runtime', new RangeError(`A tick produced ${report.transitions.length} transitions; Core emits at most ${MAX_TRANSITIONS_PER_TICK}`));
-      // A queued exit or dispose ends the run instead of holding it.
-      } else if (report.cut !== null && !this.#work.some(ending)) this.#hold(report.transitions);
+      // A queued exit or dispose ends the run instead of holding or completing it.
+      } else if (report.cut === null || this.#work.some(ending)) return;
+      else if (report.cut === 'completed') this.#complete();
+      else this.#hold(report.transitions);
     }, true);
   }
   #notifyFrame(report: FrameReport | null): void {

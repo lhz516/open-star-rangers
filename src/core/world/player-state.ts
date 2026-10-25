@@ -60,9 +60,12 @@ export interface PlayerState {
   delayedExplosionClock: number | null;
   /** ps +0x30…+0x5C: the player's kills of non-player, non-wingman objects by kind bit; the rescue keeps them. */
   kills: KillCounts;
-  /** ps +0x38, +0x3C, +0x40, +0x44; the rescue keeps them. Read by P3-11 and P4. */
+  /** ps +0x38, +0x3C, +0x40, +0x44; the rescue and the latch keep them. Read only by P4's statistics, not by P3-11. */
   readonly shots: ShotCounts;
-  /** `0x176710`: −1 initially; damage writes it at its thresholds; the rescue keeps it; P3-11's success summary reads it. */
+  /**
+   * `0x176710`: −1 initially; damage writes it at its thresholds; the rescue and the latch keep it. Only for P4's medals
+   * (`0x69e1c` → `0x3b8dc`); P3-11 does not read it (docs/plan/p3/02/spec.md, ME-18).
+   */
   heavyDamage: -1 | 0 | 1;
   /**
    * `0x1a9dc8`. P3-07 switches between pages 0 and 1; P3-10 writes pages 2–5 (CB-03), P3-09 page 6. The saved pages

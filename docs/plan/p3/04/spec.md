@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "04"
-updated: 2026-10-17
+updated: 2026-10-24
 related: [ADR-0004, ADR-0006, ADR-0015, B-001, B-003, B-005, B-006, U-010, U-021, U-031]
 ---
 
@@ -183,6 +183,103 @@ G-02/1 与 G-02/2 是本任务负责的两个 Smacker 过场实例（[P3-01/08](
 - **replay：** 录制只含 tick 输入；保持、`transitionId` 与取消的命令都不进入录制，所以 replay 与占位显示多久、是否跳过无关。
 - **不做：** 不在 tick 中间暂停；完成占位不写 Core 状态；不提供外部每 tick 检测器。
 - **验证：** 由 P3-10 的子任务 21 按 [P3-10 的 AC-13](../10/spec.md#验收标准) 以 Runtime、Session 与所有者的故障与竞态矩阵验证，23 在浏览器中验证；本 spec 的既有验收与历史证据不改写。
+
+### 终局与救援衔接（P3-11 的修订）
+
+本节由 P3-11 的子任务 05 起草（2026-10-18），定稿 [P3-11 spec 的运行中与终局衔接](../11/spec.md#运行中与终局衔接)，是 P3-11 关卡 D-01 中属于本 spec 的部分；Core 的输出见 [P3-02 的 P3-11 修订](../02/spec.md#p3-11-的契约修订d-01)（下文 ME-n）。它建立在[运行中衔接（P3-10 的修订）](#运行中衔接p3-10-的修订)之上，那里已定的帧屏障、有限序列与逐次凭证不变。前文（包括[应用流程](#应用流程)表中“结果（P3-11 接入）”一行与[会话](#会话)表中“新增结果或运行中媒体状态须另行修订”）与本节不一致时以本节为准。用户于 2026-10-22 批准本节（见[审批](#审批)）。
+
+#### 救援的运行中保持（G-02/5、G-02/6）
+
+- Core 的 `transition` 事件的 `gap` 增加 `G-02/5`（被毁后救援）与 `G-02/6`（能量耗尽后救援），紧随 `player-rescued`（ME-10、ME-13）。`FrameTransition` 与 `RunningTransition` 的 `gap` 随之为四项联合；Runtime 的截断、屏障、会话的保持、`complete-transition`、竞态与 replay 全部沿用 P3-10 的修订，不另建设施。
+- **序列上限仍为 2：** 救援的衔接每 tick 至多 1 个，且不与停靠或离港的衔接同 tick（ME-13）；会话照旧把一个 tick 多于 2 个视为违反 Core 契约而故障。
+- 占位只用于标注；救援的规则在 Core 中已经完成。保持结束后呈现 Core 的状态（视角 0xC 的飞行；停靠中被毁的救援之后活动仍为停靠，但视角为 0xC，所以仍是飞行上下文）。
+
+#### Runtime 的完成截断
+
+- **检测：** `frame()` 在每次成功 step 之后，在检查 `transition` 的同一处检查该 tick 的事件是否含 `mission-completed`（ME-13，每个运行至多一次）。含时这个 tick 是本运行的最后一个：不再 step，余下的宿主时间丢弃；该 tick 的读模型照常缓存（其 `result` 分区为终态）。
+- **`FrameReport` 改为：**
+
+  ```ts
+  interface FrameReport {
+    ticks: number;
+    capped: boolean;                                   // cut 非 null 时为 false
+    stop: 'recording-capacity' | null;
+    cut: 'transition' | 'completed' | null;
+    transitions: readonly FrameTransition[];           // cut 为 transition 时非空，否则为空
+    completion: { tick: number; outcome: 'success' | 'failure' } | null; // cut 为 completed 时非空
+  }
+  ```
+
+  同一 tick 同时含 `transition` 与 `mission-completed` 违反 ME-13，Runtime 以故障结束（不截断成任一种）。完成截断与录制容量停止不会在同一帧出现：容量在执行下一 tick 之前拒绝，完成之后不再执行 tick。
+- **完成屏障：** 截断后、帧后派发之前立起，**永不解除**：之后的 `setIntent`、`submitCommand`（含帧后监听器的调用）与 `frame()` 以 `GameRuntimeError` 的新类别 `completed` 拒绝，不改变意图、队列或 ID。会话把 `completed` 加入非故障的拒绝表（与 `transition-hold` 同类）：完成帧派发期间监听器或帧消费者的输入调用得到 `invalid-state`，不使运行故障；进入 `completed` 之后由阶段门禁直接拒绝。然后按原有规则派发本帧所有 tick 的事件与 `{ commandId }`。`releaseTransitionBarrier()` 与 `resetClock()` 在完成后以 `completed` 拒绝；`clearIntent()` 仍可由会话在通知边界之外调用一次，返回未执行的 ID。
+- **读取与导出：** 完成后 `projection()`、`renderFrame()`、`snapshot()` 与 `exportRecording()` 照常可用（健康终局），Core 的 `step` 不再被调用（ME-12）。
+
+#### 会话的终局
+
+- **阶段：** `GameSessionPhase` 增加 `completed`；会话帧的 `phase` 与 `FLOW_SESSION_PHASES` 等全部 phase 白名单与消费者同步（任务所有者、UI 桥接、离页保护、开发诊断、输入控制端口）。`currentRun()` 在 `completed` 中有值。
+- **进入：** 帧消费者收到 `cut: 'completed'` 的帧报告之后，会话在通知边界的安全点进入 `completed`；若同一通知中已排有 exit，或运行已故障（含本帧帧后派发中的监听器/消费者失败），按既有优先级处理，不进入 `completed`。进入时依次：`clearIntent()`，把返回的未执行 ID 经 `onCommandsCancelled` 以新原因 `mission-complete` 通知一次；折叠两帧 Render State；停止调度（没有游戏 rAF）；冻结结果副本；发布 `report = null` 的静止帧与状态。
+- **状态：** 会话状态增加 `result: SessionResult | null`（只在 `completed` 中非空），之后不再读 Core：
+
+  ```ts
+  type SessionResult = Extract<ResultProjection, { outcome: 'success' | 'failure' }>; // ME-14 的终态，完成 tick 的 projection 的冻结副本
+  ```
+`transition` 字段在 `completed` 中为当前的终局占位或 null：
+
+  ```ts
+  type SessionTransition = DepartureTransition | RunningTransition | EndingTransition;
+  type EndingTransition = EndingGap & {   // EndingGap 为 ME-05 的 G-02/7、G-02/8、G-02/9 联合
+    transitionId: number;   // 与 RunningTransition 共用同一计数器，单调递增，跨运行不复用；不进入 Core、录制或 replay
+    tick: number;           // 完成的 tick
+    index: number;          // 0 起
+    count: 1 | 2;           // = result.endingGaps 的长度
+  };
+  ```
+
+- **终局序列：** 按 `result.endingGaps` 的次序逐项保持，每项有自己的 `transitionId`。`complete-transition { runId, transitionId }` 只在 `completed` 阶段、对当前运行的当前项生效一次；其他情形以 `invalid-state` 拒绝。完成一项后转到下一项；最后一项完成后 `transition` := null，阶段保持 `completed`（结果页）。终局占位**不**恢复模拟、不调用 `releaseTransitionBarrier()` 或 `resetClock()`、不写 Core。
+- **不可用：** `completed` 中 pause、resume、start、`setIntent`、`submitCommand` 与 `clear-input` 以 `invalid-state` 拒绝；任务菜单不开放。exit 与 dispose 可用；退出时的取消原因照旧为 `exit`（此时队列已空）。
+- **隐藏：** `completed` 没有需要恢复的模拟，不设 `resumeRequired`；hidden/pagehide 只暂停所有者的占位可见计时，visible/pageshow 后继续剩余时长，不抢焦点。
+- **取消原因：** 增加 `mission-complete`（只用于完成截断时未交给 step 的命令）。
+
+#### 错误与结束的优先级
+
+从高到低；高项发生时低项不再进入或被替换：
+
+1. **清理失败**（含退出、重试、所有者释放中的失败）：在应用实例内锁存，沿用[应用流程](#应用流程)的锁存；结果页的重试随之禁用，只能返回菜单。
+2. **故障**（Core、Runtime、调度、帧消费者或帧后监听器）：发生在完成帧的派发之中或之前时进入 `faulted`，不显示终局占位与结果页，不提供新的录制导出。
+3. **exit/dispose**：用户在完成帧之前已排队的 exit 先于完成处理；`completed` 中的 exit 结束终局。
+4. **录制容量停止**：与完成互斥（见上）；先发生时为 `stopped`，不会再完成。
+5. **完成：** `completed` → 终局占位 → 结果页。
+6. **运行中保持**（G-02/2 至 G-02/6）：照 P3-10 的修订。
+
+`completed` 中所有者的占位计时器登记、取消或时钟失败照[衔接占位](#衔接占位)的规则显示并报告（取消失败锁存）；内容解析失败在结果页显示（见下）。这些错误不被健康的结果掩盖：错误与结果同时显示，不进入 `faulted`（会话已没有帧可以故障）。
+
+#### 任务所有者、流程位置与结果页
+
+- **流程位置：** `MissionFlowPosition` 增加 `ending`（会话为 `completed` 且 `transition` 非 null）与 `result`（`completed` 且 `transition` 为 null），`FLOW_SESSION_PHASES` 中两者都对应 `completed`。`MissionEndReason` 不变（`faulted`、`stopped`、`cleanup-failed`）：完成不是异常结束。`MissionFlowInput` 增加：
+  - `{ type: 'run-completed' }`：只从 `flight` 转到 `ending`（完成只能发生在模拟运行时；`transition`、`menu` 中没有 step）；
+  - `{ type: 'ending-ended' }`：只从 `ending` 转到 `result`（最后一个终局占位完成）。
+
+  `restarted` 可从 `result` 生效（`RESTART_POSITIONS` 加入 `result`），`ending` 中不可重试或返回（占位只提供跳过，同[衔接占位](#衔接占位)）；`run-ended` 照旧可从任何有运行的位置（含 `ending`、`result`）转到 `ended`；所有者释放照旧结束一切。
+- **终局占位：** 所有者为每一项显示可跳过的占位，沿用[衔接占位](#衔接占位)的页面、3,000 ms 可见时长与按钮/新的 Enter、Space、Esc；`data-gap` 为 `G-02/7`、`G-02/8` 或 `G-02/9`，按变体标注（G-02/7 的损失类型、G-02/8 的 solo/wingman、G-02/9 的过场行）。计时器与完成请求绑定 ownerId、runId 与 transitionId；旧凭证、旧计时器与重复跳过不能结束下一项或下一次运行的占位。
+- **结果页（G-06）：** 读会话冻结的 `result`，不读 Core。总结引用按开始时绑定的同一资源包代际解析：`summary.mission` 须等于本运行的任务 Asset，`trigger`、`range` 须在其 `eventTriggers` 之内，否则显示结构化错误；选中区间的消息按数组次序无分隔拼接，按文本节点渲染；消息总长为 0 时标注为空总结；`summary` 为 null 时标注该分支没有总结。项目文字（结果、原因、已用救援次数与击杀合计的标注、替代原版页面的披露）在 `SLICE_GAPS` 所在的文件。
+- **操作：** 重试——以 exit 结束运行，成功后走[应用流程](#应用流程)的重开路径（G-02/1 → 开始配置，预选上次确认的僚机 → 新种子创建新世界）；返回主菜单——以 exit 结束运行后回到主菜单。两者都先使当前运行的输入、占位计时器与凭证失效；清理失败按优先级 1。
+- **焦点：** 进入每个终局占位时焦点在跳过按钮（沿用占位规则）；进入结果页时焦点移到结果标题；页面隐藏时不移焦点。
+- **离页保护：** `completed` 有运行（且开发构建有可导出的录制），照 `stopped`/`faulted` 登记一份 `beforeunload`，exit/dispose 后撤销。
+- **开发诊断：** `completed` 中可以按需快照与导出录制（健康终局）；事件日志保留到运行结束。
+
+#### UI 桥接
+
+`mission.status`、`mission.phase`、`result` 的就绪与结果内容、会话阶段与 `transition` 的变化在本帧结束立即发布，不等采样窗口；按语义字段比较。`KeyFacts` 的 `outcome`、`reason` 与 `message` 由 `unknown` 改为 ME-14 的类型（`message` 改名为 `summary`），并增加 `missionPhase`。
+
+#### 录制、replay 与核对工具
+
+- 录制包含锁存与全部退场 tick，在完成的 tick 结束；最后一个检查点是完成的 tick（沿用“最后一个 tick 去重”的规则），之后不再有 tick。录制格式不变（ME-16）。
+- `replayRecord` 拒绝完成之后仍有 tick 的记录（ME-12），报告为 `replay-failed`，不丢弃后缀。
+- **`tools/replay-check.ts` 的报告**版本由 1 改为 2，增加 `completed: boolean | null`：重放成功时为“最后一个 tick 含 `mission-completed`”，提前失败时为 null。`passed` 的含义不变；未完成的前缀仍可通过核对，但报告 `completed: false`，不能冒称完整闭环。
+
+#### 验证
+
+由 P3-11 的子任务 16 以 Runtime、Session 与所有者的竞态矩阵验证（AC-11），17 实现结果页与占位，18 在浏览器中验证（AC-12）；本 spec 的既有验收与历史证据不改写。
 
 ### 帧后逐 tick 输出（P3-12 的修订）
 
@@ -494,3 +591,5 @@ CLI 始终使用生产来源白名单，不能接受合成光盘作为原版。N
 **2026-10-16/17 修订（P3-12 的 D-01：帧后逐 tick 输出，经用户明确批准）：** 由 P3-12 的子任务 09 起草（2026-10-16），新增“[帧后逐 tick 输出（P3-12 的修订）](#帧后逐-tick-输出p3-12-的修订)”一节与本条记录，并改了 front matter 的日期：`FrameReport` 增加 `outputs`（`TickOutput { tick, clock, render, events }`，`TickEvent { event, commandId }`）、故障矩阵、消费者的连续性规则与内存边界；Core 的部分记在 [P3-02 的 P3-12 契约修订](../02/spec.md#p3-12-的契约修订d-01)。所选方案：随帧报告交出 Runtime 已有的逐 tick 结果。被排除的方案：在 Event Bus 中加入 tick 中途回调或按 tick 的二次派发（破坏“全部模拟后派发”的次序，同一事件可能被处理两次）；Runtime 保留多于两份的 Render State 供任意读取（改变总计划 §5 的两帧约定且需无界历史）；让表现模块按事件的 tick 自行分组、只读帧末 Render State（缺少中间 tick 的 Render State，P3-12 spec 已排除）。没有新增 S/AC 编号，本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写；实现与验证归 P3-12 的子任务 11。修订后未重跑 review-spec。
 
 - **批准与用户原话：** 用户于 2026-10-17 经协调者提问（“是否批准 09 的 D-01 共享契约定稿？”）选择“批准，全部按推荐方案 (Recommended)”，批准本节与 [P3-02 的 P3-12 契约修订](../02/spec.md#p3-12-的契约修订d-01)。这是用户本人的批准；不涵盖冻结决定，本修订不改变总计划 §5 的两帧约定。
+
+**2026-10-22 修订（P3-11 的 D-01：终局与救援衔接，经用户明确批准）：** 用户于 2026-10-22 明确批准 P3-11 关卡 D-01 的全部推荐方案（“批准 D-01 全部推荐”），由 P3-11 的协调者转达。修订只新增“[终局与救援衔接（P3-11 的修订）](#终局与救援衔接p3-11-的修订)”一节与本条记录，并改了 front matter 的日期：`transition` 的 `gap` 加入 G-02/5、G-02/6 并沿用 P3-10 的保持（每 tick 上限仍为 2）；Runtime 的完成截断（`FrameReport` 的 `cut: 'completed'` 与 `completion`、永不解除的完成屏障与 `GameRuntimeError` 的类别 `completed`，会话把它当作非故障的拒绝）；会话阶段 `completed`、冻结的 `SessionResult`、`EndingTransition` 终局序列与取消原因 `mission-complete`；错误与结束的优先级；流程位置 `ending`、`result` 与输入 `run-completed`、`ending-ended`；结果页、重试与返回；UI 桥接的即时发布；`tools/replay-check.ts` 的报告版本 2（`completed`）。前文中“结果（P3-11 接入）”一行与会话表中“新增结果或运行中媒体状态须另行修订”以该节为准。所选方案：终局由会话的 `completed` 阶段持有，复用 `complete-transition` 与逐次凭证，终局占位永不恢复模拟。被排除的方案：只由任务所有者在会话之外显示终局占位（没有凭证与阶段守卫）；完成后解除屏障。Core 一侧的定稿见 [P3-02 的 ME-01 至 ME-19](../02/spec.md#p3-11-的契约修订d-01)。没有新增 S/AC 编号，本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写；实现与验证归 P3-11 的子任务 16 至 18。修订后未重跑 review-spec。

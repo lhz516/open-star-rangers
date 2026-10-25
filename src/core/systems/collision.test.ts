@@ -282,7 +282,8 @@ describe('0x29670, the player against the craft (H6, AC-08)', () => {
     quiet(player, 30);
     const [first, second] = [craftAt(state, OTHER, at(1, 0, 0)), craftAt(state, OTHER_14, at(0, 1, 0))];
     const events = world.step(tickInput());
-    expect(events.map(({ type }) => type)).toEqual(['hit', 'object-destroyed', 'hit', 'hit']);
+    // The destruction entry 0x32d74 follows the player's death (P3-11, ME-09), its switch before its loss (P3-12, FS-03).
+    expect(events.map(({ type }) => type)).toEqual(['hit', 'object-destroyed', 'radio-flushed', 'view-switched', 'player-loss-started', 'hit', 'hit']);
     expect(hitList(events)).toEqual([[player.id, 50], [first.id, 50], [second.id, 50]]);
     expect(events[1]).toMatchObject({ entityId: player.id, outcome: 'delayed', attacker: { type: 'none' }, eventClass: 1 });
     expect(blockOf(player).impulse).not.toBeNull();

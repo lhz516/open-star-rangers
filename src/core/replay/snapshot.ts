@@ -1,6 +1,6 @@
 /**
  * The formal Core snapshot (docs/plan/p3/02/spec.md, 快照、哈希与 replay; 技术决定 9):
- * `{ format: 'osr-game-snapshot', version: 7, rulesVersion, state }`, deeply frozen and detached from the world. The
+ * `{ format: 'osr-game-snapshot', version: 8, rulesVersion, state }`, deeply frozen and detached from the world. The
  * state is every piece of the world's authoritative state that can affect a later result: the configuration with the
  * full content identity and setupHash, tick, clock, RNG state, the next entity ID, the entities and the order of the
  * kind lists with each entity's flight state (maximum speed, timers, movement block, AI state, formation) and combat
@@ -12,9 +12,11 @@
  * state and saved docking pose, each entity's communications fields and pending command, and the world's
  * communications, friendly-fire and base service state (CB-16). P3-08 adds each entity's AI program slot with its
  * controller and the handler's private state, the transponder state, and the world's parse cache (CR-25); the static AI
- * data is not copied. P3-12 adds whether the player's model is shown (FS-08). Names are held by the entities that
- * carry them. The static MissionSetup and rule data are not copied: setupHash binds them. A snapshot is a diagnostic
- * and a checkpoint source, not a save: Core restores no world from one.
+ * data is not copied. P3-11 adds the whole mission flow with its settlement and result, the `ended` status and the
+ * section-2 run counters (ME-16); the rescue's rewrite of the player's record is in the records. P3-12 adds whether the
+ * player's model is shown (FS-08). Names are held by the entities that carry them. The static MissionSetup and rule
+ * data are not copied: setupHash binds them. A snapshot is a diagnostic and a checkpoint source, not a save: Core
+ * restores no world from one.
  *
  * The canonical text writes every object's members in the order listed here, never in an object's own key order; the
  * entities are a set written in ascending ID order, every other list keeps its order. The state hash is fnv1a64 of the
@@ -111,17 +113,23 @@ import type {
 import type { GroupState, RecordRuleInputs, RuntimeRecord, SpawnEntry } from '../world/spawn-state.ts';
 import type {
   BaseService,
+  EndingGap,
   IncomingChannel,
   MapIcon,
   MessageIdentity,
+  MissionEventCounts,
+  MissionEvents,
   MissionFlow,
+  MissionResult,
   MissionStatus,
   ObjectSets,
   OptionalFloat,
   ParsedArgument,
   ParsedScript,
   RadioItem,
+  Settlement,
   SpeakerSnapshot,
+  SummaryReference,
   WorldAi,
   WorldCommunications,
   WorldConfig,
@@ -130,7 +138,7 @@ import type {
 import { RULES_VERSION } from './rules-version.ts';
 
 export const GAME_SNAPSHOT_FORMAT = 'osr-game-snapshot';
-export const GAME_SNAPSHOT_VERSION = 7;
+export const GAME_SNAPSHOT_VERSION = 8;
 
 export type SnapshotEntity = Readonly<Entity>;
 export type SnapshotRecord = Readonly<RuntimeRecord>;
@@ -160,6 +168,7 @@ export interface SnapshotState {
   readonly kindOrder: readonly EntityId[];
   readonly spawn: SnapshotSpawn;
   readonly missionStatus: MissionStatus;
+  readonly missionEvents: MissionEvents;
   readonly flow: Readonly<MissionFlow>;
   readonly player: Readonly<PlayerState>;
   readonly objectSets: ObjectSets;
@@ -187,7 +196,9 @@ function frozenCopy<Value>(value: Value): Value {
 
 /** For World.snapshot(): reads the state without changing it and returns a deeply frozen, detached snapshot. */
 export function takeSnapshot(world: WorldState): GameSnapshot {
-  const { config, tick, clock, rngState, entities, spawn, missionStatus, flow, player, objectSets, mapIcons, communications, ai, baseService } = world;
+  const {
+    config, tick, clock, rngState, entities, spawn, missionStatus, missionEvents, flow, player, objectSets, mapIcons, communications, ai, baseService,
+  } = world;
   return frozenCopy({
     format: GAME_SNAPSHOT_FORMAT,
     version: GAME_SNAPSHOT_VERSION,
@@ -202,6 +213,7 @@ export function takeSnapshot(world: WorldState): GameSnapshot {
       kindOrder: Array.from(entities.walk(ALL_KINDS), ({ id }) => id),
       spawn,
       missionStatus,
+      missionEvents,
       flow,
       player,
       objectSets,
@@ -712,6 +724,42 @@ const parsedArgument: Writer<ParsedArgument> = (value) => {
   }
 };
 
+// P3-11's flow (docs/plan/p3/02/spec.md, ME-03, ME-05), members in the spec's order.
+const summaryReference = nullable(object<SummaryReference>({ mission: scalar, trigger: scalar, range: scalar }));
+
+const endingGap: Writer<EndingGap> = (value) => {
+  switch (value.gap) {
+    case 'G-02/7':
+    case 'G-02/8':
+      return canonicalObject([['gap', value.gap], ['variant', value.variant]]);
+    case 'G-02/9':
+      return canonicalObject([['gap', value.gap], ['row', value.row]]);
+  }
+};
+
+const missionResult = object<MissionResult>({
+  outcome: scalar,
+  reason: (value) => canonicalObject(value.type === 'third-loss' ? [['type', value.type], ['loss', value.loss]] : [['type', value.type]]),
+  summary: summaryReference,
+  rescuesUsed: scalar,
+  endingGaps: list(endingGap),
+  playerKills: scalar,
+  latchTick: scalar,
+});
+
+const flow = object<Readonly<MissionFlow>>({
+  mainState: scalar,
+  subState: scalar,
+  dockingDeadline: scalar,
+  beaconDeadline: scalar,
+  settlementDeadline: scalar,
+  rescues: scalar,
+  wingmanLoss: object<MissionFlow['wingmanLoss']>({ pending: scalar, dueClock: scalar }),
+  settlement: nullable(object<Settlement>({ outcome: scalar, summary: summaryReference, summarySelector: scalar })),
+  result: nullable(missionResult),
+  completedTick: scalar,
+});
+
 const state = object<SnapshotState>({
   config,
   tick: scalar,
@@ -722,7 +770,8 @@ const state = object<SnapshotState>({
   kindOrder: list(scalar),
   spawn,
   missionStatus: scalar,
-  flow: object<Readonly<MissionFlow>>({ mainState: scalar, subState: scalar, dockingDeadline: scalar }),
+  missionEvents: object<MissionEvents>({ triggers: list(object<MissionEventCounts>({ instantiated: scalar, destroyed: scalar, left: scalar })) }),
+  flow,
   player: object<Readonly<PlayerState>>({
     entityId: scalar,
     viewMode: scalar,

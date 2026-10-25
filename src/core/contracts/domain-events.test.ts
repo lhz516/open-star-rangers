@@ -10,11 +10,15 @@ import {
   type HitEvent,
   type ObjectInstantiatedEvent,
   type ObjectLeftWorldEvent,
+  type PlayerLossStartedEvent,
+  type PlayerRescuedEvent,
+  type RadioFlushedEvent,
   type ShotTrigger,
   type SpeedAssistReleasedEvent,
   type SpeedAssistToggledEvent,
   type SpeedMatchedEvent,
   type TargetChangedEvent,
+  type TransitionEvent,
   type WarpCompletedEvent,
   type WarpDestinationSetEvent,
   type WeaponSelectedEvent,
@@ -24,6 +28,8 @@ import {
   WINGMAN_COMMAND_OUTCOMES,
 } from './domain-events.ts';
 import { COMMAND_TYPES, type CommandType } from './tick-input.ts';
+import type { AssetId } from '../../content/asset-id.ts';
+import type { EndingGap } from '../world/world-state.ts';
 
 const rejected: CommandResultEvent = { type: 'command-result', tick: 3, commandIndex: 0, commandType: 'fire', outcome: 'rejected', reason: 'not-implemented' };
 const instantiated: ObjectInstantiatedEvent = {
@@ -105,6 +111,33 @@ const aiEvents: DomainEvent[] = [
   { type: 'transponder-deployed', tick: 16, entityId: 20, creatorEntityId: 1, position: at, orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
 ];
 
+// P3-11's (docs/plan/p3/02/spec.md, ME-13).
+const summary = { mission: 'mission/first-campaign' as AssetId, trigger: 0, range: 1 };
+const missionEvents: DomainEvent[] = [
+  { type: 'all-clear', tick: 20, entityId: 5, kindBit: 7, eventClass: 1 },
+  { type: 'settlement-started', tick: 21, outcome: 'success', summary, summarySelector: 16, dueClock: 362 },
+  { type: 'settlement-deferred', tick: 22, dueClock: 684 },
+  { type: 'flight-message', tick: 23, message: 'missionComplete' },
+  { type: 'player-loss-started', tick: 24, playerEntityId: 1, loss: 'destroyed', previousSubState: 4, previousViewMode: 0xc, viewSwitched: true },
+  { type: 'player-loss-started', tick: 25, playerEntityId: 1, loss: 'energy', previousSubState: 0, deadlineClock: 1010 },
+  {
+    type: 'player-rescued', tick: 26, playerEntityId: 1, loss: 'energy', rescues: 1, baseEntityId: 3, candidates: 2, position: at,
+    orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+  },
+  {
+    type: 'result-latched', tick: 27, result: {
+      outcome: 'success', reason: { type: 'all-clear' }, summary, rescuesUsed: 1, endingGaps: [{ gap: 'G-02/8', variant: 'solo' }, { gap: 'G-02/9', row: 16 }],
+      playerKills: 9, latchTick: 27,
+    },
+  },
+  { type: 'teardown-started', tick: 27, entities: 12 },
+  { type: 'mission-completed', tick: 28, outcome: 'success' },
+  { type: 'wingman-loss-timer-started', tick: 29, wingmanEntityId: 2, dueClock: 1978 },
+  { type: 'wingman-loss-timer-expired', tick: 30, queued: true },
+  { type: 'transition', tick: 26, gap: 'G-02/6' },
+  { type: 'radio-flushed', tick: 24, cause: 'player-destroyed', removed: 1, interrupted: 'playing' },
+];
+
 // P3-12's presentation facts (docs/plan/p3/02/spec.md, FS-03), one of each type and a switch without a player.
 const presentationEvents: DomainEvent[] = [
   { type: 'explosion-created', tick: 17, entityId: 21, sourceEntityId: 4, sourceKindBit: 7, variant: 'other', stage: 'collision', position: at, velocity: at },
@@ -127,6 +160,8 @@ describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06;
       'no-destination', 'insufficient-energy',
       // P3-10 (CB-07).
       'subsystem-disabled',
+      // P3-11 (ME-12).
+      'mission-ended',
     ]);
     expect(Object.isFrozen(COMMAND_OUTCOMES) && Object.isFrozen(COMMAND_RESULT_REASONS)).toBe(true);
     // P3-08 (CR-22) adds no command reason; a wingman's consumption has its own closed outcomes.
@@ -139,7 +174,7 @@ describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06;
   it('is plain data that survives a JSON round trip unchanged', () => {
     const events: DomainEvent[] = [
       rejected, instantiated, toggled, matchedByCommand, matchedByAssist, released, leftWorld, ...combatEvents, ...mapWarpEvents, ...communicationsEvents,
-      ...aiEvents, ...presentationEvents,
+      ...aiEvents, ...missionEvents, ...presentationEvents,
     ];
     expect(JSON.parse(JSON.stringify(events))).toEqual(events);
     expect(Object.keys(rejected)).toEqual(['type', 'tick', 'commandIndex', 'commandType', 'outcome', 'reason']);
@@ -155,8 +190,14 @@ describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06;
       | 'command-delivered' | 'radio-queued' | 'radio-taken' | 'incoming-started' | 'incoming-ended' | 'radio-flushed' | 'docking-requested'
       | 'docking-cancelled' | 'docked' | 'departed' | 'transition' | 'base-navigated' | 'base-confirmed'
       | 'wingman-command-consumed' | 'transponder-deployed'
+      | 'all-clear' | 'settlement-started' | 'settlement-deferred' | 'flight-message' | 'player-loss-started' | 'player-rescued' | 'result-latched'
+      | 'teardown-started' | 'mission-completed' | 'wingman-loss-timer-started' | 'wingman-loss-timer-expired'
       | 'explosion-created' | 'view-switched' | 'warp-wall-contact'
     >();
+    expect(new Set(missionEvents.map(({ type }) => type)).size).toBe(13);
+    expectTypeOf<TransitionEvent['gap']>().toEqualTypeOf<'G-02/3' | 'G-02/4' | 'G-02/5' | 'G-02/6'>();
+    expectTypeOf<RadioFlushedEvent['cause']>().toEqualTypeOf<'docking-cancel' | 'player-destroyed' | 'beacon-expired' | 'completion-message' | 'result-due'>();
+    expectTypeOf<PlayerLossStartedEvent['loss']>().toEqualTypeOf<'destroyed' | 'energy'>();
     expect(new Set(combatEvents.map(({ type }) => type)).size).toBe(13);
     expect(new Set(mapWarpEvents.map(({ type }) => type)).size).toBe(4);
     expectTypeOf<WarpDestinationSetEvent['marker']['type']>().toEqualTypeOf<'created' | 'moved' | 'missing'>();
@@ -227,13 +268,22 @@ function checkTypes(): unknown[] {
   const directWithFace: DomainEvent = { type: 'radio-taken', tick: 1, message: { table: 20983, face: 0, index: 0 }, speaker: null };
   // @ts-expect-error A portrait table needs a portrait.
   const portraitWithoutFace: DomainEvent = { type: 'radio-taken', tick: 1, message: { table: 20011, face: null, index: 0 }, speaker: null };
-  // @ts-expect-error Sub-states are closed: P3-11 adds 1, 2 and 6.
-  const unknownSubState: DomainEvent = { type: 'docking-requested', tick: 1, playerEntityId: 1, dockingObject: 2, previousSubState: 2, deadlineClock: 0, commandIndex: 0 };
+  // @ts-expect-error Sub-states are closed: P3-11 adds 1 and 2, not 6 (ME-01).
+  const unknownSubState: DomainEvent = { type: 'docking-requested', tick: 1, playerEntityId: 1, dockingObject: 2, previousSubState: 6, deadlineClock: 0, commandIndex: 0 };
+  // @ts-expect-error An energy loss starts only from sub-state 0 (ME-09).
+  const energyFromDocking: PlayerLossStartedEvent = { type: 'player-loss-started', tick: 1, playerEntityId: 1, loss: 'energy', previousSubState: 3, deadlineClock: 0 };
+  // @ts-expect-error A destruction has no beacon deadline.
+  const destroyedWithDeadline: PlayerLossStartedEvent = { type: 'player-loss-started', tick: 1, playerEntityId: 1, loss: 'destroyed', deadlineClock: 0 };
+  // @ts-expect-error Core never holds a third rescue.
+  const thirdRescue: PlayerRescuedEvent['rescues'] = 3;
+  // @ts-expect-error G-02/9 has a row, not a variant.
+  const variantRow: EndingGap = { gap: 'G-02/9', variant: 'solo' };
   // @ts-expect-error Events are read-only.
   instantiated.position.x = 0;
   return [
     missingWithEntity, completedFromMap, noDestination,
-    commandLaunchWithoutIndex, automaticLaunchWithIndex, directWithFace, portraitWithoutFace, unknownSubState,
+    commandLaunchWithoutIndex, automaticLaunchWithIndex, directWithFace, portraitWithoutFace, unknownSubState, energyFromDocking, destroyedWithDeadline,
+    thirdRescue, variantRow,
     accepted, ignored, wingman, acceptedWithReason, rejectedWithoutReason, unknownReason, unknownCommand, unknownCollection, omittedGroup, noTarget,
     commandWithDifference, assistWithCommand, omittedSource, cooldown, commandWithoutIndex, automaticWithIndex, lostWithEntity, automaticWithChannel,
   ];

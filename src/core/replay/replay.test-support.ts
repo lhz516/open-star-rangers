@@ -50,7 +50,7 @@ const PRESENTATION_STATE = 'modelShown';
 /**
  * The gameplay digest of a run from `input` through `ticks`: fnv1a64 of every tick's events without P3-12/10's
  * presentation facts, and of the snapshot state after it without the player's model flag. It was computed for the
- * same runs before P3-12/10 (at 8b6113b6), so an unchanged digest shows that the facts change no rule outcome and no
+ * same runs without P3-12 (at 8b6113b6; after the P3-11 merge, on main at e6684c84), so an unchanged digest shows that the facts change no rule outcome and no
  * RNG draw (the state holds the RNG state). Every tick also reads the Render State, with P3-12/32's speed share
  * (FS-12), before the snapshot: the digests stay those of the code before it.
  */

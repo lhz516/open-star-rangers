@@ -202,7 +202,7 @@ describe('recording-capacity stop', () => {
     injection.arm('step', 3, () => { throw refusal(); });
     host.deliver(5 * TICK_MS);
     expect(log).toEqual([
-      `frame:running:${JSON.stringify({ ticks: 2, capped: false, stop: 'recording-capacity', cut: null, transitions: [], outputs: [1, 2] })}`,
+      `frame:running:${JSON.stringify({ ticks: 2, capped: false, stop: 'recording-capacity', cut: null, transitions: [], completion: null, outputs: [1, 2] })}`,
       'cancel:recording-capacity', 'frame:stopped:null', 'status:stopped',
     ]);
     expect(new Set(delivered.map((event) => event.tick))).toEqual(new Set([1, 2]));
@@ -254,7 +254,7 @@ describe('recording-capacity stop', () => {
     injection.arm('step', 2, () => { throw refusal(); });
     host.deliver(3 * TICK_MS);
     expect(log).toEqual([
-      `frame:running:${JSON.stringify({ ticks: 1, capped: false, stop: 'recording-capacity', cut: null, transitions: [], outputs: [1] })}`,
+      `frame:running:${JSON.stringify({ ticks: 1, capped: false, stop: 'recording-capacity', cut: null, transitions: [], completion: null, outputs: [1] })}`,
       'cancel:recording-capacity', 'frame:stopped:null', 'status:faulted',
     ]);
     expect(errors[0].failures).toEqual([{ phase: 'consumer', cause }]);

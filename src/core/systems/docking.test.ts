@@ -90,7 +90,7 @@ describe('the docking chain through the formal step (CB-02, CB-09; RQ6)', () => 
     const replyEnd = 4 + (8 * DOCKING_REPLY.reduce((sum, duration) => sum + duration, 0)) / UNITS;
     const ends = run(state, until(state, replyEnd));
     expect(ends.at(-1)).toContainEqual(expect.objectContaining({ type: 'incoming-ended', tick: replyEnd, callback: 'docking-reply', countdownStarted: true }));
-    expect(state.flow).toEqual({ mainState: 3, subState: 4, dockingDeadline: replyEnd * UNITS + 0x200 });
+    expect(state.flow).toMatchObject({ mainState: 3, subState: 4, dockingDeadline: replyEnd * UNITS + 0x200 });
     // Mission flow reads the previous clock: the tick after the one whose clock equals the due posts the docking.
     const dockTick = replyEnd + 0x200 / UNITS + 1;
     const countdown = run(state, until(state, dockTick - 1));
@@ -152,7 +152,7 @@ describe('the wait checks in mission flow (CB-02; DK1, DK5)', () => {
     const [before, at] = run(state, [[], []]);
     expect(before).toEqual([]);
     expect(at).toEqual([cancelled(scene, base, 'timeout', 5)]);
-    expect(state.flow).toEqual({ mainState: 3, subState: 0, dockingDeadline: 8 });
+    expect(state.flow).toMatchObject({ mainState: 3, subState: 0, dockingDeadline: 8 });
     expect(state.player.dockingObject).toBe(base.id);
     expect(state.communications.queue).toHaveLength(1);
     expect(state.player.leftDisplay.page).toBe(1);

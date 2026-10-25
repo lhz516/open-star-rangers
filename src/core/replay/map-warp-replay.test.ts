@@ -65,7 +65,7 @@ describe('map and Warp replay (P3-09 AC-11; MW-14)', { timeout: 30_000 }, () => 
   // P3-12/10 (docs/plan/p3/02/spec.md, FS-08): the presentation facts change no rule outcome or draw; the digest is the
   // one this run had before them (replay.test-support.ts).
   it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
-    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('8231182cf57bf5fc');
+    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('bff121f99eb315d4');
   });
 
   // P3-12/32 (docs/plan/p3/02/spec.md, FS-12): the speed share at every tick's end, against the snapshot's player speed
@@ -89,8 +89,9 @@ describe('map and Warp replay (P3-09 AC-11; MW-14)', { timeout: 30_000 }, () => 
     }
     expect(RECORDING.record).toMatchObject({ version: GAME_REPLAY_VERSION, rulesVersion: RULES_VERSION });
     // Merged with P3-10, whose own increment also took 5 (CB-16): the merge took 6, and P3-08/12 7 (CR-25); P3-08's
-    // drop-transponder took the replay format to 3; P3-12/10's presentation facts took the rules to 8 (FS-08).
-    expect([GAME_REPLAY_VERSION, RULES_VERSION]).toEqual([3, 8]);
+    // drop-transponder took the replay format to 3; P3-11/08 (ME-16) and P3-12/10 (FS-08) each took the rules to 8 on
+    // their branches, and their merge to 9, leaving the replay format.
+    expect([GAME_REPLAY_VERSION, RULES_VERSION]).toEqual([3, 9]);
   });
 
   it('reproduces every event and the snapshot at every checkpoint after a JSON round trip', () => {
@@ -158,6 +159,8 @@ describe('map and Warp replay (P3-09 AC-11; MW-14)', { timeout: 30_000 }, () => 
     it.each([
       ['an unknown version', (record: Mutable) => { record.version = GAME_REPLAY_VERSION + 1; }, 'record.version'],
       ['the rules version before P3-09', (record: Mutable) => { record.rulesVersion = 4; }, 'record.rulesVersion'],
+      // P3-11/08's increment (ME-16): a record of the rules before its events replays no tick.
+      ['the rules version before P3-11', (record: Mutable) => { record.rulesVersion = 7; }, 'record.rulesVersion'],
       ['a later rules version', (record: Mutable) => { record.rulesVersion = RULES_VERSION + 1; }, 'record.rulesVersion'],
       // P3-12/10's increment (FS-08): records of the rules before it are not migrated.
       ['the rules version before P3-12/10', (record: Mutable) => { record.rulesVersion = 7; }, 'record.rulesVersion'],

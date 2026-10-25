@@ -210,9 +210,9 @@ function rerun(inputs: readonly TickInput[], read: Reader, group: number, hold: 
 describe('communications replay (P3-10 AC-12, CB-16)', { timeout: 60_000 }, () => {
   // P3-12/10 (docs/plan/p3/02/spec.md, FS-08): the presentation facts change no rule outcome or draw; the digest is the
   // one this run had before them (replay.test-support.ts). P3-12/32 raised the player's +0xB8 to 1 (FS-12); the digest
-  // of that input is the one the code before FS-12 (3be64fe4) gives.
+  // of that input is the one the code before FS-12 gives (main at e6684c84, with P3-11's rules).
   it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
-    expect(gameplayDigest(DOCKING_INPUT, RECORDING.record.ticks)).toBe('8d83ea3256bebe8f');
+    expect(gameplayDigest(DOCKING_INPUT, RECORDING.record.ticks)).toBe('494bb9108dcb57e1');
   });
 
   it('runs the docking chain twice in one world: wait, reply, countdown, docking, base keys and launch', () => {

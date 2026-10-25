@@ -14,8 +14,8 @@ import { GraphicsDeviceError } from '../../render/scene/render-surface.ts';
 
 /** What this build is, wherever the mission is offered or shown. */
 export const MISSION_SKELETON =
-  'This is the formal runtime skeleton, not yet a playable slice: Core runs the mission\'s world and the flight view is '
-  + 'in progress, but there is no cockpit, HUD, implemented mission rules or audio yet.';
+  'This is the formal runtime skeleton, not yet a playable slice: Core runs the mission\'s world and the rules implemented '
+  + 'so far, the mission result included, and the flight view is in progress, but there is no cockpit, HUD or audio yet.';
 
 const CATEGORY: Readonly<Record<MissionFailure['kind'], string>> = Object.freeze({ 'core-input': 'Core input', content: 'content contract' });
 
@@ -88,7 +88,7 @@ export function startFailureText(failure: MissionStartFailure): { readonly text:
 }
 
 const PHASE: Readonly<Record<GameSessionStatus['phase'], string>> = Object.freeze({
-  idle: 'No run', transition: 'Departure hold', running: 'Running', paused: 'Paused', stopped: 'Stopped', faulted: 'Faulted', disposed: 'Closed',
+  idle: 'No run', transition: 'Departure hold', running: 'Running', paused: 'Paused', stopped: 'Stopped', completed: 'Completed', faulted: 'Faulted', disposed: 'Closed',
 });
 
 /** The status bar's phase text. */

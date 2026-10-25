@@ -9,9 +9,13 @@
  * It is not the first internal divergence: with an interval above 1, a state difference that is gone by the next
  * checkpoint is never observed, and an input change without an observable effect is no difference.
  */
+import { readAssetId, type AssetId } from '../../content/asset-id.ts';
+import { ContentContractError } from '../../content/contract-validation.ts';
+import { LOGIC_LIMITS } from '../../content/logic/logic-content.ts';
 import {
   COMMAND_OUTCOMES,
   COMMAND_RESULT_REASONS,
+  type AllClearEvent,
   type Attacker,
   type BaseConfirmedEvent,
   type BaseNavigatedEvent,
@@ -25,23 +29,31 @@ import {
   type EntitySource,
   EXPLOSION_CONSTRUCTION_STAGES,
   type ExplosionCreatedEvent,
+  type FlightMessageEvent,
   type GroupMembership,
   type HitEvent,
   type IncomingEndedEvent,
   type IncomingStartedEvent,
   type MapToggledEvent,
+  type MissionCompletedEvent,
   type ObjectInstantiatedEvent,
   type ObjectLeftWorldEvent,
   PIPELINE_STAGE_NAMES,
   type PipelineStageName,
+  type PlayerLossStartedEvent,
+  type PlayerRescuedEvent,
   type RadioFlushedEvent,
   type RadioQueuedEvent,
   type RadioTakenEvent,
+  type ResultLatchedEvent,
+  type SettlementDeferredEvent,
+  type SettlementStartedEvent,
   type ShotTrigger,
   type SpeedAssistReleasedEvent,
   type SpeedAssistToggledEvent,
   type SpeedMatchedEvent,
   type TargetChangedEvent,
+  type TeardownStartedEvent,
   type TransitionEvent,
   type TransponderDeployedEvent,
   type Vec3,
@@ -55,6 +67,8 @@ import {
   isWingmanCommandReply,
   type WingmanCommandConsumedEvent,
   WINGMAN_COMMAND_OUTCOMES,
+  type WingmanLossTimerExpiredEvent,
+  type WingmanLossTimerStartedEvent,
 } from '../contracts/domain-events.ts';
 import { COMM_MESSAGES_LIMITS } from '../../content/rule-data/comm-messages.ts';
 import { CORE_LIMITS, fitsLimit } from '../contracts/limits.ts';
@@ -71,10 +85,21 @@ import {
 } from '../contracts/validation.ts';
 import { CoreInputError } from '../errors.ts';
 import { isFiniteFloat32 } from '../rules/float32.ts';
+import { PLAYER_KIND_BIT, WINGMAN_KIND_BIT } from '../rules/spawn-schedule.ts';
+import { ENEMY_KINDS } from '../rules/targeting.ts';
 import { EXPLOSION_VARIANTS, type Level, type Matrix3, type NameReference } from '../world/entity-table.ts';
 import { MAP_SIDE_LIMIT, type MapPixel } from '../world/map-rule-data.ts';
 import type { LeftPage } from '../world/player-state.ts';
-import type { MessageIdentity, MissionSubState, SpeakerSnapshot } from '../world/world-state.ts';
+import type {
+  EndingGap,
+  MessageIdentity,
+  MissionResult,
+  MissionSubState,
+  PlayerLoss,
+  ResultReason,
+  SpeakerSnapshot,
+  SummaryReference,
+} from '../world/world-state.ts';
 import { readHash, type ReplayCheckpoint, type ReplayResult } from './recording.ts';
 
 /** P3-09's events (docs/plan/p3/02/spec.md, MW-05). */
@@ -88,6 +113,10 @@ type CommunicationsEvent =
 /** P3-08's events (docs/plan/p3/02/spec.md, CR-22). */
 type AiEvent = WingmanCommandConsumedEvent | TransponderDeployedEvent;
 
+/** P3-11's events (docs/plan/p3/02/spec.md, ME-13). */
+type MissionEvent =
+  | AllClearEvent | SettlementStartedEvent | SettlementDeferredEvent | FlightMessageEvent | PlayerLossStartedEvent | PlayerRescuedEvent
+  | ResultLatchedEvent | TeardownStartedEvent | MissionCompletedEvent | WingmanLossTimerStartedEvent | WingmanLossTimerExpiredEvent;
 /** P3-12's presentation facts (docs/plan/p3/02/spec.md, FS-03). */
 type PresentationEvent = ExplosionCreatedEvent | ViewSwitchedEvent | WarpWallContactEvent;
 
@@ -98,6 +127,7 @@ type CombatEvent = Exclude<
   | MapWarpEvent
   | CommunicationsEvent
   | AiEvent
+  | MissionEvent
   | PresentationEvent
 >;
 
@@ -106,8 +136,9 @@ export type ReplayComparison =
   | { readonly match: true }
   | { readonly match: false; readonly tick: number; readonly kind: 'events' | 'checkpoint' | 'length' };
 
-// Keyed by every event type, and `speed-matched` by every origin, so a new DomainEvent variant does not compile until
-// it is read here. `target-changed` and `departed` have the same fields for both origins.
+// Keyed by every event type, `speed-matched` by every origin and `player-loss-started` by every loss, so a new
+// DomainEvent variant does not compile until it is read here. `target-changed` and `departed` have the same fields for
+// both origins.
 const EVENT_FIELDS = {
   'command-result': ['type', 'tick', 'commandIndex', 'commandType', 'outcome', 'reason'],
   'object-instantiated': ['type', 'tick', 'entityId', 'kindBit', 'source', 'position'],
@@ -151,17 +182,36 @@ const EVENT_FIELDS = {
   'base-confirmed': ['type', 'tick', 'row', 'record', 'moved', 'commandIndex'],
   'wingman-command-consumed': ['type', 'tick', 'wingmanEntityId', 'code', 'issuedTick', 'path', 'outcome', 'replyLine'],
   'transponder-deployed': ['type', 'tick', 'entityId', 'creatorEntityId', 'position', 'orientation'],
+  'all-clear': ['type', 'tick', 'entityId', 'kindBit', 'eventClass'],
+  'settlement-started': ['type', 'tick', 'outcome', 'summary', 'summarySelector', 'dueClock'],
+  'settlement-deferred': ['type', 'tick', 'dueClock'],
+  'flight-message': ['type', 'tick', 'message'],
+  'player-rescued': ['type', 'tick', 'playerEntityId', 'loss', 'rescues', 'baseEntityId', 'candidates', 'position', 'orientation'],
+  'result-latched': ['type', 'tick', 'result'],
+  'teardown-started': ['type', 'tick', 'entities'],
+  'mission-completed': ['type', 'tick', 'outcome'],
+  'wingman-loss-timer-started': ['type', 'tick', 'wingmanEntityId', 'dueClock'],
+  'wingman-loss-timer-expired': ['type', 'tick', 'queued'],
   'explosion-created': ['type', 'tick', 'entityId', 'sourceEntityId', 'sourceKindBit', 'variant', 'stage', 'position', 'velocity'],
   'view-switched': ['type', 'tick', 'fromViewMode', 'fromSubMode', 'viewMode', 'subMode', 'stage', 'player'],
   'warp-wall-contact': ['type', 'tick', 'serial'],
-} as const satisfies { readonly [Type in Exclude<DomainEvent['type'], 'speed-matched'>]: readonly (keyof Extract<DomainEvent, { type: Type }>)[] };
+} as const satisfies {
+  readonly [Type in Exclude<DomainEvent['type'], 'speed-matched' | 'player-loss-started'>]: readonly (keyof Extract<DomainEvent, { type: Type }>)[];
+};
 const SPEED_MATCHED_FIELDS = {
   command: ['type', 'tick', 'targetEntityId', 'origin', 'commandIndex'],
   assist: ['type', 'tick', 'targetEntityId', 'origin', 'speedDifferenceExceeded'],
 } as const satisfies { readonly [Origin in SpeedMatchedEvent['origin']]: readonly (keyof Extract<SpeedMatchedEvent, { origin: Origin }>)[] };
-const EVENT_TYPES = [...Object.keys(EVENT_FIELDS), 'speed-matched'] as DomainEvent['type'][];
+const PLAYER_LOSS_FIELDS = {
+  destroyed: ['type', 'tick', 'playerEntityId', 'loss', 'previousSubState', 'previousViewMode', 'viewSwitched'],
+  energy: ['type', 'tick', 'playerEntityId', 'loss', 'previousSubState', 'deadlineClock'],
+} as const satisfies { readonly [Loss in PlayerLoss]: readonly (keyof Extract<PlayerLossStartedEvent, { loss: Loss }>)[] };
+const EVENT_TYPES = [...Object.keys(EVENT_FIELDS), 'speed-matched', 'player-loss-started'] as DomainEvent['type'][];
 const SPEED_MATCH_ORIGINS = Object.keys(SPEED_MATCHED_FIELDS) as SpeedMatchedEvent['origin'][];
-const MAX_EVENT_FIELDS = Math.max(...[...Object.values(EVENT_FIELDS), ...Object.values(SPEED_MATCHED_FIELDS)].map((fields) => fields.length));
+const PLAYER_LOSSES = Object.keys(PLAYER_LOSS_FIELDS) as PlayerLoss[];
+const MAX_EVENT_FIELDS = Math.max(
+  ...[...Object.values(EVENT_FIELDS), ...Object.values(SPEED_MATCHED_FIELDS), ...Object.values(PLAYER_LOSS_FIELDS)].map((fields) => fields.length),
+);
 
 const INDEX = integerIn(0, Number.MAX_SAFE_INTEGER);
 const ENTITY_ID = integerIn(1, Number.MAX_SAFE_INTEGER);
@@ -198,8 +248,31 @@ const MESSAGE_TABLES: readonly number[] = [20011, 20019, 20985, 20983];
 const FACE_INDEX = integerIn(0, COMM_MESSAGES_LIMITS.faces - 1);
 const FACE_MESSAGE_INDEX = integerIn(0, COMM_MESSAGES_LIMITS.faceMessages - 1);
 const DIRECT_INDEX = integerIn(0, COMM_MESSAGES_LIMITS.directMessages - 1);
-const SUB_STATES: readonly number[] = [0, 3, 4, 5];
+/**
+ * The sub-states a docking request or a destruction entry can leave: every one but 2, in which the player is destroyed,
+ * so unavailable for a command, and the destruction entry returns (ME-09).
+ */
+const SUB_STATES: readonly number[] = [0, 1, 3, 4, 5];
 const RADIO_CALLBACKS = ['none', 'docking-reply', 'music-step', 'music-reset'] as const;
+const RADIO_FLUSH_CAUSES = ['docking-cancel', 'player-destroyed', 'beacon-expired', 'completion-message', 'result-due'] as const;
+// P3-11's (ME-02, ME-05, ME-13).
+const OUTCOMES = ['success', 'failure'] as const;
+const REASON_TYPES = ['all-clear', 'third-loss', 'settlement-failed'] as const;
+const ENDING_GAP_TYPES = ['G-02/7', 'G-02/8', 'G-02/9'] as const;
+const RETURN_VARIANTS = ['solo', 'wingman'] as const;
+const FLIGHT_MESSAGES = ['missionComplete', 'beacon'] as const;
+/** The destruction view (ME-09). */
+const DESTRUCTION_VIEW = 0x11;
+/** The destruction camera's sub-mode of view 0x11 (ME-09). */
+const DESTRUCTION_SUB_MODE = 8;
+/** An i8 summary selector: −1 without a matched range, otherwise one world creation admits (≤ 0 or 13–19). */
+const SUMMARY_SELECTOR: NumberRule = [(value) => Number.isInteger(value) && ((value >= -0x80 && value <= 0) || (value >= 13 && value <= 19)), 'must be an i8 of at most 0 or within 13–19'];
+const CINC_ROW = integerIn(13, 19);
+const TRIGGER_INDEX = integerIn(0, LOGIC_LIMITS.eventTriggers - 1);
+const RANGE_INDEX = integerIn(0, LOGIC_LIMITS.eventRanges - 1);
+const RESCUES = integerIn(0, 2);
+/** A result has one ending gap on a failure and one or two on a success (ME-05). */
+const ENDING_GAPS = 2;
 
 function readBoolean(value: unknown, path: string): boolean {
   if (typeof value !== 'boolean') throw new CoreInputError(path, 'must be a boolean');
@@ -655,6 +728,9 @@ function readDeparted(event: Record<string, unknown>, path: string, tick: number
   return { ...fields, origin, commandIndex: null };
 }
 
+const readSubState = (value: unknown, path: string): MissionSubState =>
+  readNumber(value, path, [(item) => SUB_STATES.includes(item), `must be one of ${SUB_STATES.join(', ')}`]) as MissionSubState;
+
 const readNullableRow = (value: unknown, path: string): number | null => (value === null ? null : readNumber(value, path, SERVICE_ROW));
 
 function readBaseConfirmed(event: Record<string, unknown>, path: string, tick: number): BaseConfirmedEvent {
@@ -721,7 +797,7 @@ function readCommunicationsEvent(event: Record<string, unknown>, path: string, t
       return {
         type,
         tick,
-        cause: readChoice(event.cause, at('cause'), ['docking-cancel']),
+        cause: readChoice(event.cause, at('cause'), RADIO_FLUSH_CAUSES),
         removed: readNumber(event.removed, at('removed'), integerIn(0, CORE_LIMITS.radioQueueItems)),
         interrupted: readChoice(event.interrupted, at('interrupted'), ['none', 'loading', 'playing']),
       };
@@ -731,9 +807,7 @@ function readCommunicationsEvent(event: Record<string, unknown>, path: string, t
         tick,
         playerEntityId: readEntityId(event.playerEntityId, at('playerEntityId')),
         dockingObject: readEntityId(event.dockingObject, at('dockingObject')),
-        previousSubState: readNumber(event.previousSubState, at('previousSubState'), [
-          (item) => SUB_STATES.includes(item), `must be one of ${SUB_STATES.join(', ')}`,
-        ]) as MissionSubState,
+        previousSubState: readSubState(event.previousSubState, at('previousSubState')),
         deadlineClock: readNumber(event.deadlineClock, at('deadlineClock'), INDEX),
         commandIndex: readNumber(event.commandIndex, at('commandIndex'), COMMAND_INDEX),
       };
@@ -757,7 +831,7 @@ function readCommunicationsEvent(event: Record<string, unknown>, path: string, t
     case 'departed':
       return readDeparted(event, path, tick);
     case 'transition':
-      return { type, tick, gap: readChoice(event.gap, at('gap'), ['G-02/3', 'G-02/4']) };
+      return { type, tick, gap: readChoice(event.gap, at('gap'), ['G-02/3', 'G-02/4', 'G-02/5', 'G-02/6']) };
     case 'base-navigated':
       return {
         type,
@@ -803,6 +877,164 @@ function readAiEvent(event: Record<string, unknown>, path: string, tick: number,
         position: readVector(event.position, at('position'), F32),
         orientation: readMatrix(event.orientation, at('orientation'), F32),
       };
+  }
+}
+
+/** A mission Asset ID; the content reader's error becomes a CoreInputError at the same path. */
+function readMissionId(value: unknown, path: string): AssetId {
+  let id: AssetId;
+  try {
+    id = readAssetId(value, path);
+  } catch (error) {
+    if (error instanceof ContentContractError) throw new CoreInputError(path, 'must be an Asset ID');
+    throw error;
+  }
+  if (!id.startsWith('mission/')) throw new CoreInputError(path, 'must be a mission Asset ID');
+  return id;
+}
+
+function readSummary(value: unknown, path: string): SummaryReference | null {
+  if (value === null) return null;
+  const { mission, trigger, range } = readExactRecord(value, path, ['mission', 'trigger', 'range']);
+  return {
+    mission: readMissionId(mission, `${path}.mission`),
+    trigger: readNumber(trigger, `${path}.trigger`, TRIGGER_INDEX),
+    range: readNumber(range, `${path}.range`, RANGE_INDEX),
+  };
+}
+
+function readReason(value: unknown, path: string): ResultReason {
+  const reason = readDataRecord(value, path, 2);
+  const type = readChoice(reason.type, `${path}.type`, REASON_TYPES);
+  if (type !== 'third-loss') {
+    requireExactFields(reason, path, ['type']);
+    return { type };
+  }
+  requireExactFields(reason, path, ['type', 'loss']);
+  return { type, loss: readChoice(reason.loss, `${path}.loss`, PLAYER_LOSSES) };
+}
+
+function readEndingGap(value: unknown, path: string): EndingGap {
+  const gap = readDataRecord(value, path, 2);
+  const type = readChoice(gap.gap, `${path}.gap`, ENDING_GAP_TYPES);
+  if (type === 'G-02/9') {
+    requireExactFields(gap, path, ['gap', 'row']);
+    return { gap: type, row: readNumber(gap.row, `${path}.row`, CINC_ROW) };
+  }
+  requireExactFields(gap, path, ['gap', 'variant']);
+  return type === 'G-02/7'
+    ? { gap: type, variant: readChoice(gap.variant, `${path}.variant`, PLAYER_LOSSES) }
+    : { gap: type, variant: readChoice(gap.variant, `${path}.variant`, RETURN_VARIANTS) };
+}
+
+/**
+ * A latched result (ME-05) with its invariants: the reason agrees with the outcome; a success has its summary (or
+ * none), `G-02/8` and, with a summary, possibly `G-02/9`; a failure has no summary and exactly the `G-02/7` of its
+ * loss, `destroyed` for a failed settlement; a third loss used both rescues; latched in the event's tick.
+ */
+function readMissionResult(value: unknown, path: string, tick: number): MissionResult {
+  const at = (field: string): string => `${path}.${field}`;
+  const result = readExactRecord(value, path, ['outcome', 'reason', 'summary', 'rescuesUsed', 'endingGaps', 'playerKills', 'latchTick']);
+  const outcome = readChoice(result.outcome, at('outcome'), OUTCOMES);
+  const reason = readReason(result.reason, at('reason'));
+  if ((reason.type === 'all-clear') !== (outcome === 'success')) throw new CoreInputError(at('reason.type'), 'must be all-clear exactly for a success');
+  const summary = readSummary(result.summary, at('summary'));
+  if (outcome === 'failure' && summary !== null) throw new CoreInputError(at('summary'), 'must be null for a failure');
+  const rescuesUsed = readNumber(result.rescuesUsed, at('rescuesUsed'), RESCUES) as MissionResult['rescuesUsed'];
+  if (reason.type === 'third-loss' && rescuesUsed !== 2) throw new CoreInputError(at('rescuesUsed'), 'must be 2 for a third loss');
+  const endingGaps = readList(result.endingGaps, at('endingGaps'), ENDING_GAPS, readEndingGap);
+  const [first, second] = endingGaps;
+  if (outcome === 'success') {
+    if (first?.gap !== 'G-02/8') throw new CoreInputError(at('endingGaps'), 'must start with G-02/8 for a success');
+    if (second !== undefined && (second.gap !== 'G-02/9' || summary === null)) {
+      throw new CoreInputError(at('endingGaps[1]'), 'must be a G-02/9 with a summary');
+    }
+  } else {
+    const variant = reason.type === 'third-loss' ? reason.loss : 'destroyed';
+    if (endingGaps.length !== 1 || first.gap !== 'G-02/7' || first.variant !== variant) {
+      throw new CoreInputError(at('endingGaps'), `must be the one G-02/7 of variant ${variant}`);
+    }
+  }
+  const playerKills = readNumber(result.playerKills, at('playerKills'), integerIn(0, 0x7fffffff));
+  const latchTick = readNumber(result.latchTick, at('latchTick'), integerIn(tick, tick));
+  return { outcome, reason, summary, rescuesUsed, endingGaps, playerKills, latchTick };
+}
+
+function readSettlementStarted(event: Record<string, unknown>, path: string, tick: number): SettlementStartedEvent {
+  const outcome = readChoice(event.outcome, `${path}.outcome`, OUTCOMES);
+  const summary = readSummary(event.summary, `${path}.summary`);
+  const summarySelector = readNumber(event.summarySelector, `${path}.summarySelector`, SUMMARY_SELECTOR);
+  if (outcome === 'failure' && summary !== null) throw new CoreInputError(`${path}.summary`, 'must be null for a failure');
+  if (summary === null && summarySelector !== -1) throw new CoreInputError(`${path}.summarySelector`, 'must be -1 without a summary');
+  return { type: 'settlement-started', tick, outcome, summary, summarySelector, dueClock: readNumber(event.dueClock, `${path}.dueClock`, INDEX) };
+}
+
+function readPlayerLossStarted(event: Record<string, unknown>, path: string, tick: number, loss: PlayerLoss): PlayerLossStartedEvent {
+  const at = (field: string): string => `${path}.${field}`;
+  const playerEntityId = readEntityId(event.playerEntityId, at('playerEntityId'));
+  if (loss === 'energy') {
+    return {
+      type: 'player-loss-started',
+      tick,
+      playerEntityId,
+      loss,
+      previousSubState: readNumber(event.previousSubState, at('previousSubState'), integerIn(0, 0)) as 0,
+      deadlineClock: readNumber(event.deadlineClock, at('deadlineClock'), INDEX),
+    };
+  }
+  const previousViewMode = readNumber(event.previousViewMode, at('previousViewMode'), VIEW_MODE);
+  const viewSwitched = readBoolean(event.viewSwitched, at('viewSwitched'));
+  // The switch is skipped only in the destruction view 0x11 with sub-mode 8 (ME-09 step 3).
+  if (!viewSwitched && previousViewMode !== DESTRUCTION_VIEW) throw new CoreInputError(at('viewSwitched'), 'must be true outside view mode 0x11');
+  return { type: 'player-loss-started', tick, playerEntityId, loss, previousSubState: readSubState(event.previousSubState, at('previousSubState')), previousViewMode, viewSwitched };
+}
+
+function readPlayerRescued(event: Record<string, unknown>, path: string, tick: number): PlayerRescuedEvent {
+  const at = (field: string): string => `${path}.${field}`;
+  const baseEntityId = readNullableEntityId(event.baseEntityId, at('baseEntityId'));
+  const candidates = readNumber(event.candidates, at('candidates'), integerIn(0, CORE_LIMITS.entities));
+  if ((baseEntityId === null) !== (candidates === 0)) throw new CoreInputError(at('baseEntityId'), 'must be null exactly without candidates');
+  return {
+    type: 'player-rescued',
+    tick,
+    playerEntityId: readEntityId(event.playerEntityId, at('playerEntityId')),
+    loss: readChoice(event.loss, at('loss'), PLAYER_LOSSES),
+    rescues: readNumber(event.rescues, at('rescues'), integerIn(1, 2)) as 1 | 2,
+    baseEntityId,
+    candidates,
+    position: readVector(event.position, at('position')),
+    orientation: readMatrix(event.orientation, at('orientation')),
+  };
+}
+
+/** Reads the fields of a P3-11 event (docs/plan/p3/02/spec.md, ME-13) after its type and field list. */
+function readMissionEvent(event: Record<string, unknown>, path: string, tick: number, type: Exclude<MissionEvent['type'], 'player-loss-started'>): MissionEvent {
+  const at = (field: string): string => `${path}.${field}`;
+  switch (type) {
+    case 'all-clear': {
+      const kindBit = readNumber(event.kindBit, at('kindBit'), [
+        (bit) => Number.isInteger(bit) && bit >= 0 && bit <= 31 && ((ENEMY_KINDS >>> bit) & 1) === 1, 'must be a kind of the enemy entry set 0x93780',
+      ]);
+      return { type, tick, entityId: readEntityId(event.entityId, at('entityId')), kindBit, eventClass: readNumber(event.eventClass, at('eventClass'), integerIn(0, 2)) as 0 | 1 | 2 };
+    }
+    case 'settlement-started':
+      return readSettlementStarted(event, path, tick);
+    case 'settlement-deferred':
+      return { type, tick, dueClock: readNumber(event.dueClock, at('dueClock'), INDEX) };
+    case 'flight-message':
+      return { type, tick, message: readChoice(event.message, at('message'), FLIGHT_MESSAGES) };
+    case 'player-rescued':
+      return readPlayerRescued(event, path, tick);
+    case 'result-latched':
+      return { type, tick, result: readMissionResult(event.result, at('result'), tick) };
+    case 'teardown-started':
+      return { type, tick, entities: readNumber(event.entities, at('entities'), integerIn(0, CORE_LIMITS.entities)) };
+    case 'mission-completed':
+      return { type, tick, outcome: readChoice(event.outcome, at('outcome'), OUTCOMES) };
+    case 'wingman-loss-timer-started':
+      return { type, tick, wingmanEntityId: readEntityId(event.wingmanEntityId, at('wingmanEntityId')), dueClock: readNumber(event.dueClock, at('dueClock'), INDEX) };
+    case 'wingman-loss-timer-expired':
+      return { type, tick, queued: readBoolean(event.queued, at('queued')) };
   }
 }
 
@@ -858,6 +1090,11 @@ function readEvent(value: unknown, path: string, tickRule: NumberRule): DomainEv
     requireExactFields(event, path, SPEED_MATCHED_FIELDS[origin]);
     return readSpeedMatched(event, path, readNumber(event.tick, `${path}.tick`, tickRule), origin);
   }
+  if (type === 'player-loss-started') {
+    const loss = readChoice(event.loss, `${path}.loss`, PLAYER_LOSSES);
+    requireExactFields(event, path, PLAYER_LOSS_FIELDS[loss]);
+    return readPlayerLossStarted(event, path, readNumber(event.tick, `${path}.tick`, tickRule), loss);
+  }
   requireExactFields(event, path, EVENT_FIELDS[type]);
   const tick = readNumber(event.tick, `${path}.tick`, tickRule);
   switch (type) {
@@ -893,6 +1130,17 @@ function readEvent(value: unknown, path: string, tickRule: NumberRule): DomainEv
     case 'wingman-command-consumed':
     case 'transponder-deployed':
       return readAiEvent(event, path, tick, type);
+    case 'all-clear':
+    case 'settlement-started':
+    case 'settlement-deferred':
+    case 'flight-message':
+    case 'player-rescued':
+    case 'result-latched':
+    case 'teardown-started':
+    case 'mission-completed':
+    case 'wingman-loss-timer-started':
+    case 'wingman-loss-timer-expired':
+      return readMissionEvent(event, path, tick, type);
     case 'explosion-created':
     case 'view-switched':
     case 'warp-wall-contact':
@@ -911,16 +1159,21 @@ function readEvent(value: unknown, path: string, tickRule: NumberRule): DomainEv
  * fragment's expiry, a source's release, P3-09's map toggle, destination and Warp start, a delivery, a docking, a
  * launch, a base key and a transponder's deployment in request handling; an energy
  * depletion in the energy stage; a world exit in the parked update; a Warp's completion in its stage; the right
- * display's clearing at the end of the frame, and last the incoming message's presentation sub-step. `hit` and
- * `object-destroyed` happen from the object updates on, in several stages; `object-instantiated`, `radio-queued` and a
+ * display's clearing at the end of the frame, and last the incoming message's presentation sub-step. P3-11's (ME-13):
+ * the settlement, the completion message, the wingman loss message, the beacon's expiry and the result's due in the
+ * mission flow, the escape pod's rescue or third loss in request handling, the beacon in the energy stage, and the
+ * teardown and its completion in the teardown stage. P3-12's (FS-03) `explosion-created` and `view-switched` report
+ * their pipeline stage (STAGE_OF) and `warp-wall-contact` comes at the frame end. `hit`, `object-destroyed` and P3-11's
+ * destruction entries happen from the object updates on, in several stages; `object-instantiated`, `radio-queued` and a
  * selection or page change without a command are not ordered against the stages.
  */
 const STAGE = Object.freeze({
-  missionFlow: 0, assist: 1, commands: 2, objects: 3, reply: 4, requests: 5, energy: 6, parked: 7, warpCompletion: 8, frameEnd: 9, presentation: 10,
+  missionFlow: 0, assist: 1, commands: 2, objects: 3, reply: 4, requests: 5, energy: 6, parked: 7, warpCompletion: 8, teardown: 9, frameEnd: 10,
+  presentation: 11,
 });
 
-/** What TickOrder counts: P3-10's event types, the two places a docking is cancelled, and P3-12's wall contact. */
-type CountedEvent = CommunicationsEvent['type'] | 'gate' | 'flow-cancellation' | 'warp-wall-contact';
+/** What TickOrder counts: P3-10's and P3-11's event types, the two places a docking is cancelled, and P3-12's wall contact. */
+type CountedEvent = CommunicationsEvent['type'] | MissionEvent['type'] | 'gate' | 'flow-cancellation' | 'warp-wall-contact';
 
 /**
  * The STAGE a P3-12 event reports by its pipeline stage (FS-03): the order checks of the stages it falls between. The
@@ -942,17 +1195,18 @@ const STAGE_OF: { readonly [Stage in PipelineStageName]: number } = Object.freez
   'parked-update': STAGE.parked,
   'warp-completion': STAGE.warpCompletion,
   'base-interior': STAGE.warpCompletion,
-  'mission-teardown': STAGE.warpCompletion,
-  'area-check': STAGE.warpCompletion,
+  'mission-teardown': STAGE.teardown,
+  'area-check': STAGE.teardown,
   'frame-end': STAGE.frameEnd,
   commit: STAGE.presentation,
 });
 
-/** A docking or launch whose `transition` must come next. */
+/** A docking, launch or rescue whose `transition` must come next. */
 interface PendingTransition {
-  readonly gap: 'G-02/3' | 'G-02/4';
+  readonly gap: TransitionEvent['gap'];
   readonly path: string;
 }
+
 
 /**
  * The order of one tick's events, reset for each tick: the stages never go back; command results numbered 0, 1, … in
@@ -969,11 +1223,22 @@ interface PendingTransition {
  * message that starts and ends in one tick has frames of no time; the invalid-object cancellation right after a flush,
  * of which there are at most two; at most one cancellation in the mission flow and one at the docking gate. P3-08's
  * (CR-22): at most one consumed command per wingman, and no more transponder deployments than command results before.
+ * P3-11's (ME-11, ME-13): at most one of each of its events but two `player-loss-started`; `all-clear` right after the
+ * destruction or world exit of its object; the player's destruction, its page change and flush right before its
+ * `player-loss-started`, the beacon right before its, the completion message right after its flush, a queued wingman
+ * loss message right before its expiry, a wingman's timer right after the wingman's destruction; each
+ * `player-rescued` followed at once by its `transition` (G-02/5 or G-02/6); once a run, a result latched right after
+ * its cause (#latch) and followed by `teardown-started` in its tick, and `mission-completed` with the latched outcome
+ * in the next tick, last.
  * P3-12's (FS-03): `explosion-created` and `view-switched` in the order of the stage they report, and at most one
  * `warp-wall-contact`, at the frame end.
  */
 class TickOrder {
   #previous: DomainEvent | null = null;
+  /** The event before #previous, kept for the next read. */
+  #prior: DomainEvent | null = null;
+  /** For the event being read, the one before its previous: the destruction entry's flush when its switch sits between. */
+  #beforePrevious: DomainEvent | null = null;
   #stage: number = STAGE.missionFlow;
   #commands = 0;
   #assisted = false;
@@ -981,6 +1246,15 @@ class TickOrder {
   #completed = false;
   #pendingTransition: PendingTransition | null = null;
   #started: IncomingStartedEvent | null = null;
+  #missionCompleted = false;
+  /** The player destroyed by the latest `object-destroyed`, while only its page change and flush follow it. */
+  #playerDestruction: number | null = null;
+  // The run's latch, teardown and completion (ME-11), kept across ticks.
+  #latched: MissionResult['outcome'] | null = null;
+  #latchPath: string | null = null;
+  #teardownTick: number | null = null;
+  /** The tick of `mission-completed`, which must be the run's final tick. */
+  completedTick: number | null = null;
   readonly #extended = new Set<number>();
   readonly #requested = new Set<number>();
   readonly #detonated = new Set<number>();
@@ -994,10 +1268,14 @@ class TickOrder {
   /** Ends the tick: a docking or launch still waiting for its transition is an error. */
   finish(): void {
     if (this.#pendingTransition !== null) throw new CoreInputError(this.#pendingTransition.path, 'must be followed by its transition');
+    // The teardown starts in the latch's tick (ME-11).
+    if (this.#latchPath !== null) throw new CoreInputError(this.#latchPath, 'must be followed by teardown-started in its tick');
   }
 
   reset(): void {
     this.#previous = null;
+    this.#prior = null;
+    this.#beforePrevious = null;
     this.#stage = STAGE.missionFlow;
     this.#commands = 0;
     this.#assisted = false;
@@ -1005,6 +1283,9 @@ class TickOrder {
     this.#completed = false;
     this.#pendingTransition = null;
     this.#started = null;
+    this.#missionCompleted = false;
+    this.#playerDestruction = null;
+    this.#latchPath = null;
     this.#extended.clear();
     this.#requested.clear();
     this.#detonated.clear();
@@ -1018,11 +1299,15 @@ class TickOrder {
   /** Checks `event`, the next of the tick, and returns whether it is a command result. */
   read(event: DomainEvent, path: string): boolean {
     const previous = this.#previous;
+    this.#beforePrevious = this.#prior;
+    this.#prior = previous;
     this.#previous = event;
     const pending = this.#pendingTransition;
     if (pending !== null && (event.type !== 'transition' || event.gap !== pending.gap)) {
       throw new CoreInputError(path, `must be the ${pending.gap} transition of the event before`);
     }
+    if (this.#missionCompleted) throw new CoreInputError(path, 'must not follow mission-completed');
+    const playerDestruction = this.#trackPlayerDestruction(event);
     switch (event.type) {
       case 'command-result':
         this.#enter(STAGE.commands, path);
@@ -1118,6 +1403,19 @@ class TickOrder {
         // Each comes from an accepted drop-transponder command of the tick, so no more than its command results.
         if (++this.#deployed > this.#commands) throw new CoreInputError(path, 'must not outnumber the command results before it');
         return false;
+      case 'all-clear':
+      case 'settlement-started':
+      case 'settlement-deferred':
+      case 'flight-message':
+      case 'player-loss-started':
+      case 'player-rescued':
+      case 'result-latched':
+      case 'teardown-started':
+      case 'mission-completed':
+      case 'wingman-loss-timer-started':
+      case 'wingman-loss-timer-expired':
+        this.#readMission(event, previous, playerDestruction, path);
+        return false;
       case 'explosion-created':
       case 'view-switched':
         this.#enter(STAGE_OF[event.stage], `${path}.stage`);
@@ -1132,11 +1430,132 @@ class TickOrder {
     }
   }
 
+  /** P3-11's events (ME-13). */
+  #readMission(event: MissionEvent, previous: DomainEvent | null, playerDestruction: number | null, path: string): void {
+    // At most one of each a tick, but the destruction's and the energy's losses (ME-13).
+    this.#count(event.type, event.type === 'player-loss-started' ? 2 : 1, path);
+    switch (event.type) {
+      case 'all-clear': {
+        const source = previous?.type === 'object-destroyed' || previous?.type === 'object-left-world' ? previous : null;
+        const eventClass = source?.type === 'object-destroyed' ? source.eventClass : 2;
+        if (source === null || eventClass !== event.eventClass || source.entityId !== event.entityId || source.kindBit !== event.kindBit) {
+          throw new CoreInputError(path, 'must come right after the destruction or world exit of its object');
+        }
+        return;
+      }
+      case 'settlement-started':
+      case 'settlement-deferred':
+      case 'wingman-loss-timer-expired':
+        this.#enter(STAGE.missionFlow, path);
+        if (event.type === 'wingman-loss-timer-expired' && event.queued && previous?.type !== 'radio-queued') {
+          throw new CoreInputError(path, 'must come right after the radio-queued of its message');
+        }
+        return;
+      case 'flight-message':
+        if (event.message === 'beacon') {
+          this.#enter(STAGE.energy, path);
+          return;
+        }
+        this.#enter(STAGE.missionFlow, path);
+        if (previous?.type !== 'radio-flushed' || previous.cause !== 'completion-message') {
+          throw new CoreInputError(path, 'must come right after its completion-message flush');
+        }
+        return;
+      case 'player-loss-started': {
+        if (event.loss === 'energy') {
+          this.#enter(STAGE.energy, path);
+          if (previous?.type !== 'flight-message' || previous.message !== 'beacon') throw new CoreInputError(path, 'must come right after its beacon message');
+          return;
+        }
+        this.#reach(STAGE.objects);
+        // A switch to the destruction view emits its `view-switched` between the flush and the loss (FS-03 with ME-09):
+        // the loss then comes right after that switch, and the switch right after the flush.
+        if (event.viewSwitched) {
+          if (previous?.type !== 'view-switched' || previous.viewMode !== DESTRUCTION_VIEW || previous.subMode !== DESTRUCTION_SUB_MODE
+            || previous.fromViewMode !== event.previousViewMode) {
+            throw new CoreInputError(path, 'must come right after its switch to the destruction view 0x11/8');
+          }
+        }
+        const flush = event.viewSwitched ? this.#beforePrevious : previous;
+        if (flush?.type !== 'radio-flushed' || flush.cause !== 'player-destroyed' || playerDestruction !== event.playerEntityId) {
+          throw new CoreInputError(path, 'must come right after its player-destroyed flush, which follows the player\'s destruction');
+        }
+        return;
+      }
+      case 'player-rescued':
+        // The energy loss's rescue comes in the mission flow, the destruction's at the escape pod's expiry (ME-10).
+        this.#enter(event.loss === 'energy' ? STAGE.missionFlow : STAGE.requests, path);
+        this.#pendingTransition = { gap: event.loss === 'energy' ? 'G-02/6' : 'G-02/5', path };
+        return;
+      case 'result-latched':
+        this.#latch(event, previous, path);
+        return;
+      case 'teardown-started':
+        this.#enter(STAGE.teardown, path);
+        if (this.#latchPath === null) throw new CoreInputError(path, 'must follow result-latched in its tick');
+        this.#latchPath = null;
+        this.#teardownTick = event.tick;
+        return;
+      case 'mission-completed':
+        this.#enter(STAGE.teardown, path);
+        if (this.#teardownTick !== event.tick - 1) throw new CoreInputError(path, 'must come in the tick after teardown-started');
+        if (event.outcome !== this.#latched) throw new CoreInputError(`${path}.outcome`, 'must be the latched outcome');
+        this.#missionCompleted = true;
+        this.completedTick = event.tick;
+        return;
+      case 'wingman-loss-timer-started':
+        this.#reach(STAGE.objects);
+        if (previous?.type !== 'object-destroyed' || previous.entityId !== event.wingmanEntityId || previous.kindBit !== WINGMAN_KIND_BIT) {
+          throw new CoreInputError(path, 'must come right after the destruction of its wingman');
+        }
+        return;
+    }
+  }
+
+  /**
+   * Keeps the player destroyed by an `object-destroyed` while only the destruction entry's page change and flush follow
+   * it (ME-13), and returns the value before `event`.
+   */
+  #trackPlayerDestruction(event: DomainEvent): number | null {
+    const before = this.#playerDestruction;
+    if (event.type === 'object-destroyed') this.#playerDestruction = event.kindBit === PLAYER_KIND_BIT ? event.entityId : null;
+    else if (
+      !(event.type === 'left-page-changed' && event.commandIndex === null) && !(event.type === 'radio-flushed' && event.cause === 'player-destroyed')
+      // The destruction entry's own switch (FS-03) sits between its flush and its loss.
+      && !(event.type === 'view-switched' && event.viewMode === DESTRUCTION_VIEW && event.subMode === DESTRUCTION_SUB_MODE)
+    ) {
+      this.#playerDestruction = null;
+    }
+    return before;
+  }
+
+  /**
+   * The latch (ME-05, ME-10, ME-13), once a run: the result's due or a failed settlement after its flush in the mission
+   * flow; a third energy loss after the beacon's flush there; a third destruction at the escape pod's expiry in request
+   * handling.
+   */
+  #latch(event: ResultLatchedEvent, previous: DomainEvent | null, path: string): void {
+    if (this.#latched !== null) throw new CoreInputError(path, 'must not be a second result-latched of the run');
+    const { reason } = event.result;
+    if (reason.type === 'third-loss' && reason.loss === 'destroyed') {
+      this.#enter(STAGE.requests, path);
+      if (previous?.type !== 'fragment-expired' || previous.outcome !== 'escape-pod') throw new CoreInputError(path, 'must come right after the escape pod\'s expiry');
+    } else {
+      this.#enter(STAGE.missionFlow, path);
+      const cause = reason.type === 'third-loss' ? 'beacon-expired' : 'result-due';
+      if (previous?.type !== 'radio-flushed' || previous.cause !== cause) throw new CoreInputError(path, `must come right after its ${cause} flush`);
+    }
+    this.#latched = event.result.outcome;
+    this.#latchPath = path;
+  }
+
   /** P3-10's events but `radio-queued` (CB-13). */
   #readCommunications(event: Exclude<CommunicationsEvent, RadioQueuedEvent>, previous: DomainEvent | null, path: string): void {
     switch (event.type) {
       case 'radio-flushed':
-        this.#enter(STAGE.missionFlow, path);
+        // A destruction's flush comes where the damage is; every other in the mission flow (CB-06, ME-13).
+        if (event.cause === 'player-destroyed') this.#reach(STAGE.objects);
+        else this.#enter(STAGE.missionFlow, path);
         this.#count(event.type, 2, path);
         return;
       case 'docking-cancelled':
@@ -1178,7 +1597,7 @@ class TickOrder {
         this.#pendingTransition = { gap: 'G-02/4', path };
         return;
       case 'transition':
-        if (this.#pendingTransition === null) throw new CoreInputError(path, 'must come right after a docked or departed');
+        if (this.#pendingTransition === null) throw new CoreInputError(path, 'must come right after a docked, departed or player-rescued');
         this.#pendingTransition = null;
         this.#count(event.type, 2, path);
         return;
@@ -1304,6 +1723,8 @@ function readResult(value: unknown, root: string): ReplayResult {
     commands++;
   });
   order.finish();
+  // The completion is the run's last tick (ME-11).
+  if (order.completedTick !== null && order.completedTick !== finalTick) throw new CoreInputError(`${root}.finalTick`, 'must be the tick of mission-completed');
   return { events, checkpoints, finalTick };
 }
 

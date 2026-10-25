@@ -28,19 +28,23 @@ import { RandStream } from '../rules/original-random.ts';
 import { PLAYER_KIND_BIT } from '../rules/spawn-schedule.ts';
 import type { Entity, ExplosionCombat, FragmentCombat } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { passesTeardownGate } from './mission-teardown.ts';
 import { emit, type PipelineStage, type RequestOf, type TickContext } from './pipeline.ts';
+import { resolvePlayerLoss } from './rescue.ts';
 
 const fault = (site: string): CoreFaultError => new CoreFaultError('invariant-violated', `destruction.${site}`);
 
 /**
  * The producer `0x24d78(source, 3)` (X6): one discriminator-3 fragment per part of list 1 of the source's model, in part
  * order, each allocated as it is made; the player's pod becomes the followed entity (+0x90). False, with nothing made,
- * when the model has no such part.
+ * when the model has no such part. In main state 1, the teardown, the gate `0x339cc` drops every fragment's message 0x10,
+ * so nothing is made or drawn, but the source still counts as shed (ME-11).
  */
 function shedFragments(world: WorldState, source: Entity): boolean {
   const kind = world.ruleData.craft[source.kindBit];
   if (kind === null || kind === undefined || source.presentation.type !== 'model') throw fault('source');
   if (kind.parts <= 0) return false;
+  if (!passesTeardownGate(world.flow)) return true;
   const rand = new RandStream(world.rngState);
   for (let part = 0; part < kind.parts; part++) {
     const init = fragmentInit(source, source.presentation.model, kind.debris, part, rand);
@@ -210,8 +214,8 @@ export function setExplosionState(context: TickContext, entity: Entity, explosio
 
 /**
  * `0x256e4`, a fragment's expiry (X7), after `fragment-expired`: a flagged fragment becomes the held source of its own
- * explosion; the player's pod ends the follow (+0x90), where P3-11 adds its rescue `0x32e14(1)` (CR-13), then leaves
- * as any other fragment does (`0x2574c`: pending removal).
+ * explosion; the player's pod ends the follow (+0x90) and the destruction's loss handling `0x32e14(1)` (rescue.ts,
+ * CR-13), then leaves as any other fragment does (`0x2574c`: pending removal).
  */
 export function expireFragment(context: TickContext, entity: Entity, fragment: FragmentCombat, _request: RequestOf<'expire'>): void {
   const outcome = expiryOutcome(fragment);
@@ -228,7 +232,10 @@ export function expireFragment(context: TickContext, entity: Entity, fragment: F
     constructExplosion(context, entity);
     return;
   }
-  if (outcome === 'escape-pod') context.world.player.followedEntity = null;
+  if (outcome === 'escape-pod') {
+    context.world.player.followedEntity = null;
+    resolvePlayerLoss(context, 'destroyed');
+  }
   entity.state = 'pending-removal';
 }
 

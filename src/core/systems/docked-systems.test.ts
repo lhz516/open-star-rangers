@@ -181,18 +181,27 @@ describe('contacts while docked (DK4)', () => {
     expect([player.activity, wingman.activity, state.flow.subState, state.player.viewMode]).toEqual(['docked', 'docked', 5, 6]);
   });
 
-  it('leaves a docked player its docking when destroyed: the rescue path 0x32d74 is P3-11\'s and not wired', () => {
+  it('keeps a docked player docked when destroyed: 0x32d74 overrides sub-state 5, releases the base and shows the destruction view (P3-11, ME-09)', () => {
     const scene = dockedScene();
-    const { state, player, base, step } = scene;
+    const { state, player, step } = scene;
     Object.assign(player.combat, { shield: 0, hull: 10 });
+    state.player.statusDisplay.redraw = false;
     const entity = detonatingMissile(scene, at(0, 0, 7));
-    tickWith(state, ({ requests }) => requests.post({ type: 'expire', entityId: entity.id }));
+    const events = tickWith(state, ({ requests }) => requests.post({ type: 'expire', entityId: entity.id }));
     expect(player.destroyed).toBe(true);
-    expect([player.activity, state.flow.subState, state.player.dockingObject, state.player.viewMode, state.baseService !== null]).toEqual(['docked', 5, base.id, 6, true]);
-    // A destroyed player cannot launch; this task's state waits for P3-11's entry.
-    expect(ofType(step([{ type: 'launch' }]), 'command-result', 'departed')).toEqual([
+    expect(ofType(events, 'player-loss-started')).toEqual([{
+      type: 'player-loss-started', tick: 2, playerEntityId: player.id, loss: 'destroyed', previousSubState: 5, previousViewMode: 6, viewSwitched: true,
+    }]);
+    const { player: ps } = state;
+    expect([player.activity, state.flow.subState, ps.dockingObject, ps.viewMode, ps.previousViewMode, ps.subMode]).toEqual(['docked', 2, null, 0x11, 0x11, 8]);
+    // Leaving the base view sets the status display's redraw (0x4cd68); the base service is not the entry's to clear.
+    expect([ps.statusDisplay.redraw, state.baseService !== null]).toEqual([true, true]);
+    // A destroyed player cannot launch, and sub-state 2 dispatches no docking: the release does not launch it.
+    const next = step([{ type: 'launch' }]);
+    expect(ofType(next, 'command-result', 'departed', 'docking-cancelled')).toEqual([
       { type: 'command-result', tick: 3, commandIndex: 0, commandType: 'launch', outcome: 'ignored', reason: 'player-unavailable' },
     ]);
+    expect([player.activity, state.flow.subState]).toEqual(['docked', 2]);
   });
 });
 
@@ -267,6 +276,8 @@ describe('the active area while docked (DK4 consequences; CB-17 decision 7)', ()
     const scene = dockedScene({ player: { orientation: FORWARD_X } });
     const { state, player, base, wingman, step } = scene;
     Object.assign(blockOf(player), { speed: 4800, commandedSpeed: 4800, atCommandedSpeed: true });
+    // With energy, so that the launched player's first energy update starts no beacon wait (P3-11, ME-09).
+    player.combat.energy = 1e6;
     let departed: DomainEvent | undefined;
     while (departed === undefined && state.tick < 100) {
       departed = step().find(({ type }) => type === 'departed');

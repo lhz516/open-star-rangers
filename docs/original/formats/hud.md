@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-14
+updated: 2026-10-16
 related: [U-001, U-028, U-029, U-030]
 ---
 
@@ -82,7 +82,7 @@ Research of [P2-07 subtask 10](../../plan/p2/07/subtasks/10-font-text-research.m
 | F1-03, F1-04 | F1 | Right of the crosshair | `font/hud/8x8-2` | 4 + 4 | 124 / 124 | 6 | 8 | 8 / 8 |
 | F1-05 | F1 | Indicator above the left display | `font/hud/8x8-2` | 4 | 82 / 82 | 6 | 4 | 4 / 4 |
 | F1-06–08 | F1 | Left (status) display | `font/hud/8x8-2` | 6 + 4 + 4 | 248 / 248 | 6 | 14 | 14 / 14 |
-| F1-09–13 | F1 | Right (navigation) display | `font/hud/8x8-1` | 6 + 4 + 7 + 2 + 2 | 537 / 537 | 8 | 20 | 21 / 21 |
+| F1-09–13 | F1 | Right (target) display | `font/hud/8x8-1` | 6 + 4 + 7 + 2 + 2 | 537 / 537 | 8 | 20 | 21 / 21 |
 | F1-27, 28, 30, 31 | F1 | Gauge corner letters | `font/hud/8x8-1` | 4 single | 118 / 118 | — | 4 | 4 / 4 |
 | Map-14–19 | Map | Labels in the map area | `font/hud/8x8-2` | 5 + 6 + 2 + 5 + 3 + 2 | 445 / 445 | 6 | 23 | 23 / 23 |
 | Map-20–24 | Map | Right panel, upper text | `font/hud/8x8-2` | 5 + 6 + 4 + 4 + 4 | 410 / 410 | 6 | 23 | 23 / 23 |
@@ -323,12 +323,12 @@ Research of [P2-07 subtask 09](../../plan/p2/07/subtasks/09-hud-family-research.
 | F1 | Warp indicator | Font text (run F1-05); its frame is in the panel | Likely | The 82 pixels that differ from the panel inside the Warp instrument rectangle are exactly F1-05's set pixels ([§1.2](#12-fonts-used-on-the-reference-screens-r7)) |
 | F1 | Status display (left), image | Packed bitmap: MFDD 10473 list-0 background; no list-1 record shown | Confirmed | Drawing path above; comparison below |
 | F1 | Status display, marks after runs F1-07 and F1-08 | Code drawing: the message cursor | Confirmed | Two marks in the next character cells; no glyph matches them. P2-12/27 traced them ([sources](#sources-of-the-unidentified-elements-p2-1227)) |
-| F1 | Navigation display (right): grid and marker lines | Code drawing | Likely | One-pixel lines |
+| F1 | Target display (right): grid and marker lines | Code drawing | Likely | One-pixel lines |
 | F1 | Gauges in the four corner areas: level stripes | Code drawing | Likely | Horizontal one-pixel stripes. The HI gauge bars are drawn only on a left-display page (`0x4d800`) |
 | F1 | Radar rings and crosshair | Code drawing | Likely | Circles and lines |
 | F1 | Radar contacts | Code drawing | Confirmed | Only single-colour records match there (non-unique). P2-12/27 traced the radar handler ([sources](#sources-of-the-unidentified-elements-p2-1227)) |
 | F1 | Aiming reticle in the view | Code drawing | Likely | Circle and tick lines |
-| F1 | Message line and the strip above the navigation display | Nothing drawn | Likely | No pixel of either instrument rectangle differs from the panel (3,111 and 584 pixels) |
+| F1 | Message line and the strip above the target display | Nothing drawn | Likely | No pixel of either instrument rectangle differs from the panel (3,111 and 584 pixels) |
 | F1, Map | Text | Font text; two map places unidentified | Likely | [§1.2](#12-fonts-used-on-the-reference-screens-r7). On F1, a colon glyph in the next cell after F1-06 is also matched by both 8×8 fonts, and its code is mapped |
 | Map | Frame, including the button labels | Packed bitmap: CCKD 10103 slot 2 | Confirmed | [cockpit](./cockpit.md#group-palette-and-drawing-confirmed) |
 | Map | Grid | Code drawing | Likely | One-pixel lines |

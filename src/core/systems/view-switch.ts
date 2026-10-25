@@ -2,9 +2,9 @@
  * The view switch (docs/plan/p3/02/spec.md, MW-09): the rule effects of `0x3f158(new, old)`, which the original calls
  * after a writer has stored the new view mode and the previous one (docs/original/formats/executable.md, map mode and
  * its commands). Every rule that changes the view calls switchView after writing the two modes rather than copying the
- * page rules: P3-09's map toggle, Warp start and Warp completion, P3-10's docking and launch, P3-11's destruction and
- * rescue. It writes no view mode and emits nothing; a caller emits the returned page change where its contract orders
- * `left-page-changed`.
+ * page rules: P3-09's map toggle, Warp start and Warp completion, P3-10's docking and launch, P3-11's destruction,
+ * rescue and teardown. It writes no view mode and emits nothing; a caller emits the returned page change where its
+ * contract orders `left-page-changed`.
  *
  * - The map (8) has no rule effect: opening or closing it from or to a flight view sets no redraw and keeps the page.
  * - Entering the Warp view (1) saves the left page and shows page 6; leaving it restores the saved page, 5 (the
@@ -14,8 +14,9 @@
  *
  * commitViewSwitch is the shared switch every such rule goes through (P3-12, docs/plan/p3/02/spec.md, FS-03): it writes
  * the modes, runs switchView and emits `view-switched`. switchPlayerView is the original's `0x216d4` on top of it, which
- * also writes whether the player's model is shown (FS-02); the map toggle and the Warp start and completion do not go
- * through `0x216d4` and leave that flag.
+ * also writes whether the player's model is shown (FS-02); the map toggle, the Warp start and completion and the
+ * teardown do not go through `0x216d4` and leave that flag. P3-11's destruction entry is `0x216d4` with the previous
+ * view also 0x11, and its rescue hides the model itself (`0x67b98`), so both call commitViewSwitch and set the flag.
  */
 import type { LeftPage } from '../world/player-state.ts';
 import type { WorldState } from '../world/world-state.ts';
@@ -90,7 +91,7 @@ export function commitViewSwitch(context: TickContext, viewMode: number, previou
 
 /**
  * `0x216d4`: the previous view is the old one, then the shared switch; the player's model is shown only in the new view
- * 0x11 (FS-02). P3-10's docking and launch use it; P3-11's destruction view, rescue and other `0x216d4` callers will.
+ * 0x11 (FS-02). P3-10's docking and launch use it.
  */
 export function switchPlayerView(context: TickContext, viewMode: number, subMode?: number): LeftPageChange | null {
   const { player } = context.world;

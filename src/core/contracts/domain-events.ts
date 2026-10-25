@@ -7,13 +7,22 @@
  * after its command's result, request handling a manual match's `speed-matched`, and the parked update
  * `object-left-world`. P3-07's combat events and reasons follow (docs/plan/p3/02/spec.md, CR-05, CR-06), then P3-09's
  * map and Warp events and reasons (MW-04, MW-05), then P3-10's communications, docking and base events and reason
- * (CB-07, CB-13), then P3-08's wingman command and transponder events (CR-22), then P3-12's presentation facts (FS-03).
- * New event types or reasons are added by revising the spec, not by consumers.
+ * (CB-07, CB-13), then P3-08's wingman command and transponder events (CR-22), then P3-11's mission flow, loss, rescue,
+ * result and teardown events and reason (ME-12, ME-13), then P3-12's presentation facts (FS-03). New event types or
+ * reasons are added by revising the spec, not by consumers.
  */
 import type { Activity, EntityId, ExplosionVariant, Level, Matrix3 } from '../world/entity-table.ts';
 import type { MapPixel } from '../world/map-rule-data.ts';
 import type { LeftPage, TargetMode } from '../world/player-state.ts';
-import type { MessageIdentity, MissionSubState, RadioCallback, SpeakerSnapshot } from '../world/world-state.ts';
+import type {
+  MessageIdentity,
+  MissionResult,
+  MissionSubState,
+  PlayerLoss,
+  RadioCallback,
+  SpeakerSnapshot,
+  SummaryReference,
+} from '../world/world-state.ts';
 import type { CommandType } from './tick-input.ts';
 
 /** Fields every domain event has. */
@@ -55,12 +64,15 @@ export type CommandOutcome = (typeof COMMAND_OUTCOMES)[number];
  * P3-10's (CB-07):
  * - `subsystem-disabled`: a player subsystem the command needs is in state 2;
  * `no-candidate` also covers a communications menu without a qualifying object or item.
+ * P3-11's (ME-12), always `ignored`:
+ * - `mission-ended`: the result is latched (main state 0 or 1), ahead of every other judgement.
  */
 export const COMMAND_RESULT_REASONS = Object.freeze([
   'not-implemented', 'player-unavailable', 'wrong-context', 'no-target',
   'no-candidate', 'no-change', 'no-weapon', 'weapon-disabled', 'no-ammunition', 'insufficient-charge', 'cooldown', 'misfire', 'out-of-arc',
   'no-destination', 'insufficient-energy',
   'subsystem-disabled',
+  'mission-ended',
 ] as const);
 export type CommandResultReason = (typeof COMMAND_RESULT_REASONS)[number];
 
@@ -437,9 +449,9 @@ export interface IncomingEndedEvent extends DomainEventBase<'incoming-ended'> {
   readonly countdownStarted: boolean;
 }
 
-/** A flush, after its `left-page-changed`; P3-11 adds its causes. */
+/** A flush, after its `left-page-changed`: P3-10's docking cancellation and P3-11's four callers (ME-13). */
 export interface RadioFlushedEvent extends DomainEventBase<'radio-flushed'> {
-  readonly cause: 'docking-cancel';
+  readonly cause: 'docking-cancel' | 'player-destroyed' | 'beacon-expired' | 'completion-message' | 'result-due';
   readonly removed: number;
   readonly interrupted: 'none' | 'loading' | 'playing';
 }
@@ -482,9 +494,12 @@ export type DepartedEvent =
   | (DepartedFields & { readonly origin: 'command'; readonly commandIndex: number })
   | (DepartedFields & { readonly origin: 'automatic'; readonly commandIndex: null });
 
-/** Right after `docked` (G-02/3) or each `departed` (G-02/4): Runtime cuts the frame after this tick and holds. */
+/**
+ * Right after `docked` (G-02/3), each `departed` (G-02/4) or `player-rescued` (G-02/5 for a destruction, G-02/6 for an
+ * energy loss; ME-13): Runtime cuts the frame after this tick and holds.
+ */
 export interface TransitionEvent extends DomainEventBase<'transition'> {
-  readonly gap: 'G-02/3' | 'G-02/4';
+  readonly gap: 'G-02/3' | 'G-02/4' | 'G-02/5' | 'G-02/6';
 }
 
 /** One per base navigation request; `row` is the cursor after it, null without a base service. */
@@ -564,6 +579,90 @@ export interface TransponderDeployedEvent extends DomainEventBase<'transponder-d
   readonly creatorEntityId: EntityId;
   readonly position: Vec3;
   readonly orientation: Matrix3;
+}
+
+// P3-11's events (docs/plan/p3/02/spec.md, ME-13): detached fact snapshots like P3-07's, without a clock or content text.
+
+/** The object whose event (`0x6977c`, types 0–2) found no enemy left: the mission status became `ended`. */
+export interface AllClearEvent extends DomainEventBase<'all-clear'> {
+  readonly entityId: EntityId;
+  readonly kindBit: number;
+  /** The object event's type: 0 or 1 a destruction (its `eventClass`), 2 a world exit. */
+  readonly eventClass: 0 | 1 | 2;
+}
+
+/** The mission flow's 3→4 step: the pre-settlement and state 4's due clock. */
+export interface SettlementStartedEvent extends DomainEventBase<'settlement-started'> {
+  readonly outcome: 'success' | 'failure';
+  readonly summary: SummaryReference | null;
+  /** i8; −1 without a matched range. */
+  readonly summarySelector: number;
+  readonly dueClock: number;
+}
+
+/** State 4 expired in the Warp view: its due clock moved on. */
+export interface SettlementDeferredEvent extends DomainEventBase<'settlement-deferred'> {
+  readonly dueClock: number;
+}
+
+/** A message-line message by its `data/flight-messages` field name: the completion (state 4) or the beacon (`0x33464`). */
+export interface FlightMessageEvent extends DomainEventBase<'flight-message'> {
+  readonly message: 'missionComplete' | 'beacon';
+}
+
+interface PlayerLossStartedFields extends DomainEventBase<'player-loss-started'> {
+  readonly playerEntityId: EntityId;
+}
+
+/** The player's destruction entry `0x32d74` or energy entry `0x33464` took effect. */
+export type PlayerLossStartedEvent =
+  | (PlayerLossStartedFields & {
+      readonly loss: 'destroyed';
+      readonly previousSubState: MissionSubState;
+      readonly previousViewMode: number;
+      /** Whether step 4 switched to the destruction view (it is skipped in view 0x11 with sub-mode 8). */
+      readonly viewSwitched: boolean;
+    })
+  | (PlayerLossStartedFields & { readonly loss: 'energy'; readonly previousSubState: 0; readonly deadlineClock: number });
+
+/** A rescue (`0x67b98`), after its `weapon-selected` events and before its `transition`. */
+export interface PlayerRescuedEvent extends DomainEventBase<'player-rescued'> {
+  readonly playerEntityId: EntityId;
+  readonly loss: PlayerLoss;
+  /** The rescue count after it. */
+  readonly rescues: 1 | 2;
+  /** The selected base; null when no base-class entity existed. */
+  readonly baseEntityId: EntityId | null;
+  /** The base-class entities the selection drew from. */
+  readonly candidates: number;
+  readonly position: Vec3;
+  readonly orientation: Matrix3;
+}
+
+/** The result latch; `result` is a frozen copy of the flow's. */
+export interface ResultLatchedEvent extends DomainEventBase<'result-latched'> {
+  readonly result: MissionResult;
+}
+
+/** The teardown started (`0x334bc`): every entity is pending removal. */
+export interface TeardownStartedEvent extends DomainEventBase<'teardown-started'> {
+  readonly entities: number;
+}
+
+/** The teardown completed: the run's last tick. */
+export interface MissionCompletedEvent extends DomainEventBase<'mission-completed'> {
+  readonly outcome: 'success' | 'failure';
+}
+
+/** A wingman's destruction (`0x32dec`) started the loss message's timer. */
+export interface WingmanLossTimerStartedEvent extends DomainEventBase<'wingman-loss-timer-started'> {
+  readonly wingmanEntityId: EntityId;
+  readonly dueClock: number;
+}
+
+/** The wingman loss timer expired; `queued` says whether a message was found and queued. */
+export interface WingmanLossTimerExpiredEvent extends DomainEventBase<'wingman-loss-timer-expired'> {
+  readonly queued: boolean;
 }
 
 // P3-12's presentation facts (docs/plan/p3/02/spec.md, FS-03): detached fact snapshots like P3-07's, without a clock.
@@ -663,6 +762,17 @@ export type DomainEvent =
   | BaseConfirmedEvent
   | WingmanCommandConsumedEvent
   | TransponderDeployedEvent
+  | AllClearEvent
+  | SettlementStartedEvent
+  | SettlementDeferredEvent
+  | FlightMessageEvent
+  | PlayerLossStartedEvent
+  | PlayerRescuedEvent
+  | ResultLatchedEvent
+  | TeardownStartedEvent
+  | MissionCompletedEvent
+  | WingmanLossTimerStartedEvent
+  | WingmanLossTimerExpiredEvent
   | ExplosionCreatedEvent
   | ViewSwitchedEvent
   | WarpWallContactEvent;

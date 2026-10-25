@@ -95,13 +95,57 @@ def _check_condition(record, only_if):
         raise BaselineError("report-invalid", "stimuli")
 
 
+def _skipped(recipe, jumps):
+    """The pause IDs the recorded jumps passed over. Each record must name a pause with jump rules, one of its rules
+    and exactly the pauses that rule passes over; records follow the recipe's pause order without overlapping."""
+    if not any(pause.jumps for pause in recipe.pauses):
+        if jumps:
+            raise BaselineError("report-invalid", "jumps")
+        return frozenset()
+    if type(jumps) is not list:
+        raise BaselineError("report-invalid", "jumps")
+    order = {pause.id: index for index, pause in enumerate(recipe.pauses)}
+    skipped, last = set(), -1
+    for record in jumps:
+        if type(record) is not dict or record.get("pause") not in order:
+            raise BaselineError("report-invalid", "jumps")
+        pause = recipe.pauses[order[record["pause"]]]
+        slot = record.get("rule")
+        if type(slot) is not int or not 0 <= slot < len(pause.jumps) or order[pause.id] <= last:
+            raise BaselineError("report-invalid", "jumps")
+        rule = pause.jumps[slot]
+        passed = recipe.jump_skips(pause.id, rule)
+        if rule.sites and record.get("hitOffset") not in [f"{site.offset:x}" for site in rule.sites]:
+            raise BaselineError("report-invalid", "jumps")
+        if rule.outcome is not None and record.get("outcome") != rule.outcome:
+            raise BaselineError("report-invalid", "jumps")
+        if rule.test is not None:
+            evidence = record.get("if")
+            if type(evidence) is not dict or evidence.get("result") is not True or \
+                    type(evidence.get("readings")) is not dict or type(evidence.get("references")) is not dict:
+                raise BaselineError("report-invalid", "jumps")
+            current = {name: value for name, value in evidence["readings"].items() if value is not None}
+            earlier = {tuple(key.split("/", 1)): value for key, value in evidence["references"].items()}
+            if rule.test.evaluate(current, earlier) is not True:
+                raise BaselineError("report-invalid", "jumps")
+        target = {"to": rule.to} if rule.to is not None else {"end": True}
+        if any(record.get(key) != value for key, value in target.items()) or ("to" in record) != ("to" in target) or \
+                ("end" in record) != ("end" in target) or record.get("skipped") != list(passed) or pause.id in skipped:
+            raise BaselineError("report-invalid", "jumps")
+        skipped.update(passed)
+        last = order[pause.id] + len(passed)
+    return frozenset(skipped)
+
+
 def build_report(*, recipe, run_id, tool, source, environment, game_config, run_start, run_end, samples, integrity,
-                 cleanup, cancelled=False, failures=(), stimuli=None, skipped_hits=None, probes=None):
+                 cleanup, cancelled=False, failures=(), stimuli=None, skipped_hits=None, probes=None, jumps=None):
     """The report dict. `run_end` None marks an unfinished run (the state a report is first written in). `stimuli`,
     the records of the stimuli applied or attempted, is reported only for a recipe that declares stimuli;
     `skipped_hits`, the breakpoint hits stop conditions or reading tests rejected, only for a recipe with either;
     `probes`, the hits whose readings `until` stops tested, only for a recipe with an `until` stop. A stimulus whose
-    `if` was false in this run (`condition-false`) counts as done in its place: the recipe declared that branch."""
+    `if` was false in this run (`condition-false`) counts as done in its place: the recipe declared that branch.
+    `jumps`, the jumps taken (P3-11/20), only for a recipe with a `jump` rule: the pauses they passed over plan no
+    sample and no stimulus."""
     if type(run_id) is not str or not RUN_ID.fullmatch(run_id):
         raise BaselineError("report-invalid", "runId")
     tool = _section(tool, "tool")
@@ -117,7 +161,8 @@ def build_report(*, recipe, run_id, tool, source, environment, game_config, run_
     if source != {"baselineVersion": recipe.baseline_version, "exeSha256": recipe.exe_sha256}:
         reasons.add("source-mismatch")
 
-    planned = recipe.planned()
+    skipped = _skipped(recipe, jumps)
+    planned = recipe.planned(skipped)
     plan = set(planned)
     keys = [_check_sample(recipe, sample) for sample in samples]
     if not keys:
@@ -128,7 +173,8 @@ def build_report(*, recipe, run_id, tool, source, environment, game_config, run_
         reasons.add("samples-order")
     elif len(keys) < len(planned):
         reasons.add("samples-missing")
-    required = {(pause.id, name) for pause in recipe.pauses for name in pause.fields if recipe.fields[name].required}
+    required = {(pause.id, name) for pause in recipe.pauses if pause.id not in skipped for name in pause.fields
+                if recipe.fields[name].required}
     if any(not sample.qualified and (sample.pause, sample.field) in required for sample in samples):
         reasons.add("samples-unqualified")
 
@@ -148,24 +194,33 @@ def build_report(*, recipe, run_id, tool, source, environment, game_config, run_
         if type(probes) is not int or probes < 0:
             raise BaselineError("report-invalid", "probes")
         counts["probes"] = probes
+    if any(pause.jumps for pause in recipe.pauses):
+        extra["jumps"] = _plain(list(jumps), "jumps")
+        counts.update(jumps=len(jumps), pausesSkipped=len(skipped))
     if recipe.stimuli:
         records = _plain(list(stimuli or ()), "stimuli")
         if any(type(record) is not dict for record in records):
             raise BaselineError("report-invalid", "stimuli")
         settled = [record for record in records
                    if record.get("status") in ("applied", "not-selected", "condition-false")]
+        expected = [stimulus for stimulus in recipe.stimuli if stimulus.pause not in skipped]
         if [(record.get("id"), record.get("pause")) for record in settled] != \
-                [(stimulus.id, stimulus.pause) for stimulus in recipe.stimuli]:
+                [(stimulus.id, stimulus.pause) for stimulus in expected]:
             reasons.add("stimuli-missing")
         conditions = {(stimulus.id, stimulus.pause): stimulus.only_if for stimulus in recipe.stimuli}
+        declared = {(stimulus.id, stimulus.pause): stimulus.sites for stimulus in recipe.stimuli}
         for record in settled:
+            sites = declared.get((record.get("id"), record.get("pause")))
+            if sites and record["status"] == "condition-false" and type(record.get("at")) is dict and \
+                    record["at"].get("hit") not in [f"{site.offset:x}" for site in sites]:
+                continue  # excluded by its `at` sites before any reading condition was decided (P3-11/20)
             _check_condition(record, conditions.get((record.get("id"), record.get("pause"))))
         applied = sum(record["status"] == "applied" for record in settled)
-        counts.update(stimuliPlanned=len(recipe.stimuli), stimuliApplied=applied)
+        counts.update(stimuliPlanned=len(expected), stimuliApplied=applied)
         not_selected = sum(record["status"] == "not-selected" for record in settled)
         if not_selected:
             counts["stimuliNotSelected"] = not_selected
-        if any(stimulus.test is not None for stimulus in recipe.stimuli):
+        if any(stimulus.test is not None or stimulus.sites for stimulus in recipe.stimuli):
             counts["stimuliConditionFalse"] = sum(record["status"] == "condition-false" for record in settled)
         extra["stimuli"] = records
         injected = [stimulus for stimulus in recipe.stimuli if stimulus.kind == "inject"]

@@ -111,7 +111,7 @@ export function MissionScreen({ slot, ports, holder, onReturn }: {
     : null;
   return (
     <MissionPage
-      mission={mission && { owner: mission.owner, game: mission.store.reader, flight: mission.flight }}
+      mission={mission && { owner: mission.owner, game: mission.store.reader, texts: mission.texts, flight: mission.flight }}
       openFailure={openFailure}
       devPanel={devPanel}
       onReturn={onReturn}

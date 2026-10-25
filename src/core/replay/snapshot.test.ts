@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { AssetId } from '../../content/asset-id.ts';
 import { deepFrozen, MARKER } from '../../content/logic/logic-content.test-support.ts';
 import { MARKER as CRAFT_INFO_MARKER } from '../../content/rule-data/rule-data.test-support.ts';
 import { syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
@@ -15,7 +16,7 @@ import { initialPlayerControl, type CommunicationsMenu } from '../world/player-s
 import {
   addPlayerEntity, busyCombat, entityInit, stateText, stillEntityInit, TEST_ORIENTATION, testState, thrownBy, tickInput, withEveryKindBound,
 } from '../world/world.test-support.ts';
-import type { ParsedScript, RadioItem, WorldState } from '../world/world-state.ts';
+import type { MissionFlow, MissionResult, ParsedScript, RadioItem, WorldState } from '../world/world-state.ts';
 import { roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
 import { GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, snapshotHash, snapshotText, takeSnapshot, type GameSnapshot } from './snapshot.ts';
@@ -201,13 +202,13 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     // P3-06 incremented both once (docs/plan/p3/06/spec.md, D-07), then P3-07 (docs/plan/p3/02/spec.md, CR-14); P3-05's
     // speed-preset only the rules version (docs/plan/p3/05/spec.md, 持久化与兼容). P3-09/12 and P3-10/11 each incremented
     // both from 3 and 4 on their branches (MW-14, CB-16); their merge increments both once more, so that neither branch's
-    // snapshots share a version with the merged state. P3-08/12 increments both once more (CR-25), and P3-12/10 once
-    // more (FS-08).
-    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 7, 8]);
+    // snapshots share a version with the merged state. P3-08/12 increments both once more (CR-25), P3-11/08 (ME-16) and
+    // P3-12/10 (FS-08) each once on their branches, and their merge once more.
+    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 8, 9]);
     const { state } = snapshot;
     expect(Object.keys(state)).toEqual([
-      'config', 'tick', 'clock', 'rngState', 'nextEntityId', 'entities', 'kindOrder', 'spawn', 'missionStatus', 'flow', 'player', 'objectSets', 'mapIcons',
-      'communications', 'ai', 'baseService',
+      'config', 'tick', 'clock', 'rngState', 'nextEntityId', 'entities', 'kindOrder', 'spawn', 'missionStatus', 'missionEvents', 'flow', 'player',
+      'objectSets', 'mapIcons', 'communications', 'ai', 'baseService',
     ]);
     expect(state.config).toEqual({
       content: syntheticIdentity(),
@@ -231,8 +232,12 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
       docking: { savedPose: null }, modelShown: false,
     });
     expect([state.objectSets, state.mapIcons]).toEqual([{ friendly: [], hostile: [] }, []]);
-    // P3-10's creation values (CB-02, CB-05, CB-11).
-    expect(state.flow).toEqual({ mainState: 3, subState: 0, dockingDeadline: 0 });
+    // P3-10's and P3-11's creation values (CB-02, CB-05, CB-11, ME-03, ME-04).
+    expect(state.flow).toEqual({
+      mainState: 3, subState: 0, dockingDeadline: 0, beaconDeadline: 0, settlementDeadline: 0, rescues: 0, wingmanLoss: { pending: false, dueClock: 0 },
+      settlement: null, result: null, completedTick: null,
+    });
+    expect(state.missionEvents).toEqual({ triggers: [] });
     expect(state.communications).toEqual({
       queue: [], channel: { phase: 'idle' }, facePools: { craft: [false, false, false], base: [false, false, false, false, false] },
       limits: { wingmanLowHull: 0, enemyAppears: 0, tailWarning: 0, wingmanArrivalRepair: 0 },
@@ -292,10 +297,12 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
   // script to the rich state, each with many leaves: 2 s alone, 22 s with two full runs at load 52.
   it('changes the canonical text when any value of the world state but its static setup, craft info and rule data changes', { timeout: 60_000 }, () => {
     const state = richState();
+    // Two triggers' counters (ME-04): an empty list's leaf would become a non-object.
+    (state as unknown as Mutable).missionEvents = { triggers: [{ instantiated: 1, destroyed: 2, left: 3 }, { instantiated: 4, destroyed: 5, left: 6 }] };
     // A new top-level field fails here until the snapshot covers it; setupHash in the config binds the static ones.
     expect(Object.keys(state).sort()).toEqual([
-      'ai', 'baseService', 'clock', 'communications', 'config', 'craftInfo', 'entities', 'flow', 'mapIcons', 'missionStatus', 'objectSets', 'player',
-      'rngState', 'ruleData', 'setup', 'spawn', 'tick',
+      'ai', 'baseService', 'clock', 'communications', 'config', 'craftInfo', 'entities', 'flow', 'mapIcons', 'missionEvents', 'missionStatus', 'objectSets',
+      'player', 'rngState', 'ruleData', 'setup', 'spawn', 'tick',
     ]);
     // Every entity is written by the same writer, so one entity of each shape stands for the rest: by collection,
     // group membership, name variant and combat type: the player, the wingman, a candidate-named record, a group
@@ -312,7 +319,10 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     const representatives = new Set(shapes.values());
     for (const entity of [...state.entities.byId()]) if (!representatives.has(entity)) state.entities.remove(entity);
     const holders: (readonly [Mutable, string])[] = [
-      ...['config', 'tick', 'clock', 'rngState', 'missionStatus', 'player', 'spawn', 'objectSets', 'mapIcons', 'flow', 'communications', 'ai', 'baseService']
+      ...[
+        'config', 'tick', 'clock', 'rngState', 'missionStatus', 'missionEvents', 'player', 'spawn', 'objectSets', 'mapIcons', 'flow', 'communications', 'ai',
+        'baseService',
+      ]
         .map((key) => [state as unknown as Mutable, key] as const),
       ...[...shapes.values()].flatMap((entity) => Object.keys(entity).map((key) => [entity as unknown as Mutable, key] as const)),
     ];
@@ -355,6 +365,49 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     expect(textOf(state)).toBe(baseline);
     // Ten entities of 30 and more values each, and every record, group, queue entry and counter.
     expect(changes).toBeGreaterThan(10 * 30 + 9 * 20);
+  });
+
+  it('writes every leaf of P3-11\'s flow, settlement, result and counters, their variants and unset parts (ME-03 to ME-05, ME-16)', () => {
+    const state = richState();
+    const flow: MissionFlow = {
+      mainState: 1, subState: 2, dockingDeadline: 1, beaconDeadline: 2, settlementDeadline: 3, rescues: 1, wingmanLoss: { pending: true, dueClock: 4 },
+      settlement: { outcome: 'success', summary: { mission: 'mission/first-campaign' as AssetId, trigger: 1, range: 2 }, summarySelector: 16 },
+      result: {
+        outcome: 'success', reason: { type: 'all-clear' }, summary: { mission: 'mission/first-campaign' as AssetId, trigger: 1, range: 2 }, rescuesUsed: 1,
+        endingGaps: [{ gap: 'G-02/8', variant: 'wingman' }, { gap: 'G-02/9', row: 16 }], playerKills: 5, latchTick: 6,
+      },
+      completedTick: 7,
+    };
+    const failure: MissionResult = {
+      outcome: 'failure', reason: { type: 'third-loss', loss: 'energy' }, summary: null, rescuesUsed: 2, endingGaps: [{ gap: 'G-02/7', variant: 'energy' }],
+      playerKills: 0, latchTick: 6,
+    };
+    const holder = state as unknown as Mutable;
+    holder.missionEvents = { triggers: [{ instantiated: 1, destroyed: 2, left: 3 }, { instantiated: 4, destroyed: 5, left: 6 }] };
+    for (const [key, variant] of [['flow', flow], ['flow', { ...flow, result: failure }], ['missionEvents', holder.missionEvents]] as const) {
+      holder[key] = variant;
+      const baseline = textOf(state);
+      // An ending gap's `gap` is its variant, like a `type`; a null summary cannot become 0, and the other variant has one.
+      const leaves = leafPaths(variant).filter((leaf) => leaf.at(-1) !== 'gap' && leaf.reduce<unknown>((item, step) => (item as Mutable)[step], variant) !== null);
+      for (const path of leaves) {
+        holder[key] = withChangedLeaf(variant, path);
+        expect(textOf(state), [key, ...path].join('.')).not.toBe(baseline);
+      }
+      holder[key] = variant;
+    }
+    // Another reason, no summary, no settlement, result or completion, no triggers and the ended status each write their own text.
+    const texts = new Set([textOf(state)]);
+    holder.flow = { ...flow, result: { ...failure, reason: { type: 'settlement-failed' }, endingGaps: [{ gap: 'G-02/7', variant: 'destroyed' }] } };
+    texts.add(textOf(state));
+    holder.flow = { ...flow, settlement: { ...flow.settlement!, summary: null } };
+    texts.add(textOf(state));
+    holder.flow = { ...flow, settlement: null, result: null, completedTick: null };
+    texts.add(textOf(state));
+    holder.missionEvents = { triggers: [] };
+    texts.add(textOf(state));
+    state.missionStatus = 'ended';
+    texts.add(textOf(state));
+    expect(texts.size).toBe(6);
   });
 
   it('writes every leaf of P3-10\'s other menu and channel variants and its unset parts (CB-03, CB-05)', () => {
@@ -511,7 +564,7 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     const snapshot = takeSnapshot(richState());
     const text = snapshotText(snapshot);
     expect(text).toMatch(/^[\x20-\x7e]+$/);
-    expect(text.startsWith('{"format":"osr-game-snapshot","version":7,"rulesVersion":8,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
+    expect(text.startsWith('{"format":"osr-game-snapshot","version":8,"rulesVersion":9,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
     expect(snapshotHash(snapshot)).toBe(fnv1a64(text));
     expect(snapshotHash(snapshot)).toMatch(/^[0-9a-f]{16}$/);
 

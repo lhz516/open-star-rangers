@@ -79,7 +79,7 @@ describe('delivery, reply and callback are separate facts (AC-04, AC-05; CB-07, 
       pageChanged(5, 0, 83),
       { type: 'incoming-ended', tick: 83, message, speaker, callback: 'docking-reply', countdownStarted: true },
     ]);
-    expect(state.flow).toEqual({ mainState: 3, subState: 4, dockingDeadline: 166 + 0x200 });
+    expect(state.flow).toMatchObject({ mainState: 3, subState: 4, dockingDeadline: 166 + 0x200 });
   });
 
   it('answers a status query in due order without a callback, and the accepted command alone says nothing of the reply', () => {

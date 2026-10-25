@@ -4,7 +4,8 @@
  * the slot creates the owner only when it may, and only then does this hook create what the owner is given:
  * - a session host from the ports;
  * - a `ui` consumer that, as the owner connects it, creates the owner's UI store, session bridge and command feedback,
- *   binds the bridge to the owner's session and unbinds it on release;
+ *   binds the bridge to the owner's session and unbinds it on release, and binds the imported texts the result page
+ *   shows to the package the owner is opening on (docs/plan/p3/11/spec.md, 结果页、重试与返回);
  * - a `media` consumer for the flight picture (P3-12): the owner's one WebGL 2 surface, created in a container element of
  *   its own that the mounted flight area holds (`bindFlightArea`), so remounting the area keeps the canvas and context;
  * - in development builds only, the frame timing that wraps that host, the diagnostics and the recording options. Their
@@ -34,6 +35,7 @@ import {
   developmentRecording, type MissionOwner, type MissionOwnerConsumer, type MissionOwnerSetup,
 } from '../mission/mission-owner.ts';
 import type { AppPorts } from '../ports.ts';
+import { missionTexts, type MissionTexts } from '../resources/mission-texts.ts';
 import type { ResourceHolder } from '../resources/resource-holder.ts';
 
 /** What the mission screen shows of one owner. */
@@ -47,6 +49,8 @@ export interface MissionScreenParts {
   readonly flight: MissionFlightParts;
   /** Development builds only. */
   readonly diagnostics: MissionDiagnostics | null;
+  /** The imported texts of the package generation the owner bound, decoded only when read. */
+  readonly texts: MissionTexts;
 }
 
 /** The owner's flight picture. */
@@ -78,7 +82,7 @@ interface Assembly {
 }
 
 function assemble({ mission: ports, createSurface, reportError }: AppPorts, holder: ResourceHolder): Assembly {
-  let ui: Pick<MissionScreenParts, 'store' | 'feedback'> | null = null;
+  let ui: Pick<MissionScreenParts, 'store' | 'feedback' | 'texts'> | null = null;
   let diagnostics: MissionDiagnostics | null = null;
   let mapCursor: MapCursorDrawer | null = null;
   let flight: { readonly consumer: FlightConsumer; readonly container: HTMLElement } | null = null;
@@ -108,11 +112,13 @@ function assemble({ mission: ports, createSurface, reportError }: AppPorts, hold
   const uiConsumer: MissionOwnerConsumer = {
     stage: 'ui',
     connect({ ownerId, session }) {
+      // The owner connects its consumers while it opens, after it checked the held package: this is the package it binds.
+      const logic = holder.current()?.groups.find(({ group }) => group === 'logic');
       const store = createGameStore<MissionFlowState>(ownerId);
       const feedback = createGameCommandFeedback(store);
       const bridge = createGameSessionBridge({ store, clock: ports.clock, consumers: [feedback] });
       bridge.bind(session);
-      ui = { store, feedback };
+      ui = { store, feedback, texts: missionTexts(logic) };
       return { release: () => { bridge.unbind(); }, onSessionError: bridge.onError };
     },
   };

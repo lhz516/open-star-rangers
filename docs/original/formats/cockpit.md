@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-14
+updated: 2026-10-16
 related: [U-001, U-006, U-011, U-029]
 ---
 
@@ -140,7 +140,7 @@ Local check of [P2-12 subtask 16](../../plan/p2/12/subtasks/16-layout-comparison
 
 - **No selection bias:** over all 118 qualifying captures, the static region matches exactly in these 46 and 10 captures and in no other; every other capture differs on more than 25% of it.
 - **Structure:** element count, order, positions, sizes, palette references, per-pixel masks and indices, and the 256 palette entries of both layouts equal the independent decode; so do the full-frame opaque masks and colours.
-- **Instrument rectangles (front):** every one of the 10 rectangles differs from the panel in at least one capture, so each is drawn at run time in some state. In R1's single screenshot only 8 did: the 183×17 rectangle of type 8 (the message line, 3,111 pixels) and the 73×8 rectangle of type 9 (the strip above the navigation display, 584 pixels) differ in 1 and 25 pixels across the 46 captures. What is drawn there is Unconfirmed.
+- **Instrument rectangles (front):** every one of the 10 rectangles differs from the panel in at least one capture, so each is drawn at run time in some state. In R1's single screenshot only 8 did: the 183×17 rectangle of type 8 (the message line, 3,111 pixels) and the 73×8 rectangle of type 9 (the strip above the target display, 584 pixels) differ in 1 and 25 pixels across the 46 captures. What is drawn there is Unconfirmed.
 
   | Record (type) | 0 (0) | 1 (1) | 2 (2) | 3 (3) | 4 (5) | 5 (7) | 6 (8) | 7 (6) | 8 (9) | 9 (12) |
   |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
