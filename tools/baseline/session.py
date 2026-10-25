@@ -237,6 +237,7 @@ class Run:
         self.skipped_hits = 0  # breakpoint hits a stop condition rejected, in the whole run
         self.readings = {}  # (pause ID, field ID) -> typed value of every qualified sample, for reading tests
         self.probes = 0  # hits whose readings an `until` stop tested, in the whole run
+        self.jumps = []  # records of the jumps taken (P3-11/20), in order
         self.source = dict(UNVERIFIED_SOURCE)
         self.environment = {"mode": "smoke" if options.smoke else "measure",
                             "measurementEvidence": not options.smoke}
@@ -263,7 +264,7 @@ class Run:
                             run_end=run_end, samples=self.samples, integrity=integrity, cleanup=cleanup,
                             cancelled=self.cancelled, failures=ordered(self.failures),
                             stimuli=self.stimuli if self.recipe.stimuli else None, skipped_hits=self.skipped_hits,
-                            probes=self.probes)
+                            probes=self.probes, jumps=self.jumps)
 
     def write_report(self, integrity, cleanup, finished):
         report = self.report(integrity, cleanup, finished)
@@ -449,10 +450,48 @@ class Run:
         debugger.clear_breakpoints()
         budget = ReadBudget(limits.max_read_bytes)
         startup = self.establish(debugger, budget)
-        for pause in self.recipe.pauses:
-            self.take_pause(debugger, startup, pause, budget)
+        pauses = self.recipe.pauses
+        index = 0
+        while index < len(pauses):
+            pause = pauses[index]
+            site = self.take_pause(debugger, startup, pause, budget)
+            rule = self.jump(pause, site)
+            if rule is None:
+                index += 1
+            elif rule.to is None:
+                break
+            else:
+                index = next(slot for slot, later in enumerate(pauses) if later.id == rule.to)
         self.ended_by = "completed"
         self.status("finished")
+
+    def jump(self, pause, site):
+        """The first of the pause's jump rules that applies to this hit and to its readings, recorded in `self.jumps`;
+        None to continue in order. An undecidable test (a named reading is not qualified) fails the run: the recipe's
+        path would be unknown."""
+        for slot, rule in enumerate(pause.jumps):
+            if rule.sites and site not in rule.sites:
+                continue
+            record = {"pause": pause.id, "rule": slot, **({"to": rule.to} if rule.to is not None else {"end": True})}
+            if rule.outcome is not None:
+                record["outcome"] = rule.outcome
+            if rule.test is not None:
+                current = {name: self.readings.get((pause.id, name)) for name in rule.test.fields()}
+                verdict = rule.test.evaluate({name: value for name, value in current.items() if value is not None},
+                                             self.readings)
+                if verdict is None:
+                    raise BaselineError("binding-unavailable", pause.id)
+                if not verdict:
+                    continue
+                record["if"] = {**rule.test.to_json(), "readings": current, "references": {
+                    f"{reference[0]}/{reference[1]}": self.readings.get(reference)
+                    for reference in rule.test.references()}, "result": True}
+            if pause.stop.alternatives:
+                record["hitOffset"] = f"{site.offset:x}"
+            record["skipped"] = list(self.recipe.jump_skips(pause.id, rule))
+            self.jumps.append(record)
+            return rule
+        return None
 
     def context(self, debugger):
         cpu = debugger.cpu()
@@ -607,8 +646,8 @@ class Run:
                                                                   self.poll_abort)
                 proof["waitedSeconds"] = round(waited, 3)
             if self.passes_when(stop, sites, registers, accepted):
-                if probe is None:
-                    break
+                if probe is None or not stop.until.applies(sites.get(registers.eip)):
+                    break  # P3-11/20: an `until` limited to some sites accepts a hit at another without a probe
                 probed = eligible % stop.until.every == 0
                 eligible += 1
                 if probed and self.probe(debugger, startup, pause, registers, budget, probe):
@@ -752,17 +791,19 @@ class Run:
         return {item.register for item in references if item.pause == pause_id and item.register is not None}
 
     def take_pause(self, debugger, startup, pause, budget):
+        """Takes the pause and returns the Location of its accepted hit (None for a VRT stop)."""
         stimuli = self.recipe.pause_stimuli(pause.id)
         if not pause.fields:  # a stop without readings: nothing to confirm, only its stimuli to apply
             registers, stop = self.stop_with_registers(debugger, startup, pause, stimuli, budget)
+            site = self.hit_site(pause, stop)
             base = f"pauses/{pause.id}"
             (self.paths.run_dir / base).mkdir(mode=0o700)
             try:
                 if stimuli:
-                    self.apply_stimuli(debugger, startup, pause, stimuli, registers, stop, budget)
+                    self.apply_stimuli(debugger, startup, pause, stimuli, registers, stop, budget, site=site)
             finally:
                 write_json(self.paths, f"{base}/stop.json", stop)
-            return
+            return site
         attempt = 0
         while True:
             registers, stop = self.stop_with_registers(debugger, startup, pause, stimuli, budget)
@@ -770,6 +811,7 @@ class Run:
             if answer[0] == "confirm":
                 break
             attempt += 1
+        site = self.hit_site(pause, stop)
         self.status("reading", pause=pause.id)
         mission, config = self.identity(answer[1], answer[2])
         base = f"pauses/{pause.id}"
@@ -817,13 +859,21 @@ class Run:
         try:
             if stimuli:
                 self.apply_stimuli(debugger, startup, pause, stimuli, registers, stop, budget, context, mapping,
-                                   unqualified)
+                                   unqualified, site=site)
         finally:
             write_json(self.paths, proof["stop"], stop)
+        return site
+
+    @staticmethod
+    def hit_site(pause, stop):
+        """The recipe Location of the accepted hit of a breakpoint stop (None for a VRT stop)."""
+        if pause.stop.kind != "breakpoint":
+            return None
+        return pause.hit_site(int(stop["hitOffset"], 16)) if "hitOffset" in stop else pause.stop.site
 
     # -- input stimuli -----------------------------------------------------------------------------------------------
     def apply_stimuli(self, debugger, startup, pause, stimuli, registers, stop, budget, context=None, mapping=None,
-                      unqualified=None):
+                      unqualified=None, site=None):
         """Applies the pause's stimuli in recipe order, after its readings, and only when the pause's identity and stop
         evidence qualified. Every write is read before, written with an acknowledged debugger command, read back and
         recorded; a stimulus is `applied` once the registers are confirmed unchanged after the pause's last write.
@@ -839,6 +889,12 @@ class Run:
                           "utc": _utc(), "emulatedMs": registers.emulated_ms, "cycleCount": registers.cycle_count}
                 records.append(record)
                 self.stimuli.append(record)
+                if stimulus.sites:  # P3-11/20: decided by the accepted hit's site, before any other test
+                    record["at"] = {"sites": [f"{item.offset:x}" for item in stimulus.sites],
+                                    "hit": None if site is None else f"{site.offset:x}"}
+                    if site not in stimulus.sites:
+                        record["status"] = "condition-false"  # declared for another site: nothing is written
+                        continue
                 if stimulus.only_if is not None:  # decided first: an unselected stimulus needs no write context
                     binding, expected = stimulus.only_if
                     reading = self.bindings.get(binding)

@@ -1,0 +1,142 @@
+---
+type: plan
+status: accepted
+phase: P3
+task: "11"
+updated: 2026-10-24
+related: [ADR-0006, ADR-0015, ADR-0017, B-003, B-005, B-006, B-009, U-009, U-010, U-014, U-021, U-022, U-028, U-031]
+---
+
+# P3-11：任务事件、结果、救援与重试 — Goal
+
+## 目标与来源
+
+实现用户于 2026-10-17 批准的 [spec](./spec.md) 中的 S-01 至 S-12 与 AC-01 至 AC-16：
+
+- 原版研究 Q-01 至 Q-12，事实写入 `docs/original/`；
+- 两个[实施关卡](./spec.md#实施关卡)：D-01 共享契约、退场与衔接；D-02 证据复用、采样与判据。各在依赖它的工作开始之前定稿并取得用户批准；
+- 段 2 计数与任务总结；全清、结算与成功；被毁、信标、救援与失败；僚机损失计时；结果锁存、退场与完成；`mission`/`result` 分区、快照与 replay；
+- Runtime 与会话的救援保持与终局；G-02/5 至 G-02/9 占位、G-06 结果页、重试与返回；浏览器回归；本地真实内容核对；按“保留门槛、优先复用、最小补采”取得的原版对照；文档与交接。
+
+本文件不重新定义行为契约。共享字段的最终形状由 D-01 写入 [P3-02 spec](../02/spec.md) 与 [P3-04 spec](../04/spec.md) 后为准；本 goal 只规定由哪个子任务实现。
+
+## 代码现状与前提
+
+- **已有代码（P3-02 至 P3-10 交付）：**
+  - [world-state.ts](../../../../src/core/world/world-state.ts)：`MissionStatus` 只有 `built`，`MissionFlow` 为 `{ mainState: 3, subState: 0|3|4|5, dockingDeadline }`。[pipeline.ts](../../../../src/core/systems/pipeline.ts) 的 `mission-flow` 只运行 [docking.ts](../../../../src/core/systems/docking.ts) 的 `checkDockingWait`，`mission-teardown` 为 `null`。
+  - CR-13 调用点只在模块注释中：[damage.ts](../../../../src/core/systems/damage.ts)（`0x6977c`、`0x32d74`、`0x32dec`）、[destruction.ts](../../../../src/core/systems/destruction.ts) 的 `expireFragment`（`0x32e14(1)`）、[energy.ts](../../../../src/core/systems/energy.ts)（`0x33464`）、[launch.ts](../../../../src/core/systems/launch.ts) 与 [spawn.ts](../../../../src/core/systems/spawn.ts)（`0x339cc`）。
+  - 可复用：[spawn.ts](../../../../src/core/systems/spawn.ts) 的 `disableSpawning`、`pendingSpawns`、`placeWorldRecord`；[view-switch.ts](../../../../src/core/systems/view-switch.ts) 的 `switchView`；[radio.ts](../../../../src/core/systems/radio.ts) 的 `flushRadio`、`queueRadio`；[base-interior.ts](../../../../src/core/systems/base-interior.ts) 的 `fullRepair`；[comm-reactions.ts](../../../../src/core/systems/comm-reactions.ts) 的 `clearCommunicationLimits`；[combat-init.ts](../../../../src/core/rules/combat-init.ts) 的 `rebuildWeaponBlock`、`initialiseResources`；[spawn-state.ts](../../../../src/core/world/spawn-state.ts) 的私有 `RuntimeRecord`。
+  - [projection.ts](../../../../src/core/projections/projection.ts) 的 `result` 恒为 `not-implemented`，`ResultReason`、`ResultMessageReference` 为 `never`。[world.ts](../../../../src/core/world/world.ts) 的 `CoreFaultError` 锁存所有后续调用。版本：`RULES_VERSION` 7、快照格式 6、[recording.ts](../../../../src/core/replay/recording.ts) 的 `GAME_REPLAY_VERSION` 3。
+  - 内容：[logic-content.ts](../../../../src/content/logic/logic-content.ts) 的 `EventTrigger`/`EventRange`；[scen.ts](../../../../src/original-data/formats/scen.ts) 与 [object-record.ts](../../../../src/original-data/formats/object-record.ts) 已在原始解析边界拒绝特殊模式与生成配对；`data/flight-messages` 与 `data/comm-messages` 已导入。
+  - 会话：[game-runtime.ts](../../../../src/app/runtime/game-runtime.ts) 的 `FrameReport.cut` 只有 `transition`；[game-session.ts](../../../../src/app/session/game-session.ts) 的运行中保持只接受 G-02/3、G-02/4，`MAX_TRANSITIONS_PER_TICK` 为 2；[mission-flow.ts](../../../../src/app/mission/mission-flow.ts) 没有结果位置；[slice-gaps-copy.ts](../../../../src/ui/mission/slice-gaps-copy.ts) 的 G-06 写明尚无结果页，`MISSION_OBJECTIVES` 待本任务复核。
+- **计划新增：** `src/core/systems/mission-flow.ts`、`mission-events.ts`、`rescue.ts`、`mission-teardown.ts`；`src/core/rules/` 下的全清、总结与救援纯规则；`src/ui/mission/ResultPage.tsx`；`e2e/mission-result.development.spec.ts`；被忽略的 `local/research/p3-11/<主题>/`。名称可在实现时调整，职责以各 subtask 为准。
+- **跨任务前提：**
+  - P3-07、P3-08、P3-10（直接依赖）与 P3-02 至 P3-06、P3-09 均已完成，各自 goal 全部 completed（见 [STATUS](../../../STATUS.md)）。
+  - STATUS 列出的未决跨任务项（停靠倒计时到期或 `[launch, request-warp]` 与 `request-warp` 同 tick 的联合故障；`isClosingMissileLock` 未实现；`MapLabel.threatStamp`）仍归原责任任务。若阻碍本任务的联合用例，记录受影响 AC 与恢复条件，不在本任务中修复。
+  - P3-12 至 P3-14 未开始：本任务只交付被毁视角时机、消息事件与音效触发点，不宣称画面或音效已呈现。
+- **环境：** 本 worktree 已有 `node_modules`；不全时运行 `pnpm install --frozen-lockfile`。`local` 已链接主仓库的 `local/`。Ghidra 一律 `-noanalysis -readOnly`，在 `local/research/p3-11/<主题>/` 的私有只读副本中运行。DOSBox-X 基准环境同一时间只有一个会话，由协调者安排 06、20。
+- **原版证据：** 01 至 03 只写各自的 findings，04 统一写入 `docs/original/`。原版运行遵循用户 2026-10-17 的选择：先复用已有证据（06 审计），只为无法闭合的必需缺口按 D-02 集中补采（20），优先用模拟器内输入由 agent 独自完成；确有合规途径无法完成的具体操作才请用户做最小操作。缺必需证据的验收保持 blocked。
+
+## 验收覆盖
+
+| Spec 范围项/验收项 | 实现子任务 | 验证子任务及方法 |
+| --- | --- | --- |
+| S-01 | 05、08 | 05：P3-02/P3-04 修订获批；08：类型、序列化、比较器与版本的 Node 测试；23：契约一致 |
+| S-02 | 09 | 09：计数、总结与创建时检查的 Node 测试 |
+| S-03 | 10 | 10：全清与结算的正式 step 测试 |
+| S-04 | 11 | 11：被毁与信标的 Node 测试 |
+| S-05 | 12 | 12：救援的单次入口与完整 tick 测试 |
+| S-06 | 12 | 12：失败的 Node 测试 |
+| S-07 | 13 | 13：僚机损失计时的 Node 测试 |
+| S-08 | 14、15 | 14：退场与门禁；15：分区与事件；18：浏览器 |
+| S-09 | 16、17 | 16：Runtime/Session/owner 竞态矩阵；18：浏览器 |
+| S-10 | 01、04、17 | 01/04：Q-08 的有界核实；17：G-06 文案；18：可见 |
+| S-11 | 01、02、03、04、06、07、20、21 | 04：事实归档；21：对照结论；23：证据核对 |
+| S-12 | 22 | 22：文档链接与元数据；23：交接核对 |
+| AC-01 | 05、07、08 | 05/07：关卡批准记录；08：严格读取与版本回归 |
+| AC-02 | 09 | 09：parser/content/Core 合成边界测试 |
+| AC-03 | 10 | 10：正式 step 集成与时钟边界 |
+| AC-04 | 11 | 11：P3-07/09/10 联合 Node 回归 |
+| AC-05 | 11 | 11：信标时间边界与混合损失链 |
+| AC-06 | 12 | 12：恢复顺序、取模映射、快照与 AI/通讯联合回归 |
+| AC-07 | 12、14 | 12：损失计数与失败；14：退场与故障矩阵 |
+| AC-08 | 13 | 13：状态与时钟边界 |
+| AC-09 | 15、17 | 15：projection 测试；17：bridge 与内容解析测试 |
+| AC-10 | 14、15 | 15：录制往返、replay-check 与完成后 step |
+| AC-11 | 16 | 16：Runtime/Session/owner 竞态与资源平衡 |
+| AC-12 | 17 | 18：本机 Chrome E2E 与 browser-testing |
+| AC-13 | 19 | 19：私有真实内容 Node 核对 |
+| AC-14 | 01、02、03、04、21 | 04/21：来源与置信度；23：`pnpm check:compliance` 与 git 审阅 |
+| AC-15 | 06、07、20、21 | 21：逐分支覆盖矩阵与结论 |
+| AC-16 | 17、22 | 22：文档检查；23：`pnpm check` |
+
+## 子任务跟踪
+
+状态只在此维护：`pending` / `in-progress` / `blocked` / `completed`。依赖项全部 completed 后才能开始；验收结果和证据写在相应 subtask 文档，不在阶段索引重复状态。并行执行时，本表与执行记录只由协调者修改。
+
+| 子任务 | 依赖 | 状态 |
+|---|---|---|
+| [01-flow-result-research.md](./subtasks/01-flow-result-research.md) | — | completed |
+| [02-loss-rescue-research.md](./subtasks/02-loss-rescue-research.md) | — | completed |
+| [03-messages-manual-research.md](./subtasks/03-messages-manual-research.md) | — | completed |
+| [04-original-facts.md](./subtasks/04-original-facts.md) | 01, 02, 03 | completed |
+| [05-shared-contract-gate.md](./subtasks/05-shared-contract-gate.md) | 04 | completed |
+| [06-evidence-reuse-audit.md](./subtasks/06-evidence-reuse-audit.md) | 01, 02 | completed |
+| [07-sampling-criteria-gate.md](./subtasks/07-sampling-criteria-gate.md) | 04, 06 | completed |
+| [08-contract-foundation.md](./subtasks/08-contract-foundation.md) | 05 | completed |
+| [09-mission-events-summary.md](./subtasks/09-mission-events-summary.md) | 08 | completed |
+| [10-all-clear-settlement.md](./subtasks/10-all-clear-settlement.md) | 09 | completed |
+| [11-player-loss.md](./subtasks/11-player-loss.md) | 10 | completed |
+| [12-rescue-failure.md](./subtasks/12-rescue-failure.md) | 11 | completed |
+| [13-wingman-loss-timer.md](./subtasks/13-wingman-loss-timer.md) | 10 | completed |
+| [14-teardown-completion.md](./subtasks/14-teardown-completion.md) | 12, 13 | completed |
+| [15-projection-replay.md](./subtasks/15-projection-replay.md) | 14 | completed |
+| [16-runtime-session-ending.md](./subtasks/16-runtime-session-ending.md) | 15 | completed |
+| [17-result-page-ui.md](./subtasks/17-result-page-ui.md) | 16 | completed |
+| [18-browser-verification.md](./subtasks/18-browser-verification.md) | 17 | completed |
+| [19-real-content-check.md](./subtasks/19-real-content-check.md) | 07, 15 | completed |
+| [20-original-formal-runs.md](./subtasks/20-original-formal-runs.md) | 07 | completed |
+| [21-comparison-conclusions.md](./subtasks/21-comparison-conclusions.md) | 19, 20 | completed |
+| [22-docs-handoff.md](./subtasks/22-docs-handoff.md) | 17, 18, 21 | completed |
+| [23-final-alignment.md](./subtasks/23-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 | completed |
+
+最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
+
+## 执行记录
+
+- **2026-10-18 — 01、03 的发现交 D-01（05）：**
+  - 01 证明主状态 5 的失败分支在正常游戏中可达（导弹起爆与到期生成请求同帧的巧合，SCEN 3019 有 300 秒到期的编组），推翻 spec“仅调试入口可达、违反即 Core 故障”的前提。按 spec 的规则（“若研究发现正常可达反例，先修订契约与原因联合”），05 须先修订 spec 的失败原因联合与该不变量，经用户决定后再实现 08、10。
+  - 01：全清掩码须由 `craftType` 导出 `0x91780`/`0x93780`，不能只靠 `side`；建议创建时拒绝总结选择值 1–12 与 ≥ 36；状态 4、5 的到期为严格比较。
+  - 03：完成与信标消息进入消息行（类型 8 仪表），0x3C0 只是未画出时的过期时间，不是显示时长；spec 中“显示 0x3C0 单位”的表述须在 05 订正。
+- **2026-10-18 — 06：** 审计 205 份私有运行报告：没有运行到达全清，也没有第二次救援。可复用 P3-07 p-b-01（被毁→逃生舱计时）与 P3-09 w2-01、w1-03、t2-01（各一次首次救援，只有离散的救援后状态）。无需预实验；D-02 的缺口与建议的 F（失败链）、S（成功链）两个配方族见 `local/research/p3-11/reuse/audit.md`。
+
+- **2026-10-18 — Subtask 05 blocked:** D-01 草稿已完成，等待用户批准；用户当时不在，不能代为批准。
+  Evidence: 草稿在 worker 会话“P3-11 · 05 d-01 drafting”的工作树 `musical-happiness`（未提交）：P3-02 新增“P3-11 的契约修订（D-01）”ME-01–ME-19，P3-04 新增“终局与救援衔接（P3-11 的修订）”，P3-11 spec 的强制修订与“D-01 定稿（待用户批准）”。需批准的 11 项推荐方案见该小节与 ME-17（状态 5 失败竞态忠实复现并新增原因 `settlement-failed`；锁存 tick 起退场、下一 tick 完成；锁存后命令 `ignored`/`mission-ended`；完成后 step 为非锁存 `CoreInputError`；总结选择值只接受 ≤0 与 13–19；比例按指令顺序 f64；Warp 中能量救援油门越界与扇区放置测试的处置；`RULES_VERSION` 与快照格式各 +1、replay 格式不变；退场写视角 0x13；会话 `completed` 阶段与终局占位）。
+  Affected acceptance: AC-01；05 的全部验收；08 至 23 依赖它，07 与它写入范围重叠。
+  Resume when: 用户明确批准 D-01（全部推荐或逐项修改）。协调者把决定转给该 worker，由它写审批记录并提交，随后集成。
+- **2026-10-22 — Subtask 05 resumed:** 用户原话“批准 D-01 全部推荐”。协调者已把该决定转给 05 worker。
+- **2026-10-22 — D-01 定稿：** 05 已写入 P3-02（ME-01–ME-19）、P3-04（终局与救援衔接）和 P3-11 spec 的审批记录；状态 5 的失败竞态按原因 `settlement-failed` 忠实复现；P3-03 不需要修订。
+- **2026-10-22 — Subtask 07 blocked:** D-02 草稿已完成，等待用户批准；用户当时不在，不能代为批准。
+  Evidence: 草稿在 worker 会话“P3-11 · 07 d-02 drafting”的工作树 `fictional-disco`（未提交）：本 spec 的“D-02 定稿（待用户批准）”，B-003“原版运行时测量：成功链（P3-11）”，B-005“原版运行时测量：失败链与救援（P3-11）”。时间链以游戏写入的到期为锚，分辨率 2 单位，归一化后精确；只开 F（无僚机：被毁→能量→地图打开时第三次损失）与 S（僚机 1：击杀至全清，0x140 等待内 Warp）两族。待批准的推荐：D2-1 启动预算 F 计划 1/最多 2、S 计划 1/最多 3，总计不超过 5 次，各阶段游戏/宿主时间上限；D2-2 F 的损失顺序；D2-3 预实验 t2-01 与 E-2、E-3 同样只作首次救援后的离散状态复用；D2-4 #6、#7（停靠、基地视角、Warp）、#8 仍为必需，在 F/S 中顺带捕获，取不到则 blocked，运行后由用户逐项决定；D2-5 僚机损失计时只在 S 中顺带捕获；D2-6 区分情形未出现时不加跑，只在报告中披露。
+  Affected acceptance: AC-01（D-02 部分）、AC-15；07 的全部验收；19、20、21、22、23 依赖它。08 至 18 不依赖它，照常执行。
+  Resume when: 用户明确批准 D-02（全部推荐或逐项修改），且仍没有新版对应结果。协调者把决定转给该 worker，由它写审批记录并提交，随后集成。
+- **2026-10-22 — 08 的交接：** `compare.ts` 已按 ME-13 强制事件次序，09 至 14 须严格按该次序发出事件（例如 `radio-flushed('player-destroyed')` 紧接在 `player-loss-started` 之前），确需改变时由 15 修改比较器。`result` 分区始终就绪，`flow.completedTick` 设置前读作进行中；桥接的结果关键字段改为 `completedTick`。在 16、17 之前，G-02/5、G-02/6 的运行中衔接没有占位页。`docs/engineering/modules/core.md` 仍写快照格式 6、`RULES_VERSION` 7，应为 7、8（replay 格式 3 不变），交 22 订正。
+- **2026-10-22 — 09 的交接：** `reportObjectEvent(context, entity, type)` 是 `0x6977c` 的唯一入口，10 在计数之后接入全清检查并发出 `all-clear`；`selectSummary` 尚无调用者，由 10 在 3→4 接入。偏差：ME-02 要求检查“在 CB-01 之后、`buildSpawnState` 之前”，两者不能同时满足（CB-01 在 `buildSpawnState` 之后），实现放在 `checkSetup` 末尾、`buildSpawnState` 之前，只影响同时出错时的优先次序。`docs/engineering/modules/core.md` 的世界创建第 3 步应补上总结选择值的拒绝，交 22。
+- **2026-10-22 — 10 的交接：** 11 在 `mission-flow.ts` 的 `runMission` 中分派子状态 1（目前 case 1 直接返回）；12 在写入状态 ended、关闭生成且救援计数保持 2 之后调用导出的 `latch(context, { type: 'third-loss', loss })`；13 把僚机计时放在子状态 0 分支中 `missionStatus === 'ended'` 检查之后；14 起锁存后世界停在主状态 0，`compare.ts` 要求锁存 tick 内发出 `teardown-started`。“状态 4/5 中的损失既不救援也不失败”的入口测试留给 11/12。交 22：`core.md` 阶段表的 `mission-flow` 行应写明 `runMissionFlow`，并提到 `reportObjectEvent` 中的全清入口；`player-state.ts` 中 `heavyDamage` 的注释应改为只供 P4 勋章（ME-18）。
+- **2026-10-23 — 11 的交接：** `destroyPlayer`（0x32d74）接在 `damage.ts` 的 `destroy` 中，在击杀计数之后、`destroyEntity` 之前；`startBeaconWait`（0x33464）接在玩家每次耗尽更新之后；`mission-flow` 子状态 1 在 c′ ≥ 期限时置子状态 2 并 `flushRadio('beacon-expired')`，12 在其后调用 `resolvePlayerLoss('energy')`，并在逃生舱到期处接入 `'destroyed'`。损失停在子状态 2，等待 12。Warp 中被毁时，`switchView` 恢复 `savedLeftPage` 的 `left-page-changed` 在 `player-loss-started` 之后发出（比较器要求 `player-loss-started` 紧接其清空，同 MW-05 先例），15 若修改比较器可再议。“状态 4/5 中的损失不进入”的入口测试已在 `player-loss.test.ts` 覆盖，12 只需覆盖救援与失败一侧（主状态 ≠ 3 时 `resolvePlayerLoss` 直接返回）。测试注意：`radioScene` 在第一个 tick 才初始化玩家资源，耗尽须在其后设置。交 22：`core.md` 第 774 行与约 1010–1027 行的交接段落已过时（0x32d74、0x33464 已接入）。
+- **2026-10-23 — 12 的交接：** `resolvePlayerLoss(context, loss)` 在 `systems/rescue.ts`，接在 `destruction.ts` 的 `expireFragment`（`followedEntity := null` 之后、待移除之前）与 `mission-flow` 子状态 1（`flushRadio('beacon-expired')` 之后）；第三次损失写入状态 ended、关闭生成，救援计数保持 2 时调用 `latch`。恢复规则在 `rules/rescue.ts`；救援油门越界在 `'rescue.throttle'` 报 Core 故障（ME-17 决定 7）。13：僚机损失计时仍未接入。14/16：`game-runtime-recording` 的 131072 tick 运行现在经过一次能量救援（G-02/6，测试中释放屏障），到达救援的会话级运行会遇到 16 必须接纳的 G-02/5、G-02/6 保持。交 22：`core.md` 第 770、774 行与约 1010–1027 行已过时；已知差异列表应补上媒体零用时、不建模扇区预算（决定 8）与 G-2 的 Warp 油门故障。
+- **2026-10-23 — 13 的交接：** 0x32dec 接在 `damage.ts` 的 `destroy` 中（`destroyPlayer` 的 else 分支之后、停靠测试之前）；子状态 0 的检查为 `mission-flow` 中 `missionStatus === 'ended'` 之后的 `checkWingmanLossTimer`；`RULES_VERSION` 与快照格式不变（08 已递增，字段已序列化）。交 22：`core.md` 约第 408、1010、1023、1029 行仍把 0x32dec 与僚机损失消息写成待接入。
+- **2026-10-23 — 14 的交接：** 退场在锁存 tick 的 `mission-teardown` 开始，下一 tick 完成；跨过锁存继续步进的测试现在会看到主状态 1，须在完成时停止。完成后 `world.step` 在读取输入之前抛出 `CoreInputError('step', 'mission-completed')`，不锁存。主状态 0、1 中的命令为 `ignored`/`mission-ended`；锁存 tick 中轴向输入仍生效（轴是输入，不是命令）。15：ME-12 的“录制会话同理”（录制会话在容量检查之前拒绝完成后的 step）与 `replayRecord` 的 `after-completion` 拒绝仍未实现。16：到达锁存的会话级运行现在会得到 `mission-completed`，须停止步进。交 22：`core.md` 第 280 行（`mission-teardown` 仍写“空”）、873、1007、1010 行（0x339cc 仍写“待加入”）已过时，须补上退场/完成、`mission-ended` 门禁与完成后的 `CoreInputError`；`src/core/rules/radio.ts:27` 的注释（“P3-11 adds it”）已过时。
+- **2026-10-23 — 15 的交接：** ME-12 的录制会话拒绝（完成后的 step 在读取输入与容量检查之前以 `mission-completed` 拒绝）与 `replayRecord` 在 `record.ticks[k]` 以 `after-completion` 拒绝已实现；replay-check 报告升到版本 2，加入 `completed: boolean | null`。合成光盘的任务不能靠输入到达结束（131072 tick 内无能量损失、无敌机），工具测试只替换工具的 replay 调用，改用 Core 对合成的、输入驱动的成功运行的真实 replay。合成机型记录的玩家 +0xC0 为 −2，能量救援会落入 `rescue.throttle` 故障，测试中设为 2；16、19 复用该记录时须注意。11 交来的 Warp 页变化次序保持不变（ME-13 不规定该页事件的次序）。交 22：`core.md` 的录制与 replay 小节补上上述拒绝与 `isCompletionTick`/`completedRun`；`docs/guides/tools.md` 第 20、153 行改为报告版本 2；P3-04 spec 第 454 行持久化表的 `version: 1` 已被“终局与救援衔接”的修订取代。
+- **2026-10-23 — 16 的交接：** 合成数据的真实运行：成功在 tick 647 完成；失败运行经过两次 G-02/6 保持（transitionId 1、2），以 G-02/7 energy（transitionId 3）完成。17：`game-session-bridge.ts` 的 `#sync` 缺少 `completed` 分支，完成时会分离运行并清空投影，须在 `stopped` 旁加入；MissionPage 须呈现 `ending`（owner 快照的 `endingPlaceholder`：G-02/7 变体、G-02/8 变体、G-02/9 行，带 runId/transitionId/index/count）与 `result`（`snapshot.session.result`），重试为在 `result` 中调用 `owner.restart()`，返回照旧经任务槽；替换 `slice-gaps-copy.ts` 与 PlaceholderPage 中 G-02/5、G-02/6 的最小文字。测试辅助：`transition-injection.test-support.ts` 提供 `injection.complete(step, injectedResult(endingGaps))` 与 G-02/5、G-02/6；`src/app/runtime/mission-end.test-support.ts` 提供 Core 成功与第三次损失运行的默认步长 Runtime 规格。交 22：`docs/engineering/modules/app.md` 第 20–21、32、35–36、62、73、78 行与 `ui.md` 第 29–30 行已过时。
+- **2026-10-23 — 17 的交接：** 结果页有 data-testid `mission-result`（`data-outcome`、`data-reason`，如 `third-loss:energy`）、`mission-result-summary`（`data-summary` 为 text、empty、none、failure 或 failed）、`mission-result-rescues` 与 `mission-result-kills`；终局占位带 `data-gap` G-02/7、G-02/8 或 G-02/9，`mission-placeholder-variant` 带 `data-variant`。合成光盘的任务不能靠输入到达终局，18 需要短程合成初始数据。交 22：`ui.md` 第 13、20 行，`app.md`（`app/resources/mission-texts.ts`、`flightMessagesInput`、`MissionScreenParts.texts`），`slice-gaps.md`（G-02/5–G-02/10 与 G-06 的呈现）。
+- **2026-10-23 — 18 的交接：** 合成变体替换 mission-startable 的任务与机型载荷（玩家 +0xC0 = 2）：failure 约 1,400 tick（G-02/5 → G-02/6 → G-02/7 energy），success 646 tick（G-02/8 solo，空总结），success-cutscene（G-02/8 wingman + G-02/9 第 16 行，带文本总结），均与种子无关。限制：页面隐藏时运行暂停，终局占位无法在隐藏页面挂载，所以“隐藏页面不取焦点”对终局与结果页只由 17 的 Node 测试覆盖。交 22：`docs/engineering/README.md`（约第 177、186 行）与 `source-structure.md`（约第 532 行）补上 `e2e/support/mission-result.ts`、`production-cache.ts` 的 `seedRecords`/`storeSeed` 与 `ai-wingman.ts` 的 `withPayloads`。
+- **2026-10-23 — Subtask 07 resumed:** 用户原话“批准 D-02 全部推荐”。此时 `local/research/p3-11/` 仍没有新版对应结果（只有 flow、messages、rescue、reuse）。协调者已把该决定转给 07 worker。
+- **2026-10-23 — 19 的交接（给 21）：** 真实内容（SCEN 3019、默认步长、原始难度 19、只用 TickInput）上 16 次正式 Core 运行，均无故障，15 次到达终局并通过 replay-check。正式集合：s1–s6（S，僚机 1，含 Warp 推迟窗口）、s1-nowarp、sk1（C-13 窗口）、sk2（世界出口全清）、f1（被毁救援 → 能量救援 → 地图中第三次被毁，标准 F 链）、f3/f6、f5（信标被被毁覆盖）、f2/fstill1（候选 0 的救援，即 #8）、f4（到上限，无终局）。窗口与锚在 `local/research/p3-11/real-content/out/windows.json`（63 个窗口），各运行的 `anchors.json`/`trace.json`；tick t 的取样为 2t，`mission-flow` 阶段读 2(t−1)。未取得：C-17、C-18，以及停靠、基地视角、Warp 中被毁。F 第 1 阶段用“全速接近以玩家为目标的敌机、不开火、护盾 0”，与 D-02 中原版一侧的自动驾驶写法不同；配对按窗口类型，21 不受影响。
+- **2026-10-23 — 20 暂停（用户要求）：** 协调者在 20 worker 工作树 `refactored-waddle` 中启动 f-01，约 2 分钟后按用户“stop it. i will resume later”停止（停在进入路线的 `ky-title`，未进入任务）；已确认没有遗留的 DOSBox-X 或工具进程。f-01 计入 D2-1 的启动预算（F 已用 1/2，总计 1/5）。工具改动（opt-in 的 `until.at`、刺激 `at`、暂停 `jump`，协调者已按 D-02 接受）与配方仍未提交，留在该工作树。恢复时：f-01 不合格，按 D-02 §7 判断是否以 f-02 重做，再进行 s-01；19 已完成，21 等待 20。
+- **2026-10-24 — 20 的结果（给 21）：** 启动 3/5：f-01 在用户要求停止时取消（不合格），f-02 与 s-01 合格（`complete`）；按 D-02 §7 不需要 S 重做。已覆盖：R-20 C-4（F 与 S）、R-21a C-1、R-21b #1 #2 C-2、#3 C-3（观察到的分支）、R-22a C-5–C-7（C-6 的逃生舱窗口沿用 E-1）、R-22b C-9–C-12、#4 C-8、#7 的地图情形。按 D2-4/D2-5 保持 blocked 的顺带项：#5 C-13；#6(a) C-16、#6(b) C-17、#6(c) C-18；#7 停靠、基地视角、Warp；#8。恢复条件：之后任何合格的原版运行取得它们，或用户逐项决定（加跑 / 代码与 Node 的限定结论 / 继续 blocked）。工具改动（opt-in 的 `until.at`、刺激 `at`、暂停 `jump`；未用这些键的配方行为与指纹不变）随 20 提交。
+- **2026-10-24 — 21 的交接：** R-20 至 R-22 两层判定一致，没有行为不一致（原版第 2 式 128/128，单次转移 53/53，新版第 1 式 870/870；9 类原版时间窗口全部配对）。B-003、B-005 新增测量结果；U-031 的“所选任务正常玩法失败路径”升为已确认（运行），其余部分不变；executable 新增：位 17 的基地列表从最早实例化的基地起、按实例化次序排列。仍 blocked 的机会项（D2-4/D2-5）：#5 C-13、#6 (a)(b)(c) C-16–C-18、#7 停靠/基地视角/Warp、#8，待用户逐项决定（追加启动 / 代码与 Node 限定结论 / 保持 blocked）。
+
+## 审批
+
+**2026-10-18 批准：** 用户明确调用 `/execute-goal docs/plan/p3/11/goal.md`（经 `/orchestrate`），按 execute-goal 的规则视为批准本 goal 的完整计划（23 个子任务、依赖、写入范围与验收覆盖）。批准不代表实现完成，不替代 spec 或关卡 D-01、D-02 的批准。

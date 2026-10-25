@@ -88,7 +88,7 @@ describe('mission page copy', () => {
   it('names the phase, the pause reason and why resume is unavailable', () => {
     const status = (overrides: Partial<GameSessionStatus>): GameSessionStatus => ({
       phase: 'paused', runId: 1, environmentVisible: true, pauseReason: 'user', transition: null, resumeRequired: false,
-      stopReason: null, cleanupFailed: false, error: null, ...overrides,
+      stopReason: null, result: null, cleanupFailed: false, error: null, ...overrides,
     });
     expect(pauseText(status({}))).toBe('Paused by you');
     expect(pauseText(status({ pauseReason: 'hidden' }))).toMatch(/page was hidden/);
@@ -101,28 +101,37 @@ describe('mission page copy', () => {
 
 describe('slice gap copy (G IDs)', () => {
   it('keys each marked gap by its G ID, with a title and a text', () => {
-    expect(Object.keys(SLICE_GAPS)).toEqual(['G-01', 'G-02/1', 'G-02/2', 'G-02/3', 'G-02/4', 'G-03', 'G-04', 'G-05', 'G-06', 'G-07', 'G-08', 'G-09', 'G-10']);
+    expect(Object.keys(SLICE_GAPS)).toEqual([
+      'G-01', 'G-02/1', 'G-02/2', 'G-02/3', 'G-02/4', 'G-02/5', 'G-02/6', 'G-02/7', 'G-02/8', 'G-02/9', 'G-02/10',
+      'G-03', 'G-04', 'G-05', 'G-06', 'G-07', 'G-08', 'G-09', 'G-10',
+    ]);
     for (const [id, copy] of Object.entries(SLICE_GAPS)) {
       expect(copy.title.length, id).toBeGreaterThan(0);
       expect(copy.text.length, id).toBeGreaterThan(0);
     }
     expect(SLICE_GAPS['G-07'].text).toMatch(/fixed at raw value 19/);
     expect(SLICE_GAPS['G-06'].text).toMatch(/does not reproduce the campaign state/);
+    expect(SLICE_GAPS['G-06'].text).not.toMatch(/no results page/);
     expect(SLICE_GAPS['G-08'].text).toMatch(/only the forward cockpit view.*cursor and keypad.*P4/);
     expect(SLICE_GAPS['G-09'].text).toMatch(/does not implement.*autopilot.*no autopilot command.*P4/);
     expect(SLICE_GAPS['G-10'].text).toMatch(/fixed at Medium.*switching.*P4/);
   });
 
-  it('keeps the objectives and limits as project text with the result wait, the third loss per attempt, sources and confidence', () => {
+  it('keeps the objectives and limits as project text with the result wait, the third loss per attempt, the rare settlement failure, sources and confidence (reviewed by P3-11)', () => {
     expect(MISSION_OBJECTIVES.gap).toBe('G-04');
     expect(MISSION_OBJECTIVES.title).toMatch(/project text/);
     expect(MISSION_OBJECTIVES.objective).toMatch(/waiting period/);
+    expect(MISSION_OBJECTIVES.objective).toMatch(/destroyed or has left the mission area/);
     expect(MISSION_OBJECTIVES.objective).toMatch(/does not end the mission at once/);
+    expect(MISSION_OBJECTIVES.objective).toMatch(/5 seconds follows, extended while you are in warp.*15 more seconds/);
+    expect(MISSION_OBJECTIVES.objective).toMatch(/rare case.*fails at the end of that wait/);
+    expect(MISSION_OBJECTIVES.limits).toMatch(/first two times in one attempt/);
     expect(MISSION_OBJECTIVES.limits).toMatch(/third loss in the same attempt fails/);
-    expect(MISSION_OBJECTIVES.limits).toMatch(/after the last enemy is gone neither rescues nor fails/);
-    expect(MISSION_OBJECTIVES.status).toMatch(/does not implement these rules yet/);
-    expect(MISSION_OBJECTIVES.sources.join('\n')).toMatch(/Confirmed: docs\/original\/formats\/executable\.md[\s\S]*Likely: docs\/original\/behavior\/B-003/);
+    expect(MISSION_OBJECTIVES.limits).toMatch(/once the waiting period has begun neither rescues nor fails/);
+    expect(MISSION_OBJECTIVES.status).toMatch(/Core decides the result/);
+    expect(MISSION_OBJECTIVES.sources.join('\n')).toMatch(/Confirmed: docs\/original\/formats\/executable\.md[\s\S]*State-5 failure[\s\S]*Likely: docs\/original\/behavior\/B-003/);
     expect(MISSION_SKELETON).toMatch(/formal runtime skeleton, not yet a playable slice/);
+    expect(MISSION_SKELETON).toMatch(/mission result included/);
     expect(MISSION_SKELETON).not.toMatch(/game controls/);
   });
 });

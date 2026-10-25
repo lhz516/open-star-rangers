@@ -1,16 +1,18 @@
 /**
  * The page copy of the slice gaps this build shows (docs/plan/p3/01/spec.md: 缺省清单, 标注规则; docs/plan/p3/04/spec.md:
- * 缺省与标注, AC-19; docs/plan/p3/10/spec.md: 缺省与标注). Each G item's text lives here only, keyed by its G ID, so an
- * audit finds it by ID; the pages only place it. Project text in the app's language, not original text.
+ * 缺省与标注, AC-19; docs/plan/p3/10/spec.md: 缺省与标注; docs/plan/p3/11/spec.md: 缺省与标注, 结果页、重试与返回). Each G
+ * item's text lives here only, keyed by its G ID, so an audit finds it by ID; the pages only place it. Project text in
+ * the app's language, not original text: the result page's summary is the only imported text, resolved at run time.
  */
-import type { MessageIdentity } from '../../core/world/world-state.ts';
+import type { EndingGap, MessageIdentity, PlayerLoss, ResultReason } from '../../core/world/world-state.ts';
 
 /**
- * The G items this build marks in its pages; G-06 only for restart and return, whose results page belongs to P3-11.
- * G-03 has no page here: its message summaries are for the cockpit display P3-13 draws.
+ * The G items this build marks in its pages. G-02/10 has no placeholder: medals are not decided, so the result page
+ * discloses it. G-03 has no page here: its message summaries are for the cockpit display P3-13 draws.
  */
 export type SliceGapId =
-  | 'G-01' | 'G-02/1' | 'G-02/2' | 'G-02/3' | 'G-02/4' | 'G-03' | 'G-04' | 'G-05' | 'G-06' | 'G-07' | 'G-08' | 'G-09' | 'G-10';
+  | 'G-01' | 'G-02/1' | 'G-02/2' | 'G-02/3' | 'G-02/4' | 'G-02/5' | 'G-02/6' | 'G-02/7' | 'G-02/8' | 'G-02/9' | 'G-02/10'
+  | 'G-03' | 'G-04' | 'G-05' | 'G-06' | 'G-07' | 'G-08' | 'G-09' | 'G-10';
 
 export interface SliceGapCopy {
   /** What is missing or replaced, short enough for a status bar. */
@@ -47,6 +49,50 @@ export const SLICE_GAPS: Readonly<Record<SliceGapId, SliceGapCopy>> = Object.fre
       + 'mission after the tick you launched in until it ends: no time passes for the missing cut-scene, and skipping it skips no '
       + 'rule. It ends after 3 seconds of visible time or when you skip it.',
   ),
+  'G-02/5': gap(
+    'Rescue cut-scenes missing (destroyed)',
+    'After your craft is destroyed and its escape pod has drifted for a few seconds, the original plays a group of rescue '
+      + 'cut-scenes, in which a rescue ship picks you up. This build shows one project placeholder for the whole group: '
+      + 'skipping ends all of it at once, not clip by clip. The rescue ship exists only in those cut-scenes, so none appears '
+      + 'in flight; the explosion, the escape pod and the wait are still part of the mission. The rescue has already happened '
+      + 'by the rules: the mission holds after the rescue tick until the placeholder ends, no time passes for the missing '
+      + 'cut-scenes, and it then continues with your craft repaired, near a base while one remains. It ends after 3 seconds '
+      + 'of visible time or when you skip it.',
+  ),
+  'G-02/6': gap(
+    'Rescue cut-scenes missing (out of energy)',
+    'After your craft runs out of energy and its beacon has called for 15 seconds, the original plays a group of rescue '
+      + 'cut-scenes, in which a rescue ship picks you up. This build shows one project placeholder for the whole group: '
+      + 'skipping ends all of it at once, not clip by clip. The rescue ship exists only in those cut-scenes, so none appears '
+      + 'in flight; the beacon wait is still part of the mission. The rescue has already happened by the rules: the mission '
+      + 'holds after the rescue tick until the placeholder ends, no time passes for the missing cut-scenes, and it then '
+      + 'continues with your craft repaired, near a base while one remains. It ends after 3 seconds of visible time or when '
+      + 'you skip it.',
+  ),
+  'G-02/7': gap(
+    'Mission failure cut-scenes missing',
+    'When the mission fails, the original plays a group of failure cut-scenes whose first clip has two variants, for a craft '
+      + 'destroyed or out of energy. This build shows one project placeholder for the group, naming that variant. The mission '
+      + 'has already ended by the rules and nothing resumes; the results page follows. It ends after 3 seconds of visible time '
+      + 'or when you skip it.',
+  ),
+  'G-02/8': gap(
+    'Return cut-scene missing',
+    'When the mission succeeds, the original plays a return cut-scene, one variant when your wingman is still flying at the '
+      + 'end and another without. This build shows a project placeholder instead, naming the variant. The mission has already '
+      + 'ended by the rules and nothing resumes. It ends after 3 seconds of visible time or when you skip it.',
+  ),
+  'G-02/9': gap(
+    'Mission cut-scene missing',
+    'After a success whose mission summary selects it, the original plays a cut-scene of this mission\'s own. This build '
+      + 'shows a project placeholder instead, naming the row the summary selected. The mission has already ended by the rules '
+      + 'and nothing resumes. It ends after 3 seconds of visible time or when you skip it.',
+  ),
+  'G-02/10': gap(
+    'Medal cut-scene not shown',
+    'The original can award a medal after a successful mission and play its ceremony. This build does not decide medals, so '
+      + 'that cut-scene never shows; medals belong to P4.',
+  ),
   'G-03': gap(
     'Communications portraits and animations missing',
     'The original shows each radio message as a speaking portrait animation with voice. This build keeps what those messages '
@@ -66,10 +112,13 @@ export const SLICE_GAPS: Readonly<Record<SliceGapId, SliceGapCopy>> = Object.fre
       + 'The original pictures and text are not shown, and no countdown is shown, as the page has no reading of the service timing.',
   ),
   'G-06': gap(
-    'Original campaign restart not reproduced',
-    'Restart begins a new instance of this mission at its introduction, with the same content and difficulty and a newly drawn '
-      + 'seed; only the wingman choice carries over. It does not reproduce the campaign state the original keeps when it restarts '
-      + 'a mission, and there is no results page yet.',
+    'Original results pages and campaign restart not reproduced',
+    'When a mission ends, a project results page replaces the original statistics page, its choice to replay or go on, the '
+      + 'high-score list, promotions and medals (P4). It shows the result, the rule that decided it, the rescues used and your '
+      + 'kills as a project summary of this attempt, and after a success the mission summary from your imported data. Restart '
+      + 'begins a new instance of this mission at its introduction, with the same content and difficulty and a newly drawn '
+      + 'seed; only the wingman choice carries over. It does not reproduce the campaign state the original keeps when it '
+      + 'restarts a mission.',
   ),
   'G-07': gap(
     'Original menus and campaign settings missing',
@@ -93,32 +142,124 @@ export const SLICE_GAPS: Readonly<Record<SliceGapId, SliceGapCopy>> = Object.fre
 
 /**
  * G-04: the objectives and limits the start page keeps, summarized in project words from the confirmed code facts, not
- * the original briefing. Sources (the page names them too):
- * - success and its waiting period: ../../../docs/original/formats/executable.md#mission-result-success-path-and-campaign-restart-p3-0104
+ * the original briefing (reviewed by P3-11, which implements these rules). Sources (the page names them too):
+ * - success, its waiting period and the state-5 failure race:
+ *   ../../../docs/original/formats/executable.md#mission-result-success-path-and-campaign-restart-p3-0104 and
+ *   ../../../docs/original/formats/executable.md#state-5-failure-in-normal-play-p3-1101
  * - loss, rescue and failure: ../../../docs/original/formats/executable.md#mission-failure-player-loss-and-rescue-p3-0105
- * - normal-play reachability: ../../../docs/original/behavior/B-003-campaign-flow.md#成功条件与本次观察的对应p3-0104 and
+ * - normal-play reachability: ../../../docs/original/behavior/B-003-campaign-flow.md#成功结局与手册p3-11 and
  *   ../../../docs/original/behavior/B-005-campaign-rescue.md#所选任务的失败路径高概率
- * P3-11 reviews this text when it implements the rules; the page decides no result.
+ * The page decides no result; Core does.
  */
 export const MISSION_OBJECTIVES = Object.freeze({
   gap: 'G-04' satisfies SliceGapId,
   title: 'Objectives and limits (project text)',
   objective:
     'Objective: the mission succeeds once every enemy craft it schedules, including those it brings in later, has been '
-    + 'destroyed or has left the mission area. The result then follows after a waiting period, and only while you are not in '
-    + 'warp; destroying the last enemy does not end the mission at once.',
+    + 'destroyed or has left the mission area. Destroying the last enemy does not end the mission at once: a waiting period '
+    + 'of 5 seconds follows, extended while you are in warp, then the completion message and 15 more seconds before the '
+    + 'result. In the rare case that a scheduled enemy group was due in the same moment the last enemy went, the mission '
+    + 'fails at the end of that wait instead, as in the original.',
   limits:
     'Limits: losing your craft, by destruction or by running out of energy, brings a rescue the first two times in one '
-    + 'attempt, and the mission continues; the third loss in the same attempt fails the mission. A loss after the last enemy '
-    + 'is gone neither rescues nor fails.',
-  status: 'This build does not implement these rules yet, so nothing here decides success or failure.',
+    + 'attempt, and the mission continues; the third loss in the same attempt fails the mission. A loss once the waiting '
+    + 'period has begun neither rescues nor fails. Losing bases or your wingman, and the time taken, do not fail the mission.',
+  status: 'Core decides the result by these rules; this page only describes them.',
   sources: Object.freeze([
     'Code evidence, Confirmed: docs/original/formats/executable.md, sections "Mission result, success path and campaign '
-      + 'restart (P3-01/04)" and "Mission failure, player loss and rescue (P3-01/05)".',
+      + 'restart (P3-01/04)", "State-5 failure in normal play (P3-11/01)" and "Mission failure, player loss and rescue (P3-01/05)".',
     'Reaching these in normal play, Likely: docs/original/behavior/B-003-campaign-flow.md and '
       + 'docs/original/behavior/B-005-campaign-rescue.md.',
   ]),
 });
+
+/** The G-02 items a placeholder page stands for; G-02/10 has none. */
+export type PlaceholderGap = Exclude<Extract<SliceGapId, `G-02/${string}`>, 'G-02/10'>;
+
+/** A G-02 placeholder page's name, by G ID, and the variant it names (P3-04 衔接占位; P3-11 缺省与标注). */
+export const PLACEHOLDER_PAGES = Object.freeze({
+  title: Object.freeze({
+    'G-02/1': 'Introduction', 'G-02/2': 'Departure', 'G-02/3': 'Docking', 'G-02/4': 'Launch',
+    'G-02/5': 'Rescue after destruction', 'G-02/6': 'Rescue after running out of energy', 'G-02/7': 'Mission failure',
+    'G-02/8': 'Return', 'G-02/9': 'Mission cut-scene',
+  } satisfies Record<PlaceholderGap, string>),
+  departure: Object.freeze({ solo: 'Departure without a wingman.', wingman: 'Departure with a wingman.' }),
+  /** G-02/7 by the loss; a failed settlement takes the destruction variant, as the original does. */
+  failure: Object.freeze({
+    destroyed: 'Variant: the destruction cut-scene. A failed settlement also takes this variant, as in the original, though '
+      + 'no craft was lost.',
+    energy: 'Variant: craft out of energy.',
+  } satisfies Record<PlayerLoss, string>),
+  /** G-02/8 by the wingman at the end. */
+  return: Object.freeze({ solo: 'Variant: return without a wingman.', wingman: 'Variant: return with your wingman.' }),
+  /** G-02/9 by the cut-scene row the summary selected. */
+  missionCutscene: (row: number): string => `Variant: the mission's cut-scene row ${row}.`,
+  sequence: (index: number, count: number): string => `Transition ${index + 1} of ${count} from the same tick.`,
+  ending: (index: number, count: number): string => `Ending ${index + 1} of ${count}; the results page follows the last.`,
+});
+
+/** The variant line of an ending placeholder. */
+export function endingVariant(item: EndingGap): string {
+  switch (item.gap) {
+    case 'G-02/7':
+      return PLACEHOLDER_PAGES.failure[item.variant];
+    case 'G-02/8':
+      return PLACEHOLDER_PAGES.return[item.variant];
+    case 'G-02/9':
+      return PLACEHOLDER_PAGES.missionCutscene(item.row);
+  }
+}
+
+/**
+ * G-06: the project result page's words (docs/plan/p3/11/spec.md: 结果页、重试与返回, 勋章、统计与战役进度). The reasons are
+ * the rule that latched the result; the counts are this attempt's project summary, not the original's statistics.
+ */
+export const RESULT_PAGE = Object.freeze({
+  gap: 'G-06' satisfies SliceGapId,
+  title: 'Mission result',
+  outcome: Object.freeze({ success: 'Success', failure: 'Failure' }),
+  /** A mark that repeats the outcome in text, so it does not rest on colour. */
+  mark: Object.freeze({ success: '✓', failure: '✗' }),
+  reasonLabel: 'Why',
+  reason: Object.freeze({
+    'all-clear': 'Every enemy craft the mission scheduled was destroyed or left the area, and the waiting period passed.',
+    'third-loss': Object.freeze({
+      destroyed: 'Third loss in this attempt: your craft was destroyed after both rescues had been used.',
+      energy: 'Third loss in this attempt: your craft ran out of energy after both rescues had been used.',
+    } satisfies Record<PlayerLoss, string>),
+    'settlement-failed': 'When the waiting period began, a scheduled enemy group was still due: it arrived in the same moment '
+      + 'the last enemy went. The original fails the mission in this rare case too.',
+  }),
+  attempt: Object.freeze({
+    title: 'This attempt (project summary)',
+    note: 'Counted by this build for this attempt only; not the original statistics page or its scoring.',
+    rescues: 'Rescues used',
+    rescuesOf: (used: number): string => `${used} of 2`,
+    kills: 'Enemies you destroyed',
+  }),
+  summary: Object.freeze({
+    title: 'Mission summary (from your imported data)',
+    source: 'The original shows this summary on the first page of the next mission\'s departure; this build has no next '
+      + 'mission, so it shows it here.',
+    empty: 'The selected summary has no text: the imported mission gives this result an empty summary.',
+    none: 'This result matched none of the mission\'s summary ranges, so there is no summary to show.',
+    failure: 'A failed mission has no summary.',
+    failed: 'The summary could not be read from the imported data:',
+    mismatch: 'it belongs to another mission Asset than the one this run was started from.',
+    outOfRange: (field: 'trigger' | 'range', index: number, count: number): string =>
+      `its ${field} ${index} lies outside the mission's ${count} ${field === 'trigger' ? 'triggers' : 'ranges'}.`,
+    content: 'the mission Asset of the bound package is missing or does not decode.',
+  }),
+  /** Shown while the session has not published the frozen result to this page. */
+  pending: 'The result is not available yet.',
+  restart: 'Restart mission',
+  return: 'Return to main menu',
+  disclosures: Object.freeze(['G-06', 'G-02/10'] as const satisfies readonly SliceGapId[]),
+});
+
+/** The result page's reason text. */
+export const resultReason = (reason: ResultReason): string =>
+  (reason.type === 'third-loss' ? RESULT_PAGE.reason['third-loss'][reason.loss] : RESULT_PAGE.reason[reason.type]);
 
 /** What a radio message tells in the rules, by its identity (G-03). */
 export type MessageSummaryKind =

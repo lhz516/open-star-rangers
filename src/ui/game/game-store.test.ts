@@ -12,7 +12,7 @@ import { history } from './game-ui.test-support.ts';
 
 const running: GameSessionStatus = Object.freeze({
   phase: 'running', runId: 1, environmentVisible: true, pauseReason: null, transition: null, resumeRequired: false,
-  stopReason: null, cleanupFailed: false, error: null,
+  stopReason: null, result: null, cleanupFailed: false, error: null,
 });
 
 const rejected = (commandId: number, runId = 1, ownerId = 7): UiCommandSettlement => {

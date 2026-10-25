@@ -66,8 +66,8 @@ describe('map and Warp replay (P3-09 AC-11; MW-14)', { timeout: 30_000 }, () => 
     }
     expect(RECORDING.record).toMatchObject({ version: GAME_REPLAY_VERSION, rulesVersion: RULES_VERSION });
     // Merged with P3-10, whose own increment also took 5 (CB-16): the merge took 6, and P3-08/12 7 (CR-25); P3-08's
-    // drop-transponder took the replay format to 3.
-    expect([GAME_REPLAY_VERSION, RULES_VERSION]).toEqual([3, 7]);
+    // drop-transponder took the replay format to 3; P3-11/08 the rules to 8, leaving the replay format (ME-16).
+    expect([GAME_REPLAY_VERSION, RULES_VERSION]).toEqual([3, 8]);
   });
 
   it('reproduces every event and the snapshot at every checkpoint after a JSON round trip', () => {
@@ -135,6 +135,8 @@ describe('map and Warp replay (P3-09 AC-11; MW-14)', { timeout: 30_000 }, () => 
     it.each([
       ['an unknown version', (record: Mutable) => { record.version = GAME_REPLAY_VERSION + 1; }, 'record.version'],
       ['the rules version before P3-09', (record: Mutable) => { record.rulesVersion = 4; }, 'record.rulesVersion'],
+      // P3-11/08's increment (ME-16): a record of the rules before its events replays no tick.
+      ['the rules version before P3-11', (record: Mutable) => { record.rulesVersion = 7; }, 'record.rulesVersion'],
       ['a later rules version', (record: Mutable) => { record.rulesVersion = RULES_VERSION + 1; }, 'record.rulesVersion'],
       ['a select beyond the right edge', at(5, { ...select, right: 1.5 }), 'record.ticks[5].commands[0].right'],
       ['a select above the top edge', at(5, { ...select, down: -0.25 }), 'record.ticks[5].commands[0].down'],

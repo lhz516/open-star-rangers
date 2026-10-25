@@ -975,6 +975,133 @@ class SessionTests(unittest.TestCase):
         self.assertRejected(box, "recipe-reference-invalid")
 
     # -- evidence scope ----------------------------------------------------------------------------------------------
+    # -- hit sites and jumps (P3-11/20) ----------------------------------------------------------------------------
+    def jump_box(self, hits, jump, until=None, stimuli=None, scenario=None):
+        """The scenario plus "pick" (alternatives 0x1F90/0x1FA0, reads scenario and ticks, with `jump`) and "mid"
+        (0x1F90) between `start` and `end`."""
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name), scenario={"hits": hits, **(scenario or {})})
+        document = box.document
+        stop = {"kind": "breakpoint", "object": 2, "offsets": [0x1F90, 0x1FA0]}
+        if until is not None:
+            stop["until"] = until
+        document["pauses"][1:1] = [
+            {"id": "pick", "stop": stop, "fields": ["scenario", "ticks"], "jump": jump},
+            {"id": "mid", "stop": {"kind": "breakpoint", "object": 2, "offset": 0x1F90}, "fields": ["scenario"]}]
+        if stimuli is not None:
+            document["stimuli"] = stimuli
+        box.write_recipe(document)
+        if stimuli is not None:
+            bios_keyboard(box.debugger.process)
+        return box
+
+    def test_jumps_skip_the_pauses_they_pass_over(self):
+        jump = [{"to": "end", "at": [0x1FA0]}, {"end": True, "all": [{"field": "ticks", "lt": 0}]}]
+        box = self.jump_box([{"site": 0}, {"site": 1}], jump)
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["reasons"]), ("complete", []))
+        self.assertEqual(report["jumps"], [{"pause": "pick", "rule": 0, "to": "end", "hitOffset": "1fa0",
+                                            "skipped": ["mid"]}])
+        self.assertEqual({key: report["counts"][key] for key in ("planned", "actual", "jumps", "pausesSkipped")},
+                         {"planned": 12, "actual": 12, "jumps": 1, "pausesSkipped": 1})
+        self.assertFalse((box.run_dir / "pauses/mid").exists())
+        self.assertEqual([status.get("pause") for status in box.statuses
+                          if status["phase"] == "awaiting-confirmation"], ["start", "pick", "end"])
+        box = self.jump_box([{"site": 0}, {"site": 0}, {"site": 0}], jump)  # no rule applies: every pause in order
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["jumps"], report["counts"]["planned"]), ("complete", [], 13))
+        self.assertEqual(report["counts"]["pausesSkipped"], 0)
+
+        ended = [{"end": True, "all": [{"field": "ticks", "ge": {"pause": "start", "field": "ticks"}}]}]
+        box = self.jump_box([{"site": 0}, {"site": 0}], ended)
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["counts"]["planned"]), ("complete", 10))
+        self.assertEqual((report["jumps"][0]["end"], report["jumps"][0]["skipped"]), (True, ["mid", "end"]))
+        self.assertEqual(report["jumps"][0]["if"]["readings"], {"ticks": 123456})
+        self.assertEqual(report["jumps"][0]["hitOffset"], "1f90")
+        self.assertTrue(box.unchanged_outside_run())
+        self.assertTerminalSafe(box)
+        plain = self.box()
+        self.assertEqual(plain.run(), 0)
+        self.assertNotIn("jumps", plain.report())
+
+    def test_an_undecidable_jump_fails_the_run(self):
+        def bump_ticks(fake):  # the two reads of `ticks` at `pick` disagree: no agreed reading
+            fake.process.poke_u32(TICKS, struct.unpack("<I", fake.process.peek(TICKS, 4))[0] + 1)
+        state = {"runs": 0}
+
+        def hook(fake, text):
+            if text == "RUN":
+                state["runs"] += 1
+            elif text == f"DV {TICKS:08X}" and state["runs"] == 2:
+                bump_ticks(fake)
+        box = self.jump_box([{"site": 0}, {"site": 0}], [{"to": "end", "all": [{"field": "ticks", "gt": 0}]}],
+                            scenario={"on_command": hook})
+        report = self.assertFailed(box, "binding-unavailable")
+        self.assertEqual(report["jumps"], [])
+
+    def test_until_and_stimuli_limited_to_sites(self):
+        until = {"every": 1, "at": [0x1F90], "all": [{"field": "ticks", "ge": {"pause": "start", "field": "ticks",
+                                                                                "offset": 5}}]}
+        stimuli = [{"id": "enter", "pause": "pick", "kind": "key", "ascii": 13, "scan": 28, "at": [0x1F90]},
+                   {"id": "ctrl", "pause": "pick", "kind": "shift", "flags": {"ctrl": True}, "at": [0x1FA0]}]
+        box = self.jump_box([{"site": 0}, {"site": 0}, {"site": 1}], [{"to": "end", "at": [0x1FA0]}], until=until,
+                            stimuli=stimuli, scenario={"on_command": self.ticking()})
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["reasons"]), ("complete", []))
+        stop = json.loads((box.run_dir / "pauses/pick/stop.json").read_text())
+        # the 0x1F90 hit is probed and fails; the 0x1FA0 hit is taken without a probe
+        self.assertEqual((stop["hitOffset"], stop["until"]["probes"], stop["skippedHits"]), ("1fa0", 1, 1))
+        self.assertEqual(stop["until"]["at"], ["1f90"])
+        enter, ctrl = report["stimuli"]
+        self.assertEqual((enter["status"], enter["at"]), ("condition-false", {"sites": ["1f90"], "hit": "1fa0"}))
+        self.assertNotIn("writes", enter)
+        self.assertEqual(ctrl["status"], "applied")
+        self.assertEqual(box.debugger.process.peek(0x41C, 2), struct.pack("<H", 0x1E))  # no key in the buffer
+        self.assertEqual({key: report["counts"][key] for key in ("stimuliPlanned", "stimuliApplied",
+                                                                  "stimuliConditionFalse")},
+                         {"stimuliPlanned": 2, "stimuliApplied": 1, "stimuliConditionFalse": 1})
+
+        stimuli.append({"id": "latch", "pause": "mid", "kind": "key", "ascii": 32, "scan": 57})
+        box = self.jump_box([{"site": 0}, {"site": 1}], [{"to": "end", "at": [0x1FA0]}], stimuli=stimuli)
+        self.assertEqual(box.run(), 0)  # the skipped pause's stimulus is not planned
+        report = box.report()
+        self.assertEqual((report["counts"]["stimuliPlanned"], [record["id"] for record in report["stimuli"]]),
+                         (2, ["enter", "ctrl"]))
+
+    def test_until_at_counts_only_its_sites_and_jumps_chain(self):
+        """`every` counts only hits at the `until` sites; two jumps in one run, the last ending it with an outcome."""
+        until = {"every": 2, "at": [0x1F90],
+                 "all": [{"field": "ticks", "ge": {"pause": "start", "field": "ticks", "offset": 100}}]}
+        # start; pick: 0x1F90 probed (false), 0x1F90 counted but not probed, 0x1FA0 taken unprobed; mid2
+        hits = [{"site": 0}, {"site": 0}, {"site": 0}, {"site": 1}, {"site": 0}]
+        box = Sandbox(tempfile.mkdtemp(dir=self.tmp.name), scenario={"hits": hits, "on_command": self.ticking()})
+        document = box.document
+        alternatives = {"kind": "breakpoint", "object": 2, "offsets": [0x1F90, 0x1FA0]}
+        document["pauses"][1:1] = [
+            {"id": "pick", "stop": {**alternatives, "until": until}, "fields": ["scenario", "ticks"],
+             "jump": [{"to": "mid2", "at": [0x1FA0]}]},
+            {"id": "mid", "stop": {"kind": "breakpoint", "object": 2, "offset": 0x1F90}, "fields": ["scenario"]},
+            {"id": "mid2", "stop": {"kind": "breakpoint", "object": 2, "offset": 0x1F90}, "fields": ["scenario"],
+             "jump": [{"end": True, "outcome": "cap-reached", "all": [{"field": "scenario", "gt": 0}]}]}]
+        document["limits"]["maxPauses"] = 5
+        box.write_recipe(document)
+        self.assertEqual(box.run(), 0)
+        report = box.report()
+        self.assertEqual((report["status"], report["reasons"]), ("complete", []))
+        pick = json.loads((box.run_dir / "pauses/pick/stop.json").read_text())
+        # 0x1F90 hits 1 (probed, false) and 2 (not probed, every 2) are passed over; the 0x1FA0 hit is taken unprobed
+        self.assertEqual((pick["hitOffset"], pick["until"]["probes"], pick["skippedHits"]), ("1fa0", 1, 2))
+        self.assertEqual([(item["pause"], item.get("to"), item.get("end"), item.get("outcome"), item["skipped"])
+                          for item in report["jumps"]],
+                         [("pick", "mid2", None, None, ["mid"]), ("mid2", None, True, "cap-reached", ["end"])])
+        self.assertEqual(report["jumps"][1]["if"]["result"], True)
+        self.assertEqual((report["counts"]["jumps"], report["counts"]["pausesSkipped"]), (2, 2))
+        self.assertFalse((box.run_dir / "pauses/mid").exists() or (box.run_dir / "pauses/end").exists())
+
     def test_declared_evidence_scope_protects_only_its_directory(self):
         for target, passed in (("research/p3-02/notes/notes.txt", True),
                                ("research/p3-01/tool-smoke/earlier/report.json", False),

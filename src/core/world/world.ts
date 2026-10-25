@@ -6,6 +6,10 @@
  * Fault latch: when Core itself fails in a step or a read (a broken invariant, or a budget running out while a tick
  * executes), the world keeps the CoreFaultError and publishes nothing from that call; every later step(),
  * projection(), renderState() and snapshot() throws that same error. P3-04 stops the run.
+ *
+ * Completion: once the teardown completes (`flow.completedTick`, mission-teardown.ts), the run has ended. Every later
+ * step() throws a CoreInputError (path `step`, reason `mission-completed`) before it reads its input, changing nothing
+ * and latching nothing; the reads go on (docs/plan/p3/02/spec.md, ME-12).
  */
 import type { DomainEvent } from '../contracts/domain-events.ts';
 import { readTickInput, type TickInput } from '../contracts/tick-input.ts';
@@ -19,8 +23,9 @@ import type { WorldState } from './world-state.ts';
 export interface World {
   /**
    * Advances exactly one tick, by `clockUnitsPerTick` clock units, and returns its domain events in emission order.
-   * Throws CoreInputError, leaving the world unchanged, when the input breaks its contract or the tick, the clock or
-   * the entity IDs a tick may allocate would pass the safe integer range. Throws CoreFaultError when Core fails.
+   * Throws CoreInputError, leaving the world unchanged, when the run has completed, when the input breaks its contract
+   * or when the tick, the clock or the entity IDs a tick may allocate would pass the safe integer range. Throws
+   * CoreFaultError when Core fails, or has failed before.
    */
   step(tickInput: TickInput): readonly DomainEvent[];
   projection(): Projection;
@@ -39,6 +44,8 @@ class CoreWorld implements World {
 
   step(tickInput: TickInput): readonly DomainEvent[] {
     this.#throwIfFaulted();
+    // A step after the completion is the caller's error and never latches (ME-12).
+    if (this.#state.flow.completedTick !== null) throw new CoreInputError('step', 'mission-completed');
     // Errors of the caller's own input, read before anything else, never latch.
     const input = readTickInput(tickInput);
     let context: TickContext;

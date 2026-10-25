@@ -133,8 +133,8 @@ export function sliceMission() {
 /**
  * The slice-shaped mission with the content readers' synthetic event triggers (syntheticMission): the first, counted by
  * records 3 and 7, has a range with one message and a negative selector and a range with two messages, one holding a
- * byte above 0x7E and a control byte; the second, counted by record 8, has one range without messages. Core carries
- * them without interpreting them.
+ * byte above 0x7E and a control byte; the second, counted by record 8, has one range without messages, whose selector
+ * becomes 16, as world creation accepts only 0 or below and 13–19 (docs/plan/p3/02/spec.md, ME-02).
  */
 export function eventMission() {
   const mission = sliceMission();
@@ -142,6 +142,7 @@ export function eventMission() {
   mission.declarations[7].eventTrigger = 0;
   mission.declarations[8].eventTrigger = 1;
   mission.eventTriggers = syntheticMission().eventTriggers;
+  mission.eventTriggers[1].ranges[0].summarySelector = 16;
   return mission;
 }
 

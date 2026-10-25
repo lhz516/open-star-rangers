@@ -64,7 +64,8 @@ function world(): { readonly state: WorldState; readonly player: CraftEntity } {
   kinds[LARGE] = { ...own, parts: 1, debris: [large] };
   kinds[PARTLESS] = { ...own, parts: 0, debris: [] };
   const state: WorldState = { ...base, ruleData: { ...base.ruleData, craft: kinds } };
-  const player = addPlayerEntity(state) as CraftEntity;
+  // The player entity's declaration, whose runtime record the rescue at the pod's expiry rewrites (P3-11, rescue.ts).
+  const player = addPlayerEntity(state, { source: { collection: 'mission', index: 0, group: null } }) as CraftEntity;
   state.player.targeting = { ...state.player.targeting!, autoTargetDueClock: 1e9 };
   return { state, player };
 }
@@ -278,7 +279,11 @@ describe('the player\'s delayed explosion and escape pod (X2, X7, CR-04, AC-12)'
     const { state, player } = world();
     Object.assign(player.combat, { shield: 0, hull: 1 });
     const destroyedAt = tick(state, { collision: (context) => applyContactDamage(context, player, 5, 'collision') });
-    expect(destroyedAt.at(-1)).toMatchObject({ type: 'object-destroyed', entityId: player.id, outcome: 'delayed' });
+    // The destruction entry 0x32d74's flush and loss event follow it (P3-11, ME-13).
+    expect(destroyedAt.slice(-3)).toMatchObject([
+      { type: 'object-destroyed', entityId: player.id, outcome: 'delayed' }, { type: 'radio-flushed', cause: 'player-destroyed' },
+      { type: 'player-loss-started', loss: 'destroyed' },
+    ]);
     const destruction = state.tick;
     expect(state.player.delayedExplosionClock).toBe(state.clock + 0xc0);
     runTo(state, destruction + 96);
@@ -306,8 +311,10 @@ describe('the player\'s delayed explosion and escape pod (X2, X7, CR-04, AC-12)'
     expect(quiet).toEqual([]);
     const expired = tick(state);
     expect(state.tick - firstCallbackTick).toBe(160);
-    expect(expired).toEqual([{ type: 'fragment-expired', tick: state.tick, entityId: pod.id, sourceKindBit: 0, part: 0, position: pod.position, outcome: 'escape-pod' }]);
-    expect([state.player.followedEntity, pod.state, player.state, state.entities.get(player.id)]).toEqual([null, 'pending-removal', 'destroyed-source', player]);
+    expect(expired[0]).toEqual({ type: 'fragment-expired', tick: state.tick, entityId: pod.id, sourceKindBit: 0, part: 0, position: pod.position, outcome: 'escape-pod' });
+    // P3-11's loss handling then rescues the same entity (rescue.test.ts): `player-rescued` and its transition last.
+    expect(expired.slice(-2)).toMatchObject([{ type: 'player-rescued', playerEntityId: player.id, loss: 'destroyed' }, { type: 'transition', gap: 'G-02/5' }]);
+    expect([state.player.followedEntity, pod.state, player.state, state.entities.get(player.id)]).toEqual([null, 'pending-removal', 'active', player]);
     tick(state);
     expect(state.entities.get(pod.id)).toBeUndefined();
   });

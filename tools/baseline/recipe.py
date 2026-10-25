@@ -59,6 +59,7 @@ DEFAULT_SKIPPED_HITS = 100_000
 TEST_OPERATORS = ("lt", "le", "gt", "ge", "eq", "ne")
 TEST_CLAUSES = (1, 16)  # comparisons of one reading test
 TEST_NUMBER = 1 << 53  # bound of a test's literals and offsets (exact in a JSON number)
+JUMP_RULES = (1, 8)  # rules of a pause's `jump` list (P3-11/20)
 UNTIL_EVERY = (1, 10_000)  # an `until` stop probes the 1st, (n+1)th, ... hit that passes its register condition
 # Bytes one stimulus reads and writes, for the static budget check: key: buffer pointers and bounds, then the slot
 # and the tail each read before, written and read back; shift: the flags, then the same three; device: three times.
@@ -251,12 +252,43 @@ class Test:
 @dataclass(frozen=True)
 class Until:
     """A breakpoint stop's reading test: of the hits that pass its register condition, the 1st, (n+1)th, ... are
-    probed (`every` n); the first probed hit whose readings pass the test is the pause."""
+    probed (`every` n); the first probed hit whose readings pass the test is the pause. With `sites` (recipe key `at`,
+    a strict subset of the stop's alternatives; P3-11/20) only hits at those sites are counted and probed; a hit at
+    any other alternative that passes the register condition is the pause without a probe."""
     every: int
     test: Test
+    sites: tuple = ()
+
+    def applies(self, site):
+        return not self.sites or site in self.sites
 
     def to_json(self):
-        return {"every": self.every, **self.test.to_json()}
+        out = {"every": self.every, **self.test.to_json()}
+        if self.sites:
+            out["at"] = [f"{site.offset:x}" for site in self.sites]
+        return out
+
+
+@dataclass(frozen=True)
+class Jump:
+    """A rule of a pause's `jump` list (P3-11/20): after the pause's readings and stimuli, the first rule whose
+    sites (`at`, empty: any site) contain the accepted hit and whose reading test (None: none) passes moves the run
+    to the later pause `to`, or ends the measurement when `to` is None; the pauses in between are not taken and none
+    of their samples or stimuli is planned."""
+    to: object  # later pause ID, or None (`"end": true`)
+    sites: tuple = ()
+    test: object = None
+    outcome: object = None  # restricted token naming an `end` rule's terminal, recorded in the report
+
+    def to_json(self):
+        out = {"to": self.to} if self.to is not None else {"end": True}
+        if self.outcome is not None:
+            out["outcome"] = self.outcome
+        if self.sites:
+            out["at"] = [f"{site.offset:x}" for site in self.sites]
+        if self.test is not None:
+            out.update(self.test.to_json())
+        return out
 
 
 @dataclass(frozen=True)
@@ -278,6 +310,15 @@ class Pause:
     id: str
     stop: Stop
     fields: tuple
+    jumps: tuple = ()  # Jump rules, in order (P3-11/20)
+
+    def hit_site(self, offset):
+        """The Location of the accepted hit: the alternative at `offset` (a CS-relative object offset), or the single
+        site."""
+        for site in self.stop.alternatives:
+            if site.offset == offset:
+                return site
+        return self.stop.site
 
 
 @dataclass(frozen=True)
@@ -306,6 +347,7 @@ class Stimulus:
     only_if: object = None  # (Binding to an integer field reading, expected value): recipe key `if` in the equality form
     test: object = None  # Test (recipe key `if` in the `all`/`any` form): applied only when the readings pass it
     injection: object = None  # Injection ID (kind `inject`)
+    sites: tuple = ()  # recipe key `at` (P3-11/20): applied only when the pause's accepted hit is at one of them
 
     def budget(self, devices):
         if self.kind == "key":
@@ -401,9 +443,16 @@ class Recipe:
                 return pause
         raise BaselineError("recipe-reference-invalid", pause_id)
 
-    def planned(self):
-        """(pause ID, field ID) of every planned sample, in pause order then field order."""
-        return tuple((pause.id, field) for pause in self.pauses for field in pause.fields)
+    def planned(self, skipped=frozenset()):
+        """(pause ID, field ID) of every planned sample, in pause order then field order; the pauses a jump passed over
+        (`skipped`) plan none."""
+        return tuple((pause.id, field) for pause in self.pauses if pause.id not in skipped for field in pause.fields)
+
+    def jump_skips(self, pause_id, rule):
+        """The pause IDs a jump of `rule` from `pause_id` passes over, in order."""
+        ids = [pause.id for pause in self.pauses]
+        start = ids.index(pause_id) + 1
+        return tuple(ids[start:] if rule.to is None else ids[start:ids.index(rule.to)])
 
     def pause_stimuli(self, pause_id):
         return tuple(stimulus for stimulus in self.stimuli if stimulus.pause == pause_id)
@@ -691,7 +740,7 @@ def _pauses(value, fields, limits):
     used = set()
     for index, item in enumerate(items):
         path = f"pauses[{index}]"
-        _object(item, path, ("id", "stop"), ("fields",))
+        _object(item, path, ("id", "stop"), ("fields", "jump"))
         pause_id = _identifier(item["id"], path + ".id")
         if pause_id in listed_at:
             raise BaselineError("recipe-id-duplicate", path + ".id")
@@ -715,12 +764,62 @@ def _pauses(value, fields, limits):
         used.update(names)
         if stop.until is not None:
             used.update(stop.until.test.fields())
+        jumps = _jumps(item["jump"], path + ".jump", fields, listed_at, stop, tuple(names)) if "jump" in item else ()
         listed_at[pause_id] = (stop.kind, tuple(names))
-        pauses.append(Pause(pause_id, stop, tuple(names)))
+        pauses.append(Pause(pause_id, stop, tuple(names), jumps))
     for field_id in fields:
         if field_id not in used:
             raise BaselineError("recipe-reference-invalid", field_id)
+    order = {pause.id: index for index, pause in enumerate(pauses)}
+    for index, pause in enumerate(pauses):  # a jump only moves forward, past at least one pause
+        for slot, rule in enumerate(pause.jumps):
+            if rule.to is not None and (rule.to not in order or order[rule.to] <= index + 1):
+                raise BaselineError("recipe-reference-invalid", f"pauses[{index}].jump[{slot}].to")
+            if rule.to is None and index == len(pauses) - 1:
+                raise BaselineError("recipe-value-invalid", f"pauses[{index}].jump[{slot}].end")
     return tuple(pauses)
+
+
+def _jumps(value, path, fields, listed_at, stop, own):
+    """A pause's `jump` list (P3-11/20): 1-8 rules {"to": later pause | "end": true (with an optional "outcome" token
+    naming the terminal), "at": [offset, ...] (optional, sites of the stop's alternatives), "all"|"any": [...]
+    (optional, a reading test of this pause's readings and earlier pauses')}. A rule without `at` and test always
+    applies; the first applying rule is taken."""
+    items = _list(value, path)
+    if len(items) > JUMP_RULES[1]:
+        raise BaselineError("recipe-budget-exceeded", path)
+    rules = []
+    for slot, item in enumerate(items):
+        where = f"{path}[{slot}]"
+        _object(item, where, (), ("to", "end", "outcome", "at", "all", "any"))
+        if ("to" in item) == ("end" in item):
+            raise BaselineError("recipe-key-missing" if "to" not in item else "recipe-value-invalid", where)
+        if "end" in item and item["end"] is not True:
+            raise BaselineError("recipe-value-invalid", where + ".end")
+        if "outcome" in item and "end" not in item:
+            raise BaselineError("recipe-key-unknown", where + ".outcome")
+        outcome = _token(item["outcome"], where + ".outcome") if "outcome" in item else None
+        to = _identifier(item["to"], where + ".to") if "to" in item else None
+        sites = _at(item["at"], where + ".at", stop.alternatives, strict=False) if "at" in item else ()
+        test = None
+        if "all" in item or "any" in item:
+            test = _test({key: item[key] for key in ("all", "any") if key in item}, where, fields, listed_at, own)
+        rules.append(Jump(to, sites, test, outcome))
+    return tuple(rules)
+
+
+def _at(value, path, alternatives, strict=True):
+    """`"at": [offset, ...]`: distinct sites among a stop's alternative offsets (a strict subset when `strict`)."""
+    if not alternatives:
+        raise BaselineError("recipe-key-unknown", path)
+    offsets = _list(value, path, "recipe-value-invalid")
+    offsets = [_int(offset, f"{path}[{slot}]", 0, UINT32_END - 1, "recipe-address-invalid")
+               for slot, offset in enumerate(offsets)]
+    known = {site.offset: site for site in alternatives}
+    if len(set(offsets)) != len(offsets) or (strict and len(offsets) >= len(alternatives)) or \
+            any(offset not in known for offset in offsets):
+        raise BaselineError("recipe-value-invalid", path)
+    return tuple(known[offset] for offset in offsets)
 
 
 def _stop(stop, path, fields, listed_at):
@@ -755,20 +854,22 @@ def _stop(stop, path, fields, listed_at):
     else:
         raise BaselineError("recipe-key-missing", path + ".offset")
     when = _when(stop["when"], path + ".when", fields, listed_at, alternatives) if "when" in stop else None
-    until = _until(stop["until"], path + ".until", fields, listed_at) if "until" in stop else None
+    until = _until(stop["until"], path + ".until", fields, listed_at, alternatives) if "until" in stop else None
     return Stop(kind, site, alternatives, when, until)
 
 
-def _until(value, path, fields, listed_at):
-    """{"every": n (optional), "all"|"any": [comparison, ...]}: the probe reads the test's own fields at the hit."""
-    _object(value, path, (), ("every", "all", "any"))
+def _until(value, path, fields, listed_at, alternatives=()):
+    """{"every": n (optional), "at": [offset, ...] (optional), "all"|"any": [comparison, ...]}: the probe reads the
+    test's own fields at the hit."""
+    _object(value, path, (), ("every", "at", "all", "any"))
     every = _int(value["every"], path + ".every", *UNTIL_EVERY, "recipe-value-invalid") if "every" in value else 1
-    test = _test({key: item for key, item in value.items() if key != "every"}, path, fields, listed_at)
+    sites = _at(value["at"], path + ".at", alternatives) if "at" in value else ()
+    test = _test({key: item for key, item in value.items() if key not in ("every", "at")}, path, fields, listed_at)
     for name in test.fields():
         address = fields[name].address
         if address.bound is not None:
             _reference(address.bound, fields, listed_at, path)
-    return Until(every, test)
+    return Until(every, test, sites)
 
 
 def _test(value, path, fields, listed_at, own=None):
@@ -861,18 +962,7 @@ def _condition(value, path, fields, listed_at, alternatives=()):
             values.append(_reference(_binding(item, where), fields, listed_at, where))
         else:
             values.append(_int(item, where, 0, UINT32_END - 1, "recipe-value-invalid"))
-    sites = ()
-    if "at" in value:
-        if not alternatives:
-            raise BaselineError("recipe-key-unknown", path + ".at")
-        offsets = _list(value["at"], path + ".at", "recipe-value-invalid")
-        offsets = [_int(offset, f"{path}.at[{slot}]", 0, UINT32_END - 1, "recipe-address-invalid")
-                   for slot, offset in enumerate(offsets)]
-        known = {site.offset: site for site in alternatives}
-        if len(set(offsets)) != len(offsets) or len(offsets) >= len(alternatives) or \
-                any(offset not in known for offset in offsets):
-            raise BaselineError("recipe-value-invalid", path + ".at")
-        sites = tuple(known[offset] for offset in offsets)
+    sites = _at(value["at"], path + ".at", alternatives) if "at" in value else ()
     return Condition(register, key == "in", tuple(values), sites)
 
 
@@ -1024,7 +1114,8 @@ def _stimuli(value, pauses, devices, fields, injections=None):
     keyed = set()
     for index, item in enumerate(items):
         path = f"stimuli[{index}]"
-        _object(item, path, ("id", "pause", "kind"), ("ascii", "scan", "flags", "device", "injection", "value", "if"))
+        _object(item, path, ("id", "pause", "kind"), ("ascii", "scan", "flags", "device", "injection", "value", "if",
+                                                      "at"))
         stimulus_id = _identifier(item["id"], path + ".id")
         if stimulus_id in seen:
             raise BaselineError("recipe-id-duplicate", path + ".id")
@@ -1040,6 +1131,7 @@ def _stimuli(value, pauses, devices, fields, injections=None):
         if kind not in STIMULUS_KINDS:
             raise BaselineError("recipe-value-invalid", path + ".kind")
         only_if = test = None
+        sites = _at(item["at"], path + ".at", pauses[order[pause]].stop.alternatives) if "at" in item else ()
         if "if" in item:  # `all`/`any`: a reading test (P3-10); otherwise one field's equality (P3-08)
             condition = item["if"]
             if type(condition) is dict and ("all" in condition or "any" in condition):
@@ -1049,15 +1141,15 @@ def _stimuli(value, pauses, devices, fields, injections=None):
                 listed_at = {p.id: (p.stop.kind, set(p.fields)) for p in pauses[:order[pause] + 1]}
                 only_if = _stimulus_condition(condition, path + ".if", listed_at, fields)
         if kind == "key":
-            _object(item, path, ("id", "pause", "kind", "ascii", "scan"), ("if",))
+            _object(item, path, ("id", "pause", "kind", "ascii", "scan"), ("if", "at"))
             if pause in keyed:  # the game takes one key per poll and discards the rest
                 raise BaselineError("recipe-value-invalid", path + ".pause")
             keyed.add(pause)
             key = tuple(_int(item[name], f"{path}.{name}", 0, 0xFF, "recipe-value-invalid")
                         for name in ("ascii", "scan"))
-            stimuli.append(Stimulus(stimulus_id, pause, kind, key=key, only_if=only_if, test=test))
+            stimuli.append(Stimulus(stimulus_id, pause, kind, key=key, only_if=only_if, test=test, sites=sites))
         elif kind == "shift":
-            _object(item, path, ("id", "pause", "kind", "flags"), ("if",))
+            _object(item, path, ("id", "pause", "kind", "flags"), ("if", "at"))
             flags = item["flags"]
             if type(flags) is not dict:
                 raise BaselineError("recipe-type-invalid", path + ".flags")
@@ -1068,7 +1160,7 @@ def _stimuli(value, pauses, devices, fields, injections=None):
             if any(type(on) is not bool for on in flags.values()):
                 raise BaselineError("recipe-type-invalid", path + ".flags")
             stimuli.append(Stimulus(stimulus_id, pause, kind, flags=tuple(flags.items()), only_if=only_if,
-                                    test=test))
+                                    test=test, sites=sites))
         elif kind == "inject":
             # The guard `if` is required: the recipe states, on this run's readings, the context it injects in.
             _object(item, path, ("id", "pause", "kind", "injection", "value", "if"))
@@ -1085,14 +1177,14 @@ def _stimuli(value, pauses, devices, fields, injections=None):
                                          "recipe-value-invalid"), path + ".value")
             stimuli.append(Stimulus(stimulus_id, pause, kind, value=value, test=test, injection=name))
         else:
-            _object(item, path, ("id", "pause", "kind", "device", "value"), ("if",))
+            _object(item, path, ("id", "pause", "kind", "device", "value"), ("if", "at"))
             name = _identifier(item["device"], path + ".device")
             device = devices.get(name)
             if device is None or (device.register is not None and stops[pause] != "breakpoint"):
                 raise BaselineError("recipe-reference-invalid", path + ".device")
             value = _int(item["value"], path + ".value", *SCALAR_RANGES[device.type], "recipe-value-invalid")
             stimuli.append(Stimulus(stimulus_id, pause, kind, device=name, value=value, only_if=only_if,
-                                    test=test))
+                                    test=test, sites=sites))
     return tuple(stimuli)
 
 

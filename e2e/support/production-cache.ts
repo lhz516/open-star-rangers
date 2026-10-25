@@ -29,14 +29,20 @@ export const missionPackage = (): Promise<readonly HeldGroup[]> => (mission ??= 
 /** The package key fields a seed may name instead of the production package's. */
 export type SeedKey = Pick<ExpectedPackageProfile, 'sourceFingerprint' | 'converterVersion'>;
 
+/** What `storeSeed` writes into the resource cache database: the package record and its payload records. */
+export interface SeedRecords {
+  readonly database: typeof RESOURCE_CACHE_DATABASE;
+  readonly record: ReturnType<typeof buildPackageRecord>;
+  readonly key: ReturnType<typeof packageRecordKey>;
+  readonly payloads: readonly { readonly key: ReturnType<typeof payloadRecordKey>; readonly schemaVersion: number; readonly bytes: readonly number[] }[];
+}
+
 /**
- * Seeds only an isolated test context with converted synthetic content under the production identity: the `models`
- * package, or `converted`, such as the canary package (P2-12 S-06) or `missionPackage()` (P3-04 S-09). The manifest identity is derived anew for the
- * production basis, or for `key`'s source and converter version, such as a development test entry's profile (P3-08);
- * payloads are unchanged. Record builders run in Node; the page creates the stored ArrayBuffers. No test modules or
- * alternate app entry are served by preview. Resolves to what it stored.
+ * The records a seed of `converted` (or the `models` package) stores, built in Node, and the package they hold. The
+ * manifest identity is derived anew for the production basis, or for `key`'s source and converter version, such as a
+ * development test entry's profile (P3-08); payloads are unchanged.
  */
-export async function seedProductionCache(page: Page, converted?: readonly HeldGroup[], key?: SeedKey): Promise<SeededPackage> {
+export async function seedRecords(converted?: readonly HeldGroup[], key?: SeedKey): Promise<{ readonly seeded: SeededPackage; readonly records: SeedRecords }> {
   const { sourceFingerprint, converterVersion } = key ?? PRODUCTION_PACKAGE;
   const inputs = readGroupInputs(converted ?? await modelsPackage(), 'invalid-request');
   const { schemaVersion, sliceId, sliceDefinitionVersion } = inputs[0].manifest.identity;
@@ -52,39 +58,59 @@ export async function seedProductionCache(page: Page, converted?: readonly HeldG
   const completeness = validatePackage(CLASSIC_P2_SLICE, groups);
   if (completeness.status !== 'complete') throw new Error('The seeded package must be complete');
   const record = buildPackageRecord(groups);
-  await page.evaluate(async ({ database, record, key, payloads }) => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(database.name, database.version);
-      request.onupgradeneeded = () => {
-        request.result.createObjectStore(database.packageStore);
-        request.result.createObjectStore(database.payloadStore);
-      };
-      request.onerror = () => { reject(request.error); };
-      request.onblocked = () => { reject(new Error('Synthetic cache database open was blocked')); };
-      request.onsuccess = () => { resolve(request.result); };
-    });
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const transaction = db.transaction([database.packageStore, database.payloadStore], 'readwrite');
-        transaction.oncomplete = () => { resolve(); };
-        transaction.onabort = () => { reject(transaction.error ?? new Error('Synthetic cache transaction aborted')); };
-        transaction.objectStore(database.packageStore).add(record, key);
-        const store = transaction.objectStore(database.payloadStore);
-        for (const { key, schemaVersion, bytes } of payloads) {
-          store.add({ schemaVersion, bytes: new Uint8Array(bytes).buffer }, key);
-        }
-      });
-    } finally {
-      db.close();
-    }
-  }, {
-    database: RESOURCE_CACHE_DATABASE,
-    record,
-    key: packageRecordKey(record.key),
-    payloads: groups.flatMap(({ payloads }) => payloads.map(payload => {
-      const stored = buildStoredPayload(payload);
-      return { key: payloadRecordKey(record.key, payload.id), schemaVersion: stored.schemaVersion, bytes: [...new Uint8Array(stored.bytes)] };
-    })),
+  return {
+    seeded: Object.freeze({ identity: completeness.identity, groups }),
+    records: {
+      database: RESOURCE_CACHE_DATABASE,
+      record,
+      key: packageRecordKey(record.key),
+      payloads: groups.flatMap(({ payloads }) => payloads.map(payload => {
+        const stored = buildStoredPayload(payload);
+        return { key: payloadRecordKey(record.key, payload.id), schemaVersion: stored.schemaVersion, bytes: [...new Uint8Array(stored.bytes)] };
+      })),
+    },
+  };
+}
+
+/**
+ * Page function: adds `records` to the resource cache database in one transaction, creating the stores when the
+ * database is new; the page creates the stored ArrayBuffers. Self-contained, so a native CDP target can evaluate it too.
+ */
+export async function storeSeed({ database, record, key, payloads }: SeedRecords): Promise<void> {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(database.name, database.version);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(database.packageStore);
+      request.result.createObjectStore(database.payloadStore);
+    };
+    request.onerror = () => { reject(request.error); };
+    request.onblocked = () => { reject(new Error('Synthetic cache database open was blocked')); };
+    request.onsuccess = () => { resolve(request.result); };
   });
-  return Object.freeze({ identity: completeness.identity, groups });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction([database.packageStore, database.payloadStore], 'readwrite');
+      transaction.oncomplete = () => { resolve(); };
+      transaction.onabort = () => { reject(transaction.error ?? new Error('Synthetic cache transaction aborted')); };
+      transaction.objectStore(database.packageStore).add(record, key);
+      const store = transaction.objectStore(database.payloadStore);
+      for (const { key, schemaVersion, bytes } of payloads) {
+        store.add({ schemaVersion, bytes: new Uint8Array(bytes).buffer }, key);
+      }
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Seeds only an isolated test context with converted synthetic content under the production identity: the `models`
+ * package, or `converted`, such as the canary package (P2-12 S-06) or `missionPackage()` (P3-04 S-09), under the
+ * production basis or `key` (see `seedRecords`). Record builders run in Node; the page creates the stored ArrayBuffers.
+ * No test modules or alternate app entry are served by preview. Resolves to what it stored.
+ */
+export async function seedProductionCache(page: Page, converted?: readonly HeldGroup[], key?: SeedKey): Promise<SeededPackage> {
+  const { seeded, records } = await seedRecords(converted, key);
+  await page.evaluate(storeSeed, records);
+  return seeded;
 }

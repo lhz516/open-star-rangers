@@ -38,9 +38,16 @@ describe('placeholder focus (P3-10 缺省与标注)', () => {
   it('always for the flow\'s own placeholders; for a running hold\'s only on a visible page whose focus was dropped', () => {
     for (const focusDropped of [true, false]) {
       for (const visible of [true, false]) {
-        expect(placeholderTakesFocus({ hold: false, focusDropped, visible })).toBe(true);
-        expect(placeholderTakesFocus({ hold: true, focusDropped, visible })).toBe(focusDropped && visible);
+        expect(placeholderTakesFocus({ placement: 'flow', focusDropped, visible })).toBe(true);
+        expect(placeholderTakesFocus({ placement: 'hold', focusDropped, visible })).toBe(focusDropped && visible);
       }
+    }
+  });
+
+  it('for each ending placeholder on a visible page, wherever focus was, and never on a hidden page (P3-11)', () => {
+    for (const focusDropped of [true, false]) {
+      expect(placeholderTakesFocus({ placement: 'ending', focusDropped, visible: true })).toBe(true);
+      expect(placeholderTakesFocus({ placement: 'ending', focusDropped, visible: false })).toBe(false);
     }
   });
 });

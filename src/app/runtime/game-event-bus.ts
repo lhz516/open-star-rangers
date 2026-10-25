@@ -65,6 +65,17 @@ const EVENT_TYPES = {
   'base-confirmed': true,
   'wingman-command-consumed': true,
   'transponder-deployed': true,
+  'all-clear': true,
+  'settlement-started': true,
+  'settlement-deferred': true,
+  'flight-message': true,
+  'player-loss-started': true,
+  'player-rescued': true,
+  'result-latched': true,
+  'teardown-started': true,
+  'mission-completed': true,
+  'wingman-loss-timer-started': true,
+  'wingman-loss-timer-expired': true,
 } as const satisfies Record<DomainEventType, true>;
 
 function hasType<T extends DomainEventType>(event: DomainEvent, type: T): event is Extract<DomainEvent, { type: T }> {

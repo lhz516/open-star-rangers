@@ -2,8 +2,8 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-16
-related: [U-002, U-003, U-008, U-013, U-014, U-022, U-023, U-027, U-028]
+updated: 2026-10-18
+related: [U-002, U-003, U-008, U-009, U-013, U-014, U-022, U-023, U-027, U-028]
 ---
 
 # Missions and campaign table (SCEN, SCCT)
@@ -92,7 +92,7 @@ The stored counters are therefore never read, and a stored non-zero pair pointer
 **Consumers (Confirmed by code; rule semantics belong to P3-11):**
 
 - `0x6977c` takes record +0x54 of the runtime object's source record (object +0x190) and passes it, with the event type, to `0x695c0`, which increments the matching counter. When the pair count is positive, `0x695c0` divides the sum of +0x0C and +0x10 by +0x08 and scales the quotient by the f64 constant at `0x172613`. The result is truncated toward zero, because `0x74518` switches the FPU to chop mode for `FRNDINT`. For every range containing the result, it queues each pair whose range index equals that range's index. The due time is the elapsed mission time plus the +0x34 delay (§3) of the target record, or of the target entry's template.
-- `0x69c54`, on success, takes the first trigger in section order whose +0x08 or +0x0C is non-zero. It divides +0x0C by +0x08 and scales the quotient by the f64 constant at `0x17261b`, truncated toward zero; the value is 0 when +0x08 is not positive. It then uses the first of that trigger's ranges that contains the value; when none does, it continues with the next trigger. The chosen range supplies the summary text and the selector byte.
+- `0x69c54`, on success, takes the first trigger in section order whose +0x08 or +0x0C is non-zero. It divides +0x0C by +0x08 and scales the quotient by the f64 constant at `0x17261b`, truncated toward zero; the value is 0 when +0x08 is not positive. It then uses the first of that trigger's ranges that contains the value; when none does, it continues with the next trigger. The chosen range supplies the summary text and the selector byte. Rule meaning: [below](#summary-selection-rule-meaning-p3-11).
 - `0x69a70` treats each word it reads from the pair array (above) as a target and counts one of an enemy kind as a pending enemy ([mission result](./executable.md#mission-result-success-path-and-campaign-restart-p3-0104) step 2). With a stride of 4 it does not visit the target of every pair: it reads range indices and targets alike, and stops halfway through the array.
 
 **Load transforms (Confirmed by code):** none beyond IMFAT relocation of trigger +0x00, range +0x08 and the message pointers. The rescaling and the section-6 swap in `0x68d2c` do not touch section 2.
@@ -116,6 +116,22 @@ The stored counters are therefore never read, and a stored non-zero pair pointer
 **Static coverage (Confirmed method):** a scan of the whole image for the 32-bit address of the scene pointer `0x1766fc` (every hit lies in the scenario module `0x66c00`–`0x69e5c`); decompilation of every function in that module and disassembly of its undecoded routine `0x66f78`; scans for relative calls to `0x694f8`, `0x6953c`, `0x695c0`, `0x69708`, `0x69a70`, `0x69c54` and `0x6977c`; and a heuristic scan for loads of record +0x54 after loads of runtime-object +0x190, which found no other reader. Triggers are reachable only through header 0x20 and record +0x30/+0x54, whose readers are listed above; the wave mode also copies +0x54 from a template to generated records (`0x69194`). Not covered: accesses through computed pointers not derived from these.
 
 Evidence (ignored): `local/research/p3-03/scen-events/` (`ghidra_scripts/ScenProbe.java` with outputs `out/p1.txt`–`out/p11.txt`, `section2-survey.ts` with `out/section2-survey.json`, `s3019-ranges.ts` with `out/s3019-ranges.json`).
+
+#### Summary selection: rule meaning (P3-11)
+
+**Confirmed (code; data where stated).** What section 2 means for a successful mission's summary, as `0x69c54` and the success handler use it. The code steps, the all-clear test that precedes them and the medal flags of `0x69e1c` are in [executable](./executable.md#all-clear-and-summary-selection-p3-1101).
+
+- **Counted events:** +0x08 counts instantiations (event type 3), +0x0C destructions (types 0 and 1, by the player or otherwise) and +0x10 world exits (type 2), each only for objects whose own source record (runtime object +0x190) names the trigger through +0x54. Objects without a source record (dynamic Xpon, projectiles, fragments) never count ([object events](./executable.md#object-events-0x6977c-p3-1102)).
+- **Trigger choice:** triggers are tried in section order. One whose +0x08 and +0x0C are both zero is skipped (+0x10 is not read). One with destructions but +0x08 ≤ 0 is not skipped and gets ratio 0.
+- **Ratio:** destroyed ÷ instantiated × 100, truncated toward zero to an i32; 0 when +0x08 ≤ 0 (no division). World exits are not part of it, unlike the spawn-pair ratio of `0x695c0`, which uses +0x0C + +0x10. An enemy that leaves the world therefore counts toward the all-clear (it is no longer live) but not toward the summary ratio.
+- **Range choice:** the first range in array order with lower ≤ ratio ≤ upper (signed). A range with lower > upper never matches; any i32 pair is well defined. No match → the next trigger.
+- **Match:** the summary is the range's messages concatenated in array order without separators; when their total length is 0 no text is allocated (the pointer stays 0) but the selector is still copied. The search then stops.
+- **No match at all** (or no triggers): the result is still success, with no summary text and the selector left at −1 (0xFF, written at the build), so no mission clip.
+- **Selector domain:** the byte is consumed as i8. ≤ 0 → no mission clip, and the success handler considers medals and promotion; 1–11 → clip rows 1–11, which are not mission clips; **12 → stored as −1, colliding with the 0xFF "none" sentinel**: no clip and the medal path; 13–35 → that clip row; ≥ 36 → the clip player indexes past the 36-row table without a bound check ([cut-scenes](./executable.md#cut-scenes-and-loop-transitions-p3-0108)). Across the 52 missions only 0 and 13–19 occur (Confirmed, data, P3-03 survey), so 1–12 and ≥ 36 lie outside the shipped domain.
+- **Timing:** the summary is chosen once, at the all-clear poll (state 3 → 4); events after it do not change the summary or the selector.
+- **SCEN 3019 (Confirmed, data):** the only trigger is referenced only by the base record (kind `0x20000`, four objects, due at the start, not in a group). At any success it has four instantiations, so it is always chosen. The attainable ratios 0, 25, 50, 75 and 100 select the third, third, third, second and first range, so the summary is never empty, and the first range's clip (`BASELOSS`) follows exactly when all four bases were destroyed before the poll. These ratios are exact in binary, so the x87 precision does not matter here (U-009).
+
+Evidence: ignored `local/research/p3-11/flow/` (`flow-data.ts` with `out/flow-data-3019.json`, Ghidra outputs listed in [executable](./executable.md#corrections-and-evidence-p3-1104)).
 
 ## 3. 132-byte object record (structure Confirmed, fields partly Likely)
 

@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-16
+updated: 2026-10-24
 related: [ADR-0004, ADR-0018, U-011, U-012]
 ---
 
@@ -127,6 +127,7 @@ P3-09 起 `toggle-map`、`map-point` 与 `request-warp` 由 Core 判定（门禁
 下游交接：
 
 - **P3-09（已交付）：** 同 tick 打开地图时的飞行命令门禁、地图状态与 `map-point` 的效果、地图初始 Core 光标点与像素量化已在 Core 中（见上节）；按住 select 的每次读取都发出 `warp-destination-set`，其点击音效归 P3-14。实际应用中的浏览器验证归 P3-09/22。
+- **P3-11（被毁序列与终局，已交付）：** 被毁序列（子状态 2）中玩家不可用：飞行命令为 `player-unavailable`；视角已是 0x11，MW-04 的地图例外（只在地图中先于玩家可用性判断）不适用，所以 `toggle-map` 同样遇到不可用的玩家；F1 的 `cockpit-front` 仍没有规则（`not-implemented`），不会离开被毁视角；`p` 暂停与任务菜单仍走项目控制；信标等待与结算等待中照常飞行。结果锁存之后（锁存与退场的 tick）每条命令为 `ignored`/`mission-ended`。完成截断的帧与运行中保持的截断帧同样不算运行中，输入消费者不再提交重复命令并清除按住的键；完成之后 Runtime 以 `completed` 拒绝输入，终局占位与结果页不接受游戏输入（P3-11/18 的浏览器回归核对了结果页上的 `p`、Backspace 与 `m` 不推进 tick）。
 - **P3-08（`b`，已交付）：** Core 按飞行命令的共同门禁判定 `drop-transponder`（玩家不可用为 `player-unavailable`，非飞行上下文为 `wrong-context`；没有次数、能量或冷却门禁），在同一 tick 的请求处理中于玩家身后创建 Xpon 并发出 `transponder-deployed`。原版按住 `b` 靠 BIOS 重复、按住 Alt 时只有空格起作用；项目按上文的可重复节奏，Alt+`b` 仍投放，两项都归入本节已列的同类差异。切片中通讯菜单从不占用 `b`（菜单只用数字与 `x`），菜单打开时仍提交并由 Core 判定。Node 证据见 [P3-08 子任务 22](../plan/p3/08/subtasks/22-xpon-b-key.md#完成证据)，浏览器触发归其子任务 24。
 - **P3-10（已交付）：** 通讯菜单对数字与 `x` 的捕获优先级、菜单行为与基地服务队列/离港规则已在 Core 中实现，规则 5 的阻塞由“菜单只用数字与 `x`”的创建检查闭合；浏览器中的停靠、基地页面与离港由 P3-10/23 验证（`e2e/base-interaction.development.spec.ts`），正式通讯画面归 P3-13。
 - **P3-13：** 生产地图几何、地图指针与原版外观；接通完整画面时核对与输入共同使用的 geometry/container。
@@ -154,6 +155,6 @@ P3-09 起 `toggle-map`、`map-point` 与 `request-warp` 由 Core 判定（门禁
 
 ## 8. 项目界面按键
 
-游戏输入区外的页面控件继续遵循原生键盘操作。G-02 占位的 Enter、Space、Escape 新按下跳过当前占位，repeat 只抑制重复激活；主菜单 Start mission 入口抑制 Enter/Space repeat。实现见 [page-keys.ts](../../src/ui/mission/page-keys.ts)。资源查看器的方向键旋转、`+`/`=`/`-` 缩放和 `0` 复位是独立诊断按键，见 [viewer-keys.ts](../../src/ui/viewer/viewer-keys.ts)；均不属于游戏绑定表。
+游戏输入区外的页面控件继续遵循原生键盘操作。G-02 占位（含 P3-11 的救援与终局占位）的 Enter、Space、Escape 新按下跳过当前占位，repeat 只抑制重复激活；G-06 结果页只有原生按钮（Restart mission、Return to main menu），没有页面按键，进入时焦点在结果标题；主菜单 Start mission 入口抑制 Enter/Space repeat。实现见 [page-keys.ts](../../src/ui/mission/page-keys.ts)。资源查看器的方向键旋转、`+`/`=`/`-` 缩放和 `0` 复位是独立诊断按键，见 [viewer-keys.ts](../../src/ui/viewer/viewer-keys.ts)；均不属于游戏绑定表。
 
 <a id="资源查看器的诊断键p2-11"></a>

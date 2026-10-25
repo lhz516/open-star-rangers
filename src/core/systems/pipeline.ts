@@ -27,13 +27,15 @@ import { confirmBase, navigateBase, serviceBase } from './base-interior.ts';
 import { answerCommand } from './base-response.ts';
 import { judgeCommand } from './commands.ts';
 import { deliverCommand } from './communications.ts';
-import { checkDockingWait, depart, dock } from './docking.ts';
+import { depart, dock } from './docking.ts';
 import { delayedPlayerExplosionStage, expireFragment, handOff, releaseHeld, setExplosionState, updateExplosion, updateFragment } from './destruction.ts';
 import { frameEndStage } from './displays.ts';
 import { energyStage } from './energy.ts';
 import { applyAiMatchRequest, applyControlRequest, applyMatchRequest, updatePlayer, type ControlRequest, type MatchSpeedRequest } from './flight-control.ts';
 import { applyMapPoint, applyMapToggle, runMapStep, type MapPointRequest, type MapToggleRequest } from './map.ts';
 import { applySteer, expireMissile, updateMissile } from './missiles.ts';
+import { runMissionFlow } from './mission-flow.ts';
+import { isResultLatched, runMissionTeardown } from './mission-teardown.ts';
 import { moveEntities } from './movement.ts';
 import { updateObjectSets } from './object-sets.ts';
 import { engageParked } from './parked-engagement.ts';
@@ -295,18 +297,27 @@ function advanceClock(context: TickContext): void {
  * rejected/not-implemented. Every command is judged in the command view, which starts from the committed view and
  * which an accepted `toggle-map` or `request-warp` moves on (map.ts, warp.ts; MW-04). With an available player it runs P3-07's missile lock after
  * the invalid-target drop and consumes the axes, and the automatic target selection, which reads the committed view,
- * ends it (CR-07). The rule tasks add their commands and steps there.
+ * ends it (CR-07). The rule tasks add their commands and steps there. After the latch, P3-11's gate ignores every
+ * command as `mission-ended` (ME-12).
  */
 function updatePlayerControls(context: TickContext): void {
   const { world, input, time, requests, commandView } = context;
   // The command batch starts from the committed view (MW-04).
   Object.assign(commandView, committedView(world));
-  const player = updatePlayer(world, input, time.tick, {
+  // Once the result is latched (main states 0 and 1), every command is ignored ahead of any other judgement and posts
+  // nothing (ME-12); the rest of the player's update runs on, so the results come where the judgement would be.
+  const ended = isResultLatched(world.flow);
+  const player = updatePlayer(world, ended ? { ...input, commands: [] } : input, time.tick, {
     emit: (event) => emit(context, event),
     post: (request) => requests.post(request),
     judge: (command, commandIndex, view) => judgeCommand(context, command, commandIndex, view),
     lockMissiles: (entity) => updateMissileLock(context, entity),
   }, commandView);
+  if (ended) {
+    for (const [commandIndex, { type }] of input.commands.entries()) {
+      emit(context, { type: 'command-result', tick: time.tick, commandIndex, commandType: type, outcome: 'ignored', reason: 'mission-ended' });
+    }
+  }
   // The fire commands' launches follow the player's own requests, as the original's triggers follow message 0x20000,
   // and a Warp start follows both (MW-04); the automatic selection follows them (T3).
   requests.release();
@@ -598,8 +609,8 @@ const ruleStage = (id: string, run: () => PipelineStage['run']): PipelineStage =
  */
 export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   stage('input-registration', registerInput),
-  // 0x3266c, reading the previous clock: P3-10's docking sub-states (docking.ts); P3-11 adds flow, result and rescue.
-  stage('mission-flow', checkDockingWait),
+  // 0x3266c, reading the previous clock (mission-flow.ts): P3-11's settlement and result, P3-10's docking sub-states.
+  stage('mission-flow', runMissionFlow),
   stage('clock', advanceClock),
   stage('object-update', updateObjects),
   // Dispatcher 0x20d10. A due communications reply (0x2cd60, radio.ts; P3-10).
@@ -621,8 +632,8 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
   stage('warp-completion', completeWarp),
   // 0x398ec, view mode 6 (P3-10, base-interior.ts).
   stage('base-interior', serviceBase),
-  // 0x334bc, main-flow state 0, which retires every object (P3-11).
-  stage('mission-teardown', null),
+  // 0x334bc (mission-teardown.ts): main state 0 retires every object, state 1 completes the run (P3-11).
+  stage('mission-teardown', runMissionTeardown),
   stage('area-check', checkArea),
   // Rule progress the original makes in its camera step and frame render: P3-09's map step (0x2b8ec, 0x49f8c) or
   // Warp step (0x50508), then P3-07's cockpit display step (CR-10) and P3-10's communications presentation sub-step

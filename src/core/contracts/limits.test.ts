@@ -62,6 +62,12 @@ describe('CORE_LIMITS (P3-02 AC-02, 快照、哈希与 replay)', () => {
     const aiEvents = craft + commandsPerTick;
     expect([aiRequests, allRequests + aiRequests, aiEvents, allEvents + aiEvents]).toEqual([3840, 7559, 96, 9064]);
     expect(eventsPerTick).toBeGreaterThan(3.6 * (allEvents + aiEvents));
+    // P3-11's (ME-16): ten event types at most once a tick, two player-loss-started, the wingman loss message's
+    // radio-queued and two flush page changes; a rescue's weapon selections around both lists; the teardown's two pages.
+    const flowEvents = 10 * 1 + 2 + 1 + 2;
+    const missionEvents = flowEvents + 2 * mounts + 2;
+    expect([flowEvents, missionEvents, allEvents + aiEvents + missionEvents]).toEqual([15, 529, 9593]);
+    expect(eventsPerTick).toBeGreaterThan(3.4 * (allEvents + aiEvents + missionEvents));
     expect(requestsPerTick).toBeGreaterThan(4.3 * (allRequests + aiRequests));
     // The executor budgets: 8 dispatches of every item of the longest script (AI_PROGRAMS_LIMITS.scriptItems) in one
     // run, and two runs of the group-0 closure's longest at the entity limit within one tick.

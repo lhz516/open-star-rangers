@@ -56,6 +56,21 @@ function sliceWith(change: (mission: MissionDraft) => void): MissionDraft {
 }
 
 describe('world creation (P3-02 AC-02, 运行配置与世界创建)', () => {
+  it('starts P3-11\'s flow in main state 3, sub-state 0, with nothing pending, and one zero counter set per section-2 trigger (ME-03, ME-04)', () => {
+    const flow = {
+      mainState: 3, subState: 0, dockingDeadline: 0, beaconDeadline: 0, settlementDeadline: 0, rescues: 0,
+      wingmanLoss: { pending: false, dueClock: 0 }, settlement: null, result: null, completedTick: null,
+    };
+    const plain = create();
+    expect(plain.flow).toEqual(flow);
+    expect(plain.missionEvents).toEqual({ triggers: [] });
+    const events = create({ mission: eventMission() });
+    expect(events.flow).toEqual(flow);
+    expect(events.missionEvents).toEqual({ triggers: [{ instantiated: 0, destroyed: 0, left: 0 }, { instantiated: 0, destroyed: 0, left: 0 }] });
+    // Each trigger has its own counters.
+    expect(events.missionEvents.triggers[0]).not.toBe(events.missionEvents.triggers[1]);
+  });
+
   it('builds tick 0: clock 0, no entities, view mode 0xC, mission built, the queue ready and the run configuration in effect', () => {
     const state = create();
     expect(state).toMatchObject({ tick: 0, clock: 0, missionStatus: 'built', player: { entityId: null, viewMode: 0xc, previousViewMode: 0xc, subMode: 0 } });
@@ -337,6 +352,33 @@ describe('semantic checks before any world exists (P3-02 AC-02)', () => {
       }),
     });
     expect(state.spawn.queue.at(-1)).toEqual({ due: 0x3ffffff * 64, source: 'record', index: 3, requests: 2 });
+  });
+
+  describe('summary selectors (P3-11 AC-02, docs/plan/p3/02/spec.md ME-02)', () => {
+    /** The slice-shaped mission with two triggers, counted by records 3 and 8, whose last range has `selector`. */
+    const withSelector = (selector: number) => sliceWith((m) => {
+      m.declarations[3].eventTrigger = 0;
+      m.declarations[8].eventTrigger = 1;
+      m.eventTriggers = [
+        { ranges: [{ lower: 0, upper: 100, messages: [`${MARKER}-held`], summarySelector: 16 }] },
+        { ranges: [{ lower: 50, upper: 100, messages: [], summarySelector: 0 }, { lower: 0, upper: 49, messages: [`${MARKER}-lost`], summarySelector: selector }] },
+      ];
+    });
+
+    it.each([1, 11, 12, 20, 35, 36, 127])('rejects %i, which selects no mission clip, at its range', (selector) => {
+      const path = `${MISSION}.eventTriggers[1].ranges[1].summarySelector`;
+      expectRejected(worldInput({ mission: withSelector(selector) }), path, 'mission clip', selector === 1 ? [] : [String(selector)]);
+      expect(() => instantiableModelIds(asCreateInput(worldInput({ mission: withSelector(selector) })))).toThrow(CoreInputError);
+    });
+
+    it('accepts 0 or below and 13–19, ranges in any order and a lower bound above the upper', () => {
+      for (const selector of [-128, -1, 0, 13, 19]) expect(create({ mission: withSelector(selector) }).setup.eventTriggers[1].ranges[1].summarySelector).toBe(selector);
+      const reversed = sliceWith((m) => {
+        m.declarations[3].eventTrigger = 0;
+        m.eventTriggers = [{ ranges: [{ lower: 5, upper: -5, messages: [], summarySelector: 19 }, { lower: -0x80000000, upper: 0x7fffffff, messages: [], summarySelector: -2 }] }];
+      });
+      expect(create({ mission: reversed }).missionEvents.triggers).toHaveLength(1);
+    });
   });
 });
 
@@ -795,13 +837,13 @@ describe('setupHash (P3-02 S-08, 快照、哈希与 replay)', () => {
       const changes: WorldInputParts[] = [
         eventsWith((m) => void (m.eventTriggers[0].ranges[0].lower = 62)),
         eventsWith((m) => void (m.eventTriggers[0].ranges[0].upper = 99)),
-        eventsWith((m) => void (m.eventTriggers[0].ranges[0].summarySelector = 2)),
+        eventsWith((m) => void (m.eventTriggers[0].ranges[0].summarySelector = 14)),
         eventsWith((m) => void (m.eventTriggers[1].ranges[0].summarySelector = -9)),
         // One byte of a message, a message fewer, and the same bytes split into one message instead of two.
         eventsWith((m) => void (m.eventTriggers[0].ranges[1].messages[1] = `${MARKER}-part-2\u00ea\u0001`)),
         eventsWith((m) => void m.eventTriggers[0].ranges[1].messages.pop()),
         eventsWith((m) => void (m.eventTriggers[0].ranges[1].messages = [m.eventTriggers[0].ranges[1].messages.join('')])),
-        eventsWith((m) => void m.eventTriggers[1].ranges.push({ lower: 6, upper: 9, messages: [], summarySelector: 9 })),
+        eventsWith((m) => void m.eventTriggers[1].ranges.push({ lower: 6, upper: 9, messages: [], summarySelector: 13 })),
         eventsWith((m) => void m.eventTriggers[0].ranges.reverse()),
         // A trigger fewer: the record counted by it no longer counts events.
         eventsWith((m) => { m.eventTriggers.pop(); m.declarations[8].eventTrigger = null; }),

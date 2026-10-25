@@ -76,6 +76,17 @@ export function craftInfoInput(logic: PackageGroup): LogicAssetInput | undefined
 }
 
 /**
+ * The flight messages of the message line (P3-03 S-08), for the UI rather than world creation: Core's `flight-message`
+ * events carry only the field name (docs/plan/p3/02/spec.md, P3-11 的契约修订). The group's `flight-messages` Asset,
+ * the only one of its role in a complete group, decoded with `decodeRuleDataPayload`; undefined when the group lacks
+ * it, and a decoding error keeps its code and reason at `logic[<Asset ID>].<path>`.
+ */
+export function flightMessagesInput(logic: PackageGroup): LogicAssetInput | undefined {
+  const { assets, asset } = groupAssets(logic);
+  return asset(assets.find(({ role }) => role === 'flight-messages'), decodeRuleDataPayload);
+}
+
+/**
  * The rule-data inputs of world creation that do not depend on the run (CR-01), the map geometry (MW-01) included; an
  * input the package lacks is undefined.
  */

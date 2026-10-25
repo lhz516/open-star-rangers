@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MissionOwnerConsumer } from '../../app/mission/mission-owner.ts';
 import { openMission, toFlight } from '../../app/mission/mission.test-support.ts';
 import { TICK_MS } from '../../app/runtime/game-runtime.test-support.ts';
-import { injection } from '../../app/runtime/transition-injection.test-support.ts';
+import { injectedResult, injection } from '../../app/runtime/transition-injection.test-support.ts';
 import type { Command } from '../../core/contracts/tick-input.ts';
 import type * as CreateWorldModule from '../../core/world/create-world.ts';
 import type { CreateWorldInput } from '../../core/world/create-world.ts';
@@ -21,8 +21,9 @@ import { createInputConsumer } from './input-consumer.ts';
 
 // P3-10 subtask 22 (Node): the input consumer at a running hold (docs/plan/p3/04/spec.md, 运行中衔接（P3-10 的修订）). The
 // frame cut at a transition tick refuses input from its delivery on, so the consumer treats it as not running: no repeat
-// is submitted into the barrier, the held keys are cleared, and only a new press acts after the hold. Transitions are
-// injected where the world is created (transition-injection.test-support.ts).
+// is submitted into the barrier, the held keys are cleared, and only a new press acts after the hold. P3-11 subtask 16:
+// the frame cut at the completion is not running either. Transitions and the completion are injected where the world
+// is created (transition-injection.test-support.ts).
 
 afterEach(() => { injection.reset(); });
 
@@ -102,5 +103,17 @@ describe('the input consumer at a running hold', () => {
     expect(f.submitted.at(-1)).toMatchObject({ type: 'speed' });
     expect(f.submitted.at(-1)!.id).not.toBeNull();
     expect(f.submitted).toHaveLength(2);
+  });
+
+  it('submits no repeat into the completion barrier either, and reports no input error', async () => {
+    const f = await flying();
+    injection.plan({});
+    injection.complete(19, injectedResult([{ gap: 'G-02/8', variant: 'solo' }]));
+    for (let frame = 0; frame < 3; frame += 1) f.frame();
+    f.press('Equal');
+    for (let frame = 0; frame < 16; frame += 1) f.frame();
+    expect(f.owner.getSnapshot()).toMatchObject({ flow: { position: 'ending' }, session: { phase: 'completed' } });
+    expect(f.submitted).toEqual([{ id: 1, type: 'speed', clock: 6 }]);
+    expect(f.consumer.status.getState().error).toBeNull();
   });
 });

@@ -99,6 +99,11 @@ function runEnergyStage(state: WorldState): readonly DomainEvent[] {
 
 const depletedEvent = (entity: Entity, tick: number): DomainEvent =>
   ({ type: 'energy-depleted', tick, entityId: entity.id, kindBit: entity.kindBit, position: entity.position });
+/** P3-11's beacon entry `0x33464` after a depleted player update at `clock` in sub-state 0 (ME-09). */
+const beaconEvents = (player: Entity, tick: number, clock: number): DomainEvent[] => [
+  { type: 'flight-message', tick, message: 'beacon' },
+  { type: 'player-loss-started', tick, playerEntityId: player.id, loss: 'energy', previousSubState: 0, deadlineClock: clock + 0x3c0 },
+];
 
 describe('the energy stage (AC-10; CR-07, D14)', () => {
   it('takes the instantiation\'s due clock, updates the player once due and then every 0x40 units', () => {
@@ -200,8 +205,8 @@ describe('the energy stage (AC-10; CR-07, D14)', () => {
     const player = addPlayer(state, { energy: 3, lastEnergyClock: 0, nextEnergyClock: 64 }, { movement: block(90, 100.5) });
     nextStepAt(state, 64);
     const world = constructWorld(state);
-    // 3 − 50 ≤ 0.
-    expect(world.step(tickInput())).toEqual([depletedEvent(player, 32)]);
+    // 3 − 50 ≤ 0; in sub-state 0 the beacon wait starts too (P3-11, ME-09), and sub-state 1 keeps it from restarting.
+    expect(world.step(tickInput())).toEqual([depletedEvent(player, 32), ...beaconEvents(player, 32, 64)]);
     expect(craftOf(player)).toMatchObject({ energy: 0, depleted: true, nextEnergyClock: 128 });
     expect(steered(player)).toMatchObject({ locked: true, commandedSpeed: 0, atCommandedSpeed: false });
     // The lock drops the throttle keys.
@@ -247,6 +252,7 @@ describe('the energy stage (AC-10; CR-07, D14)', () => {
       { type: 'command-result', tick: 32, commandIndex: 0, commandType: 'energy', outcome: 'accepted', reason: null },
       { type: 'left-page-changed', tick: 32, page: 1, previousPage: 0, commandIndex: 0 },
       depletedEvent(player, 32),
+      ...beaconEvents(player, 32, 64),
       { type: 'target-cleared', tick: 32, playerEntityId: player.id, previousTarget: target.id, cause: 'warp' },
     ]);
   });
