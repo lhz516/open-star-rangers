@@ -79,7 +79,7 @@ updated: 2026-10-28
 | [02-gauges-radar-research.md](./subtasks/02-gauges-radar-research.md) | — | completed |
 | [03-left-display-research.md](./subtasks/03-left-display-research.md) | — | completed |
 | [04-target-overlay-research.md](./subtasks/04-target-overlay-research.md) | — | completed |
-| [05-messages-text-research.md](./subtasks/05-messages-text-research.md) | — | in-progress |
+| [05-messages-text-research.md](./subtasks/05-messages-text-research.md) | — | completed |
 | [06-map-presentation-research.md](./subtasks/06-map-presentation-research.md) | — | completed |
 | [07-evidence-contract-baseline.md](./subtasks/07-evidence-contract-baseline.md) | 01, 02, 03, 04, 05, 06 | pending |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | pending |
