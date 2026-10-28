@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "13"
 subtask: "23"
-updated: 2026-10-25
+updated: 2026-10-28
 ---
 
 # 23 — 生产地图几何、右键与 ready 握手
@@ -37,6 +37,7 @@ updated: 2026-10-25
 - `src/ui/game-input/*.ts`：电平、资格与清键接线和单元测试。
 - `src/platform/input/pointer-lock.ts`：仅D-01确认必要的右键契约增量。
 - `src/platform/input/pointer-lock.test.ts`：平台事件测试。
+- `src/platform/input/browser-pointer-lock.ts`：浏览器宿主的右键菜单抑制（23 的范围请求）。
 - `docs/engineering/keyboard-input.md`：绑定/去抖/资格说明。
 
 ## 验收标准
