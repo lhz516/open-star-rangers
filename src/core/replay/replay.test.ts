@@ -142,6 +142,11 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
       ['the rules version of P3-09 or P3-10 alone', (record: Mutable) => { record.rulesVersion = 5; }, 'record.rulesVersion'],
       // P3-08/12 incremented it once (docs/plan/p3/02/spec.md, CR-25): a record of the merged P3-09 and P3-10 rules.
       ['the rules version before P3-08', (record: Mutable) => { record.rulesVersion = 6; }, 'record.rulesVersion'],
+      // P3-11/08 (ME-16) and P3-12/10 (FS-08) each incremented it from 7 on their branches, to 8, and their merge to 9;
+      // P3-13/12 to 10 (CK-05): records of the status display order before P3-13 are refused, not replayed (P3-13 AC-01).
+      ['the rules version before P3-11 and P3-12', (record: Mutable) => { record.rulesVersion = 7; }, 'record.rulesVersion'],
+      ['the rules version of P3-11 or P3-12 alone', (record: Mutable) => { record.rulesVersion = 8; }, 'record.rulesVersion'],
+      ['the rules version before P3-13', (record: Mutable) => { record.rulesVersion = 9; }, 'record.rulesVersion'],
       ['a speed preset out of range', (record: Mutable & { ticks: Mutable[] }) => { record.ticks[4] = tickInput([{ type: 'speed-preset', level: 0 }]) as never; }, 'record.ticks[4].commands[0].level'],
       ['an extra field', (record: Mutable) => { record.notes = ''; }, 'record'],
       ['a missing field', (record: Mutable) => { delete record.checkpointInterval; }, 'record.checkpointInterval'],

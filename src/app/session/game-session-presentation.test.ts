@@ -10,6 +10,8 @@ import { compareReplayResults } from '../../core/replay/compare.ts';
 import type { Recording } from '../../core/replay/recording.ts';
 import { replayRecord } from '../../core/replay/replay.ts';
 import { contentOf } from '../../core/replay/replay.test-support.ts';
+import { cockpitState, type CockpitState } from '../../render/cockpit/cockpit-integration.test-support.ts';
+import type { CockpitContent } from '../../render/cockpit/composition/cockpit-run.ts';
 import { podLook } from '../../render/flight/objects/object-surfaces.ts';
 import type { PresentationTick } from '../../render/flight/presentation/presentation-contract.ts';
 import { prepareFlightContent, type PreparedFlightContent } from '../../render/flight/renderer/flight-passes.ts';
@@ -17,6 +19,8 @@ import { createFlightRenderer, type FlightRenderer } from '../../render/flight/r
 import { wireFlightRun, type FlightRunHandle, type FlightRunWiring } from '../../render/flight/renderer/flight-run.ts';
 import { RecordingSurface, type PassRecord } from '../../render/scene/render-surface.test-support.ts';
 import { GraphicsDeviceError, GraphicsUnavailableError } from '../../render/scene/render-surface.ts';
+import { cockpitCopy } from '../composition/cockpit-copy.ts';
+import { cockpitContentOf } from '../mission/cockpit-content.ts';
 import { flightContentOf } from '../mission/flight-content.ts';
 import { missionHolder } from '../mission/mission.test-support.ts';
 import { craftInfoInput, missionInput, ruleDataInputs, runModelInputs } from '../resources/mission-input.ts';
@@ -32,6 +36,11 @@ import { current, departure, sessionSetup } from './game-session.test-support.ts
 // cannot draw, through a context loss, with WebGL 2 unavailable and after a device failure. Core's events, checkpoints
 // and state hashes stay those of the run without a presentation, and the presentation's choices and derived state stay
 // those of its one-tick run under the same seed. A consumer fault inside a batch is tested on its own.
+//
+// P3-13/26 (docs/plan/p3/13/spec.md, AC-03, AC-04; D-01 定稿 DC-04; D-02 定稿 DD-05): the same runs with the cockpit wired
+// as the app wires it (its content checked by the app's cockpitContentOf, its layer in the composition). Core and P3-12
+// keep the outcome of the run without it, P3-12's module advances by each tick before the cockpit does, and the cockpit
+// keeps the state of its one-tick run under every grouping and picture.
 
 /** Inputs change only at multiples of BLOCK ticks, where every grouping below starts a frame. */
 const BLOCK = 5;
@@ -75,6 +84,8 @@ interface PackageRun {
   readonly playerModel: AssetId;
   readonly generation: number;
   readonly identity: string;
+  /** The package's HUD content, checked with the app's copy as the flight consumer does. */
+  readonly hud: CockpitContent;
 }
 
 /**
@@ -106,7 +117,9 @@ async function packageRun(): Promise<PackageRun> {
   };
   const spec = () => ({ ...inputs, recording: recordingOptions(1), initialTransition: departure() }) as unknown as GameRunSpec;
   const playerModel = (craftTypes.content as CraftTypeTable).entries.find(({ craftType }) => craftType === 0)!.model.id;
-  return { spec, content, playerModel, generation: held.generation, identity: contentIdentityKey(identity) };
+  const key = contentIdentityKey(identity);
+  const hud = cockpitContentOf({ groups: held.groups, generation: held.generation, identity: key }, cockpitCopy());
+  return { spec, content, playerModel, generation: held.generation, identity: key, hud };
 }
 
 /** What the presentation shows after one tick: its notice, then its explosions, fragments and flash requests. */
@@ -217,6 +230,8 @@ interface RunOptions {
   readonly tamper?: FrameTamper;
   /** Exports the recording after each frame's ticks, before the run's consumers see the frame. */
   readonly exportEachFrame?: boolean;
+  /** Wires the cockpit as the app does, without map input. */
+  readonly cockpit?: boolean;
 }
 
 /**
@@ -224,7 +239,7 @@ interface RunOptions {
  * `frames` (ticks per frame) after a first frame that anchors the clock, stopping early once the session faults. Every
  * frame that ends a block and was drawn is digested, by the tick it ends.
  */
-function play(source: PackageRun, picture: Picture, frames: readonly number[], { tamper, exportEachFrame = false }: RunOptions = {}) {
+function play(source: PackageRun, picture: Picture, frames: readonly number[], { tamper, exportEachFrame = false, cockpit = false }: RunOptions = {}) {
   const { session, host, errors } = sessionSetup();
   session.control({ type: 'start', spec: source.spec() });
   const run = current(session);
@@ -239,17 +254,25 @@ function play(source: PackageRun, picture: Picture, frames: readonly number[], {
   const { renderer, surface } = rendererFor(picture);
   let wiring: FlightRunWiring | null = null;
   const presentation: PresentationRecord[] = [];
+  /** At each P3-12 tick, the last tick the cockpit had processed. */
+  const cockpitBehind: { readonly tick: number; readonly cockpit: number }[] = [];
   if (renderer) {
     const binding = { ownerId: 1, runId: run.runId, generation: source.generation, identity: source.identity };
-    wiring = wireFlightRun(wiringHandle(run, tamper), { renderer, binding, content: source.content, seed: PRESENTATION_SEED });
-    const { presentation: module, effects } = wiring;
+    const map = { geometry: { read: () => null }, rightButton: () => false, pointer: () => null, revoked: () => undefined };
+    wiring = wireFlightRun(wiringHandle(run, tamper), {
+      renderer, binding, content: source.content, seed: PRESENTATION_SEED,
+      cockpit: cockpit ? { content: source.hud, copy: cockpitCopy(), projection: run.projection(), map } : undefined,
+    });
+    const { presentation: module, effects, cockpit: wired } = wiring;
     module.subscribe((tick) => {
       presentation.push({ tick, explosions: module.explosions(), fragments: effects.fragments(), flashes: effects.flashRequests(tick.tick) });
+      if (wired) cockpitBehind.push({ tick: tick.tick, cockpit: wired.run.presentation.schedule().tick });
     });
   }
   session.control({ type: 'complete-departure', runId: run.runId });
   const device = deviceSchedule(picture, surface);
   const drawn = new Map<number, ReturnType<typeof frameDigest>>();
+  const cockpitEnds = new Map<number, CockpitState>();
   let now = 0;
   let tick = 0;
   host.deliver(now);
@@ -266,8 +289,11 @@ function play(source: PackageRun, picture: Picture, frames: readonly number[], {
     host.deliver(now);
     tick += ticks;
     if (ticks > 0 && tick % BLOCK === 0 && surface && surface.frames.length > before) drawn.set(tick, frameDigest(surface.frames.at(-1)!));
+    if (ticks > 0 && tick % BLOCK === 0 && wiring?.cockpit && session.status().phase === 'running') cockpitEnds.set(tick, cockpitState(wiring.cockpit.run));
   }
-  return { session, host, errors, run, events, reports, exported: exported as Recording | null, renderer, wiring, presentation, drawn };
+  return {
+    session, host, errors, run, events, reports, exported: exported as Recording | null, renderer, wiring, presentation, drawn, cockpitEnds, cockpitBehind,
+  };
 }
 
 /** Core's outcome of a finished run: its events as delivered, and its recording with a checkpoint every tick. */
@@ -366,6 +392,54 @@ describe('the flight presentation and picture with Core (AC-17)', () => {
       }[picture];
       expect(diagnostics).toMatchObject({ runId: 1, ...expected });
       if (picture === 'context-lost') expect(diagnostics.draws).toBeLessThan(frameCount);
+    });
+  });
+
+  describe('with the cockpit (P3-13/26)', () => {
+    /** The pictures the cockpit is drawn with: its layer drawn, a lost context, and no WebGL 2 at all. */
+    const COCKPIT_PICTURES = ['drawing', 'context-lost', 'unavailable'] as const;
+    let cockpitBaseline: ReadonlyMap<number, CockpitState>;
+
+    beforeAll(() => {
+      const played = play(source, 'drawing', GROUPINGS['one tick a frame'], { cockpit: true });
+      expect(played.errors).toEqual([]);
+      cockpitBaseline = played.cockpitEnds;
+    });
+
+    it('advances the cockpit through the run and draws it in the composition\'s one cockpit layer', () => {
+      expect([...cockpitBaseline.keys()]).toEqual(BLOCK_ENDS);
+      expect(cockpitBaseline.get(TICKS)!.diagnostics).toMatchObject({ tick: TICKS });
+      // The player is destroyed at tick 2: from then on the cockpit draws the destruction view (0x11/8) every tick.
+      expect(cockpitBaseline.get(TICKS)!.layout.view).toBe('external');
+      // Its records draw in every block: their latest draw sample grows from block end to block end.
+      const latest = [...cockpitBaseline.values()].map(({ diagnostics }) => Math.max(...diagnostics.lastDraw.flat()));
+      latest.slice(1).forEach((sample, at) => expect(sample).toBeGreaterThan(latest[at]));
+      const { drawn } = play(source, 'drawing', GROUPINGS['five ticks a frame'], { cockpit: true });
+      for (const end of BLOCK_ENDS) {
+        const objects = drawn.get(end)!.flatMap(({ objects: drawnObjects }) => drawnObjects.map(({ name }) => name));
+        expect(objects.filter((name) => name === 'cockpit-layer')).toHaveLength(1);
+      }
+    });
+
+    describe.each(GROUPING_NAMES)('%s', (grouping) => {
+      const frames = GROUPINGS[grouping];
+
+      it.each(COCKPIT_PICTURES)('keeps Core and P3-12 as without the cockpit, and the cockpit as one tick a frame, with a %s picture', (picture) => {
+        const played = play(source, picture, frames, { cockpit: true });
+        expect(played.errors).toEqual([]);
+        expect(played.session.status().phase).toBe('running');
+        expect(coreOf(played)).toEqual(baseline.core);
+        // P3-12's choices and random draws are those of the run without the cockpit: it draws from its own stream.
+        expect(played.presentation).toEqual(baseline.presentation);
+        expect(played.cockpitEnds).toEqual(cockpitBaseline);
+        // Each frame advances P3-12's module by all of its ticks before the cockpit by any of them (DC-04).
+        expect(played.cockpitBehind.map(({ tick }) => tick)).toEqual(Array.from({ length: TICKS }, (_, at) => at + 1));
+        let frameStart = 0;
+        for (const ticks of frames) {
+          for (const { cockpit } of played.cockpitBehind.slice(frameStart, frameStart + ticks)) expect(cockpit).toBe(frameStart);
+          frameStart += ticks;
+        }
+      });
     });
   });
 

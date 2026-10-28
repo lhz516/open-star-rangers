@@ -91,6 +91,23 @@ describe('GameRuntime per-tick outputs', () => {
     expect([still.ticks, still.outputs, deliveries]).toEqual([0, [], []]);
   });
 
+  // P3-13/26 (docs/plan/p3/13/spec.md, DC-03, DC-04): a cockpit that advances tick by tick reads each output's projection,
+  // so a change inside a frame shows at its own tick and is not filled back from the frame's end.
+  it('gives each tick of a frame the cockpit partitions ready and its own state: the target chosen at tick 3 shows from tick 3', () => {
+    const { runtime, deliveries } = anchored();
+    const report = runtime.frame(MAX_TICKS_PER_FRAME * TICK_MS);
+    expectOutputs(runtime, report, deliveries, 1);
+    for (const { projection: { flight, map, communications } } of report.outputs) {
+      expect([flight.motion.readiness, flight.combat.readiness, map.readiness, communications.readiness]).toEqual(['ready', 'ready', 'ready', 'ready']);
+    }
+    const targets = report.outputs.map(({ projection: { flight: { combat } } }) => (combat.readiness === 'ready' ? combat.player?.target?.entityId ?? null : undefined));
+    const chosen = report.outputs.findIndex(({ events }) => events.some(({ event }) => event.type === 'target-changed'));
+    expect(chosen).toBe(2);
+    expect(targets.slice(0, chosen)).toEqual([null, null]);
+    expect(targets.slice(chosen).every((target) => typeof target === 'number')).toBe(true);
+    expect(runtime.projection()).toBe(report.outputs.at(-1)!.projection);
+  });
+
   it('keeps the outputs of a frame whose receivers read the read model unchanged', () => {
     const runtime = createGameRuntime(runtimeSpec());
     const seen: number[] = [];
