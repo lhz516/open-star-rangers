@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "02"
-updated: 2026-10-24
+updated: 2026-10-28
 related: [ADR-0004, ADR-0006, ADR-0015, B-003, B-004, B-006, U-008, U-009, U-010, U-011, U-021, U-022, U-023]
 ---
 
@@ -2866,6 +2866,140 @@ interface RenderState {
 - **被排除的方案：** 每个 `RenderEntity` 给出速度（表现层还需玩家机型的 +0xB8 与各相机函数的速度来源，等于复制规则）；由帧级 projection 推导（不逐 tick，不能表示跟随的碎片，P3-12 spec 已排除）；持久保存原版的 K 缓存与“无玩家时保留”（不可观察，徒增快照字段）。
 - **交接：** P3-12/32 实现上表与校验；P3-12/31 读取它：速度尘埃初始化之后份额 ≤ 1 时该 tick 不再运行，否则在 0xC–0x10、0x12 中近处亮度为 (5 × 份额) idiv 100（[SD5](../../../original/formats/executable.md#sd5-the-speed-dust-reset-initialisation-pass-and-erase--confirmed-code)）；P3-11 的被毁进入写入 0x11/8 后，表中的被毁视角各行自然生效；P4 修订 0x11 的子模式 0–7。
 
+### P3-13 的契约修订（D-01）
+
+本节由 P3-13 的子任务 08 加入（2026-10-28），定稿 [P3-13 spec 的 D-01](../13/spec.md#d-01-定稿08) 中属于本 spec 的部分：状态显示步的次序更正、两项新持久状态与驾驶舱读取的只读 projection 增补。Runtime 的帧后批次在 [P3-04 的同 tick projection](../04/spec.md#帧后同-tick-projectionp3-13-的修订)，导入在 [P3-03 的修订 4](../03/spec.md#p3-13-的修订仪表调度内容修订-4)；表现层的输入、预算与差异只记在 P3-13 spec。本节建立在前文各节与 P3-05 至 P3-12 的修订之上，那些修订已定的项不变；前文与本节不一致时以本节为准（被改写的前文见 CK-06）。编号 CK-01 至 CK-07 只供引用本节。
+
+**批准状态：** 见[审批](#审批)的 2026-10-28 条。
+
+原版事实只记在 [D9](../../../original/formats/executable.md#d9-status-display-writes-subsystem-fields-1-5-and-8--confirmed-code)、[hud §4](../../../original/formats/hud.md#4-instrument-overlay-and-map-drawing-p3-13) 与 [T7](../../../original/formats/executable.md#t7-right-target-display-confirmed-code)；定稿依据是 [P3-13/07 的 D-01 候选汇总](../13/subtasks/07-evidence-contract-baseline.md#完成证据)。**记法与通则：** 沿用 [P3-07 的修订](#p3-07-的契约修订d-01d-03)的记法。新增持久状态由 Core 拥有，进入快照规范文本与状态哈希；新增 projection 字段是读取时从世界派生的冻结纯数据，不进快照、不抽取随机数；没有开放字段或万能载荷。
+
+#### CK-01 状态显示步的次序（修订 CR-10）
+
+原版 `0x4d0e0` 每次调用**先**在“上一次调用翻转过相位”或玩家 +0xF0 为真时重组并写字段 1、5、8，**后**判定自己的闪烁计时（D9 的“Order within `0x4d0e0`”，已确认，代码）。Core 改为照原版：
+
+```ts
+// src/core/world/player-state.ts
+readonly statusDisplay: {
+  blink: 0 | 1;          // 0x175ee0
+  blinkDueClock: number; // 0x175ee4
+  redraw: boolean;       // 玩家对象 +0xF0
+  phaseFlipped: boolean; // 0x175edc：上一次状态页步翻转过相位（新增）
+  rebuilds: number;      // 0x4d50c 的写入次数，非负安全整数（新增，见 CK-03）
+};
+```
+
+CR-10 的“状态显示写字段 1、5、8”一条改为：条件不变（玩家实体存在、仪表所在的视角、左页为 0、子系统 10 ≠ 2），每 tick 至多执行一次：
+
+1. `phaseFlipped` 或 `redraw` 为真时：按 D9 写玩家的字段 1（由船体比例与**当前** `blink` 决定）、5、8；清除 `redraw`；`rebuilds` 加 1。
+2. 时钟严格大于 `blinkDueClock` 时翻转 `blink`、令 `blinkDueClock` = 时钟 + 0x20，`phaseFlipped` := true；否则 `phaseFlipped` := false。
+
+`src/core/systems/displays.ts` 的 `updateLeftDisplay` 在状态页分支按上述两步执行；`src/core/rules/displays.ts` 的 `advanceBlink` 保持“严格大于、到期即翻转并返回是否翻转”的语义，只由第 2 步调用。结果：写入发生在翻转之后的下一次状态页步，用新相位；翻转后状态页若停止运行（换页、子系统 10 = 2、离开仪表视角），写入一直等到状态页再次运行；翻转与 `redraw` 同时出现时连写两次（本 tick 因 `redraw`，下一 tick 因 `phaseFlipped`），与原版相同。
+
+- **初值：** 世界创建时 `blink` 0、`blinkDueClock` 0、`redraw` true（不变）、`phaseFlipped` true（原版静态初值 1）、`rebuilds` 0。
+- **写入者：** 只有本步写 `phaseFlipped` 与 `rebuilds`；`redraw` 的写入者不变（伤害、`0x4cd68`、实例化与救援）。救援不复位两项新字段（原版只有 `0x4d0e0` 读写其标志）。
+- **差异：** 原版三个静态量跨任务保留；Core 每个世界从初值开始。此差异与 P3-13 的显示计时差异一并披露（[P3-13 的 Δ-04](../13/spec.md#dc-11-已批准差异)）；CR-11 差异 4（子系统 10 = 1 的闪烁暂停不复现）不变。
+
+#### CK-02 能量页重画计数（新增持久状态）
+
+原版能量页 `0x4d800` 只在玩家对象 +0x44 置位、强制或视角与上次不同时重画，画后清 +0x44（[hud §4.4](../../../original/formats/hud.md#44-left-display-type-6) 页 1）。清除者是绘制，Core 不能镜像该标志；改为单调计数：
+
+```ts
+// src/core/world/player-state.ts
+energyPageRedraws: number; // 原版对玩家对象 +0x44 置位的次数，非负安全整数；世界创建为 0
+```
+
+- **写入点（只计玩家实体）：** 原版置 +0x44 的每一处计 1：`0x3060c`（玩家的实例化与救援，`src/core/systems/spawn.ts`、`src/core/systems/rescue.ts`）、玩家每 0x40 单位的能量更新 `0x3071c`（不论数值是否变化，`src/core/systems/energy.ts`）、等级变化 `0x30b20`/`0x30bc0`（同上）、护盾受伤 `0x30c60`（`src/core/systems/damage.ts`）与充能扣除（`src/core/systems/weapons.ts`）。换页、干扰结束与视角重建不计。各写入点所在分支（例如 `0x30c60` 的绕过分支是否置位、等级键被拒时是否置位）以原生指令为准：hud §4.4 只列了写入者，P3-13/12 在实现前以只读静态分析补核并写入该节，不按推测补分支。
+- **消费：** P3-13 的表现模型记住上次绘制页 1 时读到的值，值不同即等价于原版标志已置位（[P3-13 的 DC-06](../13/spec.md#dc-06-状态页与能量页的重组)）。
+
+#### CK-03 Projection 增补
+
+```ts
+interface CombatPlayer {
+  // 既有字段不变
+  readonly statusDisplay: { readonly blink: 0 | 1; readonly rebuilds: number }; // PlayerState.statusDisplay 的两项
+  readonly energyPageRedraws: number;                                          // PlayerState.energyPageRedraws
+}
+interface CombatTarget {
+  // 既有字段不变
+  readonly model: AssetId | null;      // 目标实体 presentation 为 'model' 时的模型 Asset ID；其他（种类 25 的标记）null
+  readonly craftAt08: number | null;   // kindBit ≤ 19 时该种类机型记录的 +0x08（f32，CraftRecord.at08）；否则 null
+}
+interface WeaponListReading {
+  // 既有字段不变
+  readonly ballistics: { readonly speed: number; readonly range: number } | null; // 当前挂点武器记录装载后的 +0x08、+0x0C；mount 为 null 时 null
+}
+interface RadarContact {
+  // 既有字段不变
+  readonly position: Vec3;             // 接触点实体的 f32 世界位置（与 offset 同一读取）
+}
+interface MotionPlayer {
+  // 既有字段不变
+  readonly recordMaximumSpeed: number; // 玩家机型记录的 +0xB8（f32，运行时单位/秒）
+  readonly indicatorRates: { readonly row1: number; readonly row3: number }; // f32 rad/s
+}
+interface MapLabel {
+  // 既有字段不变
+  readonly threatened: boolean;        // 所标实体的 communications.threatStamp 非 null（原版 +0x17C ≠ 0）
+}
+// MapOpen.geometry 增加：
+//   readonly sectors: number;                                  // 世界网格每边的扇区数 n（WorldFrame.sectors；原版 0x186b38/0x186b3a，两轴相等）
+//   readonly zoomExtent: { readonly x: number; readonly y: number }; // MapRuleData.zoomExtent，整数运行时单位（0x18648c、0x186490）
+```
+
+| 字段 | 来源与单位 | 取样与复位 | 读者（P3-13 子任务） |
+|---|---|---|---|
+| `statusDisplay` | CK-01 的状态；`rebuilds` 每次写入字段 1、5、8 加 1 | tick 结束；世界创建时 `rebuilds` 为 0 | 17 |
+| `energyPageRedraws` | CK-02 | tick 结束 | 17 |
+| `CombatTarget.model` | 目标实体的 `presentation`（分配时冻结）；不读 Render State 的可见集合 | 目标可解析时 | 20 |
+| `CombatTarget.craftAt08` | `craftInfo.content.craft[kindBit].at08`（T7 的“craft record +0x08 × 0.001”） | 同上 | 20 |
+| `ballistics` | 炮：GunRecord +0x08 与装载变换的 +0x0C（`weaponRange`）；导弹：装载自弹体 +0xB8 的 +0x08 与 +0x0C；f32，运行时单位/秒与运行时单位 | 当前挂点变化即变 | 21 |
+| `RadarContact.position` | 实体位置（f32 运行时单位）；投影按原版用世界位置与同帧相机（[hud §4.3](../../../original/formats/hud.md#43-radar-type-5)），不由 `offset` 复原舍入 | 同 `readRadar` | 16 |
+| `recordMaximumSpeed` | 与 P3-14 的 FA-03 同名同义（合并时只保留一份定义） | 静态 | 16（类型 0 与视角 1 的类型 1） |
+| `indicatorRates.row1` | 移动块 `steering.pitch.enabled ? steering.pitch.rate : 0`（块 +0x7C ? +0x60 : 0） | tick 结束 | 21 |
+| `indicatorRates.row3` | `0x21cf8`：C +0xC4 ≠ 0 且 yaw 使能时 F(D(D(yaw.rate × speedRatio) + roll.rate))（roll 使能）或 F(D(yaw.rate × speedRatio))；否则 roll 使能时 roll.rate；不计计时旋转（[movement stage](../../../original/formats/executable.md#movement-stage-and-integration-p3-0601) 第 7 步与其后的更正）。两个分支都不成立时的返回值由 12 以原生指令核对并写入该节后再实现 | tick 结束 | 21 |
+| `threatened` | `threatStamp !== null`；写入时钟恒 ≥ `clockUnitsPerTick` > 0，故与原版“非 0”等价 | tick 结束 | 22 |
+| `geometry.sectors`、`zoomExtent` | 静态规则数据 | 静态 | 22 |
+
+- 没有玩家实体、没有目标或挂点为 null 时随所在对象为 null，不以 0 填充；全部读取不改状态、不抽取随机数。
+- `recordMaximumSpeed` 不是 `maximumSpeed`（+0x78，随能量降低）。
+
+#### CK-04 不新增的事实（可推导性）
+
+| 候选 | 不新增的依据 |
+|---|---|
+| 雷达的相机平面偏移（玩家状态 +0xA0/+0xA4/+0xA8） | `0x40c90` 每帧在雷达读取之前由逻辑相机重写：off_k = −f32(R_k·cam)，没有其他写入者（高概率）（[hud §4.3](../../../original/formats/hud.md#43-radar-type-5)、[T6](../../../original/formats/executable.md#t6-radar-confirmed-code-unless-noted)）；P3-13 用 P3-12 同 tick 的 `PresentationCamera.afterStep`（FS-07）算出 |
+| T7 的目标 +0x06 变体 | +0x06 是种类 dword 的高半字，表下标就是单一种类位的位号（T7，P3-13/04）；`CombatTarget.kindBit` 已足够 |
+| 秒钟 `0x18641c` | 由任务时钟导出；取整由 P3-13/21 核对并写入 [hud §4.6](../../../original/formats/hud.md#46-flight-view-overlay-0x45de0-and-view-label) 后实现 |
+| 后平面 | P3-12 同帧的 `FlightSceneFrame.backPlane` |
+| 目标的放置序号 | F1 叠加与右显示屏按同 tick 的目标位姿与 `afterStep` 计算，不插值（原版读当前位姿、不插值）；不需要与 Render State 的序号配对 |
+| 威胁时间戳的数值 | 绘制只读是否非 0（[hud §4.9](../../../original/formats/hud.md#49-strategic-map-type-10)），闪烁相位取当帧时钟第 5 位 |
+| 页 6 的 Warp 序号 | Render State 的 `warp.serial`（P3-13/03） |
+| 速度辅助“匹配写入失败仍启动闪烁”的事件 | 不新增；作为 P3-13 的已批准差异 Δ-08 |
+
+#### CK-05 容量、快照与版本
+
+- **事件与请求：** 不新增事件或请求；`CORE_LIMITS` 不变。
+- **快照：** 覆盖 `statusDisplay.phaseFlipped`、`statusDisplay.rebuilds` 与 `energyPageRedraws`（每个世界约 60 个字符）。快照格式版本 8 → 9。
+- **`RULES_VERSION`：** 9 → 10：CK-01 改变字段 1、5、8 的写入时刻（它们被伤害的强制搜索、阈值计数与基地服务读取），属规则结果变化；CK-02 新增状态。CK-03 的纯 projection 增补本身不递增（同 FS-12 与 P3-14 FA-08 的先例），随本次递增一并发布。
+- **replay：** 记录形状与命令联合不变，格式版本不变（3）；旧规则版本的记录与快照一律拒绝，不迁移。
+- **集成：** 版本相对实现时的实际集成基线各递增一次，由首个实现共享形状的子任务（P3-13/12）递增；P3-14 合入时按“相对实际集成基线各递增一次”重新核对。
+
+#### CK-06 对前文的修订
+
+- CR-10 的“状态显示写字段 1、5、8”两步由 CK-01 取代；条件与右显示屏清除不变。
+- CR-12 的“雷达的重建节奏（每 6 单位）与绘制只属于表现层”改为：节奏由仪表记录间隔决定、Warp 中只清圆盘并画背景环（[hud §4.3](../../../original/formats/hud.md#43-radar-type-5)），仍只属于表现层。
+- MW-16 中 P3-13 一行与 P3-10 一行的“地图标签按对象 +0x17C 闪烁时在 `MapLabel` 中加入该状态”由 CK-03 的 `threatened` 完成；FS-11 中 P3-13 一行的“projection 不变”由本节取代。
+
+#### CK-07 交接
+
+| 任务 | 交接 |
+|---|---|
+| P3-13/12 | CK-01 至 CK-05 的 Core 部分：状态、projection、快照、版本与契约测试（D9 次序的翻转/写入/`redraw` 同 tick 序列、切页与子系统 10 = 2 期间的待写、各计数写入点）；补核 CK-02 的写入分支与 `indicatorRates.row3` 的缺省分支 |
+| P3-13/16、17、20、21、22 | 只读 CK-03 的字段 |
+| P3-14 | FA-03 的 `recordMaximumSpeed` 与 CK-03 同名同义，合并时保留一份定义；FA-01 合入后 P3-13 改读分区级 `communications.warnings`（见 [P3-13 与 P3-14 的关系](../13/spec.md#与-p3-14-的关系)）；`RULES_VERSION` 按集成基线重新核对 |
+| P3-08 | 20985 的序号 5–6（只由类型 7 发出）作为“击毁”摘要需 P3-08 确认（P3-13/25） |
+
 ### 原版研究
 
 执行时以只读静态分析为主，必要时用运行时读数。事实写入 executable 或 scenario（英文），带置信度与证据，不含原版内容或反编译输出。
@@ -3163,3 +3297,7 @@ interface RenderState {
 - **玩法不变的核对：** FS-08 的玩法摘要测试（通讯、AI、战斗与地图/Warp 的 replay）改为与 main（e6684c84，含 P3-11、不含 P3-12）上同一运行的摘要比较，四者相同。
 
 未重跑 review-spec，既有 goal 与 subtask 的历史证据不改写。
+
+**2026-10-28 修订（P3-13 的 D-01，CK-01 至 CK-07）：** 由 P3-13 的子任务 08 起草，新增“[P3-13 的契约修订（D-01）](#p3-13-的契约修订d-01)”一节与本条记录，并改了 front matter 的日期；被改写的前文只有 CK-06 所列的 CR-10 两步、CR-12 的雷达节奏一句与 MW-16、FS-11 的交接说明。所选方案：照原版更正状态显示步的写入次序（`RULES_VERSION` 9 → 10、快照格式 8 → 9、replay 格式不变）；能量页重画以单调计数而不是镜像标志表示；只读 projection 增补 CK-03 所列字段，撤销 CK-04 所列可推导的候选。被排除的方案：把 CR-10 与原版的次序差异批准为差异（字段 1、5、8 是规则状态，差异会改变伤害与基地服务的输入）；在 Core 中镜像 +0x44 并由表现层清除（表现层不能写 Core）；批准“进入能量页即画”（与原版的延迟不同，可见）。本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。
+
+**2026-10-28 P3-13 D-01 同步批准：** 用户于 2026-10-28 执行 P3-13 goal 时明确授权：“在执行goal的过程中，如果需要修改spec或其他Decision，我都批准你修改。用任何方式来unblock任何问题，完成这个goal。”协调者据此在 P3-13/08 复核并批准本 spec 中为 [P3-13 D-01 定稿](../13/spec.md#d-01-定稿08)所做的同步修订；只批准这些修订，其余已批准内容不变。

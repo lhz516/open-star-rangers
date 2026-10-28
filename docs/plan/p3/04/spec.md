@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "04"
-updated: 2026-10-24
+updated: 2026-10-28
 related: [ADR-0004, ADR-0006, ADR-0015, B-001, B-003, B-005, B-006, U-010, U-021, U-031]
 ---
 
@@ -326,6 +326,28 @@ G-02/1 与 G-02/2 是本任务负责的两个 Smacker 过场实例（[P3-01/08](
 - **不变：** `step()` 的返回、录制与 replay（录制只含 tick 输入）、会话状态、取消通知与控制都不变；没有每 tick 的外部钩子或检测器。
 - **验证：** 由 P3-12 的子任务 11 以真实 Runtime 与会话（`ControlledHost`）的 Node 测试验证：0、1、5 tick 与 `capped`；与 `renderFrame()`、Event Bus 派发的同一对象与次序；衔接截断与录制容量停止的前缀；Core 故障与监听器失败不交付；暂停、保持与停止的静止帧；跨运行的 `runId`。P3-12 的子任务 24 以改变帧分组的方式验证规则独立（P3-12 的 AC-17）。本 spec 的既有验收与历史证据不改写。
 
+### 帧后同 tick projection（P3-13 的修订）
+
+本节由 P3-13 的子任务 08 加入（2026-10-28），定稿 [P3-13 spec 的 D-01](../13/spec.md#d-01-定稿08) 中“帧后同 tick projection”一项（其 DC-03）；P3-13 的驾驶舱表现模型逐 tick 推进，不能用帧末 projection 倒填中间 tick。前文与本节不一致时以本节为准。**批准状态：** 见[审批](#审批)的 2026-10-28 条。
+
+- **形状：** `TickOutput` 增加一个字段，其余不变：
+
+  ```ts
+  interface TickOutput {
+    readonly tick: number;                 // === render.tick === projection.clock.tick
+    readonly clock: number;                // === render.clock === projection.clock.clock
+    readonly render: RenderState;
+    readonly projection: Projection;       // 新增：#tick 在该次成功 step 之后为读模型取得的同一冻结对象
+    readonly events: readonly TickEvent[];
+  }
+  ```
+
+- **来源：** `#tick` 现有的 `this.#world.projection()` 结果原样放进同项，不再次提取、不复制；`ticks` > 0 时最后一项的 `projection` 就是帧后 `projection()` 返回的对象（与 `render` 和 `renderFrame().current` 的关系相同）。
+- **批次语义：** 与[帧后逐 tick 输出](#帧后逐-tick-输出p3-12-的修订)的故障矩阵相同：0 tick 帧为空数组；至多 `MAX_TICKS_PER_FRAME`（5）项；衔接截断与完成截断交到截断 tick 为止；录制容量停止只交被拒 tick 之前的成功前缀；step、projection 或 Render State 任一提取故障时 `frame()` 抛 `faulted`、本帧没有任何输出。项内三者（`tick`/`clock`、`render`、`projection`）总是同一次 step 的结果，不会出现只有其一的项。
+- **交付与次序：** 不变：全部模拟 → Event Bus → 帧消费者；会话帧 `GameSessionFrame.report` 原样带出，静止帧为 null。逐 tick 推进的消费者只读 `outputs`，不同时订阅同一事件，也不以 `projection()` 的帧末值代替某一中间 tick。
+- **内存：** 每帧至多 5 份 projection 引用，Runtime 不保留帧报告之外的历史；消费者不长期保存 `outputs`，只保留自己派生的状态。
+- **验证：** 由 P3-13 的子任务 13 以真实 Runtime 与会话测试：每项的 `projection` 与 `render`、`tick`、`clock` 一致，最后一项与 `projection()` 为同一对象；0、1、5 tick、`capped`、两种截断、录制容量前缀与提取故障；与 Event Bus 的次序。P3-12 已有的输出夹具随之补字段。本 spec 的既有验收与历史证据不改写。
+
 ### Runtime
 
 正式 Runtime 每个运行一份，由会话创建与持有。复用 [P1-04](../../p1/04/spec.md) 的时钟、帧后总线与生命周期机制；正式输入、输出和故障语义以下文及 P3-02 为准，不整体继承合成格式。
@@ -593,3 +615,7 @@ CLI 始终使用生产来源白名单，不能接受合成光盘作为原版。N
 - **批准与用户原话：** 用户于 2026-10-17 经协调者提问（“是否批准 09 的 D-01 共享契约定稿？”）选择“批准，全部按推荐方案 (Recommended)”，批准本节与 [P3-02 的 P3-12 契约修订](../02/spec.md#p3-12-的契约修订d-01)。这是用户本人的批准；不涵盖冻结决定，本修订不改变总计划 §5 的两帧约定。
 
 **2026-10-22 修订（P3-11 的 D-01：终局与救援衔接，经用户明确批准）：** 用户于 2026-10-22 明确批准 P3-11 关卡 D-01 的全部推荐方案（“批准 D-01 全部推荐”），由 P3-11 的协调者转达。修订只新增“[终局与救援衔接（P3-11 的修订）](#终局与救援衔接p3-11-的修订)”一节与本条记录，并改了 front matter 的日期：`transition` 的 `gap` 加入 G-02/5、G-02/6 并沿用 P3-10 的保持（每 tick 上限仍为 2）；Runtime 的完成截断（`FrameReport` 的 `cut: 'completed'` 与 `completion`、永不解除的完成屏障与 `GameRuntimeError` 的类别 `completed`，会话把它当作非故障的拒绝）；会话阶段 `completed`、冻结的 `SessionResult`、`EndingTransition` 终局序列与取消原因 `mission-complete`；错误与结束的优先级；流程位置 `ending`、`result` 与输入 `run-completed`、`ending-ended`；结果页、重试与返回；UI 桥接的即时发布；`tools/replay-check.ts` 的报告版本 2（`completed`）。前文中“结果（P3-11 接入）”一行与会话表中“新增结果或运行中媒体状态须另行修订”以该节为准。所选方案：终局由会话的 `completed` 阶段持有，复用 `complete-transition` 与逐次凭证，终局占位永不恢复模拟。被排除的方案：只由任务所有者在会话之外显示终局占位（没有凭证与阶段守卫）；完成后解除屏障。Core 一侧的定稿见 [P3-02 的 ME-01 至 ME-19](../02/spec.md#p3-11-的契约修订d-01)。没有新增 S/AC 编号，本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写；实现与验证归 P3-11 的子任务 16 至 18。修订后未重跑 review-spec。
+
+**2026-10-28 修订（P3-13 的 D-01：帧后同 tick projection）：** 由 P3-13 的子任务 08 起草，只新增“[帧后同 tick projection（P3-13 的修订）](#帧后同-tick-projectionp3-13-的修订)”一节与本条记录，并改了 front matter 的日期：`TickOutput` 增加 `projection`，即 `#tick` 已取得的同一冻结对象，批次、故障矩阵、次序与内存边界沿用 P3-12 的修订。所选方案：保留 Runtime 已有的逐 tick 结果。被排除的方案：帧消费者以帧末 projection 代替中间 tick（同帧多 tick 时提前看到未来状态，P3-13 已撤销 Δ-02）；在帧后再次从世界提取或复制（多余的工作，且不同于读模型取得的对象）；新增 tick 中途回调（破坏“全部模拟后派发”的次序）。没有新增 S/AC 编号，本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写；实现与验证归 P3-13 的子任务 13。修订后未重跑 review-spec。
+
+**2026-10-28 P3-13 D-01 同步批准：** 用户于 2026-10-28 执行 P3-13 goal 时明确授权：“在执行goal的过程中，如果需要修改spec或其他Decision，我都批准你修改。用任何方式来unblock任何问题，完成这个goal。”协调者据此在 P3-13/08 复核并批准本 spec 中为 [P3-13 D-01 定稿](../13/spec.md#d-01-定稿08)所做的同步修订；只批准这些修订，其余已批准内容不变。
