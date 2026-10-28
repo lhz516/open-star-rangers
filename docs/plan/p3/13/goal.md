@@ -85,7 +85,7 @@ updated: 2026-10-28
 | [07-evidence-contract-baseline.md](./subtasks/07-evidence-contract-baseline.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | completed |
 | [09-shared-audio-contract-gate.md](./subtasks/09-shared-audio-contract-gate.md) | 08 | completed |
-| [10-instrument-content-payload.md](./subtasks/10-instrument-content-payload.md) | 08 | in-progress |
+| [10-instrument-content-payload.md](./subtasks/10-instrument-content-payload.md) | 08 | completed |
 | [11-graphics-import-wiring.md](./subtasks/11-graphics-import-wiring.md) | 10 | pending |
 | [12-core-hud-read-models.md](./subtasks/12-core-hud-read-models.md) | 08 | in-progress |
 | [13-runtime-tick-projection.md](./subtasks/13-runtime-tick-projection.md) | 08 | completed |
