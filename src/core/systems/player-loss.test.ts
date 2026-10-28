@@ -37,6 +37,7 @@ type Hooks = Partial<Record<string, (context: TickContext) => void>>;
 function stepWith(state: WorldState, hooks: Hooks): readonly DomainEvent[] {
   const context = registerTick(state, readTickInput(tickInput()));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     hooks[stage.id]?.(context);
     stage.run?.(context);
   }
@@ -49,7 +50,8 @@ function destroyInTick(state: WorldState, player: Entity): readonly DomainEvent[
   return stepWith(state, { collision: (context) => applyContactDamage(context, player, 5, 'collision') });
 }
 
-const contextOf = (state: WorldState): TickContext => registerTick(state, readTickInput(tickInput()));
+/** A tick's context outside a step, standing in the collision stage, where these tests' destructions build their explosions (P3-12 FS-03). */
+const contextOf = (state: WorldState): TickContext => Object.assign(registerTick(state, readTickInput(tickInput())), { stage: 'collision' as const });
 const ofType = <Type extends DomainEvent['type']>(events: readonly DomainEvent[], type: Type) =>
   events.filter((event): event is Extract<DomainEvent, { type: Type }> => event.type === type);
 const craftOf = (entity: Entity) => (entity as CraftEntity).combat;
@@ -119,16 +121,23 @@ describe('the destruction entry 0x32d74 (ME-09; AC-04)', () => {
     Object.assign(state.flow, { rescues: 1, dockingDeadline: 77, beaconDeadline: 88, wingmanLoss: { pending: true, dueClock: 1e9 } });
     const flowBefore = structuredClone(state.flow);
     const events = destroyInTick(state, player);
-    expect(fromDestruction(events, player).slice(0, 4)).toEqual([
+    expect(fromDestruction(events, player).slice(0, 5)).toEqual([
       expect.objectContaining({ type: 'object-destroyed', entityId: player.id, outcome: 'delayed' }),
       { type: 'left-page-changed', tick: 1, page: 0, previousPage: ENERGY_PAGE, commandIndex: null },
       { type: 'radio-flushed', tick: 1, cause: 'player-destroyed', removed: 1, interrupted: 'none' },
+      // The shared switch's fact, before the loss (P3-12 FS-03).
+      expect.objectContaining({
+        type: 'view-switched', fromViewMode: COCKPIT_VIEW_MODE, fromSubMode: 0, viewMode: DESTRUCTION_VIEW, subMode: 8,
+        player: expect.objectContaining({ entityId: player.id }),
+      }),
       { type: 'player-loss-started', tick: 1, playerEntityId: player.id, loss: 'destroyed', previousSubState: 0, previousViewMode: COCKPIT_VIEW_MODE, viewSwitched: true },
     ]);
     // The target is cleared without target-changed (CR-06 decision 6).
     expect(ofType(events, 'target-changed')).toEqual([]);
     const { player: ps } = state;
     expect([ps.viewMode, ps.previousViewMode, ps.subMode, ps.target, ps.dockingObject, state.communications.queue]).toEqual([DESTRUCTION_VIEW, DESTRUCTION_VIEW, 8, null, null, []]);
+    // `0x216d4` into view 0x11 shows the player's model (P3-12 FS-02).
+    expect(ps.modelShown).toBe(true);
     // Only the sub-state changes in the flow; the activity, the Warp and the status stay.
     expect(state.flow).toEqual({ ...flowBefore, subState: 2 });
     expect([player.activity, player.inWarp, player.warpClock, state.missionStatus]).toEqual(['active', false, 0, 'built']);
@@ -204,9 +213,10 @@ describe('the destruction entry 0x32d74 (ME-09; AC-04)', () => {
     const events = destroyInTick(state, player);
     log.push(...events);
     const tick = state.tick;
-    expect(fromDestruction(events, player).slice(1, 5)).toEqual([
+    expect(fromDestruction(events, player).slice(1, 6)).toEqual([
       { type: 'left-page-changed', tick, page: 0, previousPage: WARP_PAGE, commandIndex: null },
       expect.objectContaining({ type: 'radio-flushed', cause: 'player-destroyed' }),
+      expect.objectContaining({ type: 'view-switched', fromViewMode: WARP_VIEW, viewMode: DESTRUCTION_VIEW, subMode: 8 }),
       expect.objectContaining({ type: 'player-loss-started', previousViewMode: WARP_VIEW, viewSwitched: true }),
       { type: 'left-page-changed', tick, page: ENERGY_PAGE, previousPage: 0, commandIndex: null },
     ]);

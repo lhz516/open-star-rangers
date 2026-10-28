@@ -200,6 +200,22 @@ describe('fire commands (AC-06; CR-05, CR-06, W5–W8)', () => {
     }
   });
 
+  it('counts an energy-page redraw for each gun shot\'s charge spending only (`0x30cec`, CK-02)', () => {
+    const [state, player] = flightWorld();
+    state.player.target = add(state, 7, at(0, 0, 500)).id;
+    // No energy update, which counts too, in these ticks.
+    player.combat.nextEnergyClock = 1_000_000;
+    const world = constructWorld(state);
+    // Two gun shots (mounts 0 and 1) spend the charge twice; the missile and the cooldown-blocked repeat spend none.
+    world.step(tickInput([FIRE_PRIMARY, CYCLE, FIRE_PRIMARY, FIRE_SECONDARY, FIRE_PRIMARY]));
+    expect([player.combat.charge, state.player.energyPageRedraws]).toEqual([100 - 5 - 2, 2]);
+    // A refused gun (insufficient charge) spends nothing.
+    player.combat.charge = 1;
+    Object.assign(state, { tick: 20, clock: 40 });
+    world.step(tickInput([FIRE_PRIMARY]));
+    expect(state.player.energyPageRedraws).toBe(2);
+  });
+
   it('emits no shot-fired for a command that launched nothing', () => {
     const [state, player] = flightWorld();
     mountsOf(player)[0].damage = 2;

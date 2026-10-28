@@ -14,7 +14,8 @@
  * presentation adds the noise. The build tests the field only for 2 and 1 (`0x40399`, `0x4078a`, `0x408d1`), so the value
  * 3, which no damage writes, builds as 0 and reads as 0.
  *
- * Arithmetic (T10): the offset is each f32 difference of the positions; the Manhattan distance is (|dx| + |dy|) + |dz|
+ * Arithmetic (T10): the position is the contact's f32 world position as read (P3-02 CK-03, for the presentation's
+ * projection with its camera); the offset is each f32 difference of the positions; the Manhattan distance is (|dx| + |dy|) + |dz|
  * of the double differences, truncated to i32 (`0x74518`); a sum that does not fit is a fault, as the original's
  * unmasked invalid-operation exception is.
  */
@@ -98,6 +99,7 @@ export function readRadar(entities: EntityTable, player: Entity, target: EntityI
           y: Math.fround(position.y - player.position.y),
           z: Math.fround(position.z - player.position.z),
         }),
+        position: Object.freeze({ x: position.x, y: position.y, z: position.z }),
         class: contactClass(entity.kindBit, shooterKindBit(entities, entity)),
         missile: entity.kindBit === MISSILE_KIND_BIT,
         near: isNear(player.position, position),

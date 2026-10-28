@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { SUBSYSTEM_COUNT, type SubsystemState } from '../world/entity-table.ts';
-import type { LeftPage, PlayerState } from '../world/player-state.ts';
+import { createPlayerState, type LeftPage, type StatusDisplay } from '../world/player-state.ts';
 import { expectFault } from '../world/world.test-support.ts';
-import { advanceBlink, COCKPIT_DISPLAY_VIEW_MODES, hullField, pageChange, showsStatusPage, withStatusFields } from './displays.ts';
+import {
+  advanceBlink, COCKPIT_DISPLAY_VIEW_MODES, countEnergyPageRedraw, hullField, nextCount, pageChange, showsStatusPage, withStatusFields,
+} from './displays.ts';
 
 // Expectations from D9 and D15 (docs/original/formats/executable.md) and cockpit.md's instrument types per slot.
 
@@ -33,18 +35,31 @@ describe('the left display pages (D15)', () => {
 
 describe('the status display (D9)', () => {
   it('flips the blink phase once the clock is strictly past its due clock, due again 0x20 units later', () => {
-    const display: PlayerState['statusDisplay'] = { blink: 0, blinkDueClock: 10, redraw: false };
+    // CK-01: the timer touches only the phase and its due clock; the status page step keeps the rest.
+    const display: StatusDisplay = { blink: 0, blinkDueClock: 10, redraw: false, phaseFlipped: false, rebuilds: 3 };
     expect(advanceBlink(display, 10)).toBe(false);
-    expect(display).toEqual({ blink: 0, blinkDueClock: 10, redraw: false });
+    expect(display).toEqual({ blink: 0, blinkDueClock: 10, redraw: false, phaseFlipped: false, rebuilds: 3 });
     expect(advanceBlink(display, 12)).toBe(true);
-    expect(display).toEqual({ blink: 1, blinkDueClock: 44, redraw: false });
+    expect(display).toEqual({ blink: 1, blinkDueClock: 44, redraw: false, phaseFlipped: false, rebuilds: 3 });
     expect(advanceBlink(display, 44)).toBe(false);
     expect(advanceBlink(display, 46)).toBe(true);
-    expect(display).toEqual({ blink: 0, blinkDueClock: 78, redraw: false });
+    expect(display).toEqual({ blink: 0, blinkDueClock: 78, redraw: false, phaseFlipped: false, rebuilds: 3 });
   });
 
   it('faults on a due clock past the safe integers', () => {
-    expectFault(() => advanceBlink({ blink: 0, blinkDueClock: 0, redraw: false }, Number.MAX_SAFE_INTEGER), 'budget-exhausted', 'displays.blink-clock');
+    expectFault(() => advanceBlink({ blink: 0, blinkDueClock: 0 }, Number.MAX_SAFE_INTEGER), 'budget-exhausted', 'displays.blink-clock');
+  });
+
+  it('counts up to the largest safe integer and faults past it (CK-01, CK-02)', () => {
+    expect(nextCount(0, 'test.count')).toBe(1);
+    expect(nextCount(Number.MAX_SAFE_INTEGER - 1, 'test.count')).toBe(Number.MAX_SAFE_INTEGER);
+    expectFault(() => nextCount(Number.MAX_SAFE_INTEGER, 'test.count'), 'budget-exhausted', 'test.count');
+    const player = createPlayerState({ column: 0, row: 0 });
+    countEnergyPageRedraw(player);
+    countEnergyPageRedraw(player);
+    expect(player.energyPageRedraws).toBe(2);
+    player.energyPageRedraws = Number.MAX_SAFE_INTEGER;
+    expectFault(() => countEnergyPageRedraw(player), 'budget-exhausted', 'displays.energy-page-redraws');
   });
 
   it.each([

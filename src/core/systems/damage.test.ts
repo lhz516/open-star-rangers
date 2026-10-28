@@ -19,6 +19,12 @@ const CLOCK = 640;
 const IMPACT: HitImpact = Object.freeze({ point: Object.freeze({ x: 1, y: 2, z: 3 }), local: Object.freeze({ x: 0, y: 0, z: -1 }), face: 4 });
 const at = (x: number, y: number, z: number) => ({ x, y, z });
 
+/** A context in the collision stage, one of those that destroy (`explosion-created` reports it). */
+function atCollision(context: TickContext): TickContext {
+  context.stage = 'collision';
+  return context;
+}
+
 interface Scene {
   readonly state: WorldState;
   readonly context: TickContext;
@@ -37,7 +43,7 @@ function scene(config: Partial<WorldConfig> = {}): Scene {
   state.clock = CLOCK;
   const player = addPlayerEntity(state) as CraftEntity;
   arm(player, 50, 100);
-  return { state, context: registerTick(state, readTickInput(tickInput())), player };
+  return { state, context: atCollision(registerTick(state, readTickInput(tickInput()))), player };
 }
 
 function arm(entity: Entity, shield: number, hull: number, states: Readonly<Record<number, SubsystemState>> = {}): CraftEntity {
@@ -77,6 +83,31 @@ const ofType = <Type extends DomainEvent['type']>(context: TickContext, type: Ty
   context.events.filter((event): event is Extract<DomainEvent, { type: Type }> => event.type === type);
 const hits = (context: TickContext): HitEvent[] => ofType(context, 'hit');
 const destructions = (context: TickContext): ObjectDestroyedEvent[] => ofType(context, 'object-destroyed');
+
+describe('the energy-page redraw of the player\'s shield, 0x30c60 (CK-02)', () => {
+  it('counts each hit the player\'s shield takes, an empty shield included, and not its bypass, a gated hit or another craft\'s', () => {
+    const { state, context, player } = scene();
+    const enemy = craftIn(state, 7, 50, 100);
+    applyContactDamage(context, enemy, 20, 'collision');
+    expect(state.player.energyPageRedraws).toBe(0);
+    // 50 → 30; then emptied with 10 left for the hull; then an empty shield, which still takes the hit.
+    for (const damage of [20, 40, 5]) applyContactDamage(context, player, damage, 'collision');
+    expect([player.combat.shield, state.player.energyPageRedraws]).toEqual([0, 3]);
+    // Subsystem 4 at 1: a low byte below 0x54 bypasses the shield, any other is taken.
+    arm(player, 50, 100, { 4: 1 });
+    drawNext(state, 1, ([value]) => (value & 0xff) < 0x54);
+    applyEngagementDamage(context, enemy, player, 1);
+    expect([player.combat.shield, state.player.energyPageRedraws]).toEqual([50, 3]);
+    arm(player, 50, 100, { 4: 1 });
+    drawNext(state, 1, ([value]) => (value & 0xff) >= 0x54);
+    applyEngagementDamage(context, enemy, player, 1);
+    expect([player.combat.shield, state.player.energyPageRedraws]).toEqual([49, 4]);
+    // The destruction view's gate takes no hit.
+    state.player.followedEntity = enemy.id;
+    applyEngagementDamage(context, enemy, player, 1);
+    expect(state.player.energyPageRedraws).toBe(4);
+  });
+});
 
 describe('a projectile or missile hit, 0x2a40c (H4, AC-09)', () => {
   it('does nothing at all to a destroyed victim', () => {
@@ -408,7 +439,7 @@ describe('the communications reactions at their call points (CR-13; P3-10 CB-12;
     const messages = { ...communications.messages, direct: Object.freeze(Array.from({ length: 70 }, () => Object.freeze([1]))) };
     const nameIndexes = { ...communications.nameIndexes, pool: Object.freeze([{ in2001: 2, in2011: null }]) };
     const state: WorldState = { ...sc.state, ruleData: { ...sc.state.ruleData, communications: { ...communications, messages, nameIndexes } } };
-    return { state, context: registerTick(state, readTickInput(tickInput())), player: sc.player };
+    return { state, context: atCollision(registerTick(state, readTickInput(tickInput()))), player: sc.player };
   }
   const radioMessages = (context: TickContext) => context.events.flatMap((event) => (event.type === 'radio-queued' ? [event.message.index] : []));
 

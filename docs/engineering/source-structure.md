@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-24
+updated: 2026-10-28
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -27,6 +27,7 @@ src/
     browser-ports.ts
     ports.ts
     composition/
+      cockpit-copy.ts
       mission-slot.ts
       use-mission-owner.ts
       use-resource-holder.ts
@@ -38,7 +39,10 @@ src/
       import-job-owner.ts
       use-import-job.ts
     mission/
+      cockpit-content.ts
       dev-frame-timing.ts
+      flight-consumer.ts
+      flight-content.ts
       mission-eligibility.ts
       mission-flow.ts
       mission-owner.ts
@@ -245,6 +249,7 @@ src/
       view-labels-payload.ts
       hud-text-payload.ts
       map-geometry-payload.ts
+      instruments-payload.ts
     rule-data/
       rule-data-fields.ts
       craft-info.ts
@@ -366,10 +371,125 @@ src/
       worker-port.ts
       browser-import-worker.ts
   render/
+    cockpit/
+      communications/
+        communication-pages.ts
+      composition/
+        cockpit-layer.ts
+        cockpit-run.ts
+      frame/
+        cockpit-frame.ts
+      gauges/
+        corner-gauges.ts
+        gauge-bars.ts
+      interference/
+        display-interference.ts
+      left-display/
+        diag-line.ts
+        energy-page.ts
+        left-display.ts
+        left-display-content.ts
+        left-display-raster.ts
+        status-page.ts
+      map-picture/
+        map-drawing.ts
+        map-picture.ts
+        map-picture-geometry.ts
+        map-zoom-spread.ts
+      messages/
+        message-copy.ts
+        message-line.ts
+        message-queue.ts
+      overlay/
+        flight-overlay.ts
+        indicator-strip.ts
+        overlay-geometry.ts
+      presentation/
+        cockpit-contract.ts
+        cockpit-layout.ts
+        cockpit-limits.ts
+        cockpit-presentation.ts
+        cockpit-random.ts
+      radar/
+        radar.ts
+        radar-geometry.ts
+      raster/
+        glyph-text.ts
+        indexed-surface.ts
+        text-format.ts
+      target-display/
+        silhouette-raster.ts
+        target-display.ts
+        target-scene.ts
+      warp-display/
+        warp-lamp.ts
+        warp-page.ts
+    flight/
+      composition/
+        flight-composition.ts
+        flight-layers.ts
+        logical-screen.ts
+      flash/
+        flash-screen-stage.ts
+        screen-flash.ts
+      lighting/
+        lighting-math.ts
+        model-lighting-layer.ts
+        model-surfaces.ts
+        shade-ramps.ts
+      nebula/
+        nebula-blit.ts
+        nebula-layer.ts
+        nebula-placement.ts
+        nebula-selection.ts
+      objects/
+        effect-objects-layer.ts
+        object-surfaces.ts
+      presentation/
+        explosion-selection.ts
+        flight-presentation.ts
+        presentation-budget.ts
+        presentation-camera.ts
+        presentation-contract.ts
+        destruction-camera/
+          destruction-camera.ts
+        effects/
+          effect-rules.ts
+          presentation-effects.ts
+      renderer/
+        flight-gpu-cache.ts
+        flight-passes.ts
+        flight-render-error.ts
+        flight-renderer.ts
+        flight-run.ts
+      scene/
+        drawn-pose.ts
+        flight-scene.ts
+        projection.ts
+      shimmer/
+        hit-shimmer.ts
+        hit-shimmer-layer.ts
+        shimmer-band.ts
+        shimmer-surfaces.ts
+        shimmer-wraps.ts
+      sprites/
+        explosion-sprites.ts
+        sprite-rules.ts
+      starfield/
+        speed-dust.ts
+        star-field.ts
+        starfield-layers.ts
+      warp/
+        warp-line.ts
+        warp-templates.ts
+        warp-tunnel.ts
+        warp-tunnel-image.ts
+        warp-tunnel-layer.ts
     map/
       browser-map-cursor.ts
       map-cursor.ts
       map-input-geometry.ts
+      map-presentation-port.ts
     scene/
       cleanup.ts
       render-surface.ts
@@ -421,6 +541,7 @@ src/
       resource-copy.ts
     mission/
       BasePage.tsx
+      FlightView.tsx
       GameInputZone.tsx
       InputNotices.tsx
       MissionMenuPage.tsx
@@ -463,14 +584,14 @@ src/
 | [content](./modules/content.md) | 基础契约与切片定义，图形、状态显示屏文字、模型与效果 payload，规范 JSON 与规则数据、飞行数据、视角标签、HUD 文字与地图几何 payload |
 | [original-data](./modules/original-data.md) | 光盘、封包、版本识别与来源映射，任务、规则与飞行数据解析，图形、逻辑、规则数据、音频、模型、效果与飞行数据转换 |
 | [workers](./modules/workers.md) | 导入 Worker 的协议、宿主、作业与生产包配置 |
-| [app](./modules/app.md) | 正式 Runtime 与游戏会话（含运行中衔接与终局），任务流程、所有者与槽位，资源持有者与任务文字，查看器音频与所有者 |
-| [ui](./modules/ui.md) | 游戏 store、会话桥接与命令反馈，任务页面、基地页面、终局占位与结果页及缺省标注文字，开发诊断，失败文案 |
-| [render](./modules/render.md) | 视口、WebGL 表面与资源查看渲染 |
+| [app](./modules/app.md) | 正式 Runtime 与游戏会话（含运行中衔接与终局），任务流程、所有者与槽位，飞行画面消费者、飞行内容与驾驶舱内容和文案，资源持有者与任务文字，查看器音频与所有者 |
+| [ui](./modules/ui.md) | 游戏 store、会话桥接（含驾驶舱消息行的桥接）与命令反馈，任务页面、基地页面、终局占位与结果页及缺省标注文字，开发诊断，失败文案 |
+| [render](./modules/render.md) | 视口、WebGL 表面与资源查看渲染；P3-13 的驾驶舱、HUD 与地图（表现基础、光栅与文字、各仪表、运行装配、地图就绪凭证）与交接；P3-12 的飞行渲染（表现模块、渲染器、场景、合成与各 pass）与交接 |
 | [platform](./modules/platform.md) | 资源缓存、音频播放、任务端口的浏览器适配与键盘源 |
 
 ## 职责与依赖
 
-P1-09 的 [platform/input/](../../src/platform/input/) 提供通用事件、按住轴、源端口与监听管理；它的合成五键消费者已随合成演示退役（[R6](#r6-合成-ui-层)）。P3-05 的 [ui/game-input/](../../src/ui/game-input/) 是正式任务键位消费者，接入平台键盘源、能力生命周期与地图输入；平台层不识别游戏动作。消费者不导入浏览器连接、不调度 tick，经任务所有者以 `input` 阶段登记，经会话的运行句柄设置意图与提交命令。running 状态的失焦/退出 Pointer Lock 清键只能调用 `GameInputConsumer.clear(reason)`，再由它通知 session 的 `clear-input`；消费者外不得绕过它清会话输入。地图输入使用 `render/map/` 的纯 CSS 像素几何与光标；地图规则（光标量化、选点、可见性与 Warp）在 Core（P3-09 的 `systems/map.ts`、`systems/warp.ts` 等），地图画面归 P3-13。绑定、上下文与证据见独立[键位文档](./keyboard-input.md)，不代表原版操控或系统快捷键拦截。
+P1-09 的 [platform/input/](../../src/platform/input/) 提供通用事件、按住轴、源端口与监听管理；它的合成五键消费者已随合成演示退役（[R6](#r6-合成-ui-层)）。P3-05 的 [ui/game-input/](../../src/ui/game-input/) 是正式任务键位消费者，接入平台键盘源、能力生命周期与地图输入；平台层不识别游戏动作。消费者不导入浏览器连接、不调度 tick，经任务所有者以 `input` 阶段登记，经会话的运行句柄设置意图与提交命令。running 状态的失焦/退出 Pointer Lock 清键只能调用 `GameInputConsumer.clear(reason)`，再由它通知 session 的 `clear-input`；消费者外不得绕过它清会话输入。地图输入使用 `render/map/` 的纯 CSS 像素几何、生产几何端口与就绪凭证；地图规则（光标量化、选点、可见性与 Warp）在 Core（P3-09 的 `systems/map.ts`、`systems/warp.ts` 等），地图画面在 `render/cockpit/map-picture/`（P3-13）。绑定、上下文与证据见独立[键位文档](./keyboard-input.md)，不代表原版操控或系统快捷键拦截。
 
 | 模块 | 拥有的职责 | 不应承担 |
 |---|---|---|
@@ -479,7 +600,10 @@ P1-09 的 [platform/input/](../../src/platform/input/) 提供通用事件、按�
 | [app/session/](../../src/app/session/) | 控制通道、唯一帧调度许可、运行身份、出发与运行中保持、停止与完成（终局序列与冻结结果）、通知边界、运行级消费者与清理 | 重复模拟世界、媒体/Worker 空实现 |
 | [app/mission/](../../src/app/mission/) | 开始资格、任务流程、占位计时、运行创建、重开与返回、所有者级资源与离页保护的所有权（DOM-free，宿主能力经端口） | React、DOM、规则判定、运行中的 Core 衔接 |
 | [ui/game-input/](../../src/ui/game-input/) | 生产键位表、上下文解析、游戏输入消费者、宿主能力与地图输入；通过 app 所有者 input 阶段使用运行句柄 | 平台事件采集、Core 规则实现、第二条调度循环 |
-| [render/map/](../../src/render/map/) | 地图输入与显示共用的纯 CSS 像素几何、地图光标绘制 | 地图规则、DOM 事件采集、游戏调度 |
+| [render/map/](../../src/render/map/) | 地图输入与显示共用的纯 CSS 像素几何与生产几何端口、地图就绪凭证端口（P3-13）、隔离入口用的项目光标 | 地图规则、地图画面、DOM 事件采集、游戏调度 |
+| [render/flight/](../../src/render/flight/) | 飞行渲染（P3-12）：每个所有者一个渲染器与运行内 GPU 缓存，每个运行的场景、合成与各绘制 pass，经运行级帧消费者逐 tick 推进、逐帧绘制；运行接线 `wireFlightRun` 同时接入 P3-13 的驾驶舱与其层 | 第二条帧循环、Core 状态写入、驾驶舱/HUD/地图的绘制（在 `render/cockpit/`）、跨运行缓存 |
+| [render/cockpit/](../../src/render/cockpit/) | 驾驶舱、HUD 与战略地图（P3-13）：每个运行一份的表现模型与两张索引面，各仪表与地图的 CPU 绘制，`composition/` 中的模块登记与驾驶舱层（唯一用 Three.js 的部分）；纯模块只依赖自身、Core、content 与飞行表现模块 | DOM、React/Zustand、宿主时间/随机/调度、异步、Core 状态写入或命令、导入 UI 文案（由应用注入）、第二个画布或循环 |
+| [render/flight/presentation/](../../src/render/flight/presentation/) | 每个运行一份的表现模块：相机、EXPL 选择、激活流、表现效果与被毁相机，渲染器与 P3-14 共读；只依赖自身、Core 与 content | DOM、Three.js、WebGL、应用层、宿主时间/随机/调度、异步 |
 | [core/](../../src/core/) | 权威状态、规则、step、纯投影、确定性、纯 replay/存档模型 | 宿主时间/随机、异步、UI、渲染、平台 I/O |
 | [original-data/](../../src/original-data/) | 原版字节/格式、版本识别、解析与规范化转换 | Three.js 对象、IndexedDB、正式运行世界 |
 | `content/` | 内部内容契约、Asset ID、内容版本、任务与逻辑定义 | 原版资源文件、浏览器加载/GPU/存储实现 |
@@ -540,8 +664,8 @@ Core 消费规范化逻辑数据，不认识原版封包。持续事实走投影
 
 仓库根 [e2e/](../../e2e/)属于测试，不是 app/platform 模块，也不进入网站导入链。[配置](../../playwright.config.ts)和[独立tsconfig](../../tsconfig.e2e.json)允许 Node runner 与 evaluate 的 DOM 类型，但 Core/Node 程序仍无 DOM。命令、已有浏览器准备、origin/端口所有权、headed CDP 与输出清理见[工程约定](./README.md#本地浏览器-runner)。
 
-- bootstrap、probe-contract、interaction-render、joint-resources、browser-replay、native-lifecycle、webgl-unavailable 各自承担独立验收面；P3-04 起，页面、生命周期与图形的验收已迁到正式任务流程或查看器，各用例按下列当前路径验证（各旧用例的去向见 [P3-04/11](../plan/p3/04/subtasks/11-e2e-lifecycle-resources.md#完成证据) 与 [P3-04/12](../plan/p3/04/subtasks/12-e2e-shell-production.md#完成证据)）：bootstrap 载入应用菜单，没有资源包时任务入口禁用并说明原因；probe-contract 核对探针（含应用的单次计时器）不干扰页面，并读取任务画面的只读属性，生产中没有诊断元素；interaction-render 为只用键盘的任务流程（原生控件、非绑定键无效）与任务画面、查看器画布的同所有者 resize；browser-replay 在浏览器与 Node 中以正式 Core 的 `replayRecord`/`compareReplayResults` 得到相同结果并同样拒绝不符的记录；webgl-unavailable 在查看器上核对 WebGL 2 不可用时的降级与两次进出的释放，任务流程照常且没有画布；native-lifecycle 为任务飞行与出发保持中的原生隐藏、显式继续与不补跑；joint-resources 为三次任务往返（各含重开）的资源平衡；mission-flow.development/production 为完整任务流程、离页确认、开发诊断与录制下载后的 Node 核对；base-interaction.development（P3-10/23，只在开发构建中运行，因为测试入口只在开发构建中）经真实模块 Worker 导入合成光盘 `mission-docking`（[synthetic-import.test-support.ts](../../src/workers/synthetic-import.test-support.ts)，场景表在 [import-scenarios.test-support.ts](../../src/workers/import-scenarios.test-support.ts)：基地在停靠门禁之内，菜单含状态查询与停靠），以输入区中的可信按键走通讯菜单、停靠请求、G-02/3 与 G-02/4 的保持占位、G-05 基地页面与离港，并把基地页面与 Node 中重放导出录制的 projection 比较；菜单协议只经开发事件日志核对，不验证正式通讯画面（P3-13）。P1-12增加rights DOM和仅production的许可产物可读性用例。[P1-10覆盖/历史适用性](../plan/p1/10/subtasks/07-evidence-docs-alignment.md#完成证据)、[P1-12相关证据](../plan/p1/12/subtasks/08-local-evidence-docs.md#完成证据)及[P1-14当前完整回归](../plan/p1/14/subtasks/03-browser-exit-checks.md#完成证据)分别保留各候选的实际结果，阶段判定见[退出评审](../reviews/P1-exit.md)。
-- `e2e/support/`按测试能力放 environment、只读宿主探针、错误fixture、DOM/采样、截图/布局与CDP relay，不建立生产debug/world写入API。输入走可信UI/浏览器协议；任务画面只经只读的 `data-owner`/`data-run`/`data-tick`/`data-position` 属性与开发诊断面板取证（[mission-observations.ts](../../e2e/support/mission-observations.ts)）；P3-09 的地图与 Warp 证据另经 [map-warp.ts](../../e2e/support/map-warp.ts) 从任务画面元素的 React fiber 找到组件持有的任务 UI store，只调用它的 `getState`/`subscribe` 读取会话桥接发布的状态，不写 store、世界或 projection；P3-08 的 AI 与 `b` 证据另经 [ai-wingman.ts](../../e2e/support/ai-wingman.ts)：在 Node 中由合成光盘的转换结果生成规则数据 payload 变体，只写入测试自己的隔离缓存，并在 Node 中重放浏览器导出的录制以读取诊断面板不显示的 Core 状态；P3-11 的救援、终局与结果页证据另经 [mission-result.ts](../../e2e/support/mission-result.ts)：在 Node 中以 ai-wingman.ts 的 `withPayloads` 替换合成包的任务与 craft-info payload，得到由运行自身规则结束的短程变体，只经 DOM、开发面板与 Node 中的重放观察，原生 CDP 目标的预置用 [production-cache.ts](../../e2e/support/production-cache.ts) 的 `seedRecords` 与页面函数 `storeSeed`；replay只导入公开纯模块创建独立世界。
+- bootstrap、probe-contract、interaction-render、joint-resources、browser-replay、native-lifecycle、webgl-unavailable 各自承担独立验收面；P3-04 起，页面、生命周期与图形的验收已迁到正式任务流程或查看器，各用例按下列当前路径验证（各旧用例的去向见 [P3-04/11](../plan/p3/04/subtasks/11-e2e-lifecycle-resources.md#完成证据) 与 [P3-04/12](../plan/p3/04/subtasks/12-e2e-shell-production.md#完成证据)）：bootstrap 载入应用菜单，没有资源包时任务入口禁用并说明原因；probe-contract 核对探针（含应用的单次计时器）不干扰页面，并读取任务画面的只读属性，生产中没有诊断元素；interaction-render 为只用键盘的任务流程（原生控件、非绑定键无效）与任务画面、查看器画布的同所有者 resize；browser-replay 在浏览器与 Node 中以正式 Core 的 `replayRecord`/`compareReplayResults` 得到相同结果并同样拒绝不符的记录；webgl-unavailable 在查看器上核对 WebGL 2 不可用时的降级与两次进出的释放，任务流程照常、飞行区域为 `unavailable` 且没有画布；native-lifecycle 为任务飞行与出发保持中的原生隐藏、显式继续与不补跑；joint-resources 为三次任务往返（各含重开）的资源平衡；mission-flow.development/production 为完整任务流程、离页确认、开发诊断与录制下载后的 Node 核对；base-interaction.development（P3-10/23，只在开发构建中运行，因为测试入口只在开发构建中）经真实模块 Worker 导入合成光盘 `mission-docking`（[synthetic-import.test-support.ts](../../src/workers/synthetic-import.test-support.ts)，场景表在 [import-scenarios.test-support.ts](../../src/workers/import-scenarios.test-support.ts)：基地在停靠门禁之内，菜单含状态查询与停靠），以输入区中的可信按键走通讯菜单、停靠请求、G-02/3 与 G-02/4 的保持占位、G-05 基地页面与离港，并把基地页面与 Node 中重放导出录制的 projection 比较；菜单协议只经开发事件日志核对，正式通讯画面由 P3-13 的 cockpit 用例验证。flight-scenes.development（P3-12/25）经只由开发服务器提供的隔离入口 `e2e/entries/flight-scenes.html` 以真实渲染器、真实 WebGL 2 表面与真实运行接线绘制合成状态（含 Core 尚不能产生的被毁视角），flight-render.development/production 在正式任务流程中读回飞行画面，期望值都在测试侧按原版规则独立写出（见[工程约定](./README.md#本地浏览器-runner)）。P3-13 的 cockpit.development/production、map-picture.development/production 与 cockpit-lifecycle 在正式任务流程中读回驾驶舱、HUD 与地图画面，并以只读的 WebGL 2 调用记录器核对单画布、深度与生命周期（同见工程约定）。P1-12增加rights DOM和仅production的许可产物可读性用例。[P1-10覆盖/历史适用性](../plan/p1/10/subtasks/07-evidence-docs-alignment.md#完成证据)、[P1-12相关证据](../plan/p1/12/subtasks/08-local-evidence-docs.md#完成证据)及[P1-14当前完整回归](../plan/p1/14/subtasks/03-browser-exit-checks.md#完成证据)分别保留各候选的实际结果，阶段判定见[退出评审](../reviews/P1-exit.md)。
+- `e2e/support/`按测试能力放 environment、只读宿主探针、错误fixture、DOM/采样、截图/布局与CDP relay，不建立生产debug/world写入API。输入走可信UI/浏览器协议；任务画面只经只读的 `data-owner`/`data-run`/`data-tick`/`data-position` 属性与开发诊断面板取证（[mission-observations.ts](../../e2e/support/mission-observations.ts)），飞行画面另经页面截图在页内解码为逻辑像素（[flight-pictures.ts](../../e2e/support/flight-pictures.ts)）、飞行区域的 `data-state` 与开发面板的 Flight render 诊断读取（[flight-flow.ts](../../e2e/support/flight-flow.ts)）；P3-09 的地图与 Warp 证据另经 [map-warp.ts](../../e2e/support/map-warp.ts) 从任务画面元素的 React fiber 找到组件持有的任务 UI store，只调用它的 `getState`/`subscribe` 读取会话桥接发布的状态，不写 store、世界或 projection；P3-08 的 AI 与 `b` 证据另经 [ai-wingman.ts](../../e2e/support/ai-wingman.ts)：在 Node 中由合成光盘的转换结果生成规则数据 payload 变体，只写入测试自己的隔离缓存，并在 Node 中重放浏览器导出的录制以读取诊断面板不显示的 Core 状态；P3-11 的救援、终局与结果页证据另经 [mission-result.ts](../../e2e/support/mission-result.ts)：在 Node 中以 ai-wingman.ts 的 `withPayloads` 替换合成包的任务与 craft-info payload，得到由运行自身规则结束的短程变体，只经 DOM、开发面板与 Node 中的重放观察，原生 CDP 目标的预置用 [production-cache.ts](../../e2e/support/production-cache.ts) 的 `seedRecords` 与页面函数 `storeSeed`；replay只导入公开纯模块创建独立世界。
 - Node 单元测试继续证明纯规则、通知/旧回调、注册失败/回滚/稀有错误；持久E2E证明真实DOM/图形/宿主生命周期与联合资源。仍适用的人工HMR/window/DPR证据直接复用，不自动改源码，不把本机Chromium结果说成Safari/系统快捷键/目标GPU/原版保真。
 - `tools/e2e-configuration.test.ts`是 Node 接入与项目设置回归：读取 Playwright 配置并列出用例，不启动浏览器或需要已安装浏览器；真正浏览器验收独立运行`pnpm test:e2e`，不由`pnpm check`替代。报告与合成截图只有ignored测试目录，不是产品资源。
 
@@ -553,7 +677,7 @@ Core 消费规范化逻辑数据，不认识原版封包。持续事实走投影
 |---|---|---|
 | P1-06/07/08/09/10（已交付） | `ui/game/`、`ui/pages/`、`ui/dev/`；`render/scene/`、`render/viewport/`；`platform/input/`；必要时 `app/composition/`；仓库根 `e2e/`（P1 的 `render/synthetic/` 与其他合成演示模块已于 P3-04 退役，见[退役记录](#p3-04-合成演示退役记录)） | 消费者各自实现订阅与释放，应用装配，不增游戏循环 |
 | P2（已交付） | `original-data/io/`、`disc/`、`archive/`、`formats/`、`source/`、`conversion/`；`content/` 按数据类别组织；`platform/files/`、`storage/`、`audio/`；`workers/` | 纯字节读取端口由解析层定义，File/fs 实现分别在平台/工具；转换数据不写入仓库 |
-| P3 | `core/contracts/`、`world/`、`systems/`、`rules/`、`projections/`、`replay/`（P3-02 已交付，规则任务在其中扩展）；`app/runtime/`、`app/session/`、`app/mission/`、`ui/game/`、`ui/mission/`、`ui/dev/`（P3-04 已交付，输入、画面与音效经任务所有者接入）；`render/cockpit/` | 真实系统显式按固定顺序执行；不建立第二个会话、帧循环或运行 |
+| P3 | `core/contracts/`、`world/`、`systems/`、`rules/`、`projections/`、`replay/`（P3-02 已交付，规则任务在其中扩展）；`app/runtime/`、`app/session/`、`app/mission/`、`ui/game/`、`ui/mission/`、`ui/dev/`（P3-04 已交付，输入、画面与音效经任务所有者接入）；`render/flight/`（P3-12 已交付）；`render/cockpit/`（P3-13 已交付，经 `render/flight/` 的同一合成接入） | 真实系统显式按固定顺序执行；不建立第二个会话、帧循环或运行 |
 | P4 | `core/save/`；内容模块的战役/任务数据；UI 简报、结果等页面；`platform/video/`、`music/`（音效播放端口 `platform/audio/` 已由 P2-08 交付） | 媒体实现由 spike/ADR 确定，不在目录方案中选解码器；存档模型与持久化分开 |
 | P5 | 扩展原版导入、平台存储/PWA、UI 错误反馈、`e2e/`、`tools/` 与 CI/发布配置 | 不建立装满所有业务的 release 模块；缓存管理不静默覆盖玩家存档 |
 | P6 | `render/styles/`、`effects/`、内容模块的外观覆盖契约、画质设置 | 同一 Core/逻辑定义/存档；碰撞等逻辑不从 Enhanced 模型重新推导 |
@@ -626,7 +750,7 @@ P3-04 以正式 Runtime、游戏会话与任务流程取代 P1 合成演示（[s
 
 | 删除的文件 | 内容 | 替代 |
 |---|---|---|
-| `synthetic-render-frame.ts`、`synthetic-camera.ts`、`synthetic-appearance.ts`、`synthetic-renderer.ts` | 每个运行一份的帧历史与插值、合成相机、合成外观，以及作为会话运行级消费者的渲染器 | 暂无飞行画面：任务画面的游戏区域留给 P3-12、P3-13。共用的 [render-surface.ts](../../src/render/scene/render-surface.ts)、[cleanup.ts](../../src/render/scene/cleanup.ts)、[viewport-layout.ts](../../src/render/viewport/viewport-layout.ts) 与 [webgl/](../../src/render/webgl/) 保留，见[渲染表面与视口](./README.md#渲染表面与视口) |
+| `synthetic-render-frame.ts`、`synthetic-camera.ts`、`synthetic-appearance.ts`、`synthetic-renderer.ts` | 每个运行一份的帧历史与插值、合成相机、合成外观，以及作为会话运行级消费者的渲染器 | 退役时没有飞行画面，任务画面的游戏区域留给 P3-12、P3-13；P3-12 起为 [render/flight/](../../src/render/flight/) 的飞行渲染（[render 模块说明](./modules/render.md#飞行渲染p3-12)），驾驶舱、HUD 与地图画面由 P3-13 的 [render/cockpit/](../../src/render/cockpit/) 经同一合成画入（[render 模块说明](./modules/render.md#驾驶舱hud-与地图p3-13)）。共用的 [render-surface.ts](../../src/render/scene/render-surface.ts)、[cleanup.ts](../../src/render/scene/cleanup.ts)、[viewport-layout.ts](../../src/render/viewport/viewport-layout.ts) 与 [webgl/](../../src/render/webgl/) 保留，见[渲染表面与视口](./README.md#渲染表面与视口) |
 | `synthetic-camera.test.ts`、`synthetic-render-frame.test.ts`、`synthetic-renderer{,-fault,-replay}.test.ts` | 上述模块的测试 | — |
 
 ### R3 合成 Runtime
@@ -681,7 +805,7 @@ P3-04 以正式 Runtime、游戏会话与任务流程取代 P1 合成演示（[s
 |---|---|---|
 | `src/ui/pages/SyntheticDemoPage.tsx` | 合成演示画面（主菜单的 `Start synthetic demo` 入口） | 主菜单的 `Start mission` 与任务页面：[MissionPage.tsx](../../src/ui/mission/MissionPage.tsx) 及 [ui/mission/](../../src/ui/mission/) 的占位、开始配置、任务壳与任务菜单 |
 | `src/ui/dev/SyntheticDevPanel.tsx` | 合成开发面板（会话控件、marker 命令、渲染诊断） | 只在开发构建中出现的 [MissionDevPanel.tsx](../../src/ui/dev/MissionDevPanel.tsx)，见[开发诊断与录制导出](./README.md#开发诊断与录制导出) |
-| `src/ui/render/SyntheticRenderView.tsx`（`src/ui/render/` 随之删除） | 合成画面容器、合成键位的输入区与渲染状态文字 | 任务壳中的游戏区域（`mission-view`，尚无完整画布，P3-12、P3-13 填充）；正式输入区由 P3-05 建立 |
+| `src/ui/render/SyntheticRenderView.tsx`（`src/ui/render/` 随之删除） | 合成画面容器、合成键位的输入区与渲染状态文字 | 任务壳中的游戏区域（`mission-view`）：P3-12 起其中的飞行区域 [FlightView.tsx](../../src/ui/mission/FlightView.tsx) 放置飞行画布，驾驶舱、HUD 与地图画面由 P3-13 画入同一画布；正式输入区由 P3-05 建立 |
 
 ### R8 E2E 演示观察
 

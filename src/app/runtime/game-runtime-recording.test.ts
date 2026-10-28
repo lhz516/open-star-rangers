@@ -131,7 +131,7 @@ describe('GameRuntime recording capacity', { timeout: 30_000 }, () => {
       refused ??= thrownBy(() => runtime.submitCommand({ type: 'launch' }));
     });
     now += 5 * TICK_MS;
-    expect(runtime.frame(now)).toEqual({ ticks: 4, capped: false, stop: 'recording-capacity', cut: null, transitions: [], completion: null });
+    expect(runtime.frame(now)).toMatchObject({ ticks: 4, capped: false, stop: 'recording-capacity', cut: null, transitions: [], completion: null, outputs: { length: 4 } });
     expect(delivered).toEqual(last.slice(0, 4 * 63));
     expect(refused).toMatchObject({ kind: 'recording-capacity' });
     expect((refused as Error).cause).toBeInstanceOf(CoreInputError);
@@ -174,7 +174,7 @@ describe('GameRuntime recording capacity', { timeout: 30_000 }, () => {
     expect(gaps.length).toBeGreaterThan(0);
     const remaining = CORE_LIMITS.recordedTicks - recorded();
     now += (remaining + 2) * TICK_MS;
-    expect(runtime.frame(now)).toEqual({ ticks: remaining, capped: false, stop: 'recording-capacity', cut: null, transitions: [], completion: null });
+    expect(runtime.frame(now)).toMatchObject({ ticks: remaining, capped: false, stop: 'recording-capacity', cut: null, transitions: [], completion: null, outputs: { length: remaining } });
     expect(runtime.projection().clock.tick).toBe(CORE_LIMITS.recordedTicks);
     const exported = runtime.exportRecording();
     expect([exported?.record.ticks.length, exported?.result.finalTick]).toEqual([CORE_LIMITS.recordedTicks, CORE_LIMITS.recordedTicks]);

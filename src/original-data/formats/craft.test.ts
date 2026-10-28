@@ -83,7 +83,9 @@ describe('TABL 4003 parsing', () => {
 
 describe('CINF parsing', () => {
   it('converts every record field by field', () => {
-    const info = defaultCraftInfo();
+    // The synthetic names are drawable HUD text; this one keeps bytes 0x80–0xFF.
+    const plain = defaultCraftInfo();
+    const info = { ...plain, guns: plain.guns.map((gun, index) => (index === 0 ? { ...gun, name: `\x80${gun.name.slice(1, -1)}\xff` } : gun)) };
     const parsed = parseInfo(syntheticCraftInfoBlock(info), info.hitDamageScale);
     expect(parsed).toEqual(info);
     expect(deepFrozen(parsed)).toBe(true);

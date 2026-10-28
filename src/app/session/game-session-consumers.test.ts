@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { DomainEvent } from '../../core/contracts/domain-events.ts';
 import { GameRuntimeError } from '../runtime/runtime-errors.ts';
 import { NEUTRAL_AXES, TICK_MS } from '../runtime/game-runtime.test-support.ts';
 import { createGameSession, type GameCommandsCancelled, type GameSessionFrame, type GameSessionRun } from './game-session.ts';
@@ -109,8 +110,8 @@ describe('session notification boundary', () => {
     host.deliver(0); expect(log).toEqual(['A']);
     host.deliver(TICK_MS); expect(log).toEqual(['A', 'A', 'C']);
     session.control({ type: 'pause' }); expect(log).toEqual(['A', 'A', 'C', 'A', 'C']);
-    expect(frames[0]).toMatchObject({ report: { ticks: 0, capped: false, stop: null, cut: null, transitions: [], completion: null }, projection: { clock: { tick: 0 } } });
-    expect(frames[1].report).toEqual({ ticks: 1, capped: false, stop: null, cut: null, transitions: [], completion: null });
+    expect(frames[0]).toMatchObject({ report: { ticks: 0, capped: false, stop: null, cut: null, transitions: [], completion: null, outputs: [] }, projection: { clock: { tick: 0 } } });
+    expect(frames[1].report).toEqual({ ticks: 1, capped: false, stop: null, cut: null, transitions: [], completion: null, outputs: [expect.objectContaining({ tick: 1 })] });
     expect(frames.at(-1)).toMatchObject({ report: null, phase: 'paused', render: { previous: { tick: 1 }, current: { tick: 1 }, alpha: 0 } });
     expect(frames.every(Object.isFrozen)).toBe(true);
     expect(frames[1].projection).toBe(run.projection());
@@ -201,6 +202,46 @@ describe('session notification boundary', () => {
       expect(() => run.ownCleanup(() => undefined)).toThrowError(expect.objectContaining({ kind: 'invalid-state' }));
     });
     host.deliver(0); release(); expect(errors).toEqual([]); expect(session.status().phase).toBe('running');
+  });
+});
+
+describe('per-tick frame outputs', () => {
+  it('hand frame consumers each tick\'s outputs, its own projection included, after the domain delivery, as the same objects, once', () => {
+    const { host, session, run } = started(), log: string[] = [], seen: DomainEvent[] = [], frames: GameSessionFrame[] = [];
+    run.onAny((event) => { seen.push(event); log.push('event'); });
+    run.onFrame((frame) => { frames.push(frame); log.push(`frame:${frame.report?.outputs.length ?? null}`); });
+    host.deliver(0); log.length = 0;
+    run.submitCommand(LAUNCH);
+    host.deliver(3 * TICK_MS);
+    expect(log.at(-1)).toBe('frame:3');
+    expect(log.slice(0, -1).every((entry) => entry === 'event')).toBe(true);
+    const { report, render, projection } = frames[1];
+    if (!report) throw new Error('expected a report');
+    expect(report.outputs.map((output) => output.tick)).toEqual([1, 2, 3]);
+    expect(report.outputs.map((output) => output.projection.clock.tick)).toEqual([1, 2, 3]);
+    expect(report.outputs.at(-1)?.projection).toBe(projection);
+    expect(report.outputs.at(-1)?.render).toBe(render.current);
+    expect(report.outputs.at(-2)?.render).toBe(render.previous);
+    const events = report.outputs.flatMap((output) => output.events.map((item) => item.event));
+    expect(events).toHaveLength(seen.length);
+    expect(events.every((event, index) => event === seen[index])).toBe(true);
+    session.control({ type: 'pause' });
+    expect(frames.at(-1)).toMatchObject({ phase: 'paused', report: null });
+    session.control({ type: 'resume' });
+    host.deliver(10_000);
+    expect(frames.at(-1)?.report?.outputs).toEqual([]);
+    expect(log.filter((entry) => entry === 'event')).toHaveLength(seen.length);
+  });
+
+  it('start every run\'s outputs at its own first tick, under its own runId', () => {
+    const { host, session, run } = started(), frames: GameSessionFrame[] = [];
+    run.onFrame((frame) => { frames.push(frame); });
+    host.deliver(0); host.deliver(2 * TICK_MS);
+    session.control({ type: 'exit' });
+    session.control({ type: 'start', spec: runSpec() });
+    current(session).onFrame((frame) => { frames.push(frame); });
+    host.deliver(50); host.deliver(50 + TICK_MS);
+    expect(frames.map((frame) => [frame.runId, frame.report?.outputs.map((output) => output.tick)])).toEqual([[1, []], [1, [1, 2]], [2, []], [2, [1]]]);
   });
 });
 

@@ -242,6 +242,21 @@ function fieldsOf(event: DomainEvent): Fields {
       return [['wingmanEntityId', event.wingmanEntityId], ['dueClock', event.dueClock]];
     case 'wingman-loss-timer-expired':
       return [['queued', event.queued]];
+    // P3-12's (docs/plan/p3/02/spec.md, FS-03): the construction position as x, y, z, the switch's player pose by name.
+    case 'explosion-created':
+      return [
+        ['entityId', event.entityId], ['sourceEntityId', event.sourceEntityId], ['sourceKindBit', event.sourceKindBit], ['variant', event.variant],
+        ['stage', event.stage], ...positionOf(event.position), ...namedPosition('velocity', event.velocity),
+      ];
+    case 'view-switched': {
+      const { player } = event;
+      return [
+        ['fromViewMode', event.fromViewMode], ['fromSubMode', event.fromSubMode], ['viewMode', event.viewMode], ['subMode', event.subMode],
+        ['stage', event.stage], ['playerEntityId', player?.entityId ?? null], ...(player === null ? [] : namedPosition('player', player.position)),
+      ];
+    }
+    case 'warp-wall-contact':
+      return [['serial', event.serial]];
     // P3-14's (docs/plan/p3/02/spec.md, FA-07).
     case 'object-retired':
       return [['entityId', event.entityId], ['kindBit', event.kindBit], ['state', event.state]];

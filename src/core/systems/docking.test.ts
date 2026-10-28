@@ -48,15 +48,26 @@ const until = (state: WorldState, tick: number): Command[][] => Array.from({ len
 function beforeRequests(state: WorldState, commands: readonly Command[] = []): TickContext {
   const context = registerTick(state, readTickInput(tickInput(commands)));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     if (stage.id === 'request-handling') break;
     stage.run?.(context);
   }
   return context;
 }
 
+/**
+ * P3-12's `view-switched` of a docking or launch in request handling (FS-03): `player` is the player entity's pose at
+ * the switch, before a launch places it.
+ */
+const switched = (tick: number, fromViewMode: number, viewMode: number, player: Entity | { entityId: number; position: object; orientation: object }): DomainEvent => ({
+  type: 'view-switched', tick, fromViewMode, fromSubMode: 0, viewMode, subMode: 0, stage: 'request-handling',
+  player: 'id' in player ? { entityId: player.id, position: player.position, orientation: player.orientation } : player,
+} as DomainEvent);
+
 /** Calls `dock` in a context as request handling makes it, with this tick's clock, and returns that context. */
 function runDock(state: WorldState): TickContext {
   const context = registerTick(state, readTickInput(tickInput()));
+  context.stage = 'request-handling';
   dock(context);
   return context;
 }
@@ -88,6 +99,7 @@ describe('the docking chain through the formal step (CB-02, CB-09; RQ6)', () => 
     expect(player.activity).toBe('active');
     const [docking] = run(state, [[]]);
     expect(docking).toEqual([
+      switched(dockTick, FLIGHT, 6, player),
       { type: 'docked', tick: dockTick, playerEntityId: player.id, baseEntityId: base.id, wingmanEntityId: wingman.id, previousViewMode: FLIGHT },
       { type: 'transition', tick: dockTick, gap: 'G-02/3' },
     ]);
@@ -302,7 +314,7 @@ describe('re-requests and stale replies (DK1 races)', () => {
     run(state, [[open, digit(1)]]);
     waiting(scene, 4, base, 2);
     const [events] = run(state, [[digit(2)]]);
-    expect(events.map(({ type }) => type)).toEqual(['command-result', 'left-page-changed', 'docking-requested', 'docked', 'transition', 'command-delivered']);
+    expect(events.map(({ type }) => type)).toEqual(['command-result', 'left-page-changed', 'docking-requested', 'view-switched', 'docked', 'transition', 'command-delivered']);
     expect([state.flow.subState, state.flow.dockingDeadline, state.player.dockingObject, player.activity]).toEqual([3, 4 + 0x780, base.id, 'docked']);
   });
 });
@@ -332,15 +344,21 @@ describe('docking in request handling (CB-10 dock; DK2)', () => {
     const rng = new RandStream(state.rngState);
     rng.next();
     const movement = player.movement;
+    state.player.modelShown = true;
     const context = runDock(state);
     expect(context.events).toEqual([
+      // The switch before the docked's own event; the player stays where it docked.
+      switched(1, FLIGHT, 6, player),
       { type: 'docked', tick: 1, playerEntityId: player.id, baseEntityId: base.id, wingmanEntityId: null, previousViewMode: FLIGHT },
       { type: 'transition', tick: 1, gap: 'G-02/3' },
     ]);
     expect(state.player.docking.savedPose).toEqual({ position: { x: 300, y: -400, z: 120 }, orientation: BASE_ORIENTATION });
     expect([player.activity, player.state, player.movement, player.position]).toEqual(['docked', 'active', movement, { x: 0, y: 0, z: 0 }]);
     expect(state.rngState).toEqual(rng.state);
-    expect(state.player).toMatchObject({ viewMode: 6, previousViewMode: FLIGHT, target: null, statusDisplay: { redraw: true }, leftDisplay: { page: 1 }, dockingObject: base.id });
+    // The shared switch hides the player's model (P3-12 FS-02).
+    expect(state.player).toMatchObject({
+      viewMode: 6, previousViewMode: FLIGHT, target: null, statusDisplay: { redraw: true }, leftDisplay: { page: 1 }, dockingObject: base.id, modelShown: false,
+    });
     expect(state.flow.subState).toBe(5);
     const { at9C, at54 } = state.craftInfo.content.craft[player.kindBit]!;
     // Selectors 0, 33, 34, 5, 7, 8, 1, 2, … : only record 7 (field 2) needs service.
@@ -357,12 +375,12 @@ describe('docking in request handling (CB-10 dock; DK2)', () => {
     const near = docking({ position: { x: 900, y: 0, z: 0 } });
     const wingman = addActive(near, WINGMAN_KIND_BIT, { position: { x: 1800, y: 0, z: 0 } });
     const context = runDock(near.state);
-    expect(context.events[0]).toMatchObject({ type: 'docked', wingmanEntityId: wingman.id });
+    expect(context.events[1]).toMatchObject({ type: 'docked', wingmanEntityId: wingman.id });
     expect(wingman.activity).toBe('docked');
     const far = docking({ position: { x: 900, y: 0, z: 0 } });
     const left = addActive(far, WINGMAN_KIND_BIT, { position: { x: -200, y: 0, z: 0 } });
     const farContext = runDock(far.state);
-    expect(farContext.events[0]).toMatchObject({ type: 'docked', wingmanEntityId: null });
+    expect(farContext.events[1]).toMatchObject({ type: 'docked', wingmanEntityId: null });
     expect(left.activity).toBe('active');
   });
 
@@ -396,7 +414,7 @@ describe('docking in request handling (CB-10 dock; DK2)', () => {
     const farther = addBase(again, { position: { x: 0, y: 0, z: BELOW_1000 } }, 15);
     again.state.player.dockingObject = farther.id;
     const accepted = runDock(again.state);
-    expect(accepted.events[0]).toMatchObject({ type: 'docked', baseEntityId: farther.id });
+    expect(accepted.events[1]).toMatchObject({ type: 'docked', baseEntityId: farther.id });
   });
 
   it('does nothing without a player entity', () => {
@@ -432,7 +450,12 @@ describe('the launch in request handling (CB-10 depart; DK3)', () => {
     return { ...scene, base, wingman, step };
   }
 
-  const departed = (tick: number, origin: { origin: 'command'; commandIndex: number } | { origin: 'automatic'; commandIndex: null }, fields: object): DomainEvent[] => [
+  /** A launch's events: the switch from the previous view (at the pose before the launch places the player), `departed`, `transition`. */
+  const departed = (
+    tick: number, origin: { origin: 'command'; commandIndex: number } | { origin: 'automatic'; commandIndex: null },
+    fields: { viewMode: number; previousViewMode: number; [field: string]: unknown },
+  ): DomainEvent[] => [
+    switched(tick, fields.previousViewMode, fields.viewMode, { entityId: expect.any(Number), position: expect.any(Object), orientation: expect.any(Array) }),
     { type: 'departed', tick, playerEntityId: expect.any(Number) as number, ...origin, ...fields } as DomainEvent,
     { type: 'transition', tick, gap: 'G-02/4' },
   ];
@@ -440,6 +463,7 @@ describe('the launch in request handling (CB-10 depart; DK3)', () => {
   /** Calls `depart` in a context as request handling makes it, and returns that context. */
   function runDepart(state: WorldState, request: RequestOf<'depart'>): TickContext {
     const context = registerTick(state, readTickInput(tickInput()));
+    context.stage = 'request-handling';
     depart(context, request);
     return context;
   }
@@ -472,8 +496,11 @@ describe('the launch in request handling (CB-10 depart; DK3)', () => {
     Object.assign(block.steering.yaw, { rate: 0.25, enabled: true });
     const before = structuredClone(block);
     state.player.statusDisplay.redraw = false;
+    const pose = { entityId: player.id, position: player.position, orientation: player.orientation };
     const context = runDepart(state, { type: 'depart', entityId: player.id, origin: 'command', commandIndex: 4 });
-    expect(context.events[0]).toMatchObject({ type: 'departed', origin: 'command', commandIndex: 4, position: LAUNCH_POSITION });
+    // The switch reports the docked pose, before the launch places the player (FS-03).
+    expect(context.events[0]).toEqual(switched(context.time.tick, 6, FLIGHT, pose));
+    expect(context.events[1]).toMatchObject({ type: 'departed', origin: 'command', commandIndex: 4, position: LAUNCH_POSITION });
     expect(player.position).toEqual(LAUNCH_POSITION);
     // Leaving view 6 rebuilds the cockpit (`0x4cd68`).
     expect(state.player.statusDisplay.redraw).toBe(true);
@@ -509,7 +536,7 @@ describe('the launch in request handling (CB-10 depart; DK3)', () => {
     Object.assign(state.player, { viewMode: 8, previousViewMode: 6 });
     base.state = 'presentation-ready';
     const events = step();
-    expect(events[0]).toMatchObject({ type: 'departed', origin: 'automatic', viewMode: 0xc, previousViewMode: 8 });
+    expect(events[1]).toMatchObject({ type: 'departed', origin: 'automatic', viewMode: 0xc, previousViewMode: 8 });
     expect([state.player.viewMode, state.player.previousViewMode]).toEqual([0xc, 8]);
   });
 

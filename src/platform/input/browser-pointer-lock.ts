@@ -90,6 +90,19 @@ export function createBrowserPointerLockHost(target: PointerLockTarget): Pointer
       element.addEventListener(type, callback);
       return () => element.removeEventListener(type, callback);
     },
+    // On the owner document, as a dynamic target's pointer listeners are; only requests aimed at the target count.
+    listenContextMenu(listener) {
+      const owner = readTarget()?.ownerDocument ?? globalThis.document;
+      const callback = (event: Event): void => {
+        const element = lockedTarget ?? readTarget();
+        const eventTarget = event.target;
+        if (!element || !(eventTarget instanceof Node)) return;
+        if (eventTarget !== element && !element.contains(eventTarget) && !event.composedPath().includes(element)) return;
+        if (listener()) event.preventDefault();
+      };
+      owner.addEventListener('contextmenu', callback);
+      return () => owner.removeEventListener('contextmenu', callback);
+    },
   };
 }
 

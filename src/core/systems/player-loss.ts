@@ -19,7 +19,7 @@ import { CoreFaultError } from '../errors.ts';
 import type { Entity } from '../world/entity-table.ts';
 import { emit, type TickContext } from './pipeline.ts';
 import { flushRadio } from './radio.ts';
-import { switchView } from './view-switch.ts';
+import { commitViewSwitch } from './view-switch.ts';
 
 /** The destruction view (0x11) and its sub-mode. */
 const DESTRUCTION_VIEW_MODE = 0x11;
@@ -29,7 +29,8 @@ export const BEACON_WAIT = 0x3c0;
 
 /**
  * `0x32d74` for the destroyed `player` (module comment), with its events: the flush's page change and `radio-flushed`,
- * `player-loss-started`, then the page change of leaving the Warp view, as `warp-completed` precedes its own (MW-05).
+ * the switch's `view-switched` (FS-03), `player-loss-started`, then the page change of leaving the Warp view, as
+ * `warp-completed` precedes its own (MW-05).
  */
 export function destroyPlayer(context: TickContext, player: Entity): void {
   const { world, time } = context;
@@ -43,11 +44,11 @@ export function destroyPlayer(context: TickContext, player: Entity): void {
   const viewSwitched = previousViewMode !== DESTRUCTION_VIEW_MODE || state.subMode !== DESTRUCTION_SUB_MODE;
   let page = null;
   if (viewSwitched) {
-    state.viewMode = DESTRUCTION_VIEW_MODE;
-    state.previousViewMode = DESTRUCTION_VIEW_MODE;
-    state.subMode = DESTRUCTION_SUB_MODE;
     state.target = null;
-    page = switchView(world, DESTRUCTION_VIEW_MODE, previousViewMode);
+    // `0x216d4(P, 0x11, 8)` with its second `0x3104c`: the previous view also ends as 0x11 (ME-09 step 4). It emits
+    // `view-switched` and shows the player's model in the new view 0x11 (P3-12, FS-02, FS-03).
+    page = commitViewSwitch(context, DESTRUCTION_VIEW_MODE, DESTRUCTION_VIEW_MODE, DESTRUCTION_SUB_MODE);
+    state.modelShown = true;
   }
   state.dockingObject = null;
   emit(context, { type: 'player-loss-started', tick: time.tick, playerEntityId: player.id, loss: 'destroyed', previousSubState, previousViewMode, viewSwitched });

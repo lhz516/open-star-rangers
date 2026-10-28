@@ -12,7 +12,7 @@
  * RequestQueue). Instantiation and removal happen only in request handling. Neither list nor the tick input outlives
  * its tick: Core keeps no queue across ticks.
  */
-import type { DomainEvent, ShotTrigger, Vec3 } from '../contracts/domain-events.ts';
+import type { DomainEvent, PipelineStageName, ShotTrigger, Vec3 } from '../contracts/domain-events.ts';
 import { CORE_LIMITS, fitsLimit } from '../contracts/limits.ts';
 import type { TickInput } from '../contracts/tick-input.ts';
 import { advanceTime, type MissionTime } from '../contracts/time.ts';
@@ -245,6 +245,8 @@ export interface TickContext {
   readonly commandView: CommandView;
   /** The AI interpreter's item dispatches in this tick so far (CORE_LIMITS.aiDispatchesPerTick, CR-25; ai.ts). */
   readonly aiDispatches: DispatchCount;
+  /** The running stage, which runTick sets: the stage P3-12's `explosion-created` and `view-switched` report (FS-03). */
+  stage: PipelineStageName;
 }
 
 /** The view mode and previous view mode the player state holds now. */
@@ -262,7 +264,10 @@ export function registerTick(world: WorldState, input: TickInput): TickContext {
   if (!Number.isSafeInteger(world.entities.nextId + CORE_LIMITS.entities)) {
     throw new CoreInputError('tickInput', 'would allocate entity IDs past the safe integer range');
   }
-  return { world, time, input, events: [], requests: new RequestQueue(), commandView: committedView(world), aiDispatches: { dispatches: 0 } };
+  return {
+    world, time, input, events: [], requests: new RequestQueue(), commandView: committedView(world), aiDispatches: { dispatches: 0 },
+    stage: 'input-registration',
+  };
 }
 
 /** A deeply frozen copy of plain data, so that no later change to what an event was built from reaches it. */
@@ -585,19 +590,19 @@ function commit(context: TickContext): void {
 }
 
 export interface PipelineStage {
-  readonly id: string;
+  readonly id: PipelineStageName;
   /** Null until the owning rule task implements the stage. */
   readonly run: ((context: TickContext) => void) | null;
 }
 
-const stage = (id: string, run: PipelineStage['run']): PipelineStage => Object.freeze({ id, run });
+const stage = (id: PipelineStageName, run: PipelineStage['run']): PipelineStage => Object.freeze({ id, run });
 
 /**
  * A stage whose `run` a rule module exports, read when a tick runs rather than when this table is built: rule modules
  * import this module, so in an import cycle that starts from one of them, its export is not initialised yet while this
  * module is evaluated.
  */
-const ruleStage = (id: string, run: () => PipelineStage['run']): PipelineStage => Object.freeze({
+const ruleStage = (id: PipelineStageName, run: () => PipelineStage['run']): PipelineStage => Object.freeze({
   id,
   get run() {
     return run();
@@ -646,6 +651,9 @@ export const PIPELINE: readonly PipelineStage[] = Object.freeze([
 
 /** Runs a registered tick through every stage and returns its events, deeply frozen. Any throw leaves the world faulted. */
 export function runTick(context: TickContext): readonly DomainEvent[] {
-  for (const { run } of PIPELINE) run?.(context);
+  for (const { id, run } of PIPELINE) {
+    context.stage = id;
+    run?.(context);
+  }
   return context.events;
 }

@@ -2,7 +2,7 @@ import type { AssetKind } from './asset-id.ts';
 import { RESOURCE_GROUPS, type ResourceGroup } from './asset-contract.ts';
 import { SLICE_ID, type SliceDefinitionVersion, type SliceId } from './content-identity.ts';
 
-export const SLICE_DEFINITION_VERSION = 6;
+export const SLICE_DEFINITION_VERSION = 7;
 
 export type SliceRole =
   | 'mission'
@@ -36,7 +36,8 @@ export type SliceRole =
   | 'event-sound'
   | 'hud-sound'
   | 'map-geometry'
-  | 'comm-messages';
+  | 'comm-messages'
+  | 'cockpit-instruments';
 
 /**
  * Structural campaign selector from the approved spec selection record.
@@ -147,6 +148,7 @@ const definition: Omit<SliceDefinition, typeof sliceDefinitionBrand> = {
     requirement('hud-sound', 'audio', ['sound'], 3, 3),
     requirement('map-geometry', 'cockpit-hud-map', ['data'], 1, 1),
     requirement('comm-messages', 'logic', ['data'], 1, 1),
+    requirement('cockpit-instruments', 'cockpit-hud-map', ['data'], 1, 1),
   ]),
 };
 

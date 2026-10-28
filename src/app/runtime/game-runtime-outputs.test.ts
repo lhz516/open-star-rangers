@@ -1,0 +1,128 @@
+import { describe, expect, it } from 'vitest';
+import { createGameRuntime, MAX_TICKS_PER_FRAME, type FrameReport, type GameRuntime, type TickEvent } from './game-runtime.ts';
+import { deliveriesOf, expectSameDeliveries, NEUTRAL_AXES, runtimeSpec, TICK_MS } from './game-runtime.test-support.ts';
+
+// P3-12/11 and P3-13/13 (docs/plan/p3/04/spec.md, 帧后逐 tick 输出（P3-12 的修订）; 帧后同 tick projection（P3-13 的修订）):
+// each frame report carries every successful tick's Render State, projection and events, the same objects the read
+// model and the Event Bus received, in order and once. Cuts, stops and failures are covered with their injections in
+// the transition, completion and fault test files.
+
+/** A Runtime anchored at time 0 that keeps the current frame's deliveries. */
+function anchored() {
+  const runtime = createGameRuntime(runtimeSpec({ run: { wingman: 0 } }));
+  const deliveries = deliveriesOf(runtime);
+  const anchor = runtime.frame(0);
+  expect(anchor.outputs).toEqual([]);
+  return { runtime, deliveries };
+}
+
+/**
+ * The report's outputs against the read model and the frame's deliveries: same objects, same order, nothing twice; each
+ * tick's own projection, not the frame's last one.
+ */
+function expectOutputs(runtime: GameRuntime, report: FrameReport, deliveries: readonly TickEvent[], firstTick: number) {
+  const { outputs } = report;
+  expect(outputs).toHaveLength(report.ticks);
+  expect(outputs.map((output) => output.tick)).toEqual(Array.from({ length: report.ticks }, (_, index) => firstTick + index));
+  expect(Object.isFrozen(outputs)).toBe(true);
+  for (const output of outputs) {
+    expect([output.tick, output.clock]).toEqual([output.render.tick, output.render.clock]);
+    expect([output.tick, output.clock]).toEqual([output.projection.clock.tick, output.projection.clock.clock]);
+    expect(Object.isFrozen(output) && Object.isFrozen(output.render) && Object.isFrozen(output.projection) && Object.isFrozen(output.events)).toBe(true);
+    for (const item of output.events) {
+      expect(Object.isFrozen(item) && Object.isFrozen(item.event)).toBe(true);
+      expect(item.event.tick).toBe(output.tick);
+    }
+  }
+  expect(new Set(outputs.map((output) => output.projection)).size).toBe(outputs.length);
+  const frame = runtime.renderFrame();
+  if (outputs.length > 0) {
+    expect(outputs.at(-1)?.render).toBe(frame.current);
+    expect(outputs.at(-1)?.projection).toBe(runtime.projection());
+  }
+  if (outputs.length > 1) expect(outputs.at(-2)?.render).toBe(frame.previous);
+  expectSameDeliveries(report, deliveries);
+}
+
+describe('GameRuntime per-tick outputs', () => {
+  it('reports 0, 1 and 5 tick frames and a capped frame tick by tick, as the read model and the Event Bus received them', () => {
+    const { runtime, deliveries } = anchored();
+    runtime.setIntent({ axes: NEUTRAL_AXES, primaryFire: true });
+    const launches = [runtime.submitCommand({ type: 'launch' }), runtime.submitCommand({ type: 'launch' })];
+    const ids: (number | null)[] = [];
+    let tick = 0;
+    for (const [now, ticks, capped] of [[TICK_MS, 1, false], [1.5 * TICK_MS, 0, false], [6 * TICK_MS, MAX_TICKS_PER_FRAME, false], [20 * TICK_MS, MAX_TICKS_PER_FRAME, true]] as const) {
+      deliveries.length = 0;
+      const report = runtime.frame(now);
+      expect([report.ticks, report.capped]).toEqual([ticks, capped]);
+      expectOutputs(runtime, report, deliveries, tick + 1);
+      ids.push(...report.outputs.flatMap((output) => output.events.map(({ commandId }) => commandId)));
+      tick += ticks;
+    }
+    expect(tick).toBe(11);
+    expect(ids.filter((id) => id !== null)).toEqual(launches);
+  });
+
+  it('keeps each submitted command\'s ID and null for automatic fire and other events', () => {
+    const { runtime, deliveries } = anchored();
+    runtime.setIntent({ axes: NEUTRAL_AXES, primaryFire: true });
+    const launch = runtime.submitCommand({ type: 'launch' });
+    const report = runtime.frame(TICK_MS);
+    expectOutputs(runtime, report, deliveries, 1);
+    const results = report.outputs[0].events.filter(({ event }) => event.type === 'command-result');
+    expect(results.map(({ commandId }) => commandId)).toEqual([null, launch]);
+    expect(report.outputs[0].events.filter(({ event }) => event.type !== 'command-result').every(({ commandId }) => commandId === null)).toBe(true);
+  });
+
+  it('gives every frame its own outputs: an earlier report is neither changed nor repeated', () => {
+    const { runtime, deliveries } = anchored();
+    const first = runtime.frame(2 * TICK_MS);
+    const kept = first.outputs.map(({ render, projection }) => ({ render, projection }));
+    deliveries.length = 0;
+    const second = runtime.frame(3 * TICK_MS);
+    expectOutputs(runtime, second, deliveries, 3);
+    first.outputs.forEach(({ render, projection }, index) => {
+      expect(render).toBe(kept[index].render);
+      expect(projection).toBe(kept[index].projection);
+    });
+    expect(first.outputs.map((output) => output.tick)).toEqual([1, 2]);
+    deliveries.length = 0;
+    const still = runtime.frame(3 * TICK_MS);
+    expect([still.ticks, still.outputs, deliveries]).toEqual([0, [], []]);
+  });
+
+  // P3-13/26 (docs/plan/p3/13/spec.md, DC-03, DC-04): a cockpit that advances tick by tick reads each output's projection,
+  // so a change inside a frame shows at its own tick and is not filled back from the frame's end.
+  it('gives each tick of a frame the cockpit partitions ready and its own state: the target chosen at tick 3 shows from tick 3', () => {
+    const { runtime, deliveries } = anchored();
+    const report = runtime.frame(MAX_TICKS_PER_FRAME * TICK_MS);
+    expectOutputs(runtime, report, deliveries, 1);
+    for (const { projection: { flight, map, communications } } of report.outputs) {
+      expect([flight.motion.readiness, flight.combat.readiness, map.readiness, communications.readiness]).toEqual(['ready', 'ready', 'ready', 'ready']);
+    }
+    const targets = report.outputs.map(({ projection: { flight: { combat } } }) => (combat.readiness === 'ready' ? combat.player?.target?.entityId ?? null : undefined));
+    const chosen = report.outputs.findIndex(({ events }) => events.some(({ event }) => event.type === 'target-changed'));
+    expect(chosen).toBe(2);
+    expect(targets.slice(0, chosen)).toEqual([null, null]);
+    expect(targets.slice(chosen).every((target) => typeof target === 'number')).toBe(true);
+    expect(runtime.projection()).toBe(report.outputs.at(-1)!.projection);
+  });
+
+  it('keeps the outputs of a frame whose receivers read the read model unchanged', () => {
+    const runtime = createGameRuntime(runtimeSpec());
+    const seen: number[] = [];
+    const projections = new Set<unknown>();
+    runtime.onAny(() => {
+      seen.push(runtime.renderFrame().current.tick);
+      projections.add(runtime.projection());
+    });
+    runtime.frame(0);
+    const report = runtime.frame(3 * TICK_MS);
+    // Receivers run after all simulation: they see the frame's last tick, whichever tick their event belongs to, while
+    // each output keeps its own tick's projection.
+    expect(new Set(seen)).toEqual(new Set([3]));
+    expect([...projections]).toEqual([report.outputs[2].projection]);
+    expect(report.outputs.map((output) => output.tick)).toEqual([1, 2, 3]);
+    expect(report.outputs.map((output) => output.projection.clock.tick)).toEqual([1, 2, 3]);
+  });
+});

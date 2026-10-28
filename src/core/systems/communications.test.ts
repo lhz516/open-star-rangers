@@ -70,6 +70,7 @@ function itemsOf(menu: CommunicationsMenu | null): [string, unknown][] {
 function judgeTick(state: WorldState, commands: readonly Command[]): TickContext {
   const context = registerTick(state, readTickInput(tickInput(commands)));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     if (stage.id === 'request-handling') break;
     stage.run?.(context);
   }

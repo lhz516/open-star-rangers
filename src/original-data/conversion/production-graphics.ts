@@ -1,5 +1,6 @@
 import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { compareText } from '../../content/contract-validation.ts';
+import { COCKPIT_INSTRUMENTS_FORMAT, COCKPIT_INSTRUMENTS_LIMITS, COCKPIT_INSTRUMENTS_ROLE } from '../../content/hud/instruments-payload.ts';
 import { MAP_GEOMETRY_LIMITS, MAP_GEOMETRY_ROLE } from '../../content/hud/map-geometry-payload.ts';
 import { STATUS_MESSAGES_ROLE } from '../../content/hud/status-messages-payload.ts';
 import { readSourceMappingTable, type SourceMappingTable } from '../source-mapping.ts';
@@ -18,8 +19,8 @@ import {
 // research-confirmed effect images with their embedded palettes (docs/plan/p2/06/spec.md), and the P2-07 front cockpit
 // and map frame layouts with their element images, the map palette, the HUD and map image families, the left display's
 // interference frames and the status display messages (docs/plan/p2/07/spec.md, production Assets and sources), the
-// P3-03 flight images and view labels of production-flight-graphics.ts, the HUD text of production-hud-text.ts, and the
-// map geometry of the P3-09 revision of the P3-03 spec.
+// P3-03 flight images and view labels of production-flight-graphics.ts, the HUD text of production-hud-text.ts, the
+// map geometry of the P3-09 revision of the P3-03 spec, and the cockpit instruments of its revision 4 (P3-13).
 // Entry IDs, slots, record indices and executable addresses come from the local structure checks and research recorded
 // in P2-05/06, P2-06/04, P2-06/11, P2-07/07–09, P2-07/19, P3-03/05 and P3-03/24; they stay in original-data and never
 // enter canonical content.
@@ -71,6 +72,13 @@ const MAP_GEOMETRY_EVIDENCE = [
   'docs/original/formats/executable.md#map-mouse-input-p3-0503',
   'docs/original/formats/executable.md#zoom-window-information-window-and-labels-p3-0904',
   'docs/original/formats/hud.md#1-bitmap-fonts-confirmed',
+];
+
+const COCKPIT_INSTRUMENTS_EVIDENCE = [
+  'docs/original/formats/cockpit.md#element-52-bytes-confirmed',
+  'docs/original/formats/cockpit.md#instrument-records-scheduling-and-visible-persistence-p3-1301',
+  'docs/original/formats/cockpit.md#instrument-types-per-slot-confirmed-p3-0730',
+  'docs/original/formats/executable.md#t7-right-target-display-confirmed-code',
 ];
 
 const TEXTURE_EVIDENCE = 'docs/original/formats/textures.md#3-tex-textures-confirmed';
@@ -240,6 +248,23 @@ const mapGeometryMapping = () => {
   return { ...base, parts: [...base.parts, { alternatives: [instrument] }] };
 };
 
+const COCKPIT_INSTRUMENTS_ID = 'data/hud/instruments';
+
+/** The right display's target view distance table: 20 f32 values by kind bit (executable, T7). */
+export const TARGET_VIEW_DISTANCES = executableRegionAt(0x17_5424, 4 * COCKPIT_INSTRUMENTS_FORMAT.targetViewDistances);
+
+/**
+ * The cockpit instruments (P3-03 spec, 修订 4): `layouts/<n>` of the HI cockpit set for the layout number of each slot
+ * the slice draws, in canonical locator order, then the target view distance region; verified only after conversion
+ * parses them.
+ */
+const cockpitInstrumentsMapping = () => {
+  const [first, ...rest] = COCKPIT_INSTRUMENTS_FORMAT.slots.map(({ layoutNumber }) => `layouts/${layoutNumber}`);
+  const base = mapping(COCKPIT_INSTRUMENTS_ID, 'CCKD', HI_COCKPIT_ENTRY, first, [], COCKPIT_INSTRUMENTS_EVIDENCE);
+  const slots = rest.map(subresource => ({ alternatives: [{ discPath: ARCHIVE, entry: { id: HI_COCKPIT_ENTRY, type: 'CCKD' }, subresource }] }));
+  return { ...base, parts: [...base.parts, ...slots, { alternatives: [TARGET_VIEW_DISTANCES] }] };
+};
+
 /** The codes hud §1.1 records per table: printable ASCII whose glyph is that character, and space. */
 export const PRODUCTION_GRAPHICS_DECLARATIONS: readonly GraphicsDeclaration[] = readGraphicsDeclarations([
   palette('models'),
@@ -252,6 +277,7 @@ export const PRODUCTION_GRAPHICS_DECLARATIONS: readonly GraphicsDeclaration[] = 
   ...PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS,
   ...PRODUCTION_HUD_TEXT_DECLARATIONS,
   { asset: { id: MAP_GEOMETRY_ID, kind: 'data' }, role: MAP_GEOMETRY_ROLE, group: 'cockpit-hud-map' },
+  { asset: { id: COCKPIT_INSTRUMENTS_ID, kind: 'data' }, role: COCKPIT_INSTRUMENTS_ROLE, group: 'cockpit-hud-map' },
 ]);
 
 /** Each TEX image maps to its whole record; its palette, the embedded BGR palette, is confirmed. */
@@ -274,6 +300,7 @@ export const PRODUCTION_GRAPHICS_MAPPINGS: SourceMappingTable = readSourceMappin
     ...PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS.mappings,
     ...PRODUCTION_HUD_TEXT_MAPPINGS.mappings,
     mapGeometryMapping(),
+    cockpitInstrumentsMapping(),
   ].sort((left, right) => compareText(left.asset.id, right.asset.id)),
 });
 
@@ -300,13 +327,20 @@ export const PRODUCTION_MAP_GEOMETRY_SHARE: BudgetRecord = Object.freeze({
 });
 
 /**
+ * The approved cockpit instruments share (P3-03 spec, 修订 4): one Asset and its payload at the byte limit.
+ */
+export const PRODUCTION_COCKPIT_INSTRUMENTS_SHARE: BudgetRecord = Object.freeze({
+  ...EMPTY_BUDGET_USAGE, assets: 1, payloadBytes: COCKPIT_INSTRUMENTS_LIMITS.payloadBytes,
+});
+
+/**
  * The approved budget share of these Assets: the P2-05 share plus the P2-06 slice texture, P2-07 cockpit, HUD and map,
- * P3-03 flight graphics and HUD text, and map geometry shares. The P2-05 and texture `payloadBytes` bound their payloads at the structural
+ * P3-03 flight graphics and HUD text, map geometry and cockpit instruments shares. The P2-05 and texture `payloadBytes` bound their payloads at the structural
  * limits; source reads keep the P2-02 default limit, so no share adds any.
  */
 export const PRODUCTION_GRAPHICS_SHARE: BudgetRecord = [
   PRODUCTION_MODEL_TEXTURE_SHARE, PRODUCTION_COCKPIT_HUD_MAP_SHARE, PRODUCTION_FLIGHT_GRAPHICS_SHARE, PRODUCTION_HUD_TEXT_SHARE,
-  PRODUCTION_MAP_GEOMETRY_SHARE,
+  PRODUCTION_MAP_GEOMETRY_SHARE, PRODUCTION_COCKPIT_INSTRUMENTS_SHARE,
 ].reduce(
   (total, share) => addBudgets(total, share, 'share'),
   Object.freeze({

@@ -133,7 +133,10 @@ export interface GameSessionFrame {
   readonly phase: 'running' | 'paused' | 'transition' | 'stopped' | 'completed';
   readonly render: RenderFrame;
   readonly projection: Projection;
-  /** The frame's report, or null for the still frame on entering a pause, hold or stop. */
+  /**
+   * The frame's report as the Runtime returned it, its per-tick `outputs` included, after the frame's domain delivery;
+   * null for the still frame on entering a pause, hold or stop.
+   */
   readonly report: FrameReport | null;
 }
 

@@ -15,9 +15,9 @@ import { PRODUCTION_LISTS } from '../src/original-data/conversion/flight-data.te
 import {
   SYNTHETIC_HIT_SHIMMER, SYNTHETIC_TARGET_DISPLAY, SYNTHETIC_VIEW_LABEL,
 } from '../src/original-data/conversion/production-flight-graphics.test-support.ts';
-import { instrumentRecord } from '../src/original-data/conversion/conversion.test-support.ts';
+import { encodeCockpitInstrumentsPayload } from '../src/content/hud/instruments-payload.ts';
 import {
-  PRODUCTION_COCKPIT_INSTRUMENTS, productionCockpitBlock, SYNTHETIC_MAP_GEOMETRY,
+  PRODUCTION_COCKPIT_INSTRUMENTS, productionCockpitEntry, SYNTHETIC_COCKPIT_INSTRUMENTS, SYNTHETIC_MAP_GEOMETRY,
 } from '../src/original-data/conversion/production-graphics.test-support.ts';
 import { productionSliceEntries } from '../src/original-data/conversion/production-models.test-support.ts';
 import { SYNTHETIC_HUD_TEXT } from '../src/original-data/conversion/production-hud-text.test-support.ts';
@@ -78,9 +78,9 @@ describe('package check', () => {
     expect(report).toMatchObject({ format: 'osr-package-check', version: 1, passed: true, error: null });
     expect(report.identity).toEqual({ versionId: 'synthetic-test', fingerprint: expect.stringMatching(/^source:sha256:[0-9a-f]{64}$/) });
     expect(report.package).toMatchObject({
-      status: 'complete', sliceDefinitionVersion: 6, converterVersion: PRODUCTION_PACKAGE.converterVersion, manifestIdentity: expect.stringMatching(/^manifest:sha256:[0-9a-f]{64}$/),
+      status: 'complete', sliceDefinitionVersion: 7, converterVersion: PRODUCTION_PACKAGE.converterVersion, manifestIdentity: expect.stringMatching(/^manifest:sha256:[0-9a-f]{64}$/),
     });
-    expect(report.package!.groups.map(({ group, assets }) => [group, assets])).toEqual([['logic', 10], ['models', 266], ['cockpit-hud-map', 105], ['audio', 29]]);
+    expect(report.package!.groups.map(({ group, assets }) => [group, assets])).toEqual([['logic', 10], ['models', 266], ['cockpit-hud-map', 106], ['audio', 29]]);
     expect(report.package!.groups.every(({ digest, payloadBytes }) => HASH.test(digest) && payloadBytes > 0)).toBe(true);
 
     const roles = new Map(report.roles.map(role => [role.role, role]));
@@ -90,7 +90,7 @@ describe('package check', () => {
       ['scene-settings', 'models', 1], ['explosion-table', 'models', 1], ['explosion-animation', 'models', 17], ['explosion-frame', 'models', 186],
       ['nebula-backgrounds', 'models', 1], ['nebula-background', 'models', 15], ['hit-shimmer', 'models', 1],
       ['target-display', 'cockpit-hud-map', 1], ['view-labels', 'cockpit-hud-map', 1], ['hud-text', 'cockpit-hud-map', 1],
-      ['map-geometry', 'cockpit-hud-map', 1], ['event-sound', 'audio', 8], ['hud-sound', 'audio', 3],
+      ['map-geometry', 'cockpit-hud-map', 1], ['cockpit-instruments', 'cockpit-hud-map', 1], ['event-sound', 'audio', 8], ['hud-sound', 'audio', 3],
     ]);
     expect(report.roles.every(({ digest, payloadBytes }) => HASH.test(digest) && payloadBytes > 0)).toBe(true);
     expect(new Set(report.roles.map(({ digest }) => digest)).size).toBe(report.roles.length);
@@ -147,6 +147,22 @@ describe('package check', () => {
     });
     // The map geometry equals the independent read of its CCKD record and font.
     expect(roles.get('map-geometry')!.counts).toEqual({ sourceMatches: 1 });
+    // The cockpit instruments agree with the package's layouts and map geometry and with the independent read of their
+    // CCKD slots; the counts are the synthetic content's.
+    const slots = SYNTHETIC_COCKPIT_INSTRUMENTS.slots;
+    const elements = slots.flatMap(slot => slot.elements);
+    const params = slots.flatMap(slot => slot.instruments.map(record => record.params.length));
+    expect(roles.get('cockpit-instruments')!.counts).toEqual({
+      slots: 3, alwaysRedrawSlots: 1, elements: elements.length, passOneElements: elements.filter(({ pass }) => pass === 1).length,
+      everyFrameElements: elements.filter(({ everyFrame }) => everyFrame).length, records: sum(slots.map(slot => slot.instruments.length)),
+      parameterTables: params.filter(count => count > 0).length, params: sum(params), viewDistances: 20, sourceMatches: 1,
+    });
+    expect(roles.get('cockpit-instruments')!.payloadBytes).toBe(encodeCockpitInstrumentsPayload(SYNTHETIC_COCKPIT_INSTRUMENTS).length);
+    expect(report.limits.filter(({ name }) => name.startsWith('cockpit-instruments.'))).toEqual([
+      { name: 'cockpit-instruments.recordsPerSlot', observed: 10, limit: 32 },
+      { name: 'cockpit-instruments.params', observed: 4, limit: 4 },
+      { name: 'cockpit-instruments.payloadBytes', observed: encodeCockpitInstrumentsPayload(SYNTHETIC_COCKPIT_INSTRUMENTS).length, limit: 8_192 },
+    ]);
     // The production SND rules turn the warp arrival's flags into a repeated sound.
     expect(roles.get('event-sound')!.counts).toMatchObject({ none: 7, whole: 0, repeat: 1 });
     expect(roles.get('hud-sound')!.counts).toMatchObject({ none: 1, whole: 2, repeat: 0 });
@@ -204,35 +220,54 @@ describe('package check', () => {
     });
   });
 
-  it('compares the map geometry with the independent read of its source and reports a difference without values', async () => {
-    const { paths, catalog } = await sliceDisc();
-    // The production job with the map geometry's x0 moved by one pixel in a consistently described payload.
-    const moved = encodeMapGeometryPayload({ ...SYNTHETIC_MAP_GEOMETRY, rectangle: { ...SYNTHETIC_MAP_GEOMETRY.rectangle, x0: SYNTHETIC_MAP_GEOMETRY.rectangle.x0 + 1 } });
-    const job: ImportJob = (files, report) => createImportJob(async inputs => identifySource(await openDiscImage(inputs), catalog))(files, {
+  /** The production job on `catalog` with Asset `id`'s payload replaced by `bytes` in a consistently described package. */
+  const replacing = (catalog: unknown, id: string, bytes: Uint8Array): ImportJob => (files, report) =>
+    createImportJob(async inputs => identifySource(await openDiscImage(inputs), catalog))(files, {
       ...report,
       group: (name, input: GroupInput) => {
         const manifest = input.manifest as GroupManifest;
-        const assets = manifest.assets.map(asset => (asset.role === 'map-geometry'
-          ? { ...asset, payloadIdentity: { ...asset.payloadIdentity, byteLength: moved.length, fingerprint: sha256Fingerprint(moved) } } : asset));
-        const payloads = (input.payloads as PayloadRecord[]).map(payload => (payload.id === 'data/hud/map-geometry' ? { ...payload, bytes: moved } : payload));
+        const assets = manifest.assets.map(asset => (asset.id === id
+          ? { ...asset, payloadIdentity: { ...asset.payloadIdentity, byteLength: bytes.length, fingerprint: sha256Fingerprint(bytes) } } : asset));
+        const payloads = (input.payloads as PayloadRecord[]).map(payload => (payload.id === id ? { ...payload, bytes } : payload));
         report.group(name, { ...input, manifest: { ...manifest, assets }, payloads });
       },
     });
-    const report = await runPackageCheck(paths, { job });
+
+  it('compares the map geometry with the independent read of its source and reports a difference without values', async () => {
+    const { paths, catalog } = await sliceDisc();
+    // The production job with the map geometry's x0 moved by one pixel.
+    const moved = encodeMapGeometryPayload({ ...SYNTHETIC_MAP_GEOMETRY, rectangle: { ...SYNTHETIC_MAP_GEOMETRY.rectangle, x0: SYNTHETIC_MAP_GEOMETRY.rectangle.x0 + 1 } });
+    const report = await runPackageCheck(paths, { job: replacing(catalog, 'data/hud/map-geometry', moved) });
     printed(report);
     expect(report).toMatchObject({ passed: false, error: { code: 'source-mismatch', location: 'roles.map-geometry' }, package: { status: 'complete' } });
+  });
+
+  it('checks the cockpit instruments against the package and the independent read of their slots, without values', async () => {
+    const { paths, catalog } = await sliceDisc();
+    const [front, map, external] = SYNTHETIC_COCKPIT_INSTRUMENTS.slots;
+    const withSlots = (slots: typeof SYNTHETIC_COCKPIT_INSTRUMENTS.slots) => encodeCockpitInstrumentsPayload({ ...SYNTHETIC_COCKPIT_INSTRUMENTS, slots });
+    // A message line moved by one pixel in slot 7, which only the independent read shows.
+    const [line] = external.instruments;
+    const moved = withSlots([front, map, { ...external, instruments: [{ ...line, rectangle: { ...line.rectangle, x0: line.rectangle.x0 + 1 } }] }]);
+    // Slot 0's elements in another order, which the front layout contradicts.
+    const reordered = withSlots([{ ...front, elements: [...front.elements].reverse() }, map, external]);
+    const reports = await Promise.all([moved, reordered].map(bytes => runPackageCheck(paths, { job: replacing(catalog, 'data/hud/instruments', bytes) })));
+    reports.forEach(report => printed(report));
+    expect(reports[0]).toMatchObject({ passed: false, error: { code: 'source-mismatch', location: 'roles.cockpit-instruments' }, package: { status: 'complete' } });
+    expect(reports[1]).toMatchObject({
+      passed: false, error: { code: 'invalid-flight-data-payload', location: 'cockpitInstruments.slots[0].elements[0].image' }, package: { status: 'complete' },
+    });
   });
 
   it('stops at an independent source whose map slot holds more instrument records than the cap, before reading them', async () => {
     const good = await sliceDisc();
     // The tool reads a disc whose layout-6 slot lists the good map record and 32 others, which would match without the
     // cap; the job converts the good disc.
-    const [front, empty, map] = PRODUCTION_COCKPIT_INSTRUMENTS;
-    const others = Array.from({ length: 32 }, () => instrumentRecord(8, [1, 1, 9, 9]));
-    const crowded = productionCockpitBlock(undefined, undefined, [front, empty, { layout: 6, records: [map.records[0], ...others] }]);
+    const others = Array.from({ length: 32 }, () => ({ type: 8, rectangle: [1, 1, 9, 9] as const }));
+    const crowded = productionCockpitEntry(undefined, undefined, PRODUCTION_COCKPIT_INSTRUMENTS.map(slot => (slot.layout === 6 ? { layout: 6, records: [slot.records[0], ...others] } : slot)));
     const files = sliceCoveredFiles();
     const bad = await writeDisc('crowded', {
-      ...files, 'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries().map(entry => (entry.id === 10_103 ? { ...entry, data: crowded } : entry))),
+      ...files, 'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries().map(entry => (entry.id === 10_103 ? { ...entry, ...crowded } : entry))),
     });
     const goodFiles = good.paths.map(path => ({ name: basename(path), blob: new Blob([readFileSync(path)]) }));
     const job: ImportJob = (_files, report) => createImportJob(async () => identifySource(

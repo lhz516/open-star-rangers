@@ -58,13 +58,15 @@ type Hooks = Partial<Record<string, (context: TickContext) => void>>;
 function stepWith(state: WorldState, hooks: Hooks): readonly DomainEvent[] {
   const context = registerTick(state, readTickInput(tickInput()));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     hooks[stage.id]?.(context);
     stage.run?.(context);
   }
   return context.events;
 }
 
-const contextOf = (state: WorldState): TickContext => registerTick(state, readTickInput(tickInput()));
+/** A tick's context outside a step, standing in the collision stage, where these tests' destructions build their explosions (P3-12 FS-03). */
+const contextOf = (state: WorldState): TickContext => Object.assign(registerTick(state, readTickInput(tickInput())), { stage: 'collision' as const });
 const enemies = (state: WorldState): Entity[] => [...state.entities.walk(ALL_KINDS)].filter(({ kindBit, destroyed }) => (kindBit === 7 || kindBit === 8) && !destroyed);
 const sourced = (state: WorldState, index: number): Entity[] =>
   [...state.entities.walk(ALL_KINDS)].filter(({ source }) => source?.collection === 'mission' && source.index === index);
@@ -460,7 +462,15 @@ describe('the state-5 failure race (ME-17 decision 1)', () => {
     state.spawn.queue[0] = { ...entry, due: state.clock + 1 };
     // A kill in request handling comes before the spawn requests (a missile's detonation); one before the queue check
     // stands for a destruction in the object updates.
-    const events = stepWith(state, { [killStage]: (context: TickContext) => destroyByPlayer(context, last) });
+    // A kill before the queue check is an object update's, the last stage before it that builds explosions (P3-12 FS-03).
+    const events = stepWith(state, {
+      [killStage]: (context: TickContext) => {
+        const { stage } = context;
+        if (killStage === 'spawn-queue-check') context.stage = 'object-update';
+        destroyByPlayer(context, last);
+        context.stage = stage;
+      },
+    });
     return { ...run, events };
   }
 

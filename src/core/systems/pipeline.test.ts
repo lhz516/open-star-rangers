@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
-import type { DomainEvent } from '../contracts/domain-events.ts';
+import { PIPELINE_STAGE_NAMES, type DomainEvent } from '../contracts/domain-events.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
 import { readTickInput, type Command } from '../contracts/tick-input.ts';
 import { rotateRows } from '../rules/flight-motion.ts';
@@ -22,6 +22,7 @@ type Hooks = Readonly<Record<string, (context: TickContext) => void>>;
 function runTickWith(state: WorldState, hooks: Hooks = {}, commands: readonly Command[] = []): readonly DomainEvent[] {
   const context = registerTick(state, readTickInput(tickInput(commands)));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     hooks[stage.id]?.(context);
     stage.run?.(context);
   }
@@ -66,6 +67,21 @@ describe('stage table (P3-02 AC-09, 系统流水线, Q-09)', () => {
       'commit',
     ]);
     expect(deepFrozen(PIPELINE)).toBe(true);
+    // P3-12 FS-03: the closed stage names the events report are exactly these, in this order.
+    expect(PIPELINE.map(({ id }) => id)).toEqual(PIPELINE_STAGE_NAMES);
+  });
+
+  it('tells each stage its name through the context while it runs (P3-12 FS-03)', () => {
+    // The world's view switches report the stage that runs them: a toggle's in request handling.
+    const state = testState();
+    addPlayerEntity(state).state = 'active';
+    state.player.control = initialPlayerControl(1);
+    state.player.targeting = { ...initialPlayerTargeting(), autoTargetDueClock: 1e9 };
+    const context = registerTick(state, readTickInput(tickInput([{ type: 'toggle-map' }])));
+    expect(context.stage).toBe('input-registration');
+    const events = runTick(context);
+    expect(events.find(({ type }) => type === 'view-switched')).toMatchObject({ stage: 'request-handling', viewMode: 8 });
+    expect(context.stage).toBe('commit');
   });
 
   it('implements every stage, P3-11\'s teardown included, and fakes no rule system', () => {

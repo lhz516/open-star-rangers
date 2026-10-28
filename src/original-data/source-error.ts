@@ -70,6 +70,9 @@ export type SourceErrorCode =
  * - `aiKeywordNames`: the EXE name regions the keyword tables point to.
  * - `aiKeywordNameBytes`: the bytes of those name regions together, NULs included.
  *
+ * Revision 4 (`data/hud/instruments`, P3-13) reuses `payloadItems` for the entry count of a CCKD instrument record's
+ * parameter table and `cockpitInstruments` for the records of each slot it reads.
+ *
  * Counts the format fixes, such as the 20 kind bits, the 18 × 3 TABL 4003 pairs and the 3 EXIC lists, are format
  * rules rather than limits.
  */

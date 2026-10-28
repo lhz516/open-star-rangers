@@ -101,6 +101,8 @@ describe('map rule data (P3-09 AC-02, MW-01)', () => {
       // h = 399 >> 1 = 199, from the screen origin.
       startPixel: { column: 178, row: 154 },
       world: { minX: -45000, minY: -45000, maxX: 45000, maxY: 45000 },
+      // The mission's 6 × 6 sectors, the world rectangle's ±7500 × 6 (CK-03).
+      sectors: 6,
       pixelsPerUnit: { x: Math.fround(1 / 225), y: Math.fround(1 / 225) },
       unitsPerPixel: { x: 225, y: 225 },
       zoomExtent: { x: 15000, y: 30000 },

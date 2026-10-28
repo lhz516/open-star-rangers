@@ -2,8 +2,8 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-10
-related: [U-001, U-006, U-018, U-019, U-027, U-028, U-029, U-030]
+updated: 2026-10-28
+related: [U-001, U-006, U-018, U-019, U-027, U-028, U-029, U-030, U-034]
 ---
 
 # Palettes and images (DATA, image record, TEX, BITM, ANIM, EXPL)
@@ -17,7 +17,7 @@ Container format: [IMFAT](./imfat.md). Confidence labels as defined there. Struc
 
 768 bytes: 256 × RGB, each component a 6-bit VGA value (0–63). Expand to 8 bits by bit replication, `(c << 2) | (c >> 4)`; with this rule every pixel of four in-flight DOSBox-X screenshots matches a DATA colour exactly (Confirmed). This is the palette in effect during flight; the forward cockpit graphics display with correct colours using it (see [cockpit](./cockpit.md)).
 
-**Wider check (P2-12/16, 2026-10-07):** of the 46 qualifying HI forward-view captures in the [cockpit comparison](./cockpit.md#all-qualifying-captures-p2-12), 45 have every pixel in DATA. `srangers_066.png`, taken during a Warp ([B-001](../behavior/B-001-strategic-map.md#战役地图与-warp-补充证据2026-10-03)), has 8,373 pixels whose colours are not in DATA, all outside the cockpit's static region, which matches. Whether the game changes palette entries during a Warp is Unconfirmed.
+**Wider check (P2-12/16, 2026-10-07):** of the 46 qualifying HI forward-view captures in the [cockpit comparison](./cockpit.md#all-qualifying-captures-p2-12), 45 have every pixel in DATA. `srangers_066.png`, taken during a Warp ([B-001](../behavior/B-001-strategic-map.md#战役地图与-warp-补充证据2026-10-03)), has 8,373 pixels whose colours are not in DATA, all outside the cockpit's static region, which matches. The game does change palette entries during a Warp: it replaces 106 entries with a green and a grey ramp for the whole screen until the Warp ends (Confirmed, code, P3-12/06; [executable](./executable.md#wt3-warp-start-0x50188-the-effect-part--confirmed-code)).
 
 ## 2. Image record, 36 bytes (Confirmed)
 
@@ -77,7 +77,7 @@ This is the alternation of encoding 2 with 1-byte instead of u16 lengths. Decodi
 
 - Pixel values index the texture's own palette, usually 16 colours, stored as 8-bit **BGR** triplets (0–255), not RGB and not 6-bit VGA values (Confirmed).
 - **In game, texture colours are mapped to the nearest DATA colours.** Evidence: for the three textures of the player craft, 16 of 16, 8 of 14, and 4 of 5 palette colours, read as BGR and quantised to DATA, occur in a screenshot of that craft; read as RGB, almost none do. Rendered this way the craft matches the screenshot in colour (Confirmed).
-- How lighting chooses brighter or darker shades is Unconfirmed (U-028).
+- How lighting chooses brighter or darker shades is Confirmed (code, P3-12/02): one 4-shade ramp per palette entry, the shade picked per triangle or per pixel from a single fixed directional light and an ambient level ([executable](./executable.md#3d-lighting-and-shade-levels-p3-1202)); appearance Likely (U-028).
 - Observed sizes: 32×32, 64×64, 96×96, 128×128, 256×256.
 - 58 of 59 TEX entries embed a palette; TEX 11069 has none ([below](#tex-11069-hit-shimmer-band-map-confirmed)).
 - **Header (Confirmed, all 59 entries and EXE):** a TEX entry starts with the 36-byte image record, followed by two u32 that are 0 in every entry; its pixel data starts at +44. At run time `0x660dc` stores the renderer image it builds in +0x24 and the renderer texture in +0x28.
@@ -88,9 +88,9 @@ This is the alternation of encoding 2 with 1-byte instead of u16 lengths. Decodi
 That textures map to the nearest DATA colour is Confirmed (above). How the renderer measures "nearest" and which entry wins a tie are also Confirmed, from its colour manager's code (P2-06/12; see [executable](./executable.md#native-tex-preparation-and-nearest-colour-search)):
 
 - **Search space:** the game expands DATA for the renderer by shifting each 6-bit component left by 2, so values are 0–252 in steps of 4. All 256 entries are allocated, and the search never adds a colour.
-- **Metric:** the least (r − R)² + (g − G)² + (b − B)² over 8-bit integer components, where R, G, B are the DATA values times 4 and r, g, b the colour searched (Confirmed). That an unshaded texture colour is searched as its 8-bit BGR palette components is Likely: the texture ramp builder was not traced.
+- **Metric:** the least (r − R)² + (g − G)² + (b − B)² over 8-bit integer components, where R, G, B are the DATA values times 4 and r, g, b the colour searched (Confirmed). The colour searched is a ramp entry built from the texture's 8-bit palette components, reordered from the stored BGR to R, G, B; the unshaded colour itself is searched for unlit parts and as the brightest shade of lit parts (Confirmed, code, P3-12/02, [executable](./executable.md#ls4-material-keys-and-colour-ramps--confirmed-code)).
 - **Ties:** the lowest DATA index. An exact match returns the lowest of equal entries; otherwise a strict less-than scan runs in ascending index order.
-- **Shading (Likely):** in-game, textures get 4-shade colour ramps, and every ramp entry is matched by the same search. A shade is the texture colour scaled by the ramp position and combined with other material terms, so it equals the raw colour only when those terms vanish. When the ramp table is full, a colour shares the closest existing ramp under a different, ramp-level metric. Which shade a pixel shows depends on lighting, which stays Unconfirmed (U-028, P3). The project's `nearest` display mapping is the unshaded colour.
+- **Shading (Confirmed, code, P3-12/02):** in game, every texture palette entry gets a 4-shade ramp, entry i = min(255, chop(c·a + c·((i/3)·(1 − a)))) per component with a the ambient level, and every ramp entry is matched by the same search; entry 3 is the raw colour, entry 0 the ambient-only colour. When the ramp table is full, a colour shares the closest existing ramp under a different, ramp-level metric (Likely not reached in the slice). Which shade a pixel shows follows the lighting rules ([executable](./executable.md#3d-lighting-and-shade-levels-p3-1202)); the appearance is Likely (U-028). The project's `nearest` display mapping is the unshaded colour.
 
 **Project implementation.** `nearestColourMap` is the only nearest-colour function (see [source structure](../../engineering/modules/content.md#图形-payload)). It compares the 8-bit source colour with each target component with its two low bits cleared. For a palette expanded from 6-bit values by bit replication, as DATA is, this gives exactly the values times 4. On all 58 embedded TEX palettes (1,335 entries) it chooses the same DATA entry as the confirmed rule.
 
@@ -137,14 +137,16 @@ Evidence: ignored `current-tex-equivalence-34.json`, `runtime-full-content-34-mi
 - **Band position:** `0x42664` computes *t* as the mission-clock units since the hit × 1/128 × 255, truncated. When *t* reaches 251 the effect ends.
 - **Shared copies:** kinds in `0xf9c7c` (bases included) share 16 copies, precomputed at *t* = 0, 15, …, 225; each step shows copy min(*t*/15, 15).
 
-**Display (Likely):** 0xFF, 0x7F and 0 are per-texel opacity applied to TEX 11073: opaque in the band, half at its edges, invisible elsewhere. The driver's use of the second image was not traced. That this produces the dithered hull seen in hit captures also stays Likely (U-027).
+**Display (Confirmed, code, P3-12/05):** the copy is the texture's second image, which the transparent rasterisers read as per-texel opacity at the colour texel's address: 0 is never drawn, 0xFF always, 0x7F through a 4 × 4 screen door anchored to the screen pixel (drawn where (x + y) is even in HI); a skipped pixel writes neither colour nor depth. The shell is unlit (one shade), TEX 11073's colour at that texel. The kind-`0x383` shell is a per-object copy wrapped by fixed sphere wraps (only kind 0x80's is sized from its mesh's bounds); the 16 shared copies of kinds `0xf9c7c` are built from the first such visual, each with wrap i of the shared list, and placed at the hit point. Stepping, wraps and end rules: [executable](./executable.md#hit-shimmer-and-effect-visuals-p3-1205). **Appearance (Likely):** in captures 103, 112 and 114 the shell pixels are the nearest DATA colours of TEX 11073's palette and form the band's solid stripes; frame-buffer reads of two baseline runs show the checkerboard on the predicted phase in early-band frames; its coverage later in the band was not observed ([HS6](./executable.md#hs6-how-the-opacity-image-is-drawn--confirmed-code), U-027).
 
 **Requirements for conversion:**
 
 - The 4,096 stored bytes are threshold values that the code compares in their stored 8-bit form, texel for texel against the part texture. They must be kept exactly and in stored order; remapping them as colour indices (for example to the nearest DATA colour) would move the band.
 - There is no source palette, so no palette Asset can come from TEX 11069. Any palette an image payload is bound to serves only the viewer; it does not describe the game's display.
 
-### TEX 11089: right-display background (Confirmed structure; display Likely)
+<a id="tex-11089-right-display-background-confirmed-structure-display-likely"></a>
+
+### TEX 11089: right-display background (Confirmed)
 
 **Structure (Confirmed):** 96×96, encoding 0 (9,216 bytes), and an embedded 256-entry BGR palette after the pixels. Relocations are at +0x1C and +0x14. The pixels use 14 distinct indices.
 
@@ -154,9 +156,10 @@ Evidence: ignored `current-tex-equivalence-34.json`, `runtime-full-content-34-mi
 
 - `0x42b04` (view switch `0x3f158`) creates the right display's 3D device: 100×100 in HI and 50×50 in LO, 8-bit, with the DATA colour table `0x186c00` as its palette. It loads TEX 11089, or 11091 in view mode 6, with `0x65e28`. The texture made by `0x660dc` (own palette, 4 shades) goes to `0x85730`, which stores it as the scene's background texture (+0x2D8).
 - The viewport clear `0x7b8e0` hands it through `0x7d3c8` to `0x7d09c`, the device texture registration that mesh textures also use.
-- How the background is fitted to the 100×100 viewport, and whether a shade is applied, are inside the renderer and were not traced (P3-13).
+- **Fit and shade (Confirmed, captures, P3-13/04):** the background is stretched over the 100×100 device: device pixel (u, v) shows texel (⌊96u/100⌋, ⌊96v/100⌋), with no shading. On the 49 forward captures that show the right display, every pixel outside the text and the target model equals this prediction under DATA; centred, origin-anchored, tiled, flipped and centre-sampled fits all fail. The device window (2,1)–(98,98) is then copied to the display rectangle ([hud §4.5](./hud.md#45-right-display-type-7)). P3-13/31 rechecked the fit on all 56 forward captures that do not show the SNIP, with a background-only mask, through the project's nearest-colour mapping: all equal, and none of the wrong placements equals any.
+- **Only drawn on a render (Confirmed, code):** the background reaches the device when the scene is rendered (refresh), not when `0x42b04` creates the device; until the first render after a device switch the display copies the new device as it is, whose initial pixels are Unconfirmed ([hud §4.5](./hud.md#45-right-display-type-7), [U-034](../unknowns.md)).
 
-**Display (Likely):** colours as for mesh textures, which here equal DATA[index] for every pixel. The display's role is Likely (U-030).
+**Display (Confirmed):** colours as for mesh textures, which here equal DATA[index] for every pixel. TEX 11089 is the right (target) display's background (P3-13/04; earlier Likely, U-030).
 
 Evidence for this section: ignored `local/research/p3-03/images/` (`tex-survey.ts`, `tex11089.ts`, `list2.ts`, Ghidra probes `out/p8`–`out/p16`).
 
@@ -167,9 +170,10 @@ Evidence for this section: ignored `local/research/p3-03/images/` (`tex-survey.t
 - 22 entries have no embedded palette. Their palette lives elsewhere and is Unconfirmed for most of them (U-018). Exceptions (Confirmed): the left-display page backgrounds 10467 (HI), 10469 (HI, base interior; read as a craft type until P3-01/10) and 10471 (LO) are drawn while the default palette, DATA, is in effect ([hud](./hud.md#hud-and-map-drawing-paths-confirmed-exe)), and P2-12 matched 10467 under DATA directly (below); the 15 nebula backgrounds also show under DATA (below). Displayed with DATA, the colours of other entries looked clearly wrong (a visual judgement, not a code result).
 - Observed sizes: 48×48, 96×96, 128×128, 320×200 (sprite RLE), 640×316. The 640×316 entries are full-screen scenes: TABL 10171 lists the three of them, and docking shows one chosen at random (Confirmed, EXE, P3-01/10).
 - **The 15 nebula backgrounds (P3-01/10; P3-03/05):** NEBC 10661 lists 15 BITMs ([hud](./hud.md#3-id-lists-confirmed-structure)). Each is 128×128, encoding 0 (16,384 bytes), with no embedded palette; its pixels start at +36 and its only relocation is +0x1C (Confirmed, all 15). Flight draws six of them with `0x5b54c` ([executable](./executable.md#data-loaded-by-the-loop-p3-0110)):
-  - **Display direct under DATA (Confirmed, EXE):** `0x5b54c` copies every stored byte unchanged into the 8-bit frame buffer `0x1762a8`, with no colour lookup and no palette change. The 3D device renders into that buffer with DATA as its palette (`0x3d0b0`, colour table `0x186c00`). Flight setup sets the VGA palette to DATA (`0x3ed04`–`0x3ed09`, through `0x58288`). The cockpit slots of the world views carry no palette, so `0x49848` keeps DATA there ([cockpit](./cockpit.md#group-palette-and-drawing-confirmed)). Screen flashes replace the whole palette for a moment (`0x48d64` → `0x48f14`); that is a whole-screen effect (P3-12). For these 15 the code result takes precedence over the earlier visual judgement; the appearance check is P3-03/21.
+  - **Display direct under DATA (Confirmed, EXE):** `0x5b54c` copies every stored byte unchanged into the 8-bit frame buffer `0x1762a8`, with no colour lookup and no palette change. The 3D device renders into that buffer with DATA as its palette (`0x3d0b0`, colour table `0x186c00`). Flight setup sets the VGA palette to DATA (`0x3ed04`–`0x3ed09`, through `0x58288`). The cockpit slots of the world views carry no palette, so `0x49848` keeps DATA there ([cockpit](./cockpit.md#group-palette-and-drawing-confirmed)). Screen flashes replace the whole palette for a moment (`0x48f14`, [executable](./executable.md#screen-flashes-p3-1204)). P3-12/04 found 10 of the 15 images by exact colour equality in 19 local captures ([executable](./executable.md#nb6-capture-matching)), so display under DATA is Confirmed by code and captures, and the earlier visual judgement ("colours clearly wrong under DATA") does not hold for these 15.
   - **Opaque (Confirmed):** every source byte is written; there is no colour key.
-  - **Shape (Confirmed):** the drawer addresses the source as 128 rows of 128 bytes (stride 0x80 in the code) through a rotation table at `0x1b2b20`. Its angle argument selects mirrored and transposed readings, so the drawer requires 128×128. The images are kept in stored row-major order; which orientation appears at which angle is P3-12's.
+  - **Shape (Confirmed):** the drawer addresses the source as 128 rows of 128 bytes (stride 0x80 in the code) through a rotation table at `0x1b2b20`, so it requires 128×128. The images are kept in stored row-major order.
+  - **Orientation (Confirmed, code and captures, P3-12/04):** the angle argument's mirror and transpose flags always compose to a proper rotation, never a mirror; the stored row axis points along the projected direction of the slot's offset axis ([executable](./executable.md#nb4-the-rotated-blit-0x5b54c-and-its-table-0x5b440--confirmed-code)).
 - At least one portrait displays upside down: rows may be stored bottom-up, or the image may be intentionally flipped (Unconfirmed, U-019).
 - **The slice's BITM is drawn top-down (Confirmed):** the HUD blitters read source rows top-down in stored order ([hud](./hud.md#hud-and-map-drawing-paths-confirmed-exe)). In [P2-12 subtask 17](../../plan/p2/12/subtasks/17-hud-texture-coverage.md#完成证据), 10467 in stored row order under DATA was identified at the left display in seven forward-view captures: 8,601 of its 9,216 pixels are exposed and identical in at least one capture. The other 615 are never exposed there (564 under text, 51 under unidentified graphics) and rest on the same-source read. 10467 is the only BITM in the slice, so U-019 is resolved for the slice and stays open for the portraits.
 
@@ -228,7 +232,7 @@ A **frame record** is a 36-byte [image record](#2-image-record-36-bytes-confirme
 **Animation parameters (Confirmed, code; the rules belong to P3-07 and P3-12):** the data holds no per-frame duration, offset or anchor; timing and placement are code.
 
 - **Timing:** `0x2409c` shows frame (14 × (*t* − *t*₀)) >> 6, with *t* the mission clock in 1/64 s and *t*₀ the explosion's start. That is 14 frames per second; the rate 14 is written only there. *t*₀ is the explosion's activation, in the request handling of the tick after its creation. At the first update whose frame index reaches the frame count the sprite is hidden (frame −1) and the explosion releases the object it holds (a missile, a fragment, or a craft that shed no fragments), which then leaves: 28 ticks after *t*₀ for 12-frame ANIMs and 14 for 6-frame ones at 2 units per tick. The explosion requests its own removal at the first update whose clock is strictly past *t*₀ + 0x60 units (1.5 s) with the frame index at the count, and leaves one tick later ([lifecycle](./executable.md#destruction-explosions-and-fragments-p3-0706), P3-07/06). Because every ANIM of a list has the same frame count, the random entry never changes these times.
-- **Placement:** `0x49004` centres the frame on the projected position of the explosion. It chooses an integer scale from the distance and the explosion's variant (EXPL, [§7](#7-expl-explosion-records-confirmed)), halved in LO. `0x49330` sorts the queued sprites by depth and draws them after the world.
+- **Placement (Confirmed, code, P3-12/03):** `0x49004` centres the frame on the explosion's projected position, using the viewport's right edge as the scale of both axes and its half extents as the centre; it draws nothing at camera depth z ≤ 1 or ≥ 3800, or with the centre outside the viewport. The integer scale is a function of the explosion's variant ([§7](#7-expl-explosion-records-confirmed)) and of t = (z − 1)(F − 1)/((F − 2)z), F the current back plane: chop(4t), chop(3t) + 1, chop(4t + 0.4) or chop(2t) for variants 0–3, halved in LO; it is 3 for a large-craft explosion at the usual distances. `0x49330` sorts the sprites by the depth key chop(65535 t), nearest first, and draws them after the world, each s × s block only where the key is not greater than the depth buffer at the block's top-left pixel; no depth is written. Details and boundary distances: [executable](./executable.md#frame-composition-depth-and-explosion-sprites-p3-1203).
 
 **Observed values (Confirmed, local decode; counts only):**
 
@@ -286,6 +290,6 @@ Evidence: ignored `local/research/p3-03/images/` (`survey.ts`, `anim-check.ts` w
 - **Choice of entry:** at its activation `0x2409c` draws one rand and picks a kept entry; the kept entries of list k are consecutive from the build's random start, in request order. Animation and sound use this one choice.
   - Variants 0 and 1 take list 1, and variant 3 takes list 3.
   - Variant 2 takes list 2 when the squared distance from the 3D camera position (`0x1b075c`, [cameras](./executable.md#cameras-interfaces-and-cross-frame-order-p3-0707)) to the explosion is at least 160000.0. Otherwise the variant becomes 1 and the entry comes from list 1.
-- **Scale:** the variant also selects the draw scale in `0x49004`.
+- **Scale:** the variant also selects the draw scale in `0x49004` ([executable](./executable.md#fc7-sprite-projection-visibility-and-scale--confirmed-code)).
 
 Evidence: ignored `local/research/p3-03/images/expl-check.ts` and Ghidra probes `out/p1`, `out/p2`, `out/p5`, `out/p22`.

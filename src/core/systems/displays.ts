@@ -6,10 +6,12 @@
  * in the gauges' record order, where the right display (type 7) comes before the left one (type 6):
  *
  * 1. the right display's target clearing (T7, targeting.ts);
- * 2. the left display by its page, while a player entity exists: the status display (D9) when it shows the status page
- *    and field 10 is not 2: once the clock is strictly past the blink due clock, the blink phase flips; when it flipped
- *    or `redraw` is set, the player's fields 1 (hull), 5 (list-1 mounts) and 8 (list-0 mounts) are written and
- *    `redraw` is cleared; on a menu page without a menu, or on page 5 while no message plays, page 0 (P3-10, CB-09).
+ * 2. the left display by its page, while a player entity exists: the status display (D9, CK-01) when it shows the
+ *    status page and field 10 is not 2: first, when the previous status page step flipped the blink phase or `redraw`
+ *    is set, the player's fields 1 (hull, with the current phase), 5 (list-1 mounts) and 8 (list-0 mounts) are written,
+ *    `redraw` is cleared and `rebuilds` counts the write; then, once the clock is strictly past the blink due clock, the
+ *    phase flips, and `phaseFlipped` keeps whether it did. On a menu page without a menu, or on page 5 while no message
+ *    plays, page 0 (P3-10, CB-09).
  *
  * The tail warning (type 9, comm-reactions.ts's `checkTail`) follows in its own views, 1, 6, 8 and 0xC–0x12, as the
  * original calls it every frame from the global callback list whatever the cockpit slot (FA-01, A-07); the
@@ -20,7 +22,8 @@
  */
 import { CoreFaultError } from '../errors.ts';
 import {
-  advanceBlink, clearsIncomingPage, clearsMenuPage, COCKPIT_DISPLAY_VIEW_MODES, hullField, showsStatusPage, TAIL_CHECK_VIEW_MODES, withStatusFields,
+  advanceBlink, clearsIncomingPage, clearsMenuPage, COCKPIT_DISPLAY_VIEW_MODES, hullField, nextCount, showsStatusPage, TAIL_CHECK_VIEW_MODES,
+  withStatusFields,
 } from '../rules/displays.ts';
 import { listStatus } from '../rules/mounts.ts';
 import type { LeftPage } from '../world/player-state.ts';
@@ -44,7 +47,7 @@ export function setLeftPage(context: TickContext, page: LeftPage): void {
 
 /**
  * The left display (type 6) by its page, while a player entity exists: the status display `0x4d0e0` with `0x4d50c`
- * (D9) on page 0; on pages 2–4 the menu page's handler `0x4da28`, which sets page 0 directly when no menu is built and
+ * (D9, CK-01: the write first, then the blink timer) on page 0; on pages 2–4 the menu page's handler `0x4da28`, which sets page 0 directly when no menu is built and
  * field 13 is not 2 (comm §7.5; CB-09); on page 5 the incoming page's `0x4dc50`, which does the same when no message
  * plays (D-03 item 3 point 4). Both emit `left-page-changed` without a command.
  */
@@ -64,13 +67,16 @@ function updateLeftDisplay(context: TickContext): void {
   }
   if (!showsStatusPage(page, combat.subsystems)) return;
   const display = player.statusDisplay;
-  if (!advanceBlink(display, context.time.clock) && !display.redraw) return;
-  combat.subsystems = withStatusFields(combat.subsystems, {
-    hull: hullField(combat.hull, craft.at9C, display.blink),
-    missileMounts: listStatus(combat.weapons, craft, 1),
-    gunMounts: listStatus(combat.weapons, craft, 0),
-  });
-  display.redraw = false;
+  if (display.phaseFlipped || display.redraw) {
+    combat.subsystems = withStatusFields(combat.subsystems, {
+      hull: hullField(combat.hull, craft.at9C, display.blink),
+      missileMounts: listStatus(combat.weapons, craft, 1),
+      gunMounts: listStatus(combat.weapons, craft, 0),
+    });
+    display.redraw = false;
+    display.rebuilds = nextCount(display.rebuilds, 'displays.rebuilds');
+  }
+  display.phaseFlipped = advanceBlink(display, context.time.clock);
 }
 
 /**

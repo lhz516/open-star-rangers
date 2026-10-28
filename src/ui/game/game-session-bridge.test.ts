@@ -7,8 +7,16 @@ import { GameSessionError } from '../../app/session/session-errors.ts';
 import type { MapPlayer, Projection } from '../../core/projections/projection.ts';
 import type { RenderWarp } from '../../core/projections/render-state.ts';
 import type { AssetId } from '../../content/asset-id.ts';
-import type { MissionStatus } from '../../core/world/world-state.ts';
-import { PROJECTION_SAMPLE_INTERVAL_MS, createGameSessionBridge, type GameRunBinding, type GameRunConsumer } from './game-session-bridge.ts';
+import type { DomainEvent } from '../../core/contracts/domain-events.ts';
+import type { MessageIdentity, MissionStatus } from '../../core/world/world-state.ts';
+import { createMessageLine, type MessageLineSnapshot } from '../../render/cockpit/messages/message-line.ts';
+import { FLIGHT_MESSAGES, syntheticCopy, syntheticFont } from '../../render/cockpit/messages/messages.test-support.ts';
+import {
+  BASE_VIEW, FLIGHT_VIEW, MAP_VIEW, cockpitBatch, cockpitContent, cockpitTick, createTestPresentation, syntheticEvent, viewSwitched,
+} from '../../render/cockpit/presentation/cockpit.test-support.ts';
+import {
+  PROJECTION_SAMPLE_INTERVAL_MS, bridgeMessageLine, createGameSessionBridge, type GameRunBinding, type GameRunConsumer, type MessageLineSource,
+} from './game-session-bridge.ts';
 import { createGameStore } from './game-store.ts';
 import { TestClock, frameDouble, history, projectionDouble, projectionLog, recordingSession, setupBridge } from './game-ui.test-support.ts';
 
@@ -668,5 +676,113 @@ describe('game session bridge: the map\'s and Warp\'s key facts (P3-09)', () => 
     deliver(1020, open, 2);
     deliver(1030, open, 2);
     expect(log).toEqual([[4, 1010], [5, 1020]]);
+  });
+});
+
+describe('bridgeMessageLine: the base page reads the cockpit\'s one queue (P3-13 DC-07)', () => {
+  const PLAYER = { player: { entityId: 7 } } as const;
+  const docking: MessageIdentity = { table: 20011, face: 1, index: 0 };
+  const unknown: MessageIdentity = { table: 20985, face: 2, index: 0x3d };
+  const incoming = (message: MessageIdentity) => ({ communications: { player: { incoming: { message, speaker: null, shown: true } } } });
+  const started = (tick: number, message: MessageIdentity): DomainEvent =>
+    syntheticEvent(tick, 'incoming-started', { message, speaker: null, frameDurations: [1], shown: true });
+  const beacon = (tick: number): DomainEvent => syntheticEvent(tick, 'flight-message', { message: 'beacon' });
+
+  /** A real message line in a presentation, advanced one tick per call. */
+  function cockpit() {
+    const line = createMessageLine({ font: syntheticFont(), flightMessages: FLIGHT_MESSAGES, copy: syntheticCopy() });
+    const presentation = createTestPresentation({ modules: [line], content: cockpitContent(), viewMode: FLIGHT_VIEW, patch: PLAYER });
+    let viewMode = FLIGHT_VIEW;
+    const tick = (at: number, events: readonly DomainEvent[] = [], patch: object = {}): void => {
+      for (const event of events) if (event.type === 'view-switched') viewMode = event.viewMode;
+      presentation.advance(cockpitBatch([cockpitTick(at, { viewMode, events, patch: { ...PLAYER, ...patch } })]));
+    };
+    return { line, tick };
+  }
+
+  it('writes the head and the incoming message at once on each change, as the module shows them, and nothing else', () => {
+    const { line, tick } = cockpit();
+    const store = createGameStore(2);
+    const writes = history(store.reader);
+    const published: MessageLineSnapshot[] = [];
+    line.subscribe((snapshot) => published.push(snapshot));
+    const detach = bridgeMessageLine(store, 5, line);
+    expect(store.reader.getState().messages).toEqual({ runId: 5, head: null, incoming: null });
+    tick(1, [beacon(1)]);
+    // Written inside the tick that posted it, before any React sample.
+    expect(store.reader.getState().messages!.head).toBe(line.snapshot().head);
+    expect(store.reader.getState().messages!.head).toMatchObject({ origin: 'original', text: 'Beacon on', message: null, covered: true });
+    tick(2, [started(2, docking)], incoming(docking));
+    const { head, incoming: playing } = store.reader.getState().messages!;
+    expect(head).toMatchObject({ origin: 'original' });
+    expect(playing).toMatchObject({ message: docking, summary: 'Summary 0', covered: true, shown: true });
+    expect(Object.isFrozen(store.reader.getState().messages)).toBe(true);
+    // Ticks that change only the module's counts or nothing write nothing.
+    const before = writes.length;
+    tick(3, [], incoming(docking));
+    expect(writes).toHaveLength(before);
+    expect(published.length).toBeGreaterThan(0);
+    detach();
+  });
+
+  it('keeps the uncovered feedback visible with the message it stands for', () => {
+    const { line, tick } = cockpit();
+    const store = createGameStore(2);
+    bridgeMessageLine(store, 5, line);
+    tick(1, [started(1, unknown)], incoming(unknown));
+    expect(store.reader.getState().messages!.incoming).toMatchObject({ message: unknown, summary: 'Not covered', covered: false, shown: true });
+    tick(2, [], incoming(unknown));
+    expect(store.reader.getState().messages!.head).toMatchObject({ origin: 'project', text: 'Not covered', message: unknown, covered: false });
+  });
+
+  it('shows the same head across base and map round trips without replaying an item', () => {
+    const { line, tick } = cockpit();
+    const store = createGameStore(2);
+    const heads: (number | null)[] = [];
+    store.reader.subscribe(({ messages }) => { heads.push(messages?.head?.serial ?? null); });
+    bridgeMessageLine(store, 5, line);
+    tick(1, [beacon(1), syntheticEvent(1, 'speed-assist-toggled', { enabled: true, commandIndex: 0 })]);
+    const first = store.reader.getState().messages!.head!.serial;
+    tick(2, [viewSwitched(2, FLIGHT_VIEW, BASE_VIEW)]);
+    tick(3, [viewSwitched(3, BASE_VIEW, MAP_VIEW)]);
+    tick(4, [viewSwitched(4, MAP_VIEW, BASE_VIEW)]);
+    // The same two items, the same head: the round trip neither replays nor re-queues them.
+    expect(line.snapshot().length).toBe(2);
+    expect(store.reader.getState().messages!.head?.serial).toBe(first);
+    expect(heads.filter((serial) => serial !== null)).toEqual([first]);
+  });
+
+  it('clears only its own run on detach and ignores the line afterwards', () => {
+    const listeners: ((snapshot: MessageLineSnapshot) => void)[] = [];
+    const snapshot = (text: string): MessageLineSnapshot => Object.freeze({
+      head: Object.freeze({ serial: text.length, source: 'beacon', origin: 'original', text, message: null, covered: true }), incoming: null, length: 1, messageDrops: 0,
+    });
+    const source = (first: MessageLineSnapshot): MessageLineSource => ({
+      snapshot: () => first,
+      subscribe: (listener) => { listeners.push(listener); return () => { listeners.splice(listeners.indexOf(listener), 1); }; },
+    });
+    const store = createGameStore(2);
+    const detachOld = bridgeMessageLine(store, 1, source(snapshot('old')));
+    const late = listeners[0];
+    const detachNew = bridgeMessageLine(store, 2, source(snapshot('newer')));
+    expect(store.reader.getState().messages).toMatchObject({ runId: 2, head: { text: 'newer' } });
+    detachOld();
+    late(snapshot('stale!'));
+    expect(store.reader.getState().messages).toMatchObject({ runId: 2, head: { text: 'newer' } });
+    detachNew();
+    expect(store.reader.getState().messages).toBeNull();
+    expect(listeners).toHaveLength(0);
+  });
+
+  it('unsubscribes when the first read fails', () => {
+    let subscribed = 0;
+    const store = createGameStore(2);
+    const failing: MessageLineSource = {
+      snapshot: () => { throw new Error('disposed'); },
+      subscribe: () => { subscribed++; return () => { subscribed--; }; },
+    };
+    expect(() => bridgeMessageLine(store, 1, failing)).toThrow('disposed');
+    expect(subscribed).toBe(0);
+    expect(store.reader.getState().messages).toBeNull();
   });
 });

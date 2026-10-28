@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { syntheticIdentity } from '../../content/synthetic-content.test-support.ts';
 import { CORE_LIMITS } from '../contracts/limits.ts';
+import type { RenderState } from '../projections/render-state.ts';
 import type { Command } from '../contracts/tick-input.ts';
 import { CoreInputError } from '../errors.ts';
 import { mapGeometryContent } from '../world/create-world.test-support.ts';
@@ -11,7 +12,7 @@ import {
 } from './map-warp.test-support.ts';
 import { createRecordingSession, GAME_REPLAY_VERSION, type Recording } from './recording.ts';
 import { replayRecord } from './replay.ts';
-import { contentOf, PRODUCER, recordScript, roundTrip } from './replay.test-support.ts';
+import { contentOf, gameplayDigest, PRODUCER, recordScript, roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
 import { snapshotHash, snapshotText, type GameSnapshot } from './snapshot.ts';
 
@@ -23,16 +24,17 @@ const INPUT = chainInput();
 const CONTENT = contentOf(INPUT);
 
 /** The run with a checkpoint every tick, reading projection, Render State and snapshot after every step. */
-function recordReading(): { readonly recording: Recording; readonly snapshots: readonly GameSnapshot[] } {
+function recordReading(): { readonly recording: Recording; readonly snapshots: readonly GameSnapshot[]; readonly renders: readonly RenderState[] } {
   const session = createRecordingSession(INPUT, { producer: PRODUCER, checkpointInterval: 1 });
   const snapshots: GameSnapshot[] = [];
+  const renders: RenderState[] = [];
   for (let tick = 1; tick <= CHAIN_TICKS; tick++) {
     session.step(chainScript(tick));
     session.projection();
-    session.renderState();
+    renders.push(session.renderState());
     snapshots.push(session.snapshot());
   }
-  return { recording: session.exportRecording(), snapshots };
+  return { recording: session.exportRecording(), snapshots, renders };
 }
 
 const READ = recordReading();
@@ -60,15 +62,41 @@ const typesOf = (recording: Recording) => new Set(recording.result.events.map(({
 
 // Whole runs recorded and replayed: 0.5–1.7 s per case alone, up to 6.8 s in full runs at load 50.
 describe('map and Warp replay (P3-09 AC-11; MW-14)', { timeout: 30_000 }, () => {
+  // P3-12/10 (docs/plan/p3/02/spec.md, FS-08): the presentation facts change no rule outcome or draw; the digest is the
+  // one this run had before them (replay.test-support.ts).
+  // P3-03 修订 4 (P3-13/11) raised the slice definition version to 7, which the synthetic identity in the snapshot carries;
+  // the rules and draws are unchanged.
+  // P3-13/24 gave the synthetic package the shapes of the shipped HUD content and texts (drawable by the cockpit), which
+  // the synthetic identity in the snapshot carries; the rules and draws are unchanged.
+  it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
+    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('b177a380e4e33cec');
+  });
+
+  // P3-12/32 (docs/plan/p3/02/spec.md, FS-12): the speed share at every tick's end, against the snapshot's player speed
+  // with the player's +0xB8 = 64: A = min(100, trunc(v × 100) idiv 64) in the flight views, W = min(100, trunc(v × 100
+  // ÷ 64)) in the Warp view (equal for an integral +0xB8), 0 in the map.
+  it('gives the speed share of the view at every tick\'s end', () => {
+    const views = new Set<number>();
+    READ.renders.forEach(({ tick, viewMode, speedShare }, index) => {
+      const { player, entities } = READ.snapshots[index].state;
+      const speed = entities.find(({ id }) => id === player.entityId)?.movement?.speed ?? 0;
+      const expected = viewMode === 8 ? 0 : Math.min(100, Math.trunc(Math.trunc(speed * 100) / 64));
+      expect(speedShare, `tick ${tick} in view ${viewMode}`).toBe(expected);
+      if (speedShare > 1) views.add(viewMode);
+    });
+    expect([...views].sort()).toEqual([1, 0x0c]);
+  });
+
   it('has the whole chain in the recorded run', () => {
-    for (const type of ['map-toggled', 'warp-destination-set', 'target-changed', 'warp-started', 'left-page-changed', 'warp-completed', 'object-destroyed'] as const) {
+    for (const type of ['map-toggled', 'warp-destination-set', 'target-changed', 'warp-started', 'left-page-changed', 'warp-completed', 'object-destroyed', 'view-switched'] as const) {
       expect(typesOf(RECORDING).has(type), type).toBe(true);
     }
     expect(RECORDING.record).toMatchObject({ version: GAME_REPLAY_VERSION, rulesVersion: RULES_VERSION });
     // Merged with P3-10, whose own increment also took 5 (CB-16): the merge took 6, and P3-08/12 7 (CR-25); P3-08's
-    // drop-transponder took the replay format to 3; P3-11/08 the rules to 8 and the merge with P3-14/08 to 9, leaving
-    // the replay format (ME-16, FA-08).
-    expect([GAME_REPLAY_VERSION, RULES_VERSION]).toEqual([3, 9]);
+    // drop-transponder took the replay format to 3; P3-11/08 (ME-16) and P3-12/10 (FS-08) each took the rules to 8 on
+    // their branches, and their merge to 9, leaving the replay format; P3-13/12 (CK-05) took the rules to 10, again
+    // leaving the replay format, and the merge with P3-14/08 (FA-08) to 11, leaving it too.
+    expect([GAME_REPLAY_VERSION, RULES_VERSION]).toEqual([3, 11]);
   });
 
   it('reproduces every event and the snapshot at every checkpoint after a JSON round trip', () => {
@@ -139,6 +167,8 @@ describe('map and Warp replay (P3-09 AC-11; MW-14)', { timeout: 30_000 }, () => 
       // P3-11/08's increment (ME-16): a record of the rules before its events replays no tick.
       ['the rules version before P3-11', (record: Mutable) => { record.rulesVersion = 7; }, 'record.rulesVersion'],
       ['a later rules version', (record: Mutable) => { record.rulesVersion = RULES_VERSION + 1; }, 'record.rulesVersion'],
+      // P3-12/10's increment (FS-08): records of the rules before it are not migrated.
+      ['the rules version before P3-12/10', (record: Mutable) => { record.rulesVersion = 7; }, 'record.rulesVersion'],
       ['a select beyond the right edge', at(5, { ...select, right: 1.5 }), 'record.ticks[5].commands[0].right'],
       ['a select above the top edge', at(5, { ...select, down: -0.25 }), 'record.ticks[5].commands[0].down'],
       ['a select at NaN', at(5, { ...select, right: Number.NaN }), 'record.ticks[5].commands[0].right'],

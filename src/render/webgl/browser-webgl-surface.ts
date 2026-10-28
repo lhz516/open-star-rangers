@@ -2,12 +2,13 @@
  * Browser factory for the WebGL drawing port: creates the canvas and a WebGL 2 `WebGLRenderer`,
  * named and colour-managed as the caller's options say, then hands them with ResizeObserver and
  * resolution media-query watchers to the DOM-free surface.
- * Throws, leaving no canvas in the container, when WebGL 2 is unavailable; it never falls back.
- * A RollbackError means the canvas or context it had acquired could not be released.
+ * Throws, leaving no canvas in the container, when WebGL 2 is unavailable, as a GraphicsUnavailableError when the
+ * canvas provides no WebGL 2 context at all; it never falls back. A RollbackError means the canvas or context it had
+ * acquired could not be released.
  */
 import { WebGLRenderer } from 'three';
 import { RollbackError } from '../../app/session/rollback-error.ts';
-import type { RenderSurface, RenderSurfaceOptions } from '../scene/render-surface.ts';
+import { GraphicsUnavailableError, type RenderSurface, type RenderSurfaceOptions } from '../scene/render-surface.ts';
 import { attemptAll } from '../scene/cleanup.ts';
 import { createWebGLSurface } from './webgl-surface.ts';
 
@@ -33,6 +34,7 @@ export function createBrowserWebGLSurface(container: HTMLElement, options: Rende
       canvas,
       maxDrawingBufferSize,
       loseContext,
+      isContextLost: () => gl.isContextLost(),
       placeCanvas(frame) {
         if (!frame) {
           canvas.style.display = 'none';
@@ -61,13 +63,16 @@ export function createBrowserWebGLSurface(container: HTMLElement, options: Rende
       },
     });
   } catch (cause) {
-    // A renderer that failed after acquiring a context leaves it on the canvas; drop it explicitly.
+    // A renderer that failed after acquiring a context leaves it on the canvas, where it can be dropped; a canvas that
+    // still yields none after the renderer failed provides no WebGL 2 at all.
+    const context = renderer ? null : canvas.getContext('webgl2');
     const dropContext = (): void => {
       if (loseContext) loseContext();
-      else if (!renderer) canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext();
+      else context?.getExtension('WEBGL_lose_context')?.loseContext();
     };
     const errors = attemptAll([() => { renderer?.dispose(); }, dropContext, () => { canvas.remove(); }]);
-    if (errors.length === 0) throw cause;
-    throw new RollbackError(cause, errors, 'WebGL surface creation and cleanup failed');
+    const error = !renderer && context === null ? new GraphicsUnavailableError({ cause }) : cause;
+    if (errors.length === 0) throw error;
+    throw new RollbackError(error, errors, 'WebGL surface creation and cleanup failed');
   }
 }

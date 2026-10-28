@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "04"
-updated: 2026-10-22
+updated: 2026-10-28
 related: [ADR-0004, ADR-0006, ADR-0015, B-001, B-003, B-005, B-006, U-010, U-021, U-031]
 ---
 
@@ -280,6 +280,74 @@ G-02/1 与 G-02/2 是本任务负责的两个 Smacker 过场实例（[P3-01/08](
 #### 验证
 
 由 P3-11 的子任务 16 以 Runtime、Session 与所有者的竞态矩阵验证（AC-11），17 实现结果页与占位，18 在浏览器中验证（AC-12）；本 spec 的既有验收与历史证据不改写。
+
+### 帧后逐 tick 输出（P3-12 的修订）
+
+本节由 P3-12 的子任务 09 加入（2026-10-16），定稿 [P3-12 spec 的共享契约修订（D-01）](../12/spec.md#共享契约修订d-01)中“帧后批次”一行，是 P3-12 关卡 D-01 中属于本 spec 的部分；Core 的事实见 [P3-02 的 P3-12 契约修订](../02/spec.md#p3-12-的契约修订d-01)。前文（包括[运行中衔接](#运行中衔接p3-10-的修订)）与本节不一致时以本节为准。
+
+**批准状态：** 用户于 2026-10-17 明确批准（见[审批](#审批)）。
+
+- **目的：** 表现模块必须按 tick 推进（P3-12 技术决定 1），而一帧可以推进 0 至 5 个 tick。Runtime 已在每个成功 step 后提取该 tick 的 Render State，并在帧后派发全部事件；本修订只把这些已有结果按 tick 分组随帧报告交出，不改变插值所用的两份 Render State（[总计划 §5](../../master-plan.md#5-状态管理与通信约定)），也不增加 tick 中途的回调。
+- **形状：**
+
+  ```ts
+  interface TickEvent {
+    readonly event: DomainEvent;          // 与 Event Bus 派发的是同一个冻结对象
+    readonly commandId: number | null;    // 与派发时的 { commandId } 相同
+  }
+  interface TickOutput {
+    readonly tick: number;                // === render.tick
+    readonly clock: number;               // === render.clock
+    readonly render: RenderState;         // 该 tick 提取的 Render State（同一对象）
+    readonly events: readonly TickEvent[]; // 该 tick 的全部事件，按发出次序
+  }
+  interface FrameReport {
+    // 既有：ticks、capped、stop、cut、transitions
+    readonly outputs: readonly TickOutput[]; // outputs.length === ticks
+  }
+  ```
+
+  `outputs` 按 tick 升序且连续；`ticks` > 0 时最后一项的 `render` 就是帧后 `renderFrame().current`。全部深度冻结；事件对象不复制。
+- **交付：** 次序保持“全部模拟 → Domain Event Bus → 帧消费者”。会话帧 `GameSessionFrame.report` 原样带出 `outputs`；静止帧（进入暂停、保持或停止时）的 `report` 为 null，表示没有 tick。`outputs` 中的事件不再派发到 Event Bus，同一事件不会因两条通道被处理两次：需要逐 tick 推进的消费者（P3-12 的表现模块）只读 `outputs`，不同时订阅同一事件来推进。
+- **故障矩阵：**
+
+  | 情形 | `outputs` |
+  |---|---|
+  | 0 tick 帧 | 空数组 |
+  | n 个成功 tick（含 `capped`） | n 项，至多 `MAX_TICKS_PER_FRAME`（5） |
+  | 运行中衔接截断（`cut: 'transition'`） | 到衔接 tick 为止；之后的保持只有静止帧 |
+  | 录制容量停止（`stop: 'recording-capacity'`） | 被拒 tick 之前的成功前缀；之后只有静止帧 |
+  | step、projection 或 Render State 提取故障 | `frame()` 抛 `faulted`，没有帧报告，本帧的任何 tick 都不交付 |
+  | Event Bus 监听器失败（`listener-failed`） | `frame()` 在整批派发之后抛错，会话按既有规则以 `consumer` 故障，帧消费者收不到本帧 |
+  | 帧消费者自身抛错 | 既有的 `consumer` 故障；不重发本帧 |
+
+- **消费者规则：** 逐 tick 推进的消费者在 `attachRun` 时绑定 owner 与 run，并从当时 `renderFrame().current.tick` 的下一个 tick 起要求连续：`runId` 不符、tick 缺失、倒退或重复都是契约错误，由消费者抛出并按既有政策成为 `consumer` 故障；静止帧与重复的帧通知不推进。P3 不支持在任意 tick 中途挂载后补算：表现模块须在 tick 0（出发保持或首帧之前）接线。
+- **内存：** Runtime 只在下一次 `frame()` 开始之前持有本帧的 `outputs`，不保留历史；每帧至多 5 份 Render State 与 5 × `eventsPerTick` 个事件引用。读取帧报告的其他消费者（开发帧计时、UI 桥接）只复制所需的标量，不长期保存 `outputs`；开发帧计时保留的最近一份报告是有界的单帧。
+- **不变：** `step()` 的返回、录制与 replay（录制只含 tick 输入）、会话状态、取消通知与控制都不变；没有每 tick 的外部钩子或检测器。
+- **验证：** 由 P3-12 的子任务 11 以真实 Runtime 与会话（`ControlledHost`）的 Node 测试验证：0、1、5 tick 与 `capped`；与 `renderFrame()`、Event Bus 派发的同一对象与次序；衔接截断与录制容量停止的前缀；Core 故障与监听器失败不交付；暂停、保持与停止的静止帧；跨运行的 `runId`。P3-12 的子任务 24 以改变帧分组的方式验证规则独立（P3-12 的 AC-17）。本 spec 的既有验收与历史证据不改写。
+
+### 帧后同 tick projection（P3-13 的修订）
+
+本节由 P3-13 的子任务 08 加入（2026-10-28），定稿 [P3-13 spec 的 D-01](../13/spec.md#d-01-定稿08) 中“帧后同 tick projection”一项（其 DC-03）；P3-13 的驾驶舱表现模型逐 tick 推进，不能用帧末 projection 倒填中间 tick。前文与本节不一致时以本节为准。**批准状态：** 见[审批](#审批)的 2026-10-28 条。
+
+- **形状：** `TickOutput` 增加一个字段，其余不变：
+
+  ```ts
+  interface TickOutput {
+    readonly tick: number;                 // === render.tick === projection.clock.tick
+    readonly clock: number;                // === render.clock === projection.clock.clock
+    readonly render: RenderState;
+    readonly projection: Projection;       // 新增：#tick 在该次成功 step 之后为读模型取得的同一冻结对象
+    readonly events: readonly TickEvent[];
+  }
+  ```
+
+- **来源：** `#tick` 现有的 `this.#world.projection()` 结果原样放进同项，不再次提取、不复制；`ticks` > 0 时最后一项的 `projection` 就是帧后 `projection()` 返回的对象（与 `render` 和 `renderFrame().current` 的关系相同）。
+- **批次语义：** 与[帧后逐 tick 输出](#帧后逐-tick-输出p3-12-的修订)的故障矩阵相同：0 tick 帧为空数组；至多 `MAX_TICKS_PER_FRAME`（5）项；衔接截断与完成截断交到截断 tick 为止；录制容量停止只交被拒 tick 之前的成功前缀；step、projection 或 Render State 任一提取故障时 `frame()` 抛 `faulted`、本帧没有任何输出。项内三者（`tick`/`clock`、`render`、`projection`）总是同一次 step 的结果，不会出现只有其一的项。
+- **交付与次序：** 不变：全部模拟 → Event Bus → 帧消费者；会话帧 `GameSessionFrame.report` 原样带出，静止帧为 null。逐 tick 推进的消费者只读 `outputs`，不同时订阅同一事件，也不以 `projection()` 的帧末值代替某一中间 tick。
+- **多个逐 tick 消费者（P3-13 的 D-02）：** 驾驶舱表现模型与 P3-14 的音效消费者各自按 tick 升序读取同一批 `outputs`，二者之间没有次序依赖、互不推进或读取对方状态；应用装配分别登记，不依赖监听器注册的偶然次序来保证正确（[P3-13 D-02 定稿](../13/spec.md#d-02-定稿09)）。
+- **内存：** 每帧至多 5 份 projection 引用，Runtime 不保留帧报告之外的历史；消费者不长期保存 `outputs`，只保留自己派生的状态。
+- **验证：** 由 P3-13 的子任务 13 以真实 Runtime 与会话测试：每项的 `projection` 与 `render`、`tick`、`clock` 一致，最后一项与 `projection()` 为同一对象；0、1、5 tick、`capped`、两种截断、录制容量前缀与提取故障；与 Event Bus 的次序。P3-12 已有的输出夹具随之补字段。本 spec 的既有验收与历史证据不改写。
 
 ### Runtime
 
@@ -591,6 +659,16 @@ CLI 始终使用生产来源白名单，不能接受合成光盘作为原版。N
 
 **2026-10-14 修订（P3-10 的 D-01：运行中衔接，依用户授权，由 P3-10 的子任务 08 定稿）：** 只新增“运行中衔接（P3-10 的修订）”一节与本条记录，并改了 front matter 的日期：Core 的 `transition` 事件、Runtime 的帧屏障与 `FrameReport` 的 `cut`、`transitions`、错误类别 `transition-hold` 与生命周期操作 `releaseTransitionBarrier()`、会话的 `RunningTransition` 与有限序列、`complete-transition` 控制与 owner/run/transition 凭证、竞态与 replay。授权出处为用户 2026-10-14 的原话“i authorize you to approve the recommended options for gates 07, 08 and 10”（[P3-10 goal 的审批](../10/goal.md#审批)），不涵盖冻结决定。所选方案：Core 照常完成整个 tick，Runtime 在该 tick 之后截断、先立屏障再派发，会话在通知边界外保持，每次衔接各有凭证，同 tick 的多个衔接为有限序列。被排除的方案：在 tick 中间暂停 Core（违背固定流水线与 replay 不含宿主等待）；由 Event Bus 订阅者在派发中调用 `clearIntent`/`resetClock`（重入生命周期）；只以 runId 作凭证（同一运行的第二次停靠会被旧凭证结束）；每 tick 至多一个衔接（丢弃原版可达的双重离港）。没有新增 S/AC 编号，本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写；实现与验证归 P3-10 的子任务 21 至 23。修订后未重跑 review-spec。
 
+**2026-10-16/17 修订（P3-12 的 D-01：帧后逐 tick 输出，经用户明确批准）：** 由 P3-12 的子任务 09 起草（2026-10-16），新增“[帧后逐 tick 输出（P3-12 的修订）](#帧后逐-tick-输出p3-12-的修订)”一节与本条记录，并改了 front matter 的日期：`FrameReport` 增加 `outputs`（`TickOutput { tick, clock, render, events }`，`TickEvent { event, commandId }`）、故障矩阵、消费者的连续性规则与内存边界；Core 的部分记在 [P3-02 的 P3-12 契约修订](../02/spec.md#p3-12-的契约修订d-01)。所选方案：随帧报告交出 Runtime 已有的逐 tick 结果。被排除的方案：在 Event Bus 中加入 tick 中途回调或按 tick 的二次派发（破坏“全部模拟后派发”的次序，同一事件可能被处理两次）；Runtime 保留多于两份的 Render State 供任意读取（改变总计划 §5 的两帧约定且需无界历史）；让表现模块按事件的 tick 自行分组、只读帧末 Render State（缺少中间 tick 的 Render State，P3-12 spec 已排除）。没有新增 S/AC 编号，本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写；实现与验证归 P3-12 的子任务 11。修订后未重跑 review-spec。
+
+- **批准与用户原话：** 用户于 2026-10-17 经协调者提问（“是否批准 09 的 D-01 共享契约定稿？”）选择“批准，全部按推荐方案 (Recommended)”，批准本节与 [P3-02 的 P3-12 契约修订](../02/spec.md#p3-12-的契约修订d-01)。这是用户本人的批准；不涵盖冻结决定，本修订不改变总计划 §5 的两帧约定。
+
 **2026-10-17 修订（P3-14 的 D-01：任务音频接线，经用户明确批准）：** 用户于 2026-10-17 明确批准，选择“批准全部推荐方案（含三项差异）”（P3-14 spec 的 [D-01 定稿](../14/spec.md#d-01-定稿已批准)，本 spec 相关的是 D1-16）。只新增“[任务音频接线（P3-14 的修订）](#任务音频接线p3-14-的修订)”一节与本条记录：`media` 阶段的控制器与屏障后的存活凭证、`onActivation` 钩子与所有者动作 `enableSound()`、任务暂停门禁的接线、`stopped`/故障/exit 时的运行级失效、`release()` 加入关闭屏障，以及所有者快照的 `MissionSoundStatus`。依赖 P3-11 的部分（拆除时的 `object-retired`、没有玩家实体时警告标志在拆除与重开中的处理、失利处理、救援入口与结果延迟）仍然阻塞，等 P3-11 的契约；05 (c) 的 4、5、8 交 07（D-02）。本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。
 
 **2026-10-22 修订（P3-11 的 D-01：终局与救援衔接，经用户明确批准）：** 用户于 2026-10-22 明确批准 P3-11 关卡 D-01 的全部推荐方案（“批准 D-01 全部推荐”），由 P3-11 的协调者转达。修订只新增“[终局与救援衔接（P3-11 的修订）](#终局与救援衔接p3-11-的修订)”一节与本条记录，并改了 front matter 的日期：`transition` 的 `gap` 加入 G-02/5、G-02/6 并沿用 P3-10 的保持（每 tick 上限仍为 2）；Runtime 的完成截断（`FrameReport` 的 `cut: 'completed'` 与 `completion`、永不解除的完成屏障与 `GameRuntimeError` 的类别 `completed`，会话把它当作非故障的拒绝）；会话阶段 `completed`、冻结的 `SessionResult`、`EndingTransition` 终局序列与取消原因 `mission-complete`；错误与结束的优先级；流程位置 `ending`、`result` 与输入 `run-completed`、`ending-ended`；结果页、重试与返回；UI 桥接的即时发布；`tools/replay-check.ts` 的报告版本 2（`completed`）。前文中“结果（P3-11 接入）”一行与会话表中“新增结果或运行中媒体状态须另行修订”以该节为准。所选方案：终局由会话的 `completed` 阶段持有，复用 `complete-transition` 与逐次凭证，终局占位永不恢复模拟。被排除的方案：只由任务所有者在会话之外显示终局占位（没有凭证与阶段守卫）；完成后解除屏障。Core 一侧的定稿见 [P3-02 的 ME-01 至 ME-19](../02/spec.md#p3-11-的契约修订d-01)。没有新增 S/AC 编号，本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写；实现与验证归 P3-11 的子任务 16 至 18。修订后未重跑 review-spec。
+
+**2026-10-28 修订（P3-13 的 D-01：帧后同 tick projection）：** 由 P3-13 的子任务 08 起草，只新增“[帧后同 tick projection（P3-13 的修订）](#帧后同-tick-projectionp3-13-的修订)”一节与本条记录，并改了 front matter 的日期：`TickOutput` 增加 `projection`，即 `#tick` 已取得的同一冻结对象，批次、故障矩阵、次序与内存边界沿用 P3-12 的修订。所选方案：保留 Runtime 已有的逐 tick 结果。被排除的方案：帧消费者以帧末 projection 代替中间 tick（同帧多 tick 时提前看到未来状态，P3-13 已撤销 Δ-02）；在帧后再次从世界提取或复制（多余的工作，且不同于读模型取得的对象）；新增 tick 中途回调（破坏“全部模拟后派发”的次序）。没有新增 S/AC 编号，本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写；实现与验证归 P3-13 的子任务 13。修订后未重跑 review-spec。
+
+**2026-10-28 P3-13 D-01 同步批准：** 用户于 2026-10-28 执行 P3-13 goal 时明确授权：“在执行goal的过程中，如果需要修改spec或其他Decision，我都批准你修改。用任何方式来unblock任何问题，完成这个goal。”协调者据此在 P3-13/08 复核并批准本 spec 中为 [P3-13 D-01 定稿](../13/spec.md#d-01-定稿08)所做的同步修订；只批准这些修订，其余已批准内容不变。
+
+**2026-10-28 P3-13 D-02 同步批准：** 在“帧后同 tick projection（P3-13 的修订）”中加入“多个逐 tick 消费者”一条：P3-13 的 D-02 定稿不建共享提示模型，驾驶舱表现与音效消费者各自读同一批输出。用户于 2026-10-28 执行 P3-13 goal 时明确授权：“在执行goal的过程中，如果需要修改spec或其他Decision，我都批准你修改。用任何方式来unblock任何问题，完成这个goal。”协调者据此在 P3-13/09 批准这一同步；其余内容不变。

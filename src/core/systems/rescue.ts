@@ -10,7 +10,7 @@
  *   the rescue count stays 2 until the latch captures and clears it.
  * - Otherwise the rescue, in the original's order: the dead flag cleared, `fullRepair` (its selection messages handled
  *   by both callers' message loops, so each advance emits `weapon-selected`), the weapon block `0x2d400`, the resources
- *   `0x3060c` at the sample (one draw), the view and the previous view 0xC; the base selection (one draw, or none) and
+ *   `0x3060c` at the sample (one draw, and one energy-page redraw, CK-02), the view and the previous view 0xC; the base selection (one draw, or none) and
  *   the player record's rewrite, then its placement (no draw from a stored point, two from the world default); the
  *   view switch from the old view (leaving the Warp abandons it, MW-09); object state 7 and sub-state 0; the block
  *   rebuilt in mode 0; the communication limits cleared and the count increased; `player-rescued` and its `transition`
@@ -23,6 +23,7 @@
 import type { CraftRecord } from '../../content/rule-data/craft-info.ts';
 import { CoreFaultError } from '../errors.ts';
 import { initialiseResources, rebuildWeaponBlock, type CraftEntity } from '../rules/combat-init.ts';
+import { countEnergyPageRedraw } from '../rules/displays.ts';
 import { RandStream } from '../rules/original-random.ts';
 import { replaceRescueRecord, rescueMovementBlock, rescuePoint, selectRescueBase } from '../rules/rescue.ts';
 import { PLAYER_KIND_BIT } from '../rules/spawn-schedule.ts';
@@ -35,7 +36,7 @@ import { clearCommunicationLimits } from './comm-reactions.ts';
 import { latch } from './mission-flow.ts';
 import { emit, type TickContext } from './pipeline.ts';
 import { disableSpawning, matrixOf, placeWorldRecord } from './spawn.ts';
-import { switchView } from './view-switch.ts';
+import { commitViewSwitch } from './view-switch.ts';
 
 const fault = (site: string): CoreFaultError => new CoreFaultError('invariant-violated', `rescue.${site}`);
 
@@ -70,15 +71,13 @@ export function resolvePlayerLoss(context: TickContext, loss: PlayerLoss): void 
     return;
   }
   const { player, craft, record, movement } = rescueSubject(world);
-  const oldViewMode = state.viewMode;
   const rand = new RandStream(world.rngState);
   // 0x67b98.
   player.destroyed = false;
   fullRepair(context, player, true);
   rebuildWeaponBlock(player, craft);
   initialiseResources(player, craft, world.clock, rand);
-  state.viewMode = COCKPIT_VIEW_MODE;
-  state.previousViewMode = COCKPIT_VIEW_MODE;
+  countEnergyPageRedraw(state);
   const { base, candidates } = selectRescueBase(world.entities, rand);
   replaceRescueRecord(record, rescuePoint(base));
   const { position, attitude } = placeWorldRecord(world, record, rand);
@@ -86,8 +85,10 @@ export function resolvePlayerLoss(context: TickContext, loss: PlayerLoss): void 
   player.position = position;
   player.orientation = matrixOf(attitude);
   player.placementSerial++;
-  // The rest of 0x32e14.
-  const page = switchView(world, COCKPIT_VIEW_MODE, oldViewMode);
+  // `0x67b98`'s view 0xC with previous 0xC (sub-mode unchanged), then the rest of 0x32e14's `0x3f158(0xC, old)`; nothing
+  // between reads the view. The shared switch emits `view-switched`; the rescue hides the player's model (P3-12, FS-02).
+  const page = commitViewSwitch(context, COCKPIT_VIEW_MODE, COCKPIT_VIEW_MODE);
+  state.modelShown = false;
   if (page !== null) emit(context, { type: 'left-page-changed', tick: time.tick, ...page, commandIndex: null });
   player.state = 'active';
   flow.subState = 0;

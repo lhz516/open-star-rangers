@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { AssetId } from '../../content/asset-id.ts';
 import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import { readCraftInfo } from '../../content/rule-data/craft-info.ts';
 import { craft, gun, missile, mount, syntheticCraftInfo } from '../../content/rule-data/rule-data.test-support.ts';
@@ -10,7 +11,7 @@ import { snapshotText } from '../replay/snapshot.ts';
 import { buildWeaponBlock, type CraftEntity } from '../rules/combat-init.ts';
 import { blankCraftCombat, SUBSYSTEM_COUNT, type Entity, type EntityInit, type SteeredMovementBlock, type SubsystemState } from '../world/entity-table.ts';
 import { constructWorld } from '../world/world.ts';
-import { addPlayerEntity, entityInit, expectFault, stateText, testState, TEST_ORIENTATION, tickInput } from '../world/world.test-support.ts';
+import { addPlayerEntity, entityInit, expectFault, stateText, testState, TEST_MODEL, TEST_ORIENTATION, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { displayDistance, projectCombat } from './combat.ts';
 import { projectWorld, type CombatPlayer, type CombatTarget } from './projection.ts';
@@ -71,6 +72,10 @@ function combatPlayer(state: WorldState): CombatPlayer {
 }
 
 const targetOf = (state: WorldState): CombatTarget | null => combatPlayer(state).target;
+
+/** The loaded readings of the synthetic gun (+0x08 2.5, lifetime 40) and missiles (body 0's +0xB8 4, lifetime 320). */
+const GUN = { speed: 2.5, range: 1.5625 };
+const MISSILE = { speed: 4, range: 20 };
 
 describe('flight.combat readiness (CR-12, AC-04)', () => {
   it('is ready with a null player before the player entity exists, beside the motion group it leaves alone', () => {
@@ -134,13 +139,15 @@ describe('flight.combat readings (CR-12, AC-04)', () => {
         targetMode: 'friendly',
         target: {
           entityId: target.id, kindBit: 7, name, position: { x: 0, y: 0, z: 100 }, orientation: [...TEST_ORIENTATION],
-          distance: 100, speed: 37.5, shield: { current: 120, maximum: 450 }, activeState: true,
+          distance: 100, speed: 37.5, shield: { current: 120, maximum: 450 },
+          // CK-03: the model presentation's Asset and kind 7's craft record +0x08.
+          model: TEST_MODEL, craftAt08: 1, activeState: true,
         },
         radar: {
           status: 1,
           contacts: [
-            { entityId: wingman.id, offset: { x: 300, y: 0, z: 0 }, class: 'friendly', missile: false, near: true, target: false },
-            { entityId: target.id, offset: { x: 0, y: 0, z: 100 }, class: 'hostile', missile: false, near: true, target: true },
+            { entityId: wingman.id, offset: { x: 300, y: 0, z: 0 }, position: { x: 300, y: 0, z: 0 }, class: 'friendly', missile: false, near: true, target: false },
+            { entityId: target.id, offset: { x: 0, y: 0, z: 100 }, position: { x: 0, y: 0, z: 100 }, class: 'hostile', missile: false, near: true, target: true },
           ],
         },
         resources: {
@@ -152,9 +159,9 @@ describe('flight.combat readings (CR-12, AC-04)', () => {
         },
         allocation: { shieldLevel: 3, chargeLevel: 0 },
         weapons: [
-          { index: 0, mount: 0, weapon: { asset: state.craftInfo.id, family: 'gun', index: 0 }, ammunition: null, damage: 0, status: 0 },
+          { index: 0, mount: 0, weapon: { asset: state.craftInfo.id, family: 'gun', index: 0 }, ammunition: null, damage: 0, status: 0, ballistics: GUN },
           // Mount 3's alternate chain holds 3 + 4 rounds; mount 4 on it is damaged.
-          { index: 0, mount: 3, weapon: { asset: state.craftInfo.id, family: 'missile', index: 1 }, ammunition: 7, damage: 0, status: 1 },
+          { index: 0, mount: 3, weapon: { asset: state.craftInfo.id, family: 'missile', index: 1 }, ammunition: 7, damage: 0, status: 1, ballistics: MISSILE },
         ],
         // At clock 0: 100 × 32 ÷ 64 at level 3.
         lock: { level: 3, losing: false, progress: 50 },
@@ -162,8 +169,23 @@ describe('flight.combat readings (CR-12, AC-04)', () => {
         leftPage: 1,
         // +0xC8 = 0: lit; not in view 1: no page.
         warp: { indicator: true, page: null },
+        // CK-03: the creation values.
+        statusDisplay: { blink: 0, rebuilds: 0 },
+        energyPageRedraws: 0,
       },
     });
+  });
+
+  it('gives the status display\'s phase and rebuild count and the energy-page redraw count, and reading them changes nothing (CK-03)', () => {
+    const [state] = combatWorld();
+    Object.assign(state.player.statusDisplay, { blink: 1, blinkDueClock: 70, redraw: true, phaseFlipped: true, rebuilds: 5 });
+    state.player.energyPageRedraws = 7;
+    const text = stateText(state);
+    const first = combatPlayer(state);
+    expect({ statusDisplay: first.statusDisplay, energyPageRedraws: first.energyPageRedraws }).toEqual({ statusDisplay: { blink: 1, rebuilds: 5 }, energyPageRedraws: 7 });
+    expect(first.statusDisplay).not.toBe(state.player.statusDisplay);
+    expect(combatPlayer(state)).toEqual(first);
+    expect(stateText(state)).toBe(text);
   });
 
   it('is deeply frozen, detached from the world and unchanged by later ticks', () => {
@@ -194,7 +216,7 @@ describe('flight.combat target (T7)', () => {
     expect(targetOf(state)).toBeNull();
     const target = add(state, 7, at(0, 0, 100));
     state.player.target = target.id;
-    expect(Object.keys(targetOf(state)!)).toEqual(['entityId', 'kindBit', 'name', 'position', 'orientation', 'distance', 'speed', 'shield', 'activeState']);
+    expect(Object.keys(targetOf(state)!)).toEqual(['entityId', 'kindBit', 'name', 'position', 'orientation', 'distance', 'speed', 'shield', 'model', 'craftAt08', 'activeState']);
     target.destroyed = true;
     target.state = 'destroyed-source';
     expect(targetOf(state)?.entityId).toBe(target.id);
@@ -211,6 +233,24 @@ describe('flight.combat target (T7)', () => {
     (missile.movement as SteeredMovementBlock).speed = 12.5;
     state.player.target = missile.id;
     expect(targetOf(state)).toMatchObject({ kindBit: 20, speed: 12.5, shield: null });
+  });
+
+  it('gives the model of a model presentation and the craft record +0x08 of kind bits 0–19 only (CK-03)', () => {
+    const [state] = combatWorld(at(0, 0, 0), (info) => { info.craft[19] = craft({ at08: -2.5 }); });
+    const read = (kindBit: number) => {
+      state.player.target = add(state, kindBit, at(0, 0, 100)).id;
+      const { model, craftAt08 } = targetOf(state)!;
+      return { model, craftAt08 };
+    };
+    expect(read(7)).toEqual({ model: TEST_MODEL, craftAt08: 1 });
+    expect(read(19)).toEqual({ model: TEST_MODEL, craftAt08: -2.5 });
+    // A missile (kind 20) has no craft record and a missile presentation; the map marker (25) has no model.
+    expect(read(20)).toEqual({ model: null, craftAt08: null });
+    expect(read(25)).toEqual({ model: null, craftAt08: null });
+    // The model is the one frozen at allocation, not one looked up from the visible set.
+    const other = 'model/test/other' as AssetId;
+    state.player.target = add(state, 8, at(0, 0, 50), { presentation: { type: 'model', model: other } }).id;
+    expect(targetOf(state)?.model).toBe(other);
   });
 
   // P3-14 FA-02: the lock tone's −1 for a target whose state is below 7, whatever its activity (A-06).
@@ -292,8 +332,8 @@ describe('flight.combat weapons (W1–W3, W8)', () => {
     ] as const) {
       Object.assign(selections[1], { index, mount });
       expect(combatPlayer(state).weapons).toEqual([
-        { index: 1, mount: 2, weapon: reference('missile', 0), ammunition: 2, damage: 0, status: 0 },
-        { index, mount, weapon, ammunition, damage: 0, status: 0 },
+        { index: 1, mount: 2, weapon: reference('missile', 0), ammunition: 2, damage: 0, status: 0, ballistics: MISSILE },
+        { index, mount, weapon, ammunition, damage: 0, status: 0, ballistics: weapon.family === 'gun' ? GUN : MISSILE },
       ]);
     }
   });
@@ -301,7 +341,19 @@ describe('flight.combat weapons (W1–W3, W8)', () => {
   it('gives no mount, weapon, rounds or damage for an empty list, whose index may be −1', () => {
     const [state, player] = combatWorld(at(0, 0, 0), (info) => { info.craft[0].mountLists[1] = []; });
     player.combat.weapons.selections[1].index = -1;
-    expect(combatPlayer(state).weapons[1]).toEqual({ index: -1, mount: null, weapon: null, ammunition: null, damage: null, status: 0 });
+    expect(combatPlayer(state).weapons[1]).toEqual({ index: -1, mount: null, weapon: null, ammunition: null, damage: null, status: 0, ballistics: null });
+  });
+
+  it('gives the loaded speed +0x08 and range +0x0C: a gun\'s own, a missile\'s from its body record (CK-03)', () => {
+    const [state] = combatWorld(at(0, 0, 0), (info) => {
+      info.guns[0] = gun({ at08: 3, at24: 100 });
+      info.missiles[1] = missile({ at34: 64, body: 1, at44: 96 });
+      info.missileBodies[1] = { ...info.missileBodies[1], atB8: Math.fround(0.1) };
+    });
+    const [main, missiles] = combatPlayer(state).weapons;
+    // 100 × 1/64 × 3 = 4.6875; 96 × 1/64 × f32(0.1) stored as f32.
+    expect(main.ballistics).toEqual({ speed: 3, range: 4.6875 });
+    expect(missiles.ballistics).toEqual({ speed: Math.fround(0.1), range: Math.fround(1.5 * Math.fround(0.1)) });
   });
 
   it('gives the current mount\'s damage and the list status over every entry\'s walk', () => {

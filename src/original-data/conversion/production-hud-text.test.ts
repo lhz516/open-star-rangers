@@ -81,14 +81,14 @@ describe('production HUD text', () => {
     expect(diagnoseSourceMappings(PRODUCTION_HUD_TEXT_MAPPINGS, [HUD_TEXT_ASSET]).map(({ code }) => code)).toEqual(['source-unverified']);
   });
 
-  it('fills every production region with a synthetic text of its length that fits its key, bytes 128–255 included', () => {
+  it('fills every production region with a synthetic text of its length that fits its key, within the HUD font character maps', () => {
     expect(PRODUCTION_HUD_TEXT_REGION_WRITES).toHaveLength(64);
     HUD_TEXT_KEYS.forEach((key, index) => {
       const text = SYNTHETIC_HUD_TEXT.entries[key];
       expect(text.length + 1, key).toBe(ORACLE[index][1]);
       expect(matchesHudTextFormat(key, text), key).toBe(true);
     });
-    expect(Object.values(SYNTHETIC_HUD_TEXT.entries).join('')).toMatch(/[\x80-\xff]/);
+    expect(Object.values(SYNTHETIC_HUD_TEXT.entries).join('')).toMatch(/^[\x20-\x7a\x7c-\x7e]+$/);
     expect(syntheticRegionText('targetCraftPercent', 6)).toMatch(/^%\.0f%%$/);
     expect(() => syntheticRegionText('targetCraftPercent', 5)).toThrow();
     expect(HUD_TEXT_KEYS.filter(key => HUD_TEXT_FORMATS[key] !== null)).toHaveLength(39);

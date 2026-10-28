@@ -13,7 +13,9 @@ import { decodeLogicPayload } from '../src/content/logic/logic-payload.ts';
 import { readGroupManifest } from '../src/content/manifest.ts';
 import { readPayloadRecords } from '../src/content/payload.ts';
 import { decodeRuleDataPayload } from '../src/content/rule-data/rule-data-payload.ts';
-import { COMMAND_OUTCOMES, COMMAND_RESULT_REASONS, type CommandOutcome, type DomainEvent } from '../src/core/contracts/domain-events.ts';
+import {
+  COMMAND_OUTCOMES, COMMAND_RESULT_REASONS, EXPLOSION_CONSTRUCTION_STAGES, PIPELINE_STAGE_NAMES, type CommandOutcome, type DomainEvent,
+} from '../src/core/contracts/domain-events.ts';
 import { CORE_LIMITS } from '../src/core/contracts/limits.ts';
 import { COMMAND_TYPES, type Command, type CommandType, type TickInput } from '../src/core/contracts/tick-input.ts';
 import { CoreFaultError, CoreInputError } from '../src/core/errors.ts';
@@ -97,7 +99,7 @@ export type ReplayCheckOptions = PackageCheckOptions;
  * version with SHA-256 manifest and source fingerprints. The test pins this value to the derivation, so a change to a
  * Core capacity or format changes it on purpose, together with the tool guide.
  */
-export const RECORDING_MAX_BYTES = 534_251_135;
+export const RECORDING_MAX_BYTES = 534_251_136;
 
 /** The longest JSON text of a finite number in [-1, 1]: the longest of any finite number. */
 const LONGEST_NUMBER = -0.0000012345678901234567;
@@ -309,6 +311,18 @@ const LONGEST_EVENTS: { readonly [Type in DomainEvent['type']]: Extract<DomainEv
   'mission-completed': { type: 'mission-completed', tick: LAST_TICK, outcome: 'success' },
   'wingman-loss-timer-started': { type: 'wingman-loss-timer-started', tick: LAST_TICK, wingmanEntityId: SAFE, dueClock: SAFE },
   'wingman-loss-timer-expired': { type: 'wingman-loss-timer-expired', tick: LAST_TICK, queued: false },
+  // P3-12's (docs/plan/p3/02/spec.md, FS-03): f32 poses, the longest stage names and a switch with the player's pose.
+  'explosion-created': {
+    type: 'explosion-created', tick: LAST_TICK, entityId: SAFE, sourceEntityId: SAFE, sourceKindBit: 31, variant: 'missile',
+    stage: longestOf(EXPLOSION_CONSTRUCTION_STAGES), position: { x: LONGEST_F32, y: LONGEST_F32, z: LONGEST_F32 },
+    velocity: { x: LONGEST_F32, y: LONGEST_F32, z: LONGEST_F32 },
+  },
+  'view-switched': {
+    type: 'view-switched', tick: LAST_TICK, fromViewMode: LONGEST_VIEW_MODE, fromSubMode: 0xff, viewMode: LONGEST_VIEW_MODE, subMode: 0xff,
+    stage: longestOf(PIPELINE_STAGE_NAMES),
+    player: { entityId: SAFE, position: { x: LONGEST_F32, y: LONGEST_F32, z: LONGEST_F32 }, orientation: Array.from({ length: 9 }, () => LONGEST_F32) as unknown as Matrix3 },
+  },
+  'warp-wall-contact': { type: 'warp-wall-contact', tick: LAST_TICK, serial: SAFE },
   // P3-14's (FA-07): the longer of the two states.
   'object-retired': { type: 'object-retired', tick: LAST_TICK, entityId: SAFE, kindBit: 31, state: 'pending-removal' },
 };

@@ -71,7 +71,8 @@ export type NameReference =
   | { readonly type: 'map-marker' };
 
 /** The three explosion variants Core creates (mb +0xF0 = 0, 2, 3); variant 1 is the presentation layer's (CR-11). */
-export type ExplosionVariant = 'large' | 'other' | 'missile';
+export const EXPLOSION_VARIANTS = Object.freeze(['large', 'other', 'missile'] as const);
+export type ExplosionVariant = (typeof EXPLOSION_VARIANTS)[number];
 
 /**
  * What a renderer draws, a closed union fixed at allocation (docs/plan/p3/02/spec.md, CR-02): the model Asset of a
@@ -1227,7 +1228,6 @@ function isValidCraftCombat(combat: CraftCombat): boolean {
 }
 
 const MISSILE_PROGRAMS: readonly string[] = ['unguided', 'heat-seeker', 'homing'];
-const EXPLOSION_VARIANTS: readonly string[] = ['large', 'other', 'missile'];
 
 function isValidMissileCombat({ missile, shooter, target, launchByte, program, detonate, contact, guidance, homing }: MissileCombat): boolean {
   return isIndex(missile) && isNullableId(shooter) && isNullableId(target) && isUpTo(launchByte, 4) && MISSILE_PROGRAMS.includes(program)
@@ -1250,7 +1250,7 @@ function isValidCombat(combat: EntityCombat): boolean {
     case 'explosion':
       return isEntityId(combat.source)
         && (isCraftKindBit(combat.sourceKindBit) || combat.sourceKindBit === MISSILE_KIND_BIT || combat.sourceKindBit === FRAGMENT_KIND_BIT)
-        && EXPLOSION_VARIANTS.includes(combat.variant) && isNullableId(combat.heldSource)
+        && (EXPLOSION_VARIANTS as readonly string[]).includes(combat.variant) && isNullableId(combat.heldSource)
         && isNullableClock(combat.activationClock) && isNullableClock(combat.removalAfterClock);
     case 'fragment':
       // Only part 0 of a kind 1 or 2 source, the escape pod, has no DEBRIS parameters (craft §4.1).

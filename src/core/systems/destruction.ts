@@ -20,6 +20,7 @@
  * 28 ticks after the activation with 12 frames and 14 with 6; the explosion asks for removal 49 ticks after it. Objects
  * made during object update are visited in the same walk, so they start one tick earlier.
  */
+import { EXPLOSION_CONSTRUCTION_STAGES, type ExplosionConstructionStage, type PipelineStageName } from '../contracts/domain-events.ts';
 import { CoreFaultError } from '../errors.ts';
 import { activateExplosion, explosionFrameCount, explosionInit, explosionUpdate, playerExplosionDue } from '../rules/explosions.ts';
 import { expiryOutcome, firstExpiry, fragmentInit, isExpiryDue, SPENT_EXPIRY } from '../rules/fragments.ts';
@@ -61,12 +62,36 @@ function explosionOf(entity: Entity): ExplosionCombat {
   return entity.combat;
 }
 
+const isConstructionStage = (stage: PipelineStageName): stage is ExplosionConstructionStage =>
+  (EXPLOSION_CONSTRUCTION_STAGES as readonly PipelineStageName[]).includes(stage);
+
+/** `explosion-created` for `explosion` just built from `source` (FS-03): the construction position and the drift velocity. */
+function emitExplosionCreated(context: TickContext, explosion: Entity, source: Entity): void {
+  const combat = explosionOf(explosion);
+  const { stage } = context;
+  if (!isConstructionStage(stage)) throw fault('construction-stage');
+  const { movement } = explosion;
+  if (movement?.mode !== 'linear') throw fault('explosion-movement');
+  emit(context, {
+    type: 'explosion-created',
+    tick: context.time.tick,
+    entityId: explosion.id,
+    sourceEntityId: source.id,
+    sourceKindBit: combat.sourceKindBit,
+    variant: combat.variant,
+    stage,
+    position: explosion.position,
+    velocity: movement.velocity,
+  });
+}
+
 /**
  * `0x23ac8` on `source` (X2), a direct call without a request. Nothing for a source that was removed or has no movement
  * block. For the player (kind 1) it only arms the delay at the clock + 0xC0 and builds nothing, while the delay is
  * unset or not yet past; the `delayed-player-explosion` stage calls it again once the clock is past it, which clears
  * the delay and builds. Otherwise, in order: the explosion is allocated; the source becomes a destroyed source (still
- * moved, no longer updated); a craft sheds its fragments; the explosion holds a source that is no craft or shed none.
+ * moved, no longer updated); `explosion-created` (FS-03); a craft sheds its fragments; the explosion holds a source that
+ * is no craft or shed none.
  */
 export function constructExplosion(context: TickContext, source: Entity): void {
   const { world } = context;
@@ -79,6 +104,7 @@ export function constructExplosion(context: TickContext, source: Entity): void {
   }
   const explosion = world.entities.allocate(explosionInit(source));
   source.state = 'destroyed-source';
+  emitExplosionCreated(context, explosion, source);
   if (source.combat.type !== 'craft' || !shedFragments(world, source)) explosionOf(explosion).heldSource = source.id;
 }
 
@@ -221,11 +247,12 @@ export function releaseHeld(context: TickContext, entity: Entity, _request: Requ
 
 /**
  * Message 0x2000000 (`0x2574c`) on the source part 0 held (X7): the source becomes pending removal, except the player,
- * which stays a destroyed source (the original only hides its model, P3-12); then `source-released`.
+ * which stays a destroyed source and whose model is hidden (FS-02); then `source-released`.
  */
 export function handOff(context: TickContext, source: Entity, request: RequestOf<'hand-off'>): void {
   const removed = source.kindBit !== PLAYER_KIND_BIT;
   if (removed) retire(context, source, 'pending-removal');
+  else context.world.player.modelShown = false;
   emit(context, { type: 'source-released', tick: context.time.tick, entityId: source.id, kindBit: source.kindBit, fragmentEntityId: request.fragment, removed });
 }
 

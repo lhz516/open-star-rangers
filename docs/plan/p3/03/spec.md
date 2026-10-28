@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "03"
-updated: 2026-10-15
+updated: 2026-10-28
 related: [ADR-0007, ADR-0015, U-001, U-004, U-008, U-018, U-020, U-022, U-026, U-027, U-028, U-030]
 reviewed: sha256:dc6bc0cbc39a
 ---
@@ -376,6 +376,7 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 - 输出发生变化的转换器，各自递增其组件（例如 `graphics-4`、`logic-2`、`audio-2`、`models-4`，以实际变化为准）。`PRODUCTION_CONVERTER_VERSION` 仍是唯一定义；`PRODUCTION_PACKAGE` 的常量随之更新，并由其测试从 `original-data` 推导核对。
 - 修订 2：logic 组的转换器组件随 `comm-messages` 递增；定义版本为 5；`PRODUCTION_CATALOG` 加入 `MAIN/COMMFACE.NOB`，来源指纹随之改变，用户须重新导入。
 - 修订 3：logic 组的转换器组件随关键字表再递增一次（`logic-3` → `logic-4`），`ai-programs` 的 payload schema 为 2；定义版本、白名单与来源指纹不变（[P3-08 的修订](#p3-08-的修订ai-解析数据修订-3)）。
+- 修订 4：图形组件随仪表调度内容递增（`graphics-5` → `graphics-6`），定义版本为 7（[P3-13 的修订](#p3-13-的修订仪表调度内容修订-4)）。
 - 内容身份为：内容 schema 1、切片 ID `classic-p2-slice`、定义版本 4、新的 `ConverterVersion` 与原有来源。`ManifestIdentity` 的推导机制不变。
 - 导入协议保持版本 5。只有阶段集合或消息形状改变时才递增，并且旧版本的消息被拒绝。
 
@@ -463,6 +464,26 @@ Asset ID 依据已确认的发送者或用途命名，含义未确认的用中�
 - **补充核对（P3-02 的 CR-15 的要求）：** SCEN 头部 +0x0C（选择 flag 与份额的波次模式字）非零时，现有任务读取器已以 `unsupported-payload` 拒绝；对象记录 +0x7C（地图可见基础值）是保留字，SCEN 与 SCCT 的记录非零即拒绝（与[修订 2 的末条](#p3-09-的修订地图几何修订-2)相同）。所以支持的内容中二者恒为 0，不需要补充导入；将来支持非零值时，须同时修订本 spec 的任务内容与 P3-02 的 CR-15、CR-26、MW-01。
 - **实现：** 由 [P3-08 goal](../08/goal.md) 的子任务 13 实现，P3-03 goal 不重新打开；已完成子任务的证据保留。本机真实镜像经 `node tools/package-check.ts` 转换核对，报告只记计数与哈希，私有输出留在 `local/research/p3-08/import/`。
 - **改动的部分：** S-05（前向引用）、S-19（新增）、导入项表、Asset 与角色表的来源部件、规范 payload 中 `ai-programs` 一行的约束、包身份与转换器版本（修订 3 一条）、本节，以及 AC-23（新增）。其余契约不变。
+
+### P3-13 的修订：仪表调度内容（修订 4）
+
+本节由 P3-13 的子任务 08 加入（2026-10-28），定稿 [P3-13 spec 的 D-01](../13/spec.md#d-01-定稿08) 中内容输入的部分；payload 的形状、校验与跨 Asset 核对只记在 [P3-13 的 DC-02](../13/spec.md#dc-02-仪表调度内容-datahudinstruments)，这里只写导入契约。前文各节与本节不一致时以本节为准；其他导入项、角色、限值与错误不变。原版依据：[cockpit 的仪表记录、调度与可见保留](../../../original/formats/cockpit.md#instrument-records-scheduling-and-visible-persistence-p3-1301)。**批准状态：** 见[审批](#审批)的修订 4。
+
+- **Asset 与角色：**
+
+  | Asset ID | kind / 角色 | 内容 | 依赖 | 来源部件 | 映射置信度 |
+  |---|---|---|---|---|---|
+  | `data/hud/instruments` | data / `cockpit-instruments` | CCKD 10103 布局号 0、6、8 三个目录槽的身份、常重绘标志、元素的绘制遍与逐帧标志，以及按源次序的仪表记录（类型、含端点矩形、重绘间隔、+0x14、+0x24 参数表）；右显示屏的观察距离表（20 个 f32） | 无 | `SR.NOB` CCKD 10103：三个目录槽、其元素 +44/+48 与仪表记录数组（子资源）；`SRANGERS.EXE` LE 数据对象中 `0x175424` 起的 80 字节区域（与 `hud-text` 相同的 EXE 区域读取） | `confirmed` |
+
+  不导入记录 +0x1C、+0x20、+0x2C、目录与记录中的任何指针或运行期计时；不导入 LO 套件 10101 与基地 10097。
+- **切片定义版本 7：** `SLICE_DEFINITION_VERSION` 由 6 递增为 7，新增必需角色 `cockpit-instruments`（组 `cockpit-hud-map`，kind `data`，恰为 1）。切片 ID、候选、配置、组与其他角色不变；`LayoutPayload` 的 schema 与最少一个元素的约束不变（布局号 8 的槽没有图像，不制造空布局）。
+- **来源与核验：** 在读取 `data/hud/map-geometry` 的同一次 CCKD 10103 读取中：按目录核对头部与目录范围；按 +0x00 找到布局号 0、6、8 的目录槽（各恰一个，否则 `unsupported-payload`）；元素数组与仪表记录数组（48 字节步长）完整位于条目之内才读取；参数表按 +0x24 的重定位与 +0x28 的项数读取，项数 > 4 为 `limit-exceeded`；+0x24 为空当且仅当 +0x28 = 0，否则为 `unsupported-payload`。布局号 6 的类型 10 记录与 `map-geometry` 来自同一子资源，转换器核对二者的矩形与重绘间隔逐字段相同。观察距离表按 `hud-text` 的 EXE 区域规则读取：区域恰为 80 字节、完整位于 LE 数据对象之内、区域内没有 LE fixup，否则为 `unsupported-payload`；每项须为有限 f32。读取越界为 `invalid-payload`；诊断只含结构路径与下标，不回显数值。
+- **限值与预算：** 每槽的记录数沿用修订 2 的 32；`payloadBytes` 8,192（规范编码估计约 2 KiB，按观测值的 2 倍取整到 2 的幂；实现时以生产转换的观测值核对并记入 [cockpit §3](../../../original/formats/cockpit.md#3-observed-counts-against-the-p2-07-limits-confirmed)）。图形步骤的份额增加 1 个 Asset 与该 payload 的字节数，其余维度不变；`PRODUCTION_PACKAGE.limits` 随之由测试推导核对。
+- **错误：** 内容读取器与跨 Asset 核对的错误沿用 HUD data payload 的 `invalid-flight-data-payload`，路径只含结构名与下标。
+- **包身份与转换器版本：** 图形转换器的组件由 `graphics-5` 递增为 `graphics-6`（相对实际集成基线；实现前若另有任务先递增，则在其上再递增），`PRODUCTION_CONVERTER_VERSION` 随之变为 `osr-import.graphics-6.logic-4.audio-2.models-4`（其他组件以实现时的实际值为准）。内容 schema（1）、导入协议版本（5）、来源白名单与指纹不变。
+- **持久化与兼容：** 切片定义版本 6 的缓存记录报 `cache-incompatible`，旧转换器版本的包不提供恢复，用户须重新导入（[本地导入指南](../../../guides/local-import.md#缓存与重新导入)由实现补说明）；IndexedDB 的数据库版本、记录格式与缓存键结构不变；坏包、取消或写入失败不发布半包，不覆盖已有有效包；旧记录不迁移也不删除。
+- **消费者：** 只有 P3-13 的驾驶舱与地图呈现读取；不进入 Core 的世界创建输入或 setupHash（不是规则数据），所以 `RULES_VERSION` 与 replay 不因本修订改变。
+- **实现：** 由 [P3-13 goal](../13/goal.md) 的子任务 10（payload、读取器与跨 Asset 核对）与 11（转换、角色、Worker、合成包、缓存与本机核对工具）实现，P3-03 goal 不重新打开；已完成子任务的证据保留。
 
 ## 技术决定
 
@@ -618,3 +639,17 @@ P3-08 的关卡 D-03 要求把 AI 脚本参数解析所需的 EXE 关键字表�
 - **所选方案：** 四张关键字表全部导入（表项次序、i32 值、名称字节、终止项、fixup 身份与名称区域都核对），`ai-programs` payload schema 1 → 2，logic 转换器组件与生产 `ConverterVersion` 相对当前合并值递增一次（`logic-3` → `logic-4`），旧缓存不恢复；表内折叠后重复的名称拒绝；分隔符与数值常量作为代码常量不导入；SCEN 头部 +0x0C 与记录 +0x7C 维持由导入拒绝，不补导入。
 - **被排除的方案：** 只导入切片执行的三张表（须在转换器中另证第四张与第一张相同，且不能核对 17 个 fixup 的完整集合）；允许表内重复名称（后者永不命中，说明来源超出研究覆盖）；硬编码名称或导入时把关键字预先解析为数值（违反不在源码写原版文字与“文字按存储保留”的规则，见 P3-08 spec 技术决定 4）；新建独立的角色或 Asset（关键字表只服务于同一 AI 程序输入，新角色会改变切片定义版本与 Core 输入）。
 - 修订后未重跑 review-spec。
+
+### 修订 4（2026-10-28，P3-13 的 D-01）
+
+P3-13 的关卡 D-01 要求把驾驶舱与地图的仪表调度内容作为本 spec 的增量修订定稿（[P3-13 spec 的 D-01](../13/spec.md#d-01-定稿08)）。
+
+- **改动的部分：** 新增“[P3-13 的修订：仪表调度内容（修订 4）](#p3-13-的修订仪表调度内容修订-4)”一节、包身份与转换器版本的修订 4 一条，以及本条记录，并改了 front matter 的日期。没有新增或改动 S/AC 编号；其他导入项、字段处理规则、限值、错误与持久化规则不变；已完成子任务的证据不改写。修订后未重跑 review-spec。
+- **所选方案与理由：** 新增独立的 data 角色 `cockpit-instruments`，与 `LayoutPayload` 分开：布局号 8 的槽没有图像而有一条类型 8 记录，元素的绘制遍/逐帧标志与仪表记录都是 CCKD 的静态字段，原版调度直接读取；绘制与调度不能硬编码这些值（P3-13 技术决定 7）。布局号 6 的类型 10 记录与 `map-geometry` 同源并逐字段核对，主地图只有一份规则定义。右显示屏的观察距离表是 EXE 的数据表而不是代码常量，随同一 Asset 按 `hud-text` 的 EXE 区域规则导入，不写进源码。
+- **被排除的方案：**
+  1. **扩展 `LayoutPayload`：** 改变既有图像布局的 schema 与最少一个元素的约束，且要为布局号 8 制造空布局。
+  2. **把仪表记录并入 `map-geometry`：** 让 setupHash 绑定只供绘制的字段，Core 的输入与 replay 无故改变。
+  3. **导入全部目录槽或 LO 套件：** 超出 P3 的视角范围（P3-13 不包含 F2–F10 与 LO）。
+  4. **导入运行期计时与指针：** 不是内容，原版每次运行改写。
+
+**2026-10-28 P3-13 D-01 同步批准：** 用户于 2026-10-28 执行 P3-13 goal 时明确授权：“在执行goal的过程中，如果需要修改spec或其他Decision，我都批准你修改。用任何方式来unblock任何问题，完成这个goal。”协调者据此在 P3-13/08 复核并批准本 spec 中为 [P3-13 D-01 定稿](../13/spec.md#d-01-定稿08)所做的同步修订；只批准这些修订，其余已批准内容不变。

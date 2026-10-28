@@ -152,11 +152,14 @@ describe('per-tick budget of the map and the Warp (P3-09 AC-11; docs/plan/p3/02/
     // Every command but the last a select (the first creates the marker, the others move it), then a Warp request that
     // starts and completes in the tick, each with its page change.
     const warp = countedTick(mapState(MAP), { axes: { pitch: 0, yaw: 0, roll: 0 }, commands: [...commandsOf(K - 1, select), { type: 'request-warp' }] });
-    expect(countOf(warp.events)).toEqual({ 'command-result': K, 'warp-destination-set': K - 1, 'warp-started': 1, 'left-page-changed': 2, 'warp-completed': 1 });
+    // P3-12 (FS-08): a `view-switched` for the start and one for the completion.
+    expect(countOf(warp.events)).toEqual({
+      'command-result': K, 'warp-destination-set': K - 1, 'view-switched': 2, 'warp-started': 1, 'left-page-changed': 2, 'warp-completed': 1,
+    });
     expect(countOf(warp.requests)).toEqual({ 'map-point': K - 1, 'warp-start': 1 });
     // Every command a toggle, opening and closing in turn.
     const toggles = countedTick(mapState(FLIGHT), { axes: { pitch: 0, yaw: 0, roll: 0 }, commands: commandsOf(K, () => ({ type: 'toggle-map' })) });
-    expect(countOf(toggles.events)).toEqual({ 'command-result': K, 'map-toggled': K });
+    expect(countOf(toggles.events)).toEqual({ 'command-result': K, 'view-switched': K, 'map-toggled': K });
     expect(countOf(toggles.requests)).toEqual({ 'map-toggle': K });
   });
 

@@ -102,7 +102,7 @@ describe('createGameRuntime', () => {
 describe('GameRuntime time', () => {
   it('anchors, steps at 32 Hz, caps at 5 ticks with alpha 0 and drops the remainder', () => {
     const runtime = createGameRuntime(runtimeSpec());
-    const report = (ticks: number, capped = false) => ({ ticks, capped, stop: null, cut: null, transitions: [], completion: null });
+    const report = (ticks: number, capped = false) => ({ ticks, capped, stop: null, cut: null, transitions: [], completion: null, outputs: expect.objectContaining({ length: ticks }) as unknown });
     expect(runtime.frame(0)).toEqual(report(0));
     expect(cachedTick(runtime)).toBe(0);
     expect(runtime.frame(31.25)).toEqual(report(1));

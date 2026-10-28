@@ -22,7 +22,7 @@ import { ALL_KINDS } from '../world/entity-table.ts';
 import type { MissionFlow, MissionResult } from '../world/world-state.ts';
 import { retire } from './object-state.ts';
 import { emit, type TickContext } from './pipeline.ts';
-import { switchView } from './view-switch.ts';
+import { commitViewSwitch } from './view-switch.ts';
 
 /** The view mode of the teardown (`0x334bc`), which has no world to present (P3-12). */
 export const TEARDOWN_VIEW_MODE = 0x13;
@@ -68,10 +68,8 @@ function startTeardown(context: TickContext): void {
   requireEnding(context);
   const { world, time } = context;
   const { player } = world;
-  const oldViewMode = player.viewMode;
-  player.viewMode = TEARDOWN_VIEW_MODE;
-  player.previousViewMode = oldViewMode;
-  const page = switchView(world, TEARDOWN_VIEW_MODE, oldViewMode);
+  // `0x3f158` directly, not `0x216d4`: the shared switch emits `view-switched` and the model flag stays (P3-12, FS-03).
+  const page = commitViewSwitch(context, TEARDOWN_VIEW_MODE, player.viewMode);
   if (page !== null) emit(context, { type: 'left-page-changed', tick: time.tick, ...page, commandIndex: null });
   world.flow.mainState = 1;
   // Through the shared writer, so each active entity's retirement is reported (P3-14 FA-07; the original posts a

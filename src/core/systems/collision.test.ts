@@ -115,6 +115,7 @@ function expected(rule: ContactRule, first: Entity, second: Entity, state: World
 function tickWith(state: WorldState, before: () => void): readonly DomainEvent[] {
   const context = registerTick(state, readTickInput(tickInput()));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     if (stage.id === 'collision') before();
     stage.run?.(context);
   }
@@ -282,8 +283,8 @@ describe('0x29670, the player against the craft (H6, AC-08)', () => {
     quiet(player, 30);
     const [first, second] = [craftAt(state, OTHER, at(1, 0, 0)), craftAt(state, OTHER_14, at(0, 1, 0))];
     const events = world.step(tickInput());
-    // The destruction entry 0x32d74 follows the player's death (P3-11, ME-09).
-    expect(events.map(({ type }) => type)).toEqual(['hit', 'object-destroyed', 'radio-flushed', 'player-loss-started', 'hit', 'hit']);
+    // The destruction entry 0x32d74 follows the player's death (P3-11, ME-09), its switch before its loss (P3-12, FS-03).
+    expect(events.map(({ type }) => type)).toEqual(['hit', 'object-destroyed', 'radio-flushed', 'view-switched', 'player-loss-started', 'hit', 'hit']);
     expect(hitList(events)).toEqual([[player.id, 50], [first.id, 50], [second.id, 50]]);
     expect(events[1]).toMatchObject({ entityId: player.id, outcome: 'delayed', attacker: { type: 'none' }, eventClass: 1 });
     expect(blockOf(player).impulse).not.toBeNull();
@@ -295,8 +296,9 @@ describe('0x29670, the player against the craft (H6, AC-08)', () => {
     const shedding: WorldState = { ...state, ruleData: { ...state.ruleData, craft: kinds } };
     const craft = craftAt(shedding, OTHER, at(1, 0, 0), { hull: 40 });
     const events = constructWorld(shedding).step(tickInput());
-    expect(events.map(({ type }) => type)).toEqual(['hit', 'hit', 'object-destroyed']);
+    expect(events.map(({ type }) => type)).toEqual(['hit', 'hit', 'object-destroyed', 'explosion-created']);
     const [explosion] = shedding.entities.walk(1 << 22);
+    expect(events[3]).toMatchObject({ entityId: explosion.id, sourceEntityId: craft.id, stage: 'collision', position: craft.position });
     const [fragment] = shedding.entities.walk(1 << 24);
     // Its offset weights are 0, so the fragment starts at the craft's centre, 1 from the player, in the DEBRIS shape.
     expect([craft.state, explosion.state, fragment.state, fragment.position]).toEqual(['destroyed-source', 'presentation-ready', 'presentation-ready', craft.position]);
@@ -436,7 +438,7 @@ describe('0x29934, the others against each other (H6, AC-08)', () => {
     const [b1, b2] = [craftAt(state, OTHER, at(1, 0, 0)), craftAt(state, OTHER_14, at(0, 1, 0))];
     const events = world.step(tickInput());
     // Then the area check, without a player entity, retires the two still in state 7 (P3-14 FA-07).
-    expect(events.map(({ type }) => type)).toEqual(['hit', 'object-destroyed', 'hit', 'hit', 'object-retired', 'object-retired']);
+    expect(events.map(({ type }) => type)).toEqual(['hit', 'object-destroyed', 'explosion-created', 'hit', 'hit', 'object-retired', 'object-retired']);
     expect(hitList(events)).toEqual([[member.id, 50], [b1.id, 50], [b2.id, 50]]);
     expect(member.state).toBe('destroyed-source');
     expect(blockOf(b2).impulse).toEqual({ direction: at(0, 0, 1), magnitude: 0 });
@@ -448,7 +450,7 @@ describe('0x29934, the others against each other (H6, AC-08)', () => {
     craftAt(state, OTHER, at(0, 0, 2));
     const events = world.step(tickInput());
     // Player pass: (player, member), (player, kind 13); the destroyed member is not listed for its own pass.
-    expect(events.map(({ type }) => type)).toEqual(['hit', 'hit', 'object-destroyed', 'hit', 'hit']);
+    expect(events.map(({ type }) => type)).toEqual(['hit', 'hit', 'object-destroyed', 'explosion-created', 'hit', 'hit']);
     expect(hitList(events).map(([victim]) => victim)).toEqual([player.id, member.id, player.id, member.id + 1]);
   });
 });

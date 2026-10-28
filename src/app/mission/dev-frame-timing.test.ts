@@ -10,7 +10,7 @@ import { openMission, TestClock, toFlight } from './mission.test-support.ts';
 // P3-04 AC-22, the frame timing window (docs/plan/p3/04/spec.md: 开发诊断, 帧耗时): one clock read just before and one
 // just after each effective Session frame, never the wait between frames, and a failing clock is reported, not 0 ms.
 
-const report = (ticks: number, capped = false, stop: FrameReport['stop'] = null): FrameReport => Object.freeze({ ticks, capped, stop, cut: null, transitions: [], completion: null });
+const report = (ticks: number, capped = false, stop: FrameReport['stop'] = null): FrameReport => Object.freeze({ ticks, capped, stop, cut: null, transitions: [], completion: null, outputs: [] });
 
 /** A timing on a ControlledHost, connected to a stand-in run whose frame listeners the test calls. */
 function setup({ connect = true } = {}) {

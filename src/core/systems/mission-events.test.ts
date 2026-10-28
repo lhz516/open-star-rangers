@@ -47,7 +47,8 @@ function stepped(): { readonly state: WorldState; readonly events: readonly Doma
   return { state, events };
 }
 
-const contextOf = (state: WorldState): TickContext => registerTick(state, readTickInput(tickInput()));
+/** A tick's context outside a step, standing in the collision stage, where these tests' destructions build their explosions (P3-12 FS-03). */
+const contextOf = (state: WorldState): TickContext => Object.assign(registerTick(state, readTickInput(tickInput())), { stage: 'collision' as const });
 
 function weaken(entity: Entity): CraftEntity {
   const craft = entity as CraftEntity;

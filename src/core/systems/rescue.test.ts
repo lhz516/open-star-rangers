@@ -82,7 +82,8 @@ const addAt = (state: WorldState, kindBit: number, x: number, y: number, z: numb
   state.entities.allocate(stillEntityInit(kindBit, { position: { x, y, z } }));
 
 /** A registered tick's context with the mission flow's clock c′ (the clock stage has not run). */
-const flowContext = (state: WorldState): TickContext => registerTick(state, readTickInput(tickInput()));
+/** A tick's context outside a step, standing in the collision stage, where these tests' destructions build their explosions (P3-12 FS-03). */
+const flowContext = (state: WorldState): TickContext => Object.assign(registerTick(state, readTickInput(tickInput())), { stage: 'collision' as const });
 
 /** A registered tick's context in request handling, the clock stored. */
 function requestContext(state: WorldState): TickContext {
@@ -96,6 +97,7 @@ function destroyInTick(state: WorldState, player: Entity): readonly DomainEvent[
   Object.assign((player as CraftEntity).combat, { shield: 0, hull: 1 });
   const context = registerTick(state, readTickInput(tickInput()));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     if (stage.id === 'collision') applyContactDamage(context, player, 5, 'collision');
     stage.run?.(context);
   }
@@ -134,12 +136,14 @@ function expectRescueEvents(events: readonly DomainEvent[], tick: number, loss: 
     { type: 'weapon-selected', tick, entityId, list: 0, index: 0, mount: 0, changed: true, commandIndex: null },
     { type: 'weapon-selected', tick, entityId, list: 1, index: 0, mount: 2, changed: false, commandIndex: null },
   ]);
-  expect(events.slice(3, 5)).toEqual([
+  // The shared switch to the cockpit view (P3-12 FS-03), with the player at its rescue pose.
+  expect(events.slice(3, 6)).toEqual([
+    expect.objectContaining({ type: 'view-switched', tick, viewMode: COCKPIT_VIEW_MODE, player: expect.objectContaining({ entityId, position: rescued.position }) }),
     { type: 'player-rescued', tick, loss, ...rescued },
     { type: 'transition', tick, gap: loss === 'destroyed' ? 'G-02/5' : 'G-02/6' },
   ]);
   // A destruction's escape pod then retires where its state is written (P3-14 FA-07); an energy loss has no pod.
-  expect(events.slice(5)).toMatchObject(loss === 'destroyed' ? [{ type: 'object-retired', tick, kindBit: 24, state: 'pending-removal' }] : []);
+  expect(events.slice(6)).toMatchObject(loss === 'destroyed' ? [{ type: 'object-retired', tick, kindBit: 24, state: 'pending-removal' }] : []);
 }
 
 describe('the rescue 0x32e14/0x67b98 at its entry (ME-10; AC-06)', () => {
@@ -160,6 +164,8 @@ describe('the rescue 0x32e14/0x67b98 at its entry (ME-10; AC-06)', () => {
     state.player.kills = Object.freeze({ ...state.player.kills, 7: 2 });
     Object.assign(state.player.communications.limits, { friendlyHit: 10, friendlyKill: 20 });
     state.player.communications.thanks = 4;
+    Object.assign(state.player.statusDisplay, { phaseFlipped: false, rebuilds: 4 });
+    state.player.energyPageRedraws = 9;
     state.communications.queue.length = 0;
     const playerBefore = structuredClone(state.player);
     const others = [base17, base15, hostile].map((entity) => structuredClone(entity));
@@ -199,11 +205,13 @@ describe('the rescue 0x32e14/0x67b98 at its entry (ME-10; AC-06)', () => {
     // The block in mode 0: F(speed ÷ +0xB8) = 0.25 → throttle 32 → entry 80 (0.25), at the new maximum.
     expect(player.movement).toMatchObject({ mode: 'craft', speed: Math.fround(THROTTLE_TABLE[80] * player.maximumSpeed), locked: false, disturbance: null });
     expect(THROTTLE_TABLE[80]).toBe(0.25);
-    // 0x32e14: views 0xC (the sub-mode kept), the limits cleared, the count; the rest of the player state kept.
+    // 0x32e14: views 0xC (the sub-mode kept), the limits cleared, the count; 0x3060c's energy-page redraw (CK-02); the
+    // rest of the player state kept, the status display's flip flag and rebuild count included (CK-01).
     const { communications } = playerBefore;
     expect(state.player).toEqual({
       ...playerBefore, viewMode: COCKPIT_VIEW_MODE, previousViewMode: COCKPIT_VIEW_MODE,
       communications: { ...communications, limits: { friendlyHit: null, friendlyKill: null } },
+      energyPageRedraws: playerBefore.energyPageRedraws + 1,
     });
     expect(state.flow).toMatchObject({ mainState: 3, subState: 0, rescues: 1, beaconDeadline: 900, dockingDeadline: 77, wingmanLoss: { pending: true, dueClock: 5000 }, result: null });
     expect(state.missionStatus).toBe('built');
@@ -272,6 +280,7 @@ describe('the rescue 0x32e14/0x67b98 at its entry (ME-10; AC-06)', () => {
     resolvePlayerLoss(context, 'energy');
     // The page change comes before player-rescued, which its transition must follow at once (ME-13).
     expect(context.events.filter(({ type }) => type !== 'weapon-selected')).toEqual([
+      expect.objectContaining({ type: 'view-switched', fromViewMode: WARP_VIEW, viewMode: COCKPIT_VIEW_MODE }),
       { type: 'left-page-changed', tick: 1, page: ENERGY_PAGE, previousPage: WARP_PAGE, commandIndex: null },
       expect.objectContaining({ type: 'player-rescued', loss: 'energy' }),
       { type: 'transition', tick: 1, gap: 'G-02/6' },
@@ -337,6 +346,8 @@ describe('the loss handling 0x32e14 at its callers (ME-07, ME-10, ME-13; AC-06, 
     log.push(...destroyInTick(state, player));
     const firstPod = stepUntil(world, log, isPodExpiry);
     expect(state.tick).toBe(1 + POD_EXPIRY_AFTER_DESTRUCTION);
+    // The destruction entry showed the player's model; the rescue hides it again (P3-12 FS-02, `0x67b98`).
+    expect(state.player.modelShown).toBe(false);
     expectRescueEvents(after(firstPod, isPodExpiry), state.tick, 'destroyed', {
       playerEntityId: player.id, rescues: 1, baseEntityId: base.id, candidates: 1, position: { x: 1000, y: 1000, z: 2000 }, orientation: player.orientation,
     });
@@ -376,9 +387,14 @@ describe('the loss handling 0x32e14 at its callers (ME-07, ME-10, ME-13; AC-06, 
     const ending = after(latched, isPodExpiry);
     expect(ending.filter(({ type }) => type !== 'object-retired')).toEqual([
       { type: 'result-latched', tick: state.tick, result },
+      expect.objectContaining({ type: 'view-switched', fromViewMode: DESTRUCTION_VIEW, viewMode: 0x13, stage: 'mission-teardown' }),
       { type: 'teardown-started', tick: state.tick, entities: state.entities.size },
     ]);
-    expect(ending.slice(1, -1).every((event) => event.type === 'object-retired' && event.state === 'pending-removal')).toBe(true);
+    // The pod retires in request handling, before the teardown's switch (P3-12 FS-03); the teardown's retirements follow it.
+    expect(ending.map(({ type }) => type)).toEqual([
+      'result-latched', 'object-retired', 'view-switched', 'object-retired', 'object-retired', 'object-retired', 'teardown-started',
+    ]);
+    expect(ofType(ending, 'object-retired').every((event) => event.state === 'pending-removal')).toBe(true);
     // The teardown starts in the latch's tick (P3-11/14): main state 1, the view 0x13 and every entity pending removal.
     expect([state.missionStatus, state.spawn.enabled, state.flow.mainState, state.flow.rescues, state.flow.result]).toEqual(['ended', false, 1, 0, result]);
     expect([player.destroyed, player.state, state.player.viewMode, state.player.previousViewMode]).toEqual([true, 'pending-removal', 0x13, DESTRUCTION_VIEW]);
@@ -471,6 +487,7 @@ describe('losses that are no failure (ME-10 step 1; AC-07)', () => {
       Object.assign((victim as CraftEntity).combat, { shield: 0, hull: 1 });
       const context = registerTick(state, readTickInput(tickInput()));
       for (const stage of PIPELINE) {
+        context.stage = stage.id;
         if (stage.id === 'collision') applyContactDamage(context, victim, 5, 'collision');
         stage.run?.(context);
       }

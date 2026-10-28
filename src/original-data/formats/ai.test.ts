@@ -611,7 +611,7 @@ describe('keyword tables (AC-23)', () => {
     ['a name region no pair names', ({ names }) => names.push({ region: { object: 4, offset: 0x20, length: 2 }, bytes: Uint8Array.of(0x41, 0) }), 'subresource-mismatch', keywordNameLocation(9)],
     // The names are given in reverse order, so the copy comes first.
     ['a repeated name region', ({ names }) => names.push(names[3]), 'subresource-mismatch', keywordNameLocation(3)],
-    ['a name repeated within a table with A–Z folded', ({ names }) => { names[1].bytes = Uint8Array.from('\x80priv\0', character => character.charCodeAt(0)); }, 'unsupported-payload', table(0, '/entries[1]/name')],
+    ['a name repeated within a table with A–Z folded', ({ names }) => { names[1].bytes = Uint8Array.from('Apriv\0', character => character.charCodeAt(0)); }, 'unsupported-payload', table(0, '/entries[1]/name')],
   ])('rejects %s', async (_name, change, code, location) => {
     expect(await regionFailure(() => parse(keywords(change)))).toEqual(diagnostic(code, location));
   });

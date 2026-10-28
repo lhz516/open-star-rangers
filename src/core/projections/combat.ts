@@ -6,7 +6,8 @@
  * with `destroyed` set. The motion group is P3-06's, and neither group overwrites the other.
  *
  * - **Target:** what the right display reads (T7), for the player's target while its ID resolves: its kind, name, pose,
- *   distance, movement block speed (null without a block), for a craft its shield over c5C (null otherwise) and
+ *   distance, movement block speed (null without a block), for a craft its shield over c5C (null otherwise), the model
+ *   Asset of a model presentation (null for the marker), for kind bits 0–19 its kind's craft record +0x08 (CK-03), and
  *   whether its state is active or projectile-hit (P3-14's lock tone, FA-02; its activity is not read). The right
  *   display's damage (subsystem 14), the marker's crosshair and the text formats are the presentation's.
  * - **Radar:** rules/radar.ts's reading for the player's target (T6).
@@ -14,7 +15,8 @@
  *   negative) / c9C and the spare power E / T; clamping and ratios are the presentation's.
  * - **Weapons:** for lists 0 and 1, the selection index (−1 for an empty list), the current mount and its weapon record
  *   in the world's craft info, the ammunition of a missile mount's alternate chain (`0x2dd04`; null for a gun), the
- *   current mount's damage and the list's status (`0x2e438`, `0x2e264`).
+ *   current mount's damage, the list's status (`0x2e438`, `0x2e264`) and the loaded record's speed +0x08 and range +0x0C
+ *   (CK-03; rules/load-transforms.ts's weaponRange).
  * - **Lock:** the level, the losing flag and the HUD progress `0x2e080` (W8), at the world clock the tick's lock update
  *   read: −1 without a current list-1 mount, while losing and at levels 0 and 1; 0 at level 4; at levels 2 and 3, with
  *   r = the stage due clock − the clock (i32), 50 and 0 when r < 0, otherwise 100 × r ÷ c34 + 50 and 100 × r ÷ c34, c34
@@ -26,16 +28,19 @@
  *   in the slice); and in view mode 1 page 6's values a, s, p, c (`0x4dcec`), p = warp-path.ts's warpProgress. View 1
  *   without a transit is unreachable (warp.ts); it reads null as every other view does. A marker as the target reads as
  *   any target: kind 25, its `map-marker` name, speed 0 and a null shield.
+ * - **Display state** (CK-01 to CK-03): the status display's blink phase and rebuild count and the energy-page redraw
+ *   count, which P3-13's presentation compares with the values it last consumed.
  *
  * The distance (T7) is f32(√((dy × f32(dy) + dz × f32(dz)) + dx × f32(dx))) of the double differences of the f32
  * positions, at 53-bit precision and round to nearest, as `0x42d80` forms it; an f32 store that overflows is a fault, as
  * the original's unmasked overflow exception is.
  */
-import type { CraftRecord } from '../../content/rule-data/craft-info.ts';
+import type { CraftInfo, CraftRecord } from '../../content/rule-data/craft-info.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
 import { CoreFaultError } from '../errors.ts';
 import { quotient } from '../rules/energy.ts';
 import { chainAmmunition, isMissileMount, listStatus, mountState } from '../rules/mounts.ts';
+import { weaponRange } from '../rules/load-transforms.ts';
 import { readRadar } from '../rules/radar.ts';
 import { toInt32 } from '../rules/record-defaults.ts';
 import { isActiveState, type Entity, type Matrix3, type WeaponBlock } from '../world/entity-table.ts';
@@ -49,6 +54,9 @@ import type {
 /** `0x2e080`'s scale and level 2's offset: level 2 reads 100 down to 50, level 3 50 down to 0. */
 const PERCENT = 100;
 const LEVEL_2_OFFSET = 50;
+
+/** The highest kind bit with a craft record (CK-03's `craftAt08`). */
+const LAST_CRAFT_KIND_BIT = 19;
 
 const NO_PLAYER: CombatReady = Object.freeze({ readiness: 'ready', player: null });
 
@@ -87,14 +95,25 @@ function readTarget(world: WorldState, player: Entity): CombatTarget | null {
     distance: displayDistance(player.position, target.position),
     speed: movement === null ? null : movement.speed,
     shield: combat.type === 'craft' ? reading(combat.shield, craftRecord(world, target.kindBit).at5C) : null,
+    model: target.presentation.type === 'model' ? target.presentation.model : null,
+    craftAt08: target.kindBit <= LAST_CRAFT_KIND_BIT ? craftRecord(world, target.kindBit).at08 : null,
     activeState: isActiveState(target.state),
   });
+}
+
+/**
+ * A weapon record's speed +0x08 and range +0x0C after the load (`0x2cf38`): a gun's own speed and lifetime +0x24, a
+ * missile's speed copied from its body record's +0xB8 with its lifetime +0x44.
+ */
+function ballistics({ guns, missiles, missileBodies }: CraftInfo, missile: boolean, index: number): WeaponListReading['ballistics'] {
+  const [lifetime, speed] = missile ? [missiles[index].at44, missileBodies[missiles[index].body].atB8] : [guns[index].at24, guns[index].at08];
+  return Object.freeze({ speed, range: weaponRange(lifetime, speed) });
 }
 
 function readList(world: WorldState, weapons: WeaponBlock, craft: CraftRecord, list: 0 | 1): WeaponListReading {
   const { index, mount } = weapons.selections[list];
   const status = listStatus(weapons, craft, list);
-  if (mount === null) return Object.freeze({ index, mount, weapon: null, ammunition: null, damage: null, status });
+  if (mount === null) return Object.freeze({ index, mount, weapon: null, ammunition: null, damage: null, status, ballistics: null });
   const record = craft.mounts[mount];
   const missile = isMissileMount(record);
   const weapon: WeaponRecordReference = Object.freeze({ asset: world.craftInfo.id, family: missile ? 'missile' : 'gun', index: record.weapon });
@@ -105,6 +124,7 @@ function readList(world: WorldState, weapons: WeaponBlock, craft: CraftRecord, l
     ammunition: missile ? chainAmmunition(weapons, craft, mount) : null,
     damage: mountState(weapons, mount).damage,
     status,
+    ballistics: ballistics(world.craftInfo.content, missile, record.weapon),
   });
 }
 
@@ -166,6 +186,8 @@ export function projectCombat(world: WorldState): CombatReady {
     subsystems: Object.freeze([...combat.subsystems]),
     leftPage: state.leftDisplay.page,
     warp: readWarp(world, player, craft),
+    statusDisplay: Object.freeze({ blink: state.statusDisplay.blink, rebuilds: state.statusDisplay.rebuilds }),
+    energyPageRedraws: state.energyPageRedraws,
   });
   return Object.freeze({ readiness: 'ready', player: readings });
 }

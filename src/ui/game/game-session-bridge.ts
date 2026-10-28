@@ -12,6 +12,9 @@
  *   and marker, the `warpRequest` result and reason, view mode 1 and its Warp transit's serial, compared by those fields
  *   rather than by object identity. A hover only moves the cursor and its readings, which are sampled;
  * - what run consumers settle at the end of a frame (command results), together with the frame-end projection.
+ * `bridgeMessageLine` separately writes one run's cockpit message line (docs/plan/p3/13/spec.md, DC-07; P3-10 G-05
+ * sync): the head and the current incoming message of the cockpit's one queue, at once on each change, outside the
+ * sample, with no queue, timer or replay of its own.
  * The sampling clock must give finite, non-decreasing milliseconds. As in P1-06, attaching a running run reads it to
  * start the sample (other phases start it on the first frame, which only anchors); a failed or invalid read throws
  * from the frame listener, so the Session records a consumer fault. A failure while attaching from a status
@@ -27,8 +30,9 @@ import type { MapPlayer, Projection, WarpRequestReading } from '../../core/proje
 import type { RenderState } from '../../core/projections/render-state.ts';
 import type { PlayerLoss, ResultReason } from '../../core/world/world-state.ts';
 import { WARP_VIEW_MODE } from '../../core/systems/view-switch.ts';
+import type { MessageLineModule, MessageLineSnapshot } from '../../render/cockpit/messages/message-line.ts';
 import { attemptAll } from '../../render/scene/cleanup.ts';
-import { projectedBase, type GameChange, type GameRunStore, type UiCommandSettlement } from './game-store.ts';
+import { projectedBase, type GameChange, type GameRunStore, type UiCommandSettlement, type UiMessageLine } from './game-store.ts';
 
 /** 10 Hz, the lower end of the master plan's 10–20 Hz for React-facing data, as in P1-06. */
 export const PROJECTION_SAMPLE_INTERVAL_MS = 100;
@@ -466,4 +470,45 @@ class Bridge implements GameSessionBridge {
 export function createGameSessionBridge({ store, clock, consumers = [] }: GameSessionBridgeOptions): GameSessionBridge {
   if (typeof clock !== 'function') throw new TypeError('The sampling clock must be a function');
   return new Bridge(store, clock, Object.freeze([...consumers]));
+}
+
+/** The read port of a run's cockpit message line. */
+export type MessageLineSource = Pick<MessageLineModule, 'snapshot' | 'subscribe'>;
+
+/**
+ * The store's reading of `snapshot` for `runId`, or `previous` when the head and the incoming message are unchanged. The
+ * module's head and incoming objects are frozen and carry the fields the store keeps.
+ */
+function messageLineOf(runId: number, { head, incoming }: MessageLineSnapshot, previous: UiMessageLine | null): UiMessageLine {
+  if (previous?.runId === runId && previous.head?.serial === head?.serial && previous.incoming === incoming) return previous;
+  return Object.freeze({ runId, head, incoming });
+}
+
+/**
+ * Writes the message line of run `runId` into `store` now and synchronously on each change it publishes, so a new head
+ * shows at once; the length and drop counts alone write nothing. Returns the detach for the run's cleanup: it
+ * unsubscribes and clears the store's message line if it is still this run's, so a late detach never clears another
+ * run's. A listener that runs after the detach writes nothing.
+ */
+export function bridgeMessageLine(store: GameRunStore, runId: number, line: MessageLineSource): SessionCleanup {
+  let attached = true;
+  const write = (snapshot: MessageLineSnapshot): void => {
+    if (!attached) return;
+    const previous = store.reader.getState().messages;
+    const messages = messageLineOf(runId, snapshot, previous);
+    if (messages !== previous) store.commit({ messages });
+  };
+  const unsubscribe = line.subscribe(write);
+  try {
+    write(line.snapshot());
+  } catch (cause) {
+    unsubscribe();
+    throw cause;
+  }
+  return () => {
+    attached = false;
+    unsubscribe();
+    if (store.reader.getState().messages?.runId === runId) store.commit({ messages: null });
+    return undefined;
+  };
 }

@@ -865,6 +865,18 @@ class PointerHost implements PointerLockHost {
     return () => { this.pointers.delete(type); };
   }
 
+  menu: (() => boolean) | null = null;
+
+  listenContextMenu(listener: () => boolean): () => void {
+    this.menu = listener;
+    return () => { this.menu = null; };
+  }
+
+  /** A context menu request on the target: whether its default was prevented. */
+  contextMenu(): boolean {
+    return this.menu?.() ?? false;
+  }
+
   /** The document's pointer-lock element changes to `state`. */
   change(state: PointerLockState): void {
     this.state = state;
@@ -1112,6 +1124,81 @@ describe('strategic map input', () => {
     expect({
       state: refused.mapState(), failure: refused.consumer.status.getState().capabilities.pointerLock.failure, requests: refused.pointer.requests,
     }).toEqual({ state: 'unlocked', failure: { operation: 'request', reason: 'rejected' }, requests: 1 });
+  });
+});
+
+// P3-13 subtask 23: the right button's level and the context menu through the real Pointer Lock port and capabilities
+// (P3-13 spec 地图输入几何与指针 “右键”, DC-09, Δ-09).
+describe('map right button and context menu', () => {
+  it('gives the level of a right press on the locked map until its release, an Esc unlock, a pause or a blur', async () => {
+    const f = await mapping();
+    expect(f.consumer.mapRightButton.read()).toBe(false);
+    f.pointer.send('mousedown', { button: 2 });
+    expect(f.consumer.mapRightButton.read()).toBe(false);
+    f.open();
+    f.pointer.send('mousedown', { button: 2 });
+    f.frame();
+    expect(f.consumer.mapRightButton.read()).toBe(true);
+    f.pointer.send('mouseup', { button: 2 });
+    expect(f.consumer.mapRightButton.read()).toBe(false);
+
+    f.pointer.send('mousedown', { button: 2 });
+    f.pointer.change('none');
+    expect({ right: f.consumer.mapRightButton.read(), calls: f.tools.calls }).toEqual({ right: false, calls: ['clear-input pointer-lock-exit'] });
+    for (const lose of [() => { f.owner.pause(); }, () => { f.keyboard.signal('blur', false); }]) {
+      f.pointer.send('mousedown');
+      f.pointer.change('target');
+      f.pointer.send('mousedown', { button: 2 });
+      expect(f.consumer.mapRightButton.read()).toBe(true);
+      lose();
+      expect(f.consumer.mapRightButton.read()).toBe(false);
+      f.pointer.change('none');
+      f.owner.resume();
+      f.keyboard.signal('focus', true);
+      f.frame(0);
+    }
+    // No right press submitted anything.
+    expect(f.submitted.filter(({ type }) => type === 'map-point')).toEqual([]);
+  });
+
+  it('suppresses the context menu only while the map input qualifies, and never after release', async () => {
+    const f = await mapping({ activation: false });
+    expect(f.pointer.contextMenu()).toBe(false);
+    f.tools.context = 'map';
+    f.frame();
+    expect({ state: f.mapState(), suppressed: f.pointer.contextMenu() }).toEqual({ state: 'click-to-lock', suppressed: true });
+    f.owner.pause();
+    expect(f.pointer.contextMenu()).toBe(false);
+    f.owner.resume();
+    f.frame(0);
+    expect(f.pointer.contextMenu()).toBe(true);
+    f.tools.context = 'flight';
+    f.frame();
+    expect(f.pointer.contextMenu()).toBe(false);
+    f.owner.release();
+    expect(f.pointer.contextMenu()).toBe(false);
+  });
+
+  it('re-reads the map facts at once on syncMap, as after the picture\'s credential was revoked', async () => {
+    const pointer = new PointerHost();
+    let ready = true;
+    const map: MapInputOptions = {
+      policy: { start: () => ({ right: 0.5, down: 0.5 }), repeatInterval: 8 },
+      geometry: { read: () => MAP_GEOMETRY },
+      cursor: () => ({ draw: () => ready, get ready() { return ready; } }),
+      movementScale: () => 1,
+      userActivation: () => true,
+    };
+    const f = await flying({ pointerLock: () => createPointerLock(pointer), map });
+    f.tools.context = 'map';
+    f.frame();
+    pointer.change('target');
+    pointer.send('mousedown', { button: 2 });
+    expect(f.consumer.mapRightButton.read()).toBe(true);
+    ready = false;
+    f.consumer.syncMap();
+    expect({ right: f.consumer.mapRightButton.read(), exits: pointer.exits, state: f.consumer.status.getState().map.state })
+      .toEqual({ right: false, exits: 1, state: 'not-ready' });
   });
 });
 

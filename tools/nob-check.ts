@@ -8,8 +8,8 @@ import { basename } from 'node:path';
 import { isOpaque } from '../src/content/graphics/image-payload.ts';
 import type { ArchiveEntryRead } from '../src/original-data/archive/archive-reader.ts';
 import {
-  checkPaletteIndices, decodeImageRecord, decodeSnipFrame, readCockpitFonts, readCockpitGroupPalette, readCockpitGroups, readDataPalette, readEmbeddedPalette,
-  readImageRecordHeader, readMfdRecordOffsets, readSnipFrames, readTableRecordOffsets,
+  checkPaletteIndices, decodeImageRecord, decodeSnipFrame, readCockpitFonts, readCockpitGroupPalette, readCockpitGroups, readCockpitInstrumentSlot,
+  readCockpitLayoutNumbers, readDataPalette, readEmbeddedPalette, readImageRecordHeader, readMfdRecordOffsets, readSnipFrames, readTableRecordOffsets,
 } from '../src/original-data/conversion/source-graphics.ts';
 import { readStatusMessages } from '../src/original-data/conversion/source-messages.ts';
 import { isDiscPath, type DiscPath } from '../src/original-data/disc/disc-path.ts';
@@ -70,6 +70,11 @@ const containers = {
 };
 /** How many elements set each of the two CCKD element flag fields to 1; the others hold 0. */
 const flagsSet = [0, 0];
+/**
+ * Observed CCKD instrument counts of every directory slot, read with the cockpit instruments' slot reader (P3-03 spec,
+ * 修订 4): slots, always-redraw slots, records per slot and in all, parameter tables and their longest entry count.
+ */
+const instrumentSlots = { slots: 0, alwaysRedraw: 0, recordsPerSlot: 0, records: 0, parameterTables: 0, params: 0 };
 /** Observed SNIP and DIAG counts, compared with the P2-07 limits (2026-10-08 revision) in docs/original. */
 const hudSets = { snipFrames: 0, snipFramesDecoded: 0, diagTexts: 0, diagStartupMessages: 0, diagTextBytes: 0 };
 /** Observed ANIM frame counts, compared with the P3-03 limits in docs/original/formats/textures.md §6. */
@@ -223,6 +228,17 @@ for (const entry of archive.entries) {
             containers.elements += 1;
           }
         }
+        const read = entryRead(entry);
+        for (const layout of readCockpitLayoutNumbers(block)) {
+          const { alwaysRedraw, instruments } = readCockpitInstrumentSlot(read, layout);
+          const params = instruments.map(record => record.params.length);
+          instrumentSlots.slots += 1;
+          instrumentSlots.alwaysRedraw += Number(alwaysRedraw);
+          instrumentSlots.recordsPerSlot = Math.max(instrumentSlots.recordsPerSlot, instruments.length);
+          instrumentSlots.records += instruments.length;
+          instrumentSlots.parameterTables += params.filter(count => count > 0).length;
+          instrumentSlots.params = Math.max(instrumentSlots.params, ...params);
+        }
         break;
       }
       case 'TABL': {
@@ -362,6 +378,10 @@ console.log('  observed container counts:');
 console.log(`    CCKD directory slots ${containers.cockpitSlots}, elements per slot ${containers.cockpitElements}, ${containers.elements} elements decoded, ${containers.groupPalettes} group palettes read`);
 const flagText = (set: number) => `${containers.elements - set}×0 ${set}×1`;
 console.log(`    CCKD element flags: first ${flagText(flagsSet[0])}, second ${flagText(flagsSet[1])}`);
+{
+  const { slots, alwaysRedraw, recordsPerSlot, records, parameterTables, params } = instrumentSlots;
+  console.log(`    CCKD instrument slots ${slots} (${alwaysRedraw} always redrawn), records per slot ${recordsPerSlot}, ${records} records read, ${parameterTables} parameter tables of up to ${params} entries`);
+}
 console.log(`    MFDD records per list ${containers.mfdRecords}`);
 console.log(`    TABL records per image list ${containers.tableRecords}; ${containers.otherTables} other TABL entries, ${containers.otherImageLists} parse as image lists`);
 if (counts.has('SNIP')) console.log(`    SNIP frames per entry ${hudSets.snipFrames}, ${hudSets.snipFramesDecoded} frames decoded`);

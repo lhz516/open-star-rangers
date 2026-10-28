@@ -16,13 +16,14 @@
  * clamps the energy to 0 and locks the movement block it was passed (`0x21ba0`), at every such update; for the player
  * P3-11's `0x33464` (player-loss.ts) follows there, after this update's events (CR-13, ME-09). `energy-depleted`
  * marks only the transition: the latch is set by a depleted update and cleared by one that ends with energy above 0.
- * The original's energy-page redraw flag +0x44 is display state only and not kept; the typed cheat that multiplies a
- * parked object's interval by 8 does not exist in Core.
+ * The original's energy-page redraw flag +0x44 is cleared by the drawing, so Core counts its sets for the player instead
+ * (CK-02): every due player update, whether or not a value changed, and every accepted level change; a refused key sets
+ * nothing. The typed cheat that multiplies a parked object's interval by 8 does not exist in Core.
  */
 import type { CraftRecord } from '../../content/rule-data/craft-info.ts';
 import { CoreFaultError } from '../errors.ts';
 import { craftMaximumSpeed } from '../rules/combat-init.ts';
-import { ENERGY_PAGE, pageChange } from '../rules/displays.ts';
+import { countEnergyPageRedraw, ENERGY_PAGE, pageChange } from '../rules/displays.ts';
 import {
   applyEnergyUpdate, BLOCK_ENERGY_INTERVAL, BLOCKLESS_ENERGY_INTERVAL, changeAllocation, lockMovement, PLAYER_ENERGY_INTERVAL, type Allocation,
 } from '../rules/energy.ts';
@@ -105,6 +106,7 @@ export function judgeEnergyCommand(context: TickContext, command: CommandOf<'ene
   }
   player.maximumSpeed = craftMaximumSpeed(player.kindBit, craft, combat);
   applyRecomputedMaximum(steeredBlock(player), player.maximumSpeed);
+  countEnergyPageRedraw(world.player);
   emitCommandResult(context, command, commandIndex, ACCEPTED);
   emit(context, {
     type: 'energy-allocation-changed', tick, entityId: player.id, shieldLevel: combat.shieldLevel, chargeLevel: combat.chargeLevel, commandIndex,
@@ -135,6 +137,7 @@ function updateEnergy(context: TickContext, entity: Entity, block: SteeredMoveme
   const next = clock + interval;
   if (!Number.isSafeInteger(next)) throw new CoreFaultError('budget-exhausted', 'energy.next-clock');
   combat.nextEnergyClock = next;
+  if (player) countEnergyPageRedraw(world.player);
 }
 
 /** The `energy` stage (`0x30590`, D14): the player first, then the other craft in walk order. */

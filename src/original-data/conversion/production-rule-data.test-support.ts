@@ -123,7 +123,7 @@ function productionCraftInfo() {
  * Part list 1's part count of the model each kind bit the slice disc's missions instantiate is bound to
  * (production-models.test-support.ts): the player and wingman share the player ship.
  */
-const SLICE_MODEL_PARTS: Readonly<Record<number, number>> = Object.freeze({ 0: 1, 1: 1, 7: 1, 8: 0, 14: 0, 17: 0 });
+const SLICE_MODEL_PARTS: Readonly<Record<number, number>> = Object.freeze({ 0: 3, 1: 3, 7: 1, 8: 0, 14: 0, 17: 0 });
 
 /**
  * The format support's DEBRIS parameters, changed only so that world creation accepts them with the slice disc's models

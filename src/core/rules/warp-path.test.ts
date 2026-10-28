@@ -146,7 +146,9 @@ describe('the Warp pose 0x50a28 (steerInTunnel)', () => {
 
   it('keeps an aligned player on the centre line: c = 1, the largest increment in the window', () => {
     const result = steerInTunnel(pose(vec(0, 0, 10500)), centre, previous, 0, true, 0);
-    expect(result).toEqual({ position: { x: 0, y: 0, z: 11000 }, orientation: IDENTITY_ROWS, angle: ALIGNED_ANGLE, centring: 1, error: Math.fround(1e-4) });
+    expect(result).toEqual({
+      position: { x: 0, y: 0, z: 11000 }, orientation: IDENTITY_ROWS, angle: ALIGNED_ANGLE, centring: 1, error: Math.fround(1e-4), wallContact: false,
+    });
     expect(steerInTunnel(pose(vec(0, 0, 10500)), centre, previous, 0, false, 0).error).toBe(0);
   });
 
@@ -154,7 +156,7 @@ describe('the Warp pose 0x50a28 (steerInTunnel)', () => {
     // Offset (30, −40) from G, 500 ahead: the new position is N + (30, −40), d² = 2500, so c = 1 − 2500 × 4e-4 = 0 and
     // no increment; 2500 is not beyond the wall.
     const result = steerInTunnel(pose(vec(30, -40, 10500)), centre, previous, 0, true, 0.25);
-    expect(result).toMatchObject({ position: { x: 30, y: -40, z: 11000 }, centring: 0, error: 0.25 });
+    expect(result).toMatchObject({ position: { x: 30, y: -40, z: 11000 }, centring: 0, error: 0.25, wallContact: false });
   });
 
   it.each([
@@ -170,8 +172,9 @@ describe('the Warp pose 0x50a28 (steerInTunnel)', () => {
   it('pulls a player beyond radius 50 back onto the wall, adding 0.01 in the window only', () => {
     // d² = 3600: e × (50 ÷ 60) = (30, 40); c = 0.
     const inside = steerInTunnel(pose(vec(36, 48, 10000)), centre, previous, 0, true, 0.5);
-    expect(inside).toMatchObject({ position: { x: 30, y: 40, z: 11000 }, centring: 0, error: Math.fround(0.5 + 0.01) });
-    expect(steerInTunnel(pose(vec(36, 48, 10000)), centre, previous, 0, false, 0.5).error).toBe(0.5);
+    expect(inside).toMatchObject({ position: { x: 30, y: 40, z: 11000 }, centring: 0, error: Math.fround(0.5 + 0.01), wallContact: true });
+    // P3-12 FS-03: the contact `warp-wall-contact` reports is that branch: outside the window it is no contact.
+    expect(steerInTunnel(pose(vec(36, 48, 10000)), centre, previous, 0, false, 0.5)).toMatchObject({ error: 0.5, wallContact: false });
   });
 
   it('clamps s to 1', () => {

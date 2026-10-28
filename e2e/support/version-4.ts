@@ -19,12 +19,12 @@ const NEW_IMAGE_ROLES = Object.freeze(['explosion-frame', 'nebula-background', '
 /** The sound roles slice definition version 4 adds, with exactly eight event and three HUD sounds. */
 export const NEW_SOUND_ROLES = Object.freeze({ 'event-sound': 8, 'hud-sound': 3 } as const);
 /**
- * The data roles version 4 adds, and the map geometry and communications messages version 6 adds, which the viewer does
- * not list (spec technical decision 9).
+ * The data roles version 4 adds, the map geometry and communications messages version 6 adds, and the cockpit
+ * instruments version 7 adds, which the viewer does not list (spec technical decision 9).
  */
 export const NEW_DATA_ROLES = Object.freeze([
   'craft-info', 'debris-parameters', 'ai-programs', 'comm-menus', 'base-repair-items', 'flight-messages', 'scene-settings', 'explosion-table',
-  'explosion-animation', 'nebula-backgrounds', 'view-labels', 'hud-text', 'map-geometry', 'comm-messages',
+  'explosion-animation', 'nebula-backgrounds', 'view-labels', 'hud-text', 'map-geometry', 'comm-messages', 'cockpit-instruments',
 ] as const);
 /** The event sound that plays a number of times (SND `flags` 8, sound payload schema 2 `repeat`). */
 export const REPEAT_SOUND = 'sound/event/warp-arrival';

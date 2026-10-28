@@ -66,13 +66,15 @@ type Hooks = Partial<Record<string, (context: TickContext) => void>>;
 function stepWith(state: WorldState, hooks: Hooks, commands: readonly Command[] = []): readonly DomainEvent[] {
   const context = registerTick(state, readTickInput(tickInput(commands)));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     hooks[stage.id]?.(context);
     stage.run?.(context);
   }
   return context.events;
 }
 
-const contextOf = (state: WorldState): TickContext => registerTick(state, readTickInput(tickInput()));
+/** A tick's context outside a step, standing in the collision stage, where these tests' destructions build their explosions (P3-12 FS-03). */
+const contextOf = (state: WorldState): TickContext => Object.assign(registerTick(state, readTickInput(tickInput())), { stage: 'collision' as const });
 const ofType = <Type extends DomainEvent['type']>(events: readonly DomainEvent[], type: Type) =>
   events.filter((event): event is Extract<DomainEvent, { type: Type }> => event.type === type);
 const allEntities = (state: WorldState): Entity[] => [...state.entities.walk(ALL_KINDS)];

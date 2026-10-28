@@ -227,6 +227,7 @@ describe('the evasion (0x5d374, A7)', () => {
 function step(state: WorldState, posting: (context: TickContext) => void = () => undefined, before: Readonly<Record<string, (context: TickContext) => void>> = {}): void {
   const context = registerTick(state, readTickInput(tickInput()));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     before[stage.id]?.(context);
     stage.run?.(context);
     if (stage.id === 'object-update') posting(context);

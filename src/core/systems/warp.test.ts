@@ -13,7 +13,7 @@ import { enterBaseView } from './base-interior.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { committedView, PIPELINE, registerTick, type TickContext } from './pipeline.ts';
 import { switchView } from './view-switch.ts';
-import { judgeWarpRequest } from './warp.ts';
+import { judgeWarpRequest, runWarpStep } from './warp.ts';
 
 // P3-09 S-08, AC-08 and AC-07's start part (docs/plan/p3/09/spec.md, Warp 开始) in the real pipeline, against the
 // contract of docs/plan/p3/02/spec.md, MW-04 (the gate table, the command view, the warp-start request and its writes),
@@ -83,6 +83,7 @@ const others = (events: readonly DomainEvent[]) => events.filter(({ type }) => t
 function stepRequests(state: WorldState, commands: readonly Command[], hooks: Readonly<Record<string, (context: TickContext) => void>> = {}): readonly DomainEvent[] {
   const context = registerTick(state, input(commands));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     if (stage.id === 'movement') break;
     hooks[stage.id]?.(context);
     stage.run?.(context);
@@ -201,10 +202,16 @@ describe('the Warp start (MW-04 warp-start, MW-05, MW-09)', () => {
     const { state, player } = setUp();
     state.player.target = state.entities.allocate(entityInit(7)).id;
     state.player.leftDisplay.page = 1;
+    const orientation = [...player.orientation];
     const events = step(state, [warp]);
     expect(results(events)).toEqual([[0, 'request-warp', 'accepted', null]]);
     // The area now centres on the destination, which retires the old target at the end of the tick (MW-10, P3-14 FA-07).
     expect(others(events).filter(({ type }) => type !== 'object-retired')).toEqual([
+      // P3-12 FS-03: the switch to view 1 first, at the pose before the set-up moved the player into the tunnel.
+      {
+        type: 'view-switched', tick: 1, fromViewMode: FLIGHT, fromSubMode: 0, viewMode: WARP, subMode: 0, stage: 'request-handling',
+        player: { entityId: player.id, position: POSITION, orientation },
+      },
       {
         type: 'warp-started', tick: 1, playerEntityId: player.id, serial: 1, origin: POSITION, destination: DESTINATION,
         distance: 50000, check: { cost: COST, energy: COST }, transitLength: 7, fromViewMode: FLIGHT, commandIndex: 0,
@@ -217,7 +224,7 @@ describe('the Warp start (MW-04 warp-start, MW-05, MW-09)', () => {
     const { state } = setUp();
     state.player.leftDisplay.page = 6;
     const events = step(state, [warp]);
-    expect(others(events).map(({ type }) => type)).toEqual(['warp-started']);
+    expect(others(events).map(({ type }) => type)).toEqual(['view-switched', 'warp-started']);
     expect(state.player.savedLeftPage).toBe(6);
   });
 
@@ -251,8 +258,9 @@ describe('the Warp start (MW-04 warp-start, MW-05, MW-09)', () => {
     expect(results(events)).toEqual([[0, 'toggle-map', 'accepted', null], [1, 'map-point', 'accepted', null], [2, 'request-warp', 'accepted', null]]);
     // The select at (200, 200) of the side-400 map, without icons: its world point, z = +0.
     const destination = mapPixelToWorld(state.ruleData.map, { column: 200, row: 200 });
-    expect(others(events).map(({ type }) => type)).toEqual(['map-toggled', 'warp-destination-set', 'warp-started', 'left-page-changed']);
-    expect(others(events)[2]).toMatchObject({ destination, fromViewMode: MAP, commandIndex: 2 });
+    expect(others(events).map(({ type }) => type)).toEqual(['view-switched', 'map-toggled', 'warp-destination-set', 'view-switched', 'warp-started', 'left-page-changed']);
+    expect(others(events)[3]).toMatchObject({ fromViewMode: MAP, viewMode: WARP });
+    expect(others(events)[4]).toMatchObject({ destination, fromViewMode: MAP, commandIndex: 2 });
     // The marker's 1 draw, then the start's 20.
     expect(state.rngState).toEqual(rngStateAfter(rng, 21));
     expect([state.player.viewMode, state.player.previousViewMode]).toEqual([WARP, MAP]);
@@ -278,7 +286,7 @@ describe('the Warp start (MW-04 warp-start, MW-05, MW-09)', () => {
     state.player.target = target.id;
     const events = stepRequests(state, [{ type: 'speed', operation: 'match-target' }, warp]);
     expect(results(events)).toEqual([[0, 'speed', 'accepted', null], [1, 'request-warp', 'accepted', null]]);
-    expect(others(events).map(({ type }) => type)).toEqual(['speed-matched', 'warp-started', 'left-page-changed']);
+    expect(others(events).map(({ type }) => type)).toEqual(['speed-matched', 'view-switched', 'warp-started', 'left-page-changed']);
     expect([block(player).speed, block(player).commandedSpeed, state.player.target]).toEqual([0, 64, null]);
   });
 
@@ -287,7 +295,7 @@ describe('the Warp start (MW-04 warp-start, MW-05, MW-09)', () => {
     combat(state.entities.get(state.player.entityId!)!).charge = 0x7fffffff;
     const events = stepRequests(state, [{ type: 'fire', channel: 'primary' }, warp]);
     expect(results(events)).toEqual([[0, 'fire', 'accepted', null], [1, 'request-warp', 'accepted', null]]);
-    expect(others(events).map(({ type }) => type)).toEqual(['shot-fired', 'warp-started', 'left-page-changed']);
+    expect(others(events).map(({ type }) => type)).toEqual(['shot-fired', 'view-switched', 'warp-started', 'left-page-changed']);
     const shot = others(events)[0];
     if (shot.type !== 'shot-fired') throw new Error('expected a shot');
     expect(shot.shooterPosition).toEqual(POSITION);
@@ -311,7 +319,7 @@ describe('the Warp start (MW-04 warp-start, MW-05, MW-09)', () => {
     Object.assign(block(player), { mode: 'craft' });
     combat(player).energy = COST;
     const events = stepRequests(state, [warp]);
-    expect(others(events)[0]).toMatchObject({ type: 'warp-started', serial: 2 });
+    expect(others(events)[1]).toMatchObject({ type: 'warp-started', serial: 2 });
     expect(state.player.warp).toMatchObject({ serial: 2, segments: 1, fraction: 0, error: 0, angle: 0, centring: 0, origin: POSITION });
   });
 
@@ -327,7 +335,7 @@ describe('the Warp start (MW-04 warp-start, MW-05, MW-09)', () => {
 // +0xA8 = 1, L = F(0.5 × 1) = 0.5 and the start's reset progress F(1 × F(1 ÷ 0.5)) = 2 is already 1.0.
 
 const MAXIMUM_SPEED = 100;
-const ARRIVAL_EVENTS = ['warp-completed', 'left-page-changed'];
+const ARRIVAL_EVENTS = ['view-switched', 'warp-completed', 'left-page-changed'];
 const types = (events: readonly DomainEvent[]) => others(events).map(({ type }) => type);
 const completions = (events: readonly DomainEvent[]) => events.filter(({ type }) => type === 'warp-completed');
 
@@ -380,6 +388,38 @@ describe('the Warp step in frame-end (MW-07)', () => {
   });
 });
 
+// P3-12 FS-03: the Warp step's wall contact inside the error window is the one fact `warp-wall-contact` reports.
+describe('the Warp step\'s wall contact (P3-12 FS-03)', () => {
+  /** One Warp step of frame-end with the player `offset` sideways from the last path pose G, at n = `segments`. */
+  function wallStep(offset: number, segments = 1): { events: readonly DomainEvent[]; tick: number; error: number; before: number } {
+    const { state, player } = started();
+    const transit = state.player.warp!;
+    transit.segments = segments;
+    const before = transit.error;
+    const { position } = transit.frame;
+    player.position = { x: position.x + offset, y: position.y, z: position.z };
+    player.orientation = transit.frame.orientation;
+    const context = registerTick(state, input([]));
+    state.clock = context.time.clock;
+    context.stage = 'frame-end';
+    runWarpStep(context);
+    return { events: context.events, tick: context.time.tick, error: state.player.warp!.error, before };
+  }
+
+  it('reports a contact in the window once, with the Warp\'s serial, where the error takes 0.01', () => {
+    const { events, tick, error, before } = wallStep(60);
+    expect(events).toEqual([{ type: 'warp-wall-contact', tick, serial: 1 }]);
+    expect(error).toBeGreaterThanOrEqual(Math.fround(before + 0.01));
+  });
+
+  it('reports nothing inside the tube or outside the window', () => {
+    expect(wallStep(10).events).toEqual([]);
+    // (n + u) ÷ L ≥ 0.95 with L = 7.
+    const outside = wallStep(60, 7);
+    expect([outside.events, outside.error]).toEqual([[], outside.before]);
+  });
+});
+
 describe('the Warp completion (MW-08) and its tick boundary (AC-09)', () => {
   it('completes in the tick after the frame-end that reached the end, once, with exactly its draws', () => {
     const world = started();
@@ -407,7 +447,7 @@ describe('the Warp completion (MW-08) and its tick boundary (AC-09)', () => {
     state.player.leftDisplay.page = 1;
     const rng = state.rngState;
     const events = step(state, [warp]);
-    expect(types(events)).toEqual(['warp-started', 'left-page-changed', 'warp-completed', 'left-page-changed']);
+    expect(types(events)).toEqual(['view-switched', 'warp-started', 'left-page-changed', 'view-switched', 'warp-completed', 'left-page-changed']);
     expect(others(events).filter(({ type }) => type === 'left-page-changed')).toEqual([
       { type: 'left-page-changed', tick: 1, page: 6, previousPage: 1, commandIndex: null },
       { type: 'left-page-changed', tick: 1, page: 1, previousPage: 6, commandIndex: null },
@@ -504,6 +544,8 @@ describe('the Warp completion (MW-08) and its tick boundary (AC-09)', () => {
     const rng = state.rngState;
     const events = step(state);
     expect(others(events)).toEqual([
+      // P3-12 FS-03: the switch has no player pose without a player entity.
+      { type: 'view-switched', tick: state.tick, fromViewMode: WARP, fromSubMode: 0, viewMode: FLIGHT, subMode: 0, stage: 'warp-completion', player: null },
       { type: 'warp-completed', tick: state.tick, serial: 1, viewMode: FLIGHT, previousViewMode: WARP, arrival: null },
       { type: 'left-page-changed', tick: state.tick, page: 0, previousPage: 6, commandIndex: null },
     ]);

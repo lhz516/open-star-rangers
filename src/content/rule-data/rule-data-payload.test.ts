@@ -20,6 +20,13 @@ const asciiJson = (value: unknown): string =>
 const decode = (bytes: Uint8Array, descriptor: unknown) => decodeRuleDataPayload(bytes, descriptor as Descriptor);
 const encode = (role: RuleDataRole, content: unknown) => encodeRuleDataPayload({ role, content } as RuleDataPayload);
 
+/** The synthetic craft info with its first gun's name keeping bytes 0x80–0xFF (the synthetic texts are drawable HUD text). */
+function highByteCraftInfo() {
+  const content = SYNTHETIC_RULE_DATA['craft-info']() as { guns: { name: string }[] };
+  content.guns[0].name = `\x80${content.guns[0].name.slice(1, -1)}\xff`;
+  return syntheticRuleDataAsset('craft-info', content);
+}
+
 /** The first key of the role's content and the key after it, to swap their order. */
 const FIRST_KEYS: Readonly<Record<RuleDataRole, readonly [string, string]>> = {
   'craft-info': ['hitDamageScale', 'guns'],
@@ -85,12 +92,12 @@ describe('rule-data payload encoding', () => {
     const content = SYNTHETIC_RULE_DATA['craft-info']() as Record<string, unknown>;
     const shuffled = Object.fromEntries(Object.entries(content).reverse());
     expect(encode('craft-info', shuffled)).toEqual(first);
-    expect(json(first)).toMatch(/^\{"hitDamageScale":1.25,"guns":\[\{"name":"\\u0080/);
+    expect(json(first)).toMatch(/^\{"hitDamageScale":1.25,"guns":\[\{"name":"A/);
     expect(json(first)).not.toMatch(/\s/);
   });
 
   it('keeps f32 denormals and byte strings with 0x80–0xFF exactly', () => {
-    const { bytes, descriptor } = syntheticRuleDataAsset('craft-info');
+    const { bytes, descriptor } = highByteCraftInfo();
     const decoded = decode(bytes, descriptor);
     const info = decoded.role === 'craft-info' ? decoded.content : undefined;
     expect(info?.missiles[0].at40).toBe(F32_DENORMAL);
@@ -136,7 +143,7 @@ describe('rule-data payload decoding', () => {
   });
 
   it('rejects -0, longer number spellings and escapes of printable characters', () => {
-    const { bytes, descriptor } = syntheticRuleDataAsset('craft-info');
+    const { bytes, descriptor } = highByteCraftInfo();
     const source = json(bytes);
     for (const [canonical, other] of [
       ['"at90":0', '"at90":-0'], ['1.25', '1.250'], ['"at14":-7', '"at14":-7e0'], ['"hitDamageScale"', '"hitDamageScal\\u0065"'],

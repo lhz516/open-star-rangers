@@ -70,6 +70,8 @@ export interface CapabilityContext {
   readonly status: InputStatusWriter;
   /** Receives the port's pointer input, except while a lock being undone holds the pointer (subtask 22). */
   readonly pointer?: (input: PointerInput) => void;
+  /** Decides whether the port's context menu request is suppressed; nothing is while it is not live. */
+  readonly contextMenu?: () => boolean;
 }
 
 /** What the mission UI and the map input (subtask 22) ask for; inert before the owner connects and after release. */
@@ -269,6 +271,7 @@ class Capabilities implements InputCapabilityController {
       const held = this.#held;
       if (this.#live && (held === null || (held !== STALE && !held.revoked))) this.#context!.pointer?.(input);
     },
+    contextMenu: () => this.#live && (this.#context!.contextMenu?.() ?? false),
   });
 
   connect(context: CapabilityContext): void {

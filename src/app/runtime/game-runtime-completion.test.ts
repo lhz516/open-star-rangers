@@ -56,8 +56,10 @@ describe('the completion cut of a real run', () => {
     const ticks = SUCCESS_COMPLETION_TICK % MAX_TICKS_PER_FRAME || MAX_TICKS_PER_FRAME;
     expect(report).toEqual({
       ticks, capped: false, stop: null, cut: 'completed', transitions: [], completion: { tick: SUCCESS_COMPLETION_TICK, outcome: 'success' },
+      outputs: expect.objectContaining({ length: ticks }) as unknown,
     });
     expect(Object.isFrozen(report) && Object.isFrozen(report.completion)).toBe(true);
+    expect(report.outputs.at(-1)?.projection).toBe(runtime.projection());
     // The completion tick is delivered in full, `mission-completed` last; its read model is the final one.
     expect(log.at(-1)).toBe(`mission-completed@${SUCCESS_COMPLETION_TICK}`);
     expect(runtime.projection()).toMatchObject({
@@ -99,6 +101,7 @@ describe('the completion barrier', () => {
     injection.complete(1, injectedResult([{ gap: 'G-02/8', variant: 'solo' }]));
     expect(runtime.frame(MAX_TICKS_PER_FRAME * TICK_MS)).toEqual({
       ticks: 1, capped: false, stop: null, cut: 'completed', transitions: [], completion: { tick: 1, outcome: 'success' },
+      outputs: expect.objectContaining({ length: 1 }) as unknown,
     });
     // The executed commands' results keep their IDs; the rest never ran.
     expect(log.filter((entry) => entry.startsWith('command-result')).map((entry) => Number(entry.split('#')[1])))

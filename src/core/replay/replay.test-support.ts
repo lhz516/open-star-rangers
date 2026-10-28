@@ -1,5 +1,6 @@
 import type { TickInput } from '../contracts/tick-input.ts';
-import { CONTENT_INPUT_FIELDS, type CreateWorldInput } from '../world/create-world.ts';
+import { fnv1a64 } from '../determinism/fnv1a64.ts';
+import { CONTENT_INPUT_FIELDS, createWorld, type CreateWorldInput } from '../world/create-world.ts';
 import { asCreateInput, worldInput, type WorldInputParts } from '../world/create-world.test-support.ts';
 import { tickInput } from '../world/world.test-support.ts';
 import { createRecordingSession, type Recording } from './recording.ts';
@@ -41,3 +42,36 @@ export function recordScript(input: CreateWorldInput, ticks: number, checkpointI
 
 /** Plain data after a JSON round trip, as a record or result read back from a file. */
 export const roundTrip = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
+
+/** P3-12/10's presentation facts (docs/plan/p3/02/spec.md, FS-03, FS-02), which no rule reads. */
+const PRESENTATION_EVENTS: ReadonlySet<string> = new Set(['explosion-created', 'view-switched', 'warp-wall-contact']);
+const PRESENTATION_STATE = 'modelShown';
+/** P3-14's retirement event and pose fields (docs/plan/p3/02/spec.md, FA-05, FA-07), which no rule reads. */
+const RETIREMENT_EVENT = 'object-retired';
+const POSE_FIELDS: ReadonlySet<string> = new Set(['shooterForward', 'shooterSpeed', 'victimForward', 'victimSpeed']);
+/** P3-13's counters and flip flag (docs/plan/p3/02/spec.md, CK-01, CK-02), which only the presentation and the status step read. */
+const COCKPIT_STATE: ReadonlySet<string> = new Set(['phaseFlipped', 'rebuilds', 'energyPageRedraws']);
+
+/**
+ * The gameplay digest of a run from `input` through `ticks`: fnv1a64 of every tick's events without P3-12/10's
+ * presentation facts, and of the snapshot state after it without the player's model flag and P3-13's status display
+ * flip flag and counters. It was computed for the same runs without P3-12 (at 8b6113b6; after the P3-11 merge, on main
+ * at e6684c84), so an unchanged digest shows that the facts change no rule outcome and no RNG draw (the state holds the
+ * RNG state). Every tick also reads the Render State, with P3-12/32's speed share (FS-12), before the snapshot: the
+ * digests stay those of the code before it. P3-13/12's status display order (CK-01) moves the writes of fields 1, 5 and
+ * 8 to the step after a flip; these runs still give the same digests, so no rule there read the fields in between.
+ * P3-14's `object-retired` and the FA-05 forward rows and speeds of `shot-fired` and `hit` are left out the same way;
+ * with them out, the digests stay those of the code before P3-14 too.
+ */
+export function gameplayDigest(input: CreateWorldInput, ticks: readonly TickInput[]): string {
+  const world = createWorld(input);
+  const parts: string[] = [];
+  const withoutFlag = (key: string, value: unknown) => (key === PRESENTATION_STATE || COCKPIT_STATE.has(key) ? undefined : value);
+  const withoutPose = (key: string, value: unknown) => (POSE_FIELDS.has(key) ? undefined : value);
+  for (const tick of ticks) {
+    const events = world.step(tick).filter(({ type }) => !PRESENTATION_EVENTS.has(type) && type !== RETIREMENT_EVENT);
+    world.renderState();
+    parts.push(JSON.stringify(events, withoutPose), JSON.stringify(world.snapshot().state, withoutFlag));
+  }
+  return fnv1a64(parts.join('\n'));
+}

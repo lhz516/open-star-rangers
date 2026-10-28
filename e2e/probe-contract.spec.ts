@@ -2,7 +2,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { button } from './support/app-entry.ts';
 import { test, expect, collectBrowserErrors, settleDiagnostics } from './support/browser-test.ts';
 import {
-  devState, endPlaceholder, enterMission, expectAdvancingTick, expectFlightCursorWithoutWebGL, expectStableTick, frameWindow, missionEntry, missionFrame, waitForFrame,
+  devState, endPlaceholder, enterMission, expectAdvancingTick, expectFlightCanvas, expectStableTick, FLIGHT_SURFACE_LISTENERS, frameWindow, missionEntry, missionFrame, waitForFrame,
 } from './support/mission-observations.ts';
 import { missionPackage, seedProductionCache } from './support/production-cache.ts';
 
@@ -179,7 +179,8 @@ test('reads the mission screen\'s run attributes, development diagnostics and ow
   const diagnostics = development ? await devState(page) : null;
   if (diagnostics) expect(diagnostics).toMatchObject({ run: 1, tick: stable, wingman: 0 });
   else expect(await page.locator('[data-testid="mission-dev-panel"], [data-testid^="dev-"]').count()).toBe(0);
-  // While running: one frame loop, session and input listeners, one leave guard, a 2D cursor, no timer or observer.
+  // While running: one frame loop, session and input listeners, one leave guard, a 2D cursor, the flight surface with its
+  // listeners and size observer (P3-12), no timer.
   expect(resources.frames.maximum).toBeLessThanOrEqual(1);
   expect(resources.frames.delivered).toBeGreaterThan(0);
   const active = resources.listeners.filter(entry => entry.active);
@@ -191,13 +192,13 @@ test('reads the mission screen\'s run attributes, development diagnostics and ow
   expect(active.filter(entry => entry.group === 'fullscreen').map(entry => entry.type).sort()).toEqual(['fullscreenchange', 'fullscreenerror']);
   expect(active.filter(entry => entry.group === 'pointer-lock').map(entry => entry.type).sort())
     .toEqual(['mousedown', 'mousemove', 'mouseup', 'pointerlockchange', 'pointerlockerror']);
-  expect(active.filter(entry => entry.group === 'render')).toEqual([]);
+  expect(active.filter(entry => entry.group === 'render').map(entry => entry.type).sort()).toEqual(FLIGHT_SURFACE_LISTENERS);
   expect(active.filter(entry => entry.type === 'beforeunload' && entry.group !== 'vite').map(entry => entry.group)).toEqual(['other']);
   expect(active.some(entry => entry.group === 'react')).toBe(true);
   expect(resources.timers.pending).toEqual([]);
-  expect(resources.canvases).toEqual([]);
-  await expectFlightCursorWithoutWebGL(page);
-  expect(resources.observers.every(entry => entry.targets.length === 0)).toBe(true);
+  expect(resources.canvases.filter(canvas => canvas.connected)).toEqual([expect.objectContaining({ extension: true, lost: false })]);
+  await expectFlightCanvas(page);
+  expect(resources.observers.filter(entry => entry.targets.length > 0).map(entry => entry.targets.length)).toEqual([1]);
   await button(page, 'Mission menu').click();
   await button(page, 'Return to main menu').click();
   await expect(missionEntry(page)).toBeFocused();
@@ -206,6 +207,8 @@ test('reads the mission screen\'s run attributes, development diagnostics and ow
   expect(after.listeners.filter(entry => entry.active && (['keyboard', 'fullscreen', 'pointer-lock', 'session', 'render'].includes(entry.group) || (entry.type === 'beforeunload' && entry.group !== 'vite')))).toEqual([]);
   expect(after.timers.pending).toEqual([]);
   await expect(page.locator('canvas')).toHaveCount(0);
+  expect(after.canvases.filter(canvas => canvas.connected || !canvas.lost)).toEqual([]);
+  expect(after.observers.every(entry => entry.targets.length === 0)).toBe(true);
   await testInfo.attach('readonly-observations', {
     body: JSON.stringify({ departure, advancing, stable, diagnostics, resources, after }), contentType: 'application/json',
   });

@@ -14,6 +14,11 @@ import type { SessionHost } from './session/session-host.ts';
 export interface MissionPorts {
   /** Draws the uint32 seed of each world creation attempt. */
   readonly seed: SeedSource;
+  /**
+   * Draws the uint32 seed of each run's flight presentation random source (P3-12), apart from the world seeds, so a
+   * test's world seeds keep their order.
+   */
+  readonly presentationSeed: SeedSource;
   /** Times placeholders, UI sampling and development frame timing. */
   readonly clock: MonotonicClock;
   /** Schedules the placeholders' one-shot timers. */
@@ -45,7 +50,11 @@ export interface AppPorts {
   readonly cache: ResourceCachePort;
   /** The viewer's audio: the capability its controller uses and the page lifecycle it follows. */
   readonly audio: { readonly capability: AudioCapability; readonly lifecycle: PageLifecycleHost };
-  /** Creates the viewer's WebGL 2 surface in a container with the viewer's options; throws when WebGL 2 is unavailable. */
+  /**
+   * Creates a WebGL 2 surface in a container with its user's options: the viewer's, and each mission owner's flight
+   * surface. Throws when WebGL 2 is unavailable, a GraphicsUnavailableError when the device provides none at all; a
+   * RollbackError when its failed creation could not be undone.
+   */
   readonly createSurface: (container: HTMLElement, options: RenderSurfaceOptions) => RenderSurface;
   /** Which cached package may be restored, and the budget of commits and restores. */
   readonly profile: ExpectedPackageProfile;

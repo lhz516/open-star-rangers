@@ -494,6 +494,8 @@ describe('recording size limit', () => {
       // P3-11's.
       'all-clear', 'flight-message', 'mission-completed', 'player-loss-started', 'player-rescued', 'result-latched', 'settlement-deferred',
       'settlement-started', 'teardown-started', 'wingman-loss-timer-expired', 'wingman-loss-timer-started',
+      // P3-12's.
+      'explosion-created', 'view-switched', 'warp-wall-contact',
       // P3-14's.
       'object-retired',
     ].sort());
@@ -503,7 +505,8 @@ describe('recording size limit', () => {
     // command's, then request handling, the hit and destruction, the energy, parked and frame-end stages; the selection and
     // page changes without a command anywhere; P3-09's toggle, select and Warp start in request handling as the one
     // additional event of three other commands, and the completion in its stage before the frame end; P3-08's wingman
-    // consumption in the object updates and a transponder deployment in request handling. The other speed
+    // consumption in the object updates and a transponder deployment in request handling; P3-12's construction and
+    // switch in the delayed player explosion's stage and the wall contact at the frame end. The other speed
     // assist event and the level change of the last command, which may follow its result alone, go in the tick before.
     const before = (event: (typeof events)[keyof typeof events], ticks = 1) => ({ ...event, tick: checkpoint.tick - ticks });
     // P3-10's (CB-13) in two earlier ticks: the message starts three ticks before; two ticks before, the flush and its
@@ -527,14 +530,15 @@ describe('recording size limit', () => {
         events['weapon-selected'], events['left-page-changed'], events['wingman-command-consumed'], events['target-changed'],
         { ...events['map-toggled'], commandIndex: 60 }, { ...events['warp-destination-set'], commandIndex: 61 }, { ...events['warp-started'], commandIndex: 62 },
         events['transponder-deployed'], events['shot-fired'], events['missile-ended'], events['explosion-started'], events['fragment-expired'], events['source-released'], events.hit,
-        events['object-destroyed'], events['energy-depleted'], events['object-left-world'], events['warp-completed'], events['target-cleared'],
+        events['object-destroyed'], events['explosion-created'], events['view-switched'], events['energy-depleted'], events['object-left-world'], events['warp-completed'],
+        events['warp-wall-contact'], events['target-cleared'],
       ],
       checkpoints: [{ tick: 0, hash: checkpoint.hash }, checkpoint],
       finalTick: checkpoint.tick,
     };
     expect(compareReplayResults(result, result)).toEqual({ match: true });
     // P3-11's (ME-11, ME-13), each in its causal place over the last seven ticks: the wingman loss message's expiry, the
-    // player's destruction with its page change, flush and loss, the wingman's destruction with its timer and a world
+    // player's destruction with its page change, flush, switch to the destruction view (P3-12, FS-03) and loss, the wingman's destruction with its timer and a world
     // exit with the all-clear; the escape pod's rescue; the settlement and its deferral; the completion message; the
     // result's due, its latch and the teardown; the completion in the final tick.
     const safe = Number.MAX_SAFE_INTEGER;
@@ -546,7 +550,8 @@ describe('recording size limit', () => {
     const mission = {
       events: [
         at(events['wingman-loss-timer-expired'], 6), ...destruction(safe, 0), at(events['left-page-changed'], 6),
-        at(events['radio-flushed'], 6, { cause: 'player-destroyed' }), at(events['player-loss-started'], 6),
+        at(events['radio-flushed'], 6, { cause: 'player-destroyed' }),
+        at(events['view-switched'], 6, { viewMode: 0x11, subMode: 8, stage: 'collision' }), at(events['player-loss-started'], 6),
         ...destruction(safe - 1, 1), at(events['wingman-loss-timer-started'], 6, { wingmanEntityId: safe - 1 }),
         at(events['object-left-world'], 6, { kindBit: 19 }), at(events['all-clear'], 6),
         at(events['fragment-expired'], 5, { outcome: 'escape-pod' }), at(events['weapon-selected'], 5), at(events['player-rescued'], 5),

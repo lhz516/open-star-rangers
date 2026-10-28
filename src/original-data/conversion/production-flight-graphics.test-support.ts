@@ -36,26 +36,38 @@ const rawIndices = (width: number, height: number, seed: number, range = 256): S
   ({ width, height, indices: Array.from({ length: width * height }, (_, pixel) => (seed * 41 + pixel * 53 + 7) % range) });
 
 /** The hit-shimmer thresholds: every value is kept as stored, including those beyond any palette's use. */
-export const SYNTHETIC_HIT_SHIMMER = rawIndices(8, 6, 3);
+export const SYNTHETIC_HIT_SHIMMER = rawIndices(4, 2, 3);
 
-/** The target display background: indices below its 16-entry embedded palette, and that palette as stored BGR triples. */
+/**
+ * The target display background: 96 × 96 like TEX 11089 (the right display stretches exactly that size), indices below
+ * its 16-entry embedded palette, and that palette as stored BGR triples.
+ */
 export const SYNTHETIC_TARGET_DISPLAY = Object.freeze({
-  ...rawIndices(5, 4, 9, 16),
+  ...rawIndices(96, 96, 9, 16),
   bgr: Array.from({ length: 16 * 3 }, (_, component) => (component * 23 + 11) & 0xff),
 });
 
 /** Nebula background `index` of the NEBC list. */
-export const syntheticNebula = (index: number): SyntheticRawImage => rawIndices(3 + (index % 3), 4, 100 + index);
+export const syntheticNebula = (index: number): SyntheticRawImage => rawIndices(128, 128, 100 + index);
 
 /** Frame `frame` of explosion animation `animation`, both from 0: runs of both kinds, sized by animation and frame. */
 export const syntheticExplosionFrame = (animation: number, frame: number): SyntheticFrame =>
-  patternFrame(3 + (animation % 5), 3 + (frame % 3), animation * 31 + frame + 1);
+  patternFrame(3 + (animation % 5), 3 + (animation % 3), animation * 31 + frame + 1);
 
-/** Made-up bytes of the view label of sub-mode 8, including 1, 0x7F and bytes 128–255. */
-export const SYNTHETIC_VIEW_LABEL = String.fromCharCode(0x5a, 1, 0x7f, 0x80, 0xa7, 0xff, 0x20, 0x2e, 0x5a);
+/** Made-up bytes of the view label of sub-mode 8, all in fonts/1's character map as the shipped label is (hud §4.1). */
+export const SYNTHETIC_VIEW_LABEL = String.fromCharCode(0x5a, 0x41, 0x7e, 0x5b, 0x40, 0x3f, 0x20, 0x2e, 0x5a);
 
 const rawEntry = (id: number, type: string, { width, height, indices }: SyntheticRawImage, bgr: readonly number[] = []): SyntheticEntry =>
   ({ id, type, data: rawImageBlock(width, height, indices, bgr) });
+
+/**
+ * Generated once per process: the nebulae make the entries costly to build, and many disc fixtures include them. Each
+ * call returns copies, so a caller may change what it receives.
+ */
+let flightGraphicsEntries: readonly SyntheticEntry[] | undefined;
+
+const copyEntry = ({ data, relocations, ...entry }: SyntheticEntry): SyntheticEntry =>
+  ({ ...entry, data: data.slice(), ...(relocations && { relocations: [...relocations] }) });
 
 /**
  * The synthetic entries of every production flight graphic, in ascending ID order: TEX 11069 and 11089, the 15 BITM of
@@ -63,7 +75,7 @@ const rawEntry = (id: number, type: string, { width, height, indices }: Syntheti
  * for another, or omits it when null. The DATA entry of the flight palettes is not included.
  */
 export function productionFlightGraphicsEntries(replace: Readonly<Record<number, SyntheticEntry | null>> = {}): SyntheticEntry[] {
-  const entries = [
+  flightGraphicsEntries ??= [
     rawEntry(HIT_SHIMMER_ENTRY, 'TEX', SYNTHETIC_HIT_SHIMMER),
     rawEntry(TARGET_DISPLAY_ENTRY, 'TEX', SYNTHETIC_TARGET_DISPLAY, SYNTHETIC_TARGET_DISPLAY.bgr),
     ...PRODUCTION_NEBULA_IMAGES.map((entry, index) => rawEntry(entry, 'BITM', syntheticNebula(index))),
@@ -71,8 +83,8 @@ export function productionFlightGraphicsEntries(replace: Readonly<Record<number,
       animEntry(entry, Array.from({ length: frames }, (_, frame) => syntheticExplosionFrame(animation, frame)))),
     blockEntry(VIEW_LABELS_ENTRY, 'TABL', viewLabelTable(SYNTHETIC_VIEW_LABEL)),
   ];
-  return entries
-    .map(entry => (Object.hasOwn(replace, entry.id) ? replace[entry.id] : entry))
+  return flightGraphicsEntries
+    .map(entry => (Object.hasOwn(replace, entry.id) ? replace[entry.id] : copyEntry(entry)))
     .filter((entry): entry is SyntheticEntry => entry !== null)
     .sort((left, right) => left.id - right.id);
 }

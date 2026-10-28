@@ -56,6 +56,7 @@ type Hooks = Partial<Record<string, (context: TickContext) => void>>;
 function stepWith(state: WorldState, hooks: Hooks): readonly DomainEvent[] {
   const context = registerTick(state, readTickInput(tickInput()));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     hooks[stage.id]?.(context);
     stage.run?.(context);
   }

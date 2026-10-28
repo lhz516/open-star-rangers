@@ -922,6 +922,11 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
       type: 'object-destroyed', tick, entityId, kindBit, source: null, position: point(), activity: 'active', attacker: { type: 'none' }, eventClass: 1,
       outcome: 'explodes',
     });
+    // The destruction entry's switch to the destruction view, between its flush and its loss (P3-12 FS-03, merged with ME-09).
+    const destructionSwitch = (tick: number, fromViewMode = 0xc): Mutable => ({
+      type: 'view-switched', tick, fromViewMode, fromSubMode: 0, viewMode: 0x11, subMode: 8, stage: 'collision',
+      player: { entityId: 1, position: point(), orientation: orientation() },
+    });
     const destroyedLoss = (tick: number): Mutable =>
       ({ type: 'player-loss-started', tick, playerEntityId: 1, loss: 'destroyed', previousSubState: 0, previousViewMode: 0xc, viewSwitched: true });
     const energyLoss = (tick: number): Mutable =>
@@ -953,6 +958,7 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
         destroyed(1, 1, 0),
         pageChanged(1),
         flushed(1, 'player-destroyed'),
+        destructionSwitch(1),
         destroyedLoss(1),
         hit(1, 2, 1),
         destroyed(1, 2, 1),
@@ -995,20 +1001,26 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
     });
 
     it.each([
-      ['loss view', 6, (event: Mutable) => { event.previousViewMode = 0x11; }],
-      ['wingman due clock', 9, (event: Mutable) => { event.dueClock = 0x784; }],
-      ['rescue position', 14, (event: Mutable) => { (event.position as Mutable).z = 2000.5; }],
-      ['rescue orientation', 14, (event: Mutable) => { (event.orientation as number[])[0] = -1; }],
-      ['beacon deadline', 17, (event: Mutable) => { event.deadlineClock = 0x3c8; }],
-      ['settlement range', 23, (event: Mutable) => { (event.summary as Mutable).range = 6; }],
-      ['deferred due clock', 24, (event: Mutable) => { event.dueClock = 0x28c; }],
-      ['result kills', 30, (event: Mutable) => { (event.result as Mutable).playerKills = 10; }],
-      ['result ending', 30, (event: Mutable) => { ((event.result as Mutable).endingGaps as Mutable[])[0].variant = 'wingman'; }],
-      ['teardown entities', 32, (event: Mutable) => { event.entities = 2; }],
+      ['wingman due clock', 10, (event: Mutable) => { event.dueClock = 0x784; }],
+      ['rescue position', 15, (event: Mutable) => { (event.position as Mutable).z = 2000.5; }],
+      ['rescue orientation', 15, (event: Mutable) => { (event.orientation as number[])[0] = -1; }],
+      ['beacon deadline', 18, (event: Mutable) => { event.deadlineClock = 0x3c8; }],
+      ['settlement range', 24, (event: Mutable) => { (event.summary as Mutable).range = 6; }],
+      ['deferred due clock', 25, (event: Mutable) => { event.dueClock = 0x28c; }],
+      ['result kills', 31, (event: Mutable) => { (event.result as Mutable).playerKills = 10; }],
+      ['result ending', 31, (event: Mutable) => { ((event.result as Mutable).endingGaps as Mutable[])[0].variant = 'wingman'; }],
+      ['teardown entities', 33, (event: Mutable) => { event.entities = 2; }],
     ])('reports a different %s at its tick', (_, index, change) => {
       const actual = missionRun();
       change(actual.events[index]);
       expect(compareReplayResults(missionRun(), actual)).toEqual({ match: false, tick: actual.events[index].tick, kind: 'events' });
+    });
+
+    it('reports a different loss view, with its switch, at its tick', () => {
+      const actual = missionRun();
+      actual.events[6].fromViewMode = 0x11;
+      actual.events[7].previousViewMode = 0x11;
+      expect(compareReplayResults(missionRun(), actual)).toEqual({ match: false, tick: 1, kind: 'events' });
     });
 
     it('accepts the bounds of selectors, indexes, rescues and ending gaps, and two losses in one tick', () => {
@@ -1017,126 +1029,203 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
         change(changed);
         expect(compareReplayResults(changed, structuredClone(changed))).toEqual({ match: true });
       };
-      for (const summarySelector of [13, 19, 0, -0x80]) accepts((run) => { run.events[23].summarySelector = summarySelector; });
-      accepts((run) => Object.assign(run.events[23], { outcome: 'failure', summary: null, summarySelector: -1 }));
-      accepts((run) => Object.assign(run.events[23], { summary: null, summarySelector: -1 }));
-      accepts((run) => { (run.events[23].summary as Mutable).trigger = 0; (run.events[23].summary as Mutable).range = 0; });
+      for (const summarySelector of [13, 19, 0, -0x80]) accepts((run) => { run.events[24].summarySelector = summarySelector; });
+      accepts((run) => Object.assign(run.events[24], { outcome: 'failure', summary: null, summarySelector: -1 }));
+      accepts((run) => Object.assign(run.events[24], { summary: null, summarySelector: -1 }));
+      accepts((run) => { (run.events[24].summary as Mutable).trigger = 0; (run.events[24].summary as Mutable).range = 0; });
       // A success without a mission cutscene has its one gap; a failed settlement's is destroyed, a third loss's its loss.
-      accepts((run) => { run.events[30].result = result({ endingGaps: [{ gap: 'G-02/8', variant: 'wingman' }], rescuesUsed: 0, summary: null }); });
+      accepts((run) => { run.events[31].result = result({ endingGaps: [{ gap: 'G-02/8', variant: 'wingman' }], rescuesUsed: 0, summary: null }); });
       accepts((run) => {
-        run.events[30].result = result({
+        run.events[31].result = result({
           outcome: 'failure', reason: { type: 'settlement-failed' }, summary: null, endingGaps: [{ gap: 'G-02/7', variant: 'destroyed' }],
         });
-        run.events[33].outcome = 'failure';
+        run.events[34].outcome = 'failure';
       });
       // A third energy loss latches after the beacon's flush; a third destruction at the escape pod's expiry.
       accepts((run) => {
-        run.events[29].cause = 'beacon-expired';
-        run.events[30].result = result({
+        run.events[30].cause = 'beacon-expired';
+        run.events[31].result = result({
           outcome: 'failure', reason: { type: 'third-loss', loss: 'energy' }, summary: null, endingGaps: [{ gap: 'G-02/7', variant: 'energy' }],
         });
-        run.events[33].outcome = 'failure';
+        run.events[34].outcome = 'failure';
       });
       accepts((run) => {
-        const latch = { ...run.events[30], result: result({
+        const latch = { ...run.events[31], result: result({
           outcome: 'failure', reason: { type: 'third-loss', loss: 'destroyed' }, summary: null, endingGaps: [{ gap: 'G-02/7', variant: 'destroyed' }],
         }) };
-        run.events.splice(28, 4, commandResult(8, 0, { commandType: 'fire' }), { ...run.events[12], tick: 8 }, latch);
-        run.events[32].outcome = 'failure';
+        run.events.splice(29, 4, commandResult(8, 0, { commandType: 'fire' }), { ...run.events[13], tick: 8 }, latch);
+        run.events[33].outcome = 'failure';
       });
       // The destruction and the energy entries in one tick: two losses, the limit.
-      accepts((run) => void run.events.splice(16, 0, hit(3, 1, 0), destroyed(3, 1, 0), pageChanged(3), flushed(3, 'player-destroyed'), destroyedLoss(3)));
-      accepts((run) => Object.assign(run.events[6], { previousSubState: 1 }));
+      accepts((run) => void run.events.splice(17, 0, hit(3, 1, 0), destroyed(3, 1, 0), pageChanged(3), flushed(3, 'player-destroyed'), destructionSwitch(3), destroyedLoss(3)));
+      accepts((run) => Object.assign(run.events[7], { previousSubState: 1 }));
       // The destruction view kept, from view 0x11 with sub-mode 8.
-      accepts((run) => Object.assign(run.events[6], { previousViewMode: 0x11, viewSwitched: false }));
-      accepts((run) => { run.events[14].candidates = CORE_LIMITS.entities; });
-      accepts((run) => { run.events[32].entities = CORE_LIMITS.entities; });
-      accepts((run) => { (run.events[30].result as Mutable).playerKills = 0x7fffffff; });
+      // A loss in the destruction view 0x11/8 keeps the view, so no switch precedes it.
+      accepts((run) => {
+        run.events.splice(6, 1);
+        Object.assign(run.events[6], { previousViewMode: 0x11, viewSwitched: false });
+      });
+      accepts((run) => { run.events[15].candidates = CORE_LIMITS.entities; });
+      accepts((run) => { run.events[33].entities = CORE_LIMITS.entities; });
+      accepts((run) => { (run.events[31].result as Mutable).playerKills = 0x7fffffff; });
     });
 
     const invalid: [string, (result: Result) => void, string][] = [
       ['a radio flush of an unknown cause', (run) => { run.events[5].cause = 'player-rescued'; }, '.events[5].cause'],
-      ['an all-clear of a kind outside the entry set', (run) => { run.events[11].kindBit = 1; }, '.events[11].kindBit'],
-      ['an all-clear of another object', (run) => { run.events[11].entityId = 6; }, '.events[11]'],
-      ['an all-clear of a destruction class', (run) => { run.events[11].eventClass = 1; }, '.events[11]'],
-      ['an all-clear without its object event', (run) => void run.events.splice(10, 1), '.events[10]'],
-      ['a destruction loss without its flush', (run) => void run.events.splice(5, 1), '.events[5]'],
-      ['a destruction loss from sub-state 2', (run) => { run.events[6].previousSubState = 2; }, '.events[6].previousSubState'],
-      ['a destruction loss with a beacon deadline', (run) => { run.events[6].deadlineClock = 0; }, '.events[6]'],
-      ['an energy loss from sub-state 3', (run) => { run.events[17].previousSubState = 3; }, '.events[17].previousSubState'],
-      ['an energy loss without its beacon', (run) => void run.events.splice(16, 1), '.events[16]'],
+      ['an all-clear of a kind outside the entry set', (run) => { run.events[12].kindBit = 1; }, '.events[12].kindBit'],
+      ['an all-clear of another object', (run) => { run.events[12].entityId = 6; }, '.events[12]'],
+      ['an all-clear of a destruction class', (run) => { run.events[12].eventClass = 1; }, '.events[12]'],
+      ['an all-clear without its object event', (run) => void run.events.splice(11, 1), '.events[11]'],
+      ['a destruction loss without its flush', (run) => void run.events.splice(5, 1), '.events[6]'],
+      ['a destruction loss without its switch', (run) => void run.events.splice(6, 1), '.events[6]'],
+      ['a destruction loss after a switch from another view', (run) => { run.events[6].fromViewMode = 1; }, '.events[7]'],
+      ['a destruction loss from sub-state 2', (run) => { run.events[7].previousSubState = 2; }, '.events[7].previousSubState'],
+      ['a destruction loss with a beacon deadline', (run) => { run.events[7].deadlineClock = 0; }, '.events[7]'],
+      ['an energy loss from sub-state 3', (run) => { run.events[18].previousSubState = 3; }, '.events[18].previousSubState'],
+      ['an energy loss without its beacon', (run) => void run.events.splice(17, 1), '.events[17]'],
       ['a third loss in a tick', (run) => void run.events.splice(
-        16, 0, hit(3, 1, 0), destroyed(3, 1, 0), pageChanged(3), flushed(3, 'player-destroyed'), destroyedLoss(3),
-        hit(3, 3, 0), destroyed(3, 3, 0), flushed(3, 'player-destroyed'), { ...destroyedLoss(3), playerEntityId: 3 },
-      ), '.events[26]'],
-      ['a destruction loss of another player entity', (run) => { run.events[6].playerEntityId = 3; }, '.events[6]'],
-      ['a destruction loss apart from the destruction', (run) => void run.events.splice(4, 0, { ...run.events[0], length: 2 }), '.events[7]'],
-      ['a kept view outside view 0x11', (run) => { run.events[6].viewSwitched = false; }, '.events[6].viewSwitched'],
+        17, 0, hit(3, 1, 0), destroyed(3, 1, 0), pageChanged(3), flushed(3, 'player-destroyed'), destructionSwitch(3), destroyedLoss(3),
+        hit(3, 3, 0), destroyed(3, 3, 0), flushed(3, 'player-destroyed'), destructionSwitch(3), { ...destroyedLoss(3), playerEntityId: 3 },
+      ), '.events[29]'],
+      ['a destruction loss of another player entity', (run) => { run.events[7].playerEntityId = 3; }, '.events[7]'],
+      ['a destruction loss apart from the destruction', (run) => void run.events.splice(4, 0, { ...run.events[0], length: 2 }), '.events[8]'],
+      ['a kept view outside view 0x11', (run) => { run.events[7].viewSwitched = false; }, '.events[7].viewSwitched'],
       ['a wingman timer after another kind\'s destruction', (run) => {
-        Object.assign(run.events[7], { victimKindBit: 7 });
-        Object.assign(run.events[8], { kindBit: 7 });
-      }, '.events[9]'],
-      ['a wingman timer apart from its destruction', (run) => void run.events.splice(9, 0, pageChanged(1)), '.events[10]'],
+        Object.assign(run.events[8], { victimKindBit: 7 });
+        Object.assign(run.events[9], { kindBit: 7 });
+      }, '.events[10]'],
+      ['a wingman timer apart from its destruction', (run) => void run.events.splice(10, 0, pageChanged(1)), '.events[11]'],
       ['a queued expiry without its message', (run) => void run.events.splice(0, 1), '.events[0]'],
-      ['a rescue without its transition', (run) => void run.events.splice(15, 1), '.events[14]'],
-      ['a destruction rescue with G-02/6', (run) => { run.events[15].gap = 'G-02/6'; }, '.events[15]'],
-      ['a transition without its event', (run) => void run.events.splice(14, 1), '.events[14]'],
-      ['a third rescue', (run) => { run.events[21].rescues = 3; }, '.events[21].rescues'],
-      ['a rescue base without candidates', (run) => { run.events[21].baseEntityId = 4; }, '.events[21].baseEntityId'],
-      ['a rescue with more candidates than entities', (run) => { run.events[14].candidates = CORE_LIMITS.entities + 1; }, '.events[14].candidates'],
-      ['a summary selector of 12', (run) => { run.events[23].summarySelector = 12; }, '.events[23].summarySelector'],
-      ['a summary selector of 20', (run) => { run.events[23].summarySelector = 20; }, '.events[23].summarySelector'],
-      ['a summary selector below an i8', (run) => { run.events[23].summarySelector = -0x81; }, '.events[23].summarySelector'],
-      ['a selector without a summary', (run) => { run.events[23].summary = null; }, '.events[23].summarySelector'],
-      ['a failed settlement with a summary', (run) => { run.events[23].outcome = 'failure'; }, '.events[23].summary'],
-      ['a summary of a third trigger', (run) => { (run.events[23].summary as Mutable).trigger = 2; }, '.events[23].summary.trigger'],
-      ['a summary of a ninth range', (run) => { (run.events[23].summary as Mutable).range = 8; }, '.events[23].summary.range'],
-      ['a summary of another Asset kind', (run) => { (run.events[23].summary as Mutable).mission = 'data/first-campaign'; }, '.events[23].summary.mission'],
-      ['a summary of an invalid Asset ID', (run) => { (run.events[23].summary as Mutable).mission = 'Mission'; }, '.events[23].summary.mission'],
-      ['a second settlement in a tick', (run) => void run.events.splice(24, 0, settlement(5)), '.events[24]'],
-      ['a completion message without its flush', (run) => void run.events.splice(26, 1), '.events[26]'],
-      ['a result latched in another tick', (run) => { (run.events[30].result as Mutable).latchTick = 7; }, '.events[30].result.latchTick'],
-      ['an all-clear reason for a failure', (run) => { (run.events[30].result as Mutable).outcome = 'failure'; }, '.events[30].result.reason.type'],
-      ['a failure with a summary', (run) => { run.events[30].result = result({ outcome: 'failure', reason: { type: 'settlement-failed' } }); }, '.events[30].result.summary'],
+      ['a rescue without its transition', (run) => void run.events.splice(16, 1), '.events[15]'],
+      ['a destruction rescue with G-02/6', (run) => { run.events[16].gap = 'G-02/6'; }, '.events[16]'],
+      ['a transition without its event', (run) => void run.events.splice(15, 1), '.events[15]'],
+      ['a third rescue', (run) => { run.events[22].rescues = 3; }, '.events[22].rescues'],
+      ['a rescue base without candidates', (run) => { run.events[22].baseEntityId = 4; }, '.events[22].baseEntityId'],
+      ['a rescue with more candidates than entities', (run) => { run.events[15].candidates = CORE_LIMITS.entities + 1; }, '.events[15].candidates'],
+      ['a summary selector of 12', (run) => { run.events[24].summarySelector = 12; }, '.events[24].summarySelector'],
+      ['a summary selector of 20', (run) => { run.events[24].summarySelector = 20; }, '.events[24].summarySelector'],
+      ['a summary selector below an i8', (run) => { run.events[24].summarySelector = -0x81; }, '.events[24].summarySelector'],
+      ['a selector without a summary', (run) => { run.events[24].summary = null; }, '.events[24].summarySelector'],
+      ['a failed settlement with a summary', (run) => { run.events[24].outcome = 'failure'; }, '.events[24].summary'],
+      ['a summary of a third trigger', (run) => { (run.events[24].summary as Mutable).trigger = 2; }, '.events[24].summary.trigger'],
+      ['a summary of a ninth range', (run) => { (run.events[24].summary as Mutable).range = 8; }, '.events[24].summary.range'],
+      ['a summary of another Asset kind', (run) => { (run.events[24].summary as Mutable).mission = 'data/first-campaign'; }, '.events[24].summary.mission'],
+      ['a summary of an invalid Asset ID', (run) => { (run.events[24].summary as Mutable).mission = 'Mission'; }, '.events[24].summary.mission'],
+      ['a second settlement in a tick', (run) => void run.events.splice(25, 0, settlement(5)), '.events[25]'],
+      ['a completion message without its flush', (run) => void run.events.splice(27, 1), '.events[27]'],
+      ['a result latched in another tick', (run) => { (run.events[31].result as Mutable).latchTick = 7; }, '.events[31].result.latchTick'],
+      ['an all-clear reason for a failure', (run) => { (run.events[31].result as Mutable).outcome = 'failure'; }, '.events[31].result.reason.type'],
+      ['a failure with a summary', (run) => { run.events[31].result = result({ outcome: 'failure', reason: { type: 'settlement-failed' } }); }, '.events[31].result.summary'],
       ['a third loss with one rescue used', (run) => {
-        run.events[30].result = result({
+        run.events[31].result = result({
           outcome: 'failure', reason: { type: 'third-loss', loss: 'energy' }, summary: null, rescuesUsed: 1, endingGaps: [{ gap: 'G-02/7', variant: 'energy' }],
         });
-      }, '.events[30].result.rescuesUsed'],
-      ['three rescues used', (run) => { (run.events[30].result as Mutable).rescuesUsed = 3; }, '.events[30].result.rescuesUsed'],
+      }, '.events[31].result.rescuesUsed'],
+      ['three rescues used', (run) => { (run.events[31].result as Mutable).rescuesUsed = 3; }, '.events[31].result.rescuesUsed'],
       ['a third loss of another variant', (run) => {
-        run.events[30].result = result({
+        run.events[31].result = result({
           outcome: 'failure', reason: { type: 'third-loss', loss: 'energy' }, summary: null, endingGaps: [{ gap: 'G-02/7', variant: 'destroyed' }],
         });
-      }, '.events[30].result.endingGaps'],
-      ['a success without G-02/8 first', (run) => { ((run.events[30].result as Mutable).endingGaps as Mutable[]).reverse(); }, '.events[30].result.endingGaps'],
-      ['a mission cutscene without a summary', (run) => { (run.events[30].result as Mutable).summary = null; }, '.events[30].result.endingGaps[1]'],
-      ['a mission cutscene row of 12', (run) => { ((run.events[30].result as Mutable).endingGaps as Mutable[])[1].row = 12; }, '.events[30].result.endingGaps[1].row'],
-      ['three ending gaps', (run) => { ((run.events[30].result as Mutable).endingGaps as Mutable[]).push({ gap: 'G-02/9', row: 13 }); }, '.events[30].result.endingGaps'],
-      ['negative kills', (run) => { (run.events[30].result as Mutable).playerKills = -1; }, '.events[30].result.playerKills'],
-      ['kills beyond an i32', (run) => { (run.events[30].result as Mutable).playerKills = 0x80000000; }, '.events[30].result.playerKills'],
-      ['a teardown of more entities than the limit', (run) => { run.events[32].entities = CORE_LIMITS.entities + 1; }, '.events[32].entities'],
-      ['a latch without its due flush', (run) => { run.events[29].cause = 'beacon-expired'; }, '.events[30]'],
+      }, '.events[31].result.endingGaps'],
+      ['a success without G-02/8 first', (run) => { ((run.events[31].result as Mutable).endingGaps as Mutable[]).reverse(); }, '.events[31].result.endingGaps'],
+      ['a mission cutscene without a summary', (run) => { (run.events[31].result as Mutable).summary = null; }, '.events[31].result.endingGaps[1]'],
+      ['a mission cutscene row of 12', (run) => { ((run.events[31].result as Mutable).endingGaps as Mutable[])[1].row = 12; }, '.events[31].result.endingGaps[1].row'],
+      ['three ending gaps', (run) => { ((run.events[31].result as Mutable).endingGaps as Mutable[]).push({ gap: 'G-02/9', row: 13 }); }, '.events[31].result.endingGaps'],
+      ['negative kills', (run) => { (run.events[31].result as Mutable).playerKills = -1; }, '.events[31].result.playerKills'],
+      ['kills beyond an i32', (run) => { (run.events[31].result as Mutable).playerKills = 0x80000000; }, '.events[31].result.playerKills'],
+      ['a teardown of more entities than the limit', (run) => { run.events[33].entities = CORE_LIMITS.entities + 1; }, '.events[33].entities'],
+      ['a latch without its due flush', (run) => { run.events[30].cause = 'beacon-expired'; }, '.events[31]'],
       ['a third energy loss after the result\'s due', (run) => {
-        run.events[30].result = result({
+        run.events[31].result = result({
           outcome: 'failure', reason: { type: 'third-loss', loss: 'energy' }, summary: null, endingGaps: [{ gap: 'G-02/7', variant: 'energy' }],
         });
-      }, '.events[30]'],
-      ['a latch without its teardown', (run) => void run.events.splice(32, 1), '.events[30]'],
-      ['a teardown without a latch', (run) => void run.events.splice(30, 1), '.events[31]'],
-      ['a completion of another outcome', (run) => { run.events[33].outcome = 'failure'; }, '.events[33].outcome'],
+      }, '.events[31]'],
+      ['a latch without its teardown', (run) => void run.events.splice(33, 1), '.events[31]'],
+      ['a teardown without a latch', (run) => void run.events.splice(31, 1), '.events[32]'],
+      ['a completion of another outcome', (run) => { run.events[34].outcome = 'failure'; }, '.events[34].outcome'],
       ['a completion before the final tick', (run) => Object.assign(run, { finalTick: 10, checkpoints: [{ tick: 0, hash: hashOf(0) }, { tick: 10, hash: hashOf(10) }] }), '.finalTick'],
-      ['a result latched after request handling', (run) => void run.events.splice(30, 0, { type: 'energy-depleted', tick: 8, entityId: 1, kindBit: 0, position: point() }), '.events[31]'],
-      ['a teardown before the commands', (run) => void run.events.splice(31, 2, run.events[32], run.events[31]), '.events[32]'],
-      ['a completion in the teardown\'s tick', (run) => { run.events[33].tick = 8; }, '.events[33]'],
-      ['an event after the completion', (run) => void run.events.push({ type: 'flight-message', tick: 9, message: 'beacon' }), '.events[34]'],
-      ['a docking request from sub-state 2', (run) => void run.events.splice(31, 1, commandResult(8, 0, { commandType: 'select-number', outcome: 'accepted', reason: null }),
+      ['a result latched after request handling', (run) => void run.events.splice(31, 0, { type: 'energy-depleted', tick: 8, entityId: 1, kindBit: 0, position: point() }), '.events[32]'],
+      ['a teardown before the commands', (run) => void run.events.splice(32, 2, run.events[33], run.events[32]), '.events[33]'],
+      ['a completion in the teardown\'s tick', (run) => { run.events[34].tick = 8; }, '.events[34]'],
+      ['an event after the completion', (run) => void run.events.push({ type: 'flight-message', tick: 9, message: 'beacon' }), '.events[35]'],
+      ['a docking request from sub-state 2', (run) => void run.events.splice(32, 1, commandResult(8, 0, { commandType: 'select-number', outcome: 'accepted', reason: null }),
         pageChanged(8), { ...pageChanged(8), commandIndex: 0 },
-        { type: 'docking-requested', tick: 8, playerEntityId: 1, dockingObject: 4, previousSubState: 2, deadlineClock: 0x782, commandIndex: 0 }), '.events[34].previousSubState'],
+        { type: 'docking-requested', tick: 8, playerEntityId: 1, dockingObject: 4, previousSubState: 2, deadlineClock: 0x782, commandIndex: 0 }), '.events[35].previousSubState'],
     ];
 
     it.each(invalid)('rejects %s on either side', (_, change, path) => {
       expectInvalidOnEitherSide(missionRun, change, path);
+    });
+  });
+
+  describe('P3-12 presentation facts (docs/plan/p3/02/spec.md, FS-03)', () => {
+    const IDENTITY = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    const switched = (tick: number, stage: string, overrides: Mutable = {}): Mutable => ({
+      type: 'view-switched', tick, fromViewMode: 0xc, fromSubMode: 0, viewMode: 8, subMode: 0, stage,
+      player: { entityId: 1, position: { x: 1, y: 2, z: 3 }, orientation: [...IDENTITY] }, ...overrides,
+    });
+    const created = (tick: number, stage: string, overrides: Mutable = {}): Mutable => ({
+      type: 'explosion-created', tick, entityId: 9, sourceEntityId: 4, sourceKindBit: 7, variant: 'other', stage,
+      position: { x: 1, y: -2, z: 0.5 }, velocity: { x: 0, y: 0, z: 48 }, ...overrides,
+    });
+    const wall = (tick: number): Mutable => ({ type: 'warp-wall-contact', tick, serial: 1 });
+
+    /**
+     * Tick 1: an explosion built in object update after the player's results; a toggle's switch in request handling
+     * before its `map-toggled`; explosions built in request handling, movement, collision, the delayed player explosion
+     * and the parked update, each in its stage's place.
+     * Tick 2: a Warp completion's switch without a player, then a wall contact at the frame end.
+     */
+    function presentationRun(): Result {
+      const events = [
+        commandResult(1, 0, { commandType: 'toggle-map', outcome: 'accepted', reason: null }),
+        created(1, 'object-update'),
+        switched(1, 'request-handling'),
+        { type: 'map-toggled', tick: 1, open: true, viewMode: 8, previousViewMode: 0xc, commandIndex: 0 },
+        created(1, 'request-handling', { entityId: 10, sourceKindBit: 20, variant: 'missile' }),
+        created(1, 'movement', { entityId: 11 }),
+        created(1, 'collision', { entityId: 12, sourceKindBit: 24 }),
+        created(1, 'delayed-player-explosion', { entityId: 13, sourceKindBit: 0 }),
+        created(1, 'parked-update', { entityId: 14, variant: 'large', sourceKindBit: 16 }),
+        switched(2, 'warp-completion', { fromViewMode: 1, viewMode: 0xc, player: null }),
+        wall(2),
+      ];
+      return { events, checkpoints: [{ tick: 0, hash: hashOf(0) }, { tick: 2, hash: hashOf(2) }], finalTick: 2 };
+    }
+
+    it('accepts and matches every type in the order of the stages it reports, after a JSON round trip', () => {
+      expect(compareReplayResults(presentationRun(), JSON.parse(JSON.stringify(presentationRun())))).toEqual({ match: true });
+    });
+
+    it.each([
+      ['construction stage', 4, (event: Mutable) => { event.stage = 'movement'; }],
+      ['construction velocity', 5, (event: Mutable) => { (event.velocity as Mutable).z = 47; }],
+      ['switch pose', 2, (event: Mutable) => { ((event.player as Mutable).orientation as number[])[0] = -1; }],
+      ['switch sub-mode', 9, (event: Mutable) => { event.subMode = 8; }],
+      ['wall contact serial', 10, (event: Mutable) => { event.serial = 2; }],
+    ])('reports a different %s at its tick', (_, index, change) => {
+      const actual = presentationRun();
+      change(actual.events[index]);
+      expect(compareReplayResults(presentationRun(), actual)).toEqual({ match: false, tick: actual.events[index].tick, kind: 'events' });
+    });
+
+    const invalid: [string, (result: Result) => void, string][] = [
+      ['a construction in a stage that builds none', (result) => { result.events[5].stage = 'energy'; }, '.events[5].stage'],
+      ['a switch in an unknown stage', (result) => { result.events[2].stage = 'render'; }, '.events[2].stage'],
+      ['a construction without its velocity', (result) => { delete result.events[5].velocity; }, '.events[5].velocity'],
+      ['a sub-mode beyond a byte', (result) => { result.events[9].fromSubMode = 0x100; }, '.events[9].fromSubMode'],
+      ['a switch pose with an extra field', (result) => { (result.events[2].player as Mutable).kindBit = 0; }, '.events[2].player'],
+      ['a wall contact of serial 0', (result) => { result.events[10].serial = 0; }, '.events[10].serial'],
+      ['a construction velocity that is not an f32', (result) => { (result.events[5].velocity as Mutable).x = 0.1; }, '.events[5].velocity.x'],
+      ['a switch orientation that is not an f32', (result) => { ((result.events[2].player as Mutable).orientation as number[])[4] = 0.1; }, '.events[2].player.orientation[4]'],
+      ['a construction stage earlier than the event before', (result) => { result.events[8].stage = 'object-update'; }, '.events[8].stage'],
+      ['a switch in mission flow after request handling', (result) => void result.events.splice(3, 0, switched(1, 'mission-flow')), '.events[3].stage'],
+      ['a wall contact before the completion', (result) => void result.events.splice(9, 2, result.events[10], result.events[9]), '.events[10].stage'],
+      ['a second wall contact', (result) => void result.events.push(wall(2)), '.events[11]'],
+    ];
+
+    it.each(invalid)('rejects %s on either side', (_, change, path) => {
+      expectInvalidOnEitherSide(presentationRun, change, path);
     });
   });
 

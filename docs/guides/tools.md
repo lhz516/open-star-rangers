@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-24
+updated: 2026-10-28
 ---
 
 # 工具用法
@@ -12,11 +12,11 @@ updated: 2026-10-24
 | 脚本 | 用途 | 用法 |
 |---|---|---|
 | `tools/nob-list.ts` | 列出 IMFAT（`.NOB`）封包目录：条目数、各类型数量与大小 | `node tools/nob-list.ts local/StarRang/SRANGERS/MAIN/*.NOB [--entries]` |
-| `tools/nob-check.ts` | 用导入共用的源结构读取核对封包中全部 DATA、TEX、BITM、MFDD 记录、CCKD 字体表与分组元素、hud 记录的 TABL 图像列表、SNIP 帧与 DIAG 结构，解码全部 ANIM 帧，并解析 M2ID、NEBC、EXIC、EXPL、`CRAFT.NOB` 的 TABL 4003、MESH、MODL 与交叉引用；只输出计数、失败 code、图形、MESH、MODL 的观察最大值与容器计数（见[封包结构核对](#封包结构核对)） | `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` |
+| `tools/nob-check.ts` | 用导入共用的源结构读取核对封包中全部 DATA、TEX、BITM、MFDD 记录、CCKD 字体表、分组元素与仪表槽、hud 记录的 TABL 图像列表、SNIP 帧与 DIAG 结构，解码全部 ANIM 帧，并解析 M2ID、NEBC、EXIC、EXPL、`CRAFT.NOB` 的 TABL 4003、MESH、MODL 与交叉引用；只输出计数、失败 code、图形、MESH、MODL 的观察最大值与容器计数（见[封包结构核对](#封包结构核对)） | `node tools/nob-check.ts local/StarRang/SRANGERS/MAIN/SR.NOB` |
 | `tools/disc-check.ts` | 用 P2-02 的读取链按需读取本地 CloneCD 文件组，按 manifest 游戏文件表逐个解析路径，核对大小与分段流式计算的 SHA-256，并核对读取计量；只输出规范光盘路径、计数与结论 | `node tools/disc-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue} [--manifest docs/original/manifest.md]` |
 | `tools/source-check.ts` | 用 P2-03 的读取链识别本地 CloneCD 文件组的版本（默认生产白名单），再打开每个覆盖范围内的 NOB 与两个通讯头像研究封包，逐条目读取校验；只输出规范光盘路径、版本 ID、指纹、计数与结论 | `node tools/source-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
 | `tools/logic-check.ts` | 用与 Worker 相同的生产导入作业转换本地 CloneCD 文件组的 `logic` 组，再验证组、解码 payload 并在 Core 中载入任务；只输出结论、计数、限值对照、各阶段读取量与哈希（见[逻辑组核对](#逻辑组核对)） | `node tools/logic-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
-| `tools/package-check.ts` | 用与 Worker 相同的生产导入作业转换本地 CloneCD 文件组，按切片定义验证整个包，用各角色的读取器解码 P3-03 新增与扩展角色以及 P3-09 地图几何的全部 Asset，并在 Core 中载入任务；只输出结论、Asset ID、计数、限值对照、各阶段读取量与哈希（见[包核对](#包核对)） | `node tools/package-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
+| `tools/package-check.ts` | 用与 Worker 相同的生产导入作业转换本地 CloneCD 文件组，按切片定义验证整个包，用各角色的读取器解码 P3-03 新增与扩展角色、P3-09 地图几何与 P3-13 驾驶舱仪表调度的全部 Asset，并在 Core 中载入任务；只输出结论、Asset ID、计数、限值对照、各阶段读取量与哈希（见[包核对](#包核对)） | `node tools/package-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
 | `tools/replay-check.ts` | 用与 Worker 相同的生产导入作业转换本地 CloneCD 文件组并验证整包，在 Node 中重放开发构建导出的录制并与其结果比较；只输出固定形状的报告（错误码与结构位置、内容身份键、任务 Asset ID、setupHash、计数、Core 的比较与重放的运行是否完成）（见[录制重放核对](#录制重放核对)） | `node tools/replay-check.ts <录制.json> local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` |
 | `tools/task-state.ts` | 只读任务的 spec/goal/subtasks，确定性地给出工作流图的下一节点（见 [Agent 任务工作流](../engineering/agent-workflow.md#自动编排)）；在 `execute-goal` 节点同时给出按依赖与写入范围计算的并行调度 `schedule`（见[并行执行](../engineering/agent-workflow.md#并行执行)）；`--mark-reviewed` 写入审阅标记 | `node tools/task-state.ts p1/03 [--json] [--mark-reviewed]` |
 | `tools/compliance/cli.ts` | 本地完整文件hash/实际分发许可/声明指纹检查，严格非零失败与机读JSON | `pnpm check:original` / `pnpm check:licenses` / `pnpm check:compliance` |
@@ -37,14 +37,14 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 - **图形：**
   - DATA 须为 768 字节且分量不大于 63；
   - TEX 与 BITM 的整条目图像记录、MFDD 两个列表中的全部记录（每个列表至多 16 个）都经头部校验并解码；有嵌入调色板时，再核对每个不透明像素的索引都小于条目数；
-  - CCKD 的字体目录须恰为 3 项，每个字体表都经读取校验；分组目录（[P2-07](../plan/p2/07/spec.md)）须为 1–8 项，每个 slot 0–16 个元素、元素的两个标志只取 0 或 1，全部元素的图像记录同样解码；目录项 +0x04 非零的分组调色板都经导入共用的读取校验（+0x08 须为 768、768 字节按 DATA 规则）；
+  - CCKD 的字体目录须恰为 3 项，每个字体表都经读取校验；分组目录（[P2-07](../plan/p2/07/spec.md)）须为 1–8 项，每个 slot 0–16 个元素、元素的两个标志只取 0 或 1，全部元素的图像记录同样解码；目录项 +0x04 非零的分组调色板都经导入共用的读取校验（+0x08 须为 768、768 字节按 DATA 规则）；每个目录项按其布局号经驾驶舱仪表调度共用的 `readCockpitInstrumentSlot` 读取（[P3-13/11](../plan/p3/13/subtasks/11-graphics-import-wiring.md)：记录数组在条目内、参数表 0–4 项、非空的参数表指针须有重定位）；
   - [hud §2](../original/formats/hud.md#tabl-image-lists-confirmed-structure) 记录为图像列表的 TABL 条目（按条目 ID 列出，只属于 `SR.NOB`）须符合该结构，全部记录解码。封包只要含其中任一 ID，就必须以 TABL 类型含全部这些条目，否则为失败；判断与文件名无关。其他 TABL 条目不检查，只统计其中有多少能按图像列表解析，预期为 0；
   - SNIP 条目经导入共用的 `readSnipFrames` 校验结构与重定位，每帧都经 `decodeSnipFrame` 解码（颜色表在 EXE 中，这里用恒等表代替）；DIAG 条目经导入共用的 `readStatusMessages` 校验结构与重定位（下行格式在 EXE 中，这里用空格式代替）（P2-07 的 2026-10-08 修订）；
   - ANIM 条目经导入共用的 `readAnimationFrames` 校验整个结构，每帧再经生产解码 `decodeAnimationFrame` 解码；解码要求每帧恰好用尽其数据（[textures §6](../original/formats/textures.md#6-anim-explosion-animations-confirmed)，[P3-03](../plan/p3/03/spec.md)）。
 - **模型：** MESH 与 MODL 经导入共用的读取校验（MESH 失败位置为 `mesh`，MODL 为 `model`），再核对 MODL 部件的网格与贴图引用、音效槽引用都指向相应类型的条目。
 - **爆炸与机型表（P3-03）：** EXIC 经导入共用的 `parseExplosionLists` 解析，三张列表的每个 ID 都须是 EXPL 条目；EXPL 经 `parseExplosionRecord` 解析，+0 须是 SND 条目、+4 须是 ANIM 条目（[textures §7](../original/formats/textures.md#7-expl-explosion-records-confirmed)）。TABL 4003 的 ID 只属于 `CRAFT.NOB`：封包含该 ID 时必须是 TABL 条目，否则为失败；其 18 × 3 个单元都经导入共用的 `parseCraftTable` 解析，每个单元的条目 ID 都须是 CINF 条目（[craft §2](../original/formats/craft.md#2-tabl-4003-confirmed)）。其余新增解析器（CINF、DEBRIS、AISTUFF、COMM、TABL 10165 与 10399、RENS 头部、EXE 区域）带有切片专用的失败关闭规则，只经[包核对](#包核对)在切片条目上运行，不在这里逐条目运行。
 - **其余：** M2ID、NEBC 的 ID 引用。
-- **输出：** 每类条目的通过数与失败数，解码的图像记录数与核对过索引范围的记录数，MESH 顶点与三角形总数，按条目类型的观察最大值（图像宽高、调色板条目数、最大字体单元与见到的全部单元；通过的 MESH 的顶点数、三角形数与着色槽数；通过的 MODL 的部件合计、各列表部件数、颜色分量与见到的全部标志值），观察到的容器计数（CCKD 目录项与每 slot 元素的最大数、解码的元素数、读取的分组调色板数、两个元素标志取 0 与 1 的次数、MFDD 每列表与 TABL 每图像列表的最大记录数、其他 TABL 条目数及其中能按图像列表解析的数量；有 SNIP 时为每条目最大帧数与解码帧数，有 DIAG 时为最大启动消息数、读取的文字段数与最长文字的字节数；有 ANIM 时为每条目最大帧数、解码帧数、最大帧数据字节数、像素数及其中不透明的像素数，有 EXIC 时为列表数、EXPL 引用数及其不同 ID 数，有 EXPL 时为引用的不同 ANIM 与 SND 数，有 TABL 4003 时为核对的单元数与引用的不同 CINF 数），以及失败列表。ANIM 的帧计数与图像宽高只取自全部帧都通过的条目。失败只写条目 ID、类型与稳定 `code@结构位置`；ID 列表解析与交叉引用失败为固定文本（可含条目 ID），其他异常只写 `internal-error`。文件无法读取时只报告这一事实，封包不合法时报告 `code@位置`，都不输出宿主错误文本或路径。不输出像素、调色板值、字形、坐标、文字或其他条目内容。
+- **输出：** 每类条目的通过数与失败数，解码的图像记录数与核对过索引范围的记录数，MESH 顶点与三角形总数，按条目类型的观察最大值（图像宽高、调色板条目数、最大字体单元与见到的全部单元；通过的 MESH 的顶点数、三角形数与着色槽数；通过的 MODL 的部件合计、各列表部件数、颜色分量与见到的全部标志值），观察到的容器计数（CCKD 目录项与每 slot 元素的最大数、解码的元素数、读取的分组调色板数、两个元素标志取 0 与 1 的次数、读取的仪表槽数及其中常重绘的槽数、每槽最大记录数、读取的记录总数、参数表数与最长参数表的项数、MFDD 每列表与 TABL 每图像列表的最大记录数、其他 TABL 条目数及其中能按图像列表解析的数量；有 SNIP 时为每条目最大帧数与解码帧数，有 DIAG 时为最大启动消息数、读取的文字段数与最长文字的字节数；有 ANIM 时为每条目最大帧数、解码帧数、最大帧数据字节数、像素数及其中不透明的像素数，有 EXIC 时为列表数、EXPL 引用数及其不同 ID 数，有 EXPL 时为引用的不同 ANIM 与 SND 数，有 TABL 4003 时为核对的单元数与引用的不同 CINF 数），以及失败列表。ANIM 的帧计数与图像宽高只取自全部帧都通过的条目。失败只写条目 ID、类型与稳定 `code@结构位置`；ID 列表解析与交叉引用失败为固定文本（可含条目 ID），其他异常只写 `internal-error`。文件无法读取时只报告这一事实，封包不合法时报告 `code@位置`，都不输出宿主错误文本或路径。不输出像素、调色板值、字形、坐标、文字或其他条目内容。
 - **退出码：** 没有失败时为 0；有任何失败、文件无法读取或封包不合法时为 1；缺少参数时为 1 并打印用法。
 - 结果对照的观察最大值记录在 [textures §5](../original/formats/textures.md#5-observed-maxima-against-the-p2-05-limits-confirmed)、[textures §6](../original/formats/textures.md#6-anim-explosion-animations-confirmed)、[hud §1](../original/formats/hud.md#1-bitmap-fonts-confirmed)、[mesh](../original/formats/mesh.md#observed-maxima-against-the-readers-limits-confirmed)、[cockpit §3](../original/formats/cockpit.md#3-observed-counts-against-the-p2-07-limits-confirmed)、[hud §2](../original/formats/hud.md#tabl-image-lists-confirmed-structure) 及其 [SNIP 10487](../original/formats/hud.md#snip-10487-confirmed-structure-p2-1227) 与 [DIAG 10489](../original/formats/hud.md#diag-10489-confirmed-structure-p2-07-revision) 两节。
 
@@ -107,7 +107,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 
 ## 包核对
 
-`tools/package-check.ts` 在开发者本地的基准镜像上，验证 P3-03 完整生产包的转换、完整性与解码（[P3-03](../plan/p3/03/spec.md) 的 S-16、AC-19），以及 P3-09 加入的地图几何（[P3-09/11](../plan/p3/09/subtasks/11-map-geometry-import.md)）。它只用于本地原版数据，输出与结果只能留在 `local/` 下（例如 `local/research/p3-03/local-check/`、`local/research/p3-09/import-check/`）。
+`tools/package-check.ts` 在开发者本地的基准镜像上，验证 P3-03 完整生产包的转换、完整性与解码（[P3-03](../plan/p3/03/spec.md) 的 S-16、AC-19），以及 P3-09 加入的地图几何（[P3-09/11](../plan/p3/09/subtasks/11-map-geometry-import.md)）与 P3-13 加入的驾驶舱仪表调度（[P3-13/11](../plan/p3/13/subtasks/11-graphics-import-wiring.md)）。它只用于本地原版数据，输出与结果只能留在 `local/` 下（例如 `local/research/p3-03/local-check/`、`local/research/p3-09/import-check/`、`local/research/p3-13/11-import/`）。
 
 - **输入：** 与[逻辑组核对](#逻辑组核对)相同，CloneCD 文件组的各个文件经 `fs.openAsBlob` 打开，核对按一次性进程运行。
 - **核对内容：**
@@ -116,6 +116,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
   - 用 `decodeLogicPayload` 解码任务、机型表与僚机名册，并用 Core 的 `loadMission` 载入任务；
   - 用各角色的读取器解码 P3-03 新增角色的每个 Asset：规则数据（`decodeRuleDataPayload`）、飞行数据（`decodeFlightDataPayload`）、视角标签、HUD 文字、图像（受击闪烁、爆炸帧、星云、目标显示屏背景及其调色板）与 sound payload（只接受 schema 2）；
   - 用 `decodeMapGeometryPayload` 解码地图几何，再与一次独立的来源读取比较：工具自己重新打开光盘镜像，读取 `MAIN/SR.NOB` 的 CCKD 10103，按 [cockpit](../original/formats/cockpit.md#instrument-types-per-slot-confirmed-p3-0730) 与 [hud §1](../original/formats/hud.md#1-bitmap-fonts-confirmed) 的布局自行解析布局号 6 的目录槽中类型 10 的唯一仪表记录与字体表 1 的高度字节，不调用转换器的读取器；目录槽数与仪表记录数先按 8 与 32 的上限检查、数组先核对在条目内，再遍历。结构不成立为 `source-unreadable`，与 payload 不同为 `source-mismatch`，位置都是 `roles.map-geometry`，不输出数值；
+  - 用 `decodeCockpitInstrumentsPayload` 解码驾驶舱仪表调度，以包中解码的两个槽布局与地图几何运行 `checkCockpitInstruments`，再与同一 CCKD 条目的独立读取比较：按 [cockpit](../original/formats/cockpit.md#instrument-records-scheduling-and-visible-persistence-p3-1301) 的布局自行解析布局号 0、6、8 的目录槽的序号、+0x0C、元素的 +44/+48 与每条记录的类型、矩形、+0x18、+0x14 与参数表，不调用转换器的读取器；目录槽、元素、记录与参数项先按 8、16、32、4 的上限检查。结构不成立为 `source-unreadable`，与 payload 不同为 `source-mismatch`，位置都是 `roles.cockpit-instruments`；观察距离表（EXE 区域）不另行独立读取；
   - 把结构观测值与各读取器的限值对照，并把包的用量（除来源读取外的十一个预算维度）与 `PRODUCTION_PACKAGE.limits` 对照。
 
   任何作业、验证、解码、载入或限值失败都结束核对。
@@ -123,7 +124,7 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
   - `passed`；`error`（结束核对的首个失败，只含 code 与结构位置；Core 前提失败的 code 为 `core-input`）；
   - `identity`（版本 ID 与指纹）；
   - `package`：状态、切片定义版本、转换器版本、`ManifestIdentity`，以及每组的 Asset 数、依赖边数、payload 字节与摘要；
-  - `roles`：扩展的 `mission`、P3-03 新增的各角色（含依赖闭包中的 `explosion-animation`、`explosion-frame` 与 `nebula-background`）与 `map-geometry`（计数只有 `sourceMatches`），各自的组、Asset 数、payload 字节、摘要，以及记录、帧、文字、声音与像素的计数；修订 2 的 `comm-messages` 按表报告头像数与消息数（`faces20011`、`messages20011`、`faces20019`、`messages20019`、`faces20985`、`messages20985`、`messages20983`），以及存在的消息数、帧数、两份名单的名称数与名称总字节，可直接与 [executable RQ4](../original/formats/executable.md#rq4-speaker-faces-and-message-lookup--confirmed-code) 的计数对照；
+  - `roles`：扩展的 `mission`、P3-03 新增的各角色（含依赖闭包中的 `explosion-animation`、`explosion-frame` 与 `nebula-background`）、`map-geometry`（计数只有 `sourceMatches`）与 `cockpit-instruments`（槽数、常重绘槽数、元素数、遍 1 元素数、逐帧元素数、记录数、参数表数、参数项数、观察距离数与 `sourceMatches`；限值为 `cockpit-instruments.recordsPerSlot`、`.params` 与 `.payloadBytes`），各自的组、Asset 数、payload 字节、摘要，以及记录、帧、文字、声音与像素的计数；修订 2 的 `comm-messages` 按表报告头像数与消息数（`faces20011`、`messages20011`、`faces20019`、`messages20019`、`faces20985`、`messages20985`、`messages20983`），以及存在的消息数、帧数、两份名单的名称数与名称总字节，可直接与 [executable RQ4](../original/formats/executable.md#rq4-speaker-faces-and-message-lookup--confirmed-code) 的计数对照；
   - P3-08/13 起 `ai-programs` 另报关键字表的计数（`keywordPairs0`–`keywordPairs3`、`keywordNames`、`keywordNameBytes`）与摘要 `digests.keywordTables`（其他角色没有 `digests`）；
   - `limits`：各项观测值与限值，名称为 `<角色>.<结构>` 或 `package.<预算维度>`（含 `ai-programs.keywordEntries`、`ai-programs.keywordNameBytes`）；
   - `reads`：与逻辑组核对相同的各阶段读取增量与总读取量；失败时保留已发生的读取。
@@ -137,18 +138,18 @@ Ghidra 脚本通过 `ghidra-headless ... -scriptPath tools/ghidra -postScript <�
 
 - **用法：** `node tools/replay-check.ts <录制.json> <file.ccd> <file.img> [<file.sub>] [<file.cue>]`。参数少于两个或以 `-` 开头（如 `--help`）时为用法错误，在 stderr 打印用法与上限推导。CLI 始终使用生产导入作业与生产来源白名单，不接受合成光盘，也没有切换白名单的参数；Node 测试与 E2E 调用可导出的 `runReplayCheck(录制路径, 光盘路径, { catalog } 或 { job })` 注入合成白名单或导入作业，从不按录制选择白名单。`exitCode(report)` 给出与 CLI 相同的退出码。
 - **读取录制：** 先以同一个只读句柄 fstat，非普通文件不读（FIFO 以非阻塞方式打开，不等待写入者），大小超过上限为 `file-too-large`，不读取任何字节；之后至多读入“大小 + 1”字节，读取前后的大小、修改时间或状态变更时间（纳秒）任一不同即拒绝（`recording.changed`）。不会先无界读取或解析，也从不改写录制文件。
-- **文件上限：** `RECORDING_MAX_BYTES` 为 534,251,135 字节，是任何 Core 接受、内容身份为生产导入作业形状的录制经 `JSON.stringify` 后 UTF-8 字节数的上界（`recordingSizeBound()` 给出推导，测试把常量钉在推导上，Core 容量或格式变化时须同时更新本节）：
+- **文件上限：** `RECORDING_MAX_BYTES` 为 534,251,136 字节，是任何 Core 接受、内容身份为生产导入作业形状的录制经 `JSON.stringify` 后 UTF-8 字节数的上界（`recordingSizeBound()` 给出推导，测试把常量钉在推导上，Core 容量或格式变化时须同时更新本节）：
 
   | 部分 | 计数 | 每项字节 | 小计 |
   |---|---|---|---|
-  | 信封：记录头、空列表与结果的 finalTick | 1 | 1,621 | 1,621 |
+  | 信封：记录头、空列表与结果的 finalTick | 1 | 1,622 | 1,622 |
   | tick 输入 | 131,072（`recordedTicks`） | 124 | 16,252,928 |
   | 命令 | 262,144（`recordedCommands`） | 107 | 28,049,408 |
   | 事件 | 524,288（`recordedEvents`） | 924 | 484,442,112 |
   | 检查点 | 131,073（`recordedCheckpoints`） | 42 | 5,505,066 |
-  | 合计 | | | 534,251,135 |
+  | 合计 | | | 534,251,136 |
 
-  每项取最长的条目加一个分隔符，计数即 `CORE_LIMITS` 的录制容量。最长取值：有限数字 25 个字符（符号、`0.`、5 个零与 17 位有效数字），安全整数 16 位，tick 6 位，`producer` 的每个 UTF-16 码元 6 字节（`\u` 转义），任务为最长的 Asset ID，内容身份为生产转换器版本与 SHA-256 的 manifest、来源指纹；命令与事件取全部变体中最长的（新增变体不加样本就不能编译）；最长的事件是 P3-09 的 `warp-completed`（[MW-05](../plan/p3/02/spec.md#mw-05-领域事件)，带到达位置、姿态与扣费的完整 `arrival`；此前为 P3-07 的 `hit`；P3-08 的 `drop-transponder` 命令与 `wingman-command-consumed`、`transponder-deployed` 事件都已有样本（位姿取 25 个字符的 f32），P3-11 的 11 种事件（`result-latched` 取最长的任务 Asset ID 的总结与两项终局）与 `radio-flushed` 的新原因也都有样本，都不比它长，所以上限不变），各字段取 Core 比较器接受的最长形式（i32 取 −2³¹，可空的索引取安全整数或 null 中较长者）。注入其他导入作业时，作业须与生产作业同样转换，否则这一身份假设不成立。上限低于 V8 的最长字符串。
+  每项取最长的条目加一个分隔符，计数即 `CORE_LIMITS` 的录制容量。最长取值：有限数字 25 个字符（符号、`0.`、5 个零与 17 位有效数字），安全整数 16 位，tick 6 位，`producer` 的每个 UTF-16 码元 6 字节（`\u` 转义），任务为最长的 Asset ID，内容身份为生产转换器版本与 SHA-256 的 manifest、来源指纹；命令与事件取全部变体中最长的（新增变体不加样本就不能编译）；最长的事件是 P3-09 的 `warp-completed`（[MW-05](../plan/p3/02/spec.md#mw-05-领域事件)，带到达位置、姿态与扣费的完整 `arrival`；此前为 P3-07 的 `hit`；P3-08 的 `drop-transponder` 命令与 `wingman-command-consumed`、`transponder-deployed` 事件都已有样本（位姿取 25 个字符的 f32），P3-11 的 11 种事件（`result-latched` 取最长的任务 Asset ID 的总结与两项终局）与 `radio-flushed` 的新原因也都有样本，都不比它长，所以上限不变；P3-13/12 把 `RULES_VERSION` 由 9 递增为 10，记录头多 1 字节），各字段取 Core 比较器接受的最长形式（i32 取 −2³¹，可空的索引取安全整数或 null 中较长者）。注入其他导入作业时，作业须与生产作业同样转换，否则这一身份假设不成立。上限低于 V8 的最长字符串。
 - **核对顺序：** 读取 → UTF-8 与 JSON 解析，顶层恰为 `{ record, result }` → 以 Core 的公开入口先验证整份记录，再验证期望结果 → 用 [import-job.ts](../../src/workers/import-job.ts) 的生产作业转换整个文件组（与[包核对](#包核对)共用 `importPackage`），保留全部组并 `validatePackage` → 内容身份取自整包验证结果，不从录制构造；解码逻辑组中唯一的任务，按任务引用的 Asset ID 解码机型表与僚机名单，并以 `decodeRuleDataPayload` 解码同组唯一的 craft-info（[P3-06](../plan/p3/06/spec.md#对-p3-02-契约的增量) D-01），再以任务所有者的 [mission-input.ts](../../src/app/resources/mission-input.ts)（`ruleDataInputs`、`runModelInputs`）解码规则数据输入（含 `cockpit-hud-map` 组的地图几何，[P3-09 MW-01](../plan/p3/02/spec.md#mw-01-世界创建输入与静态规则数据)），并按 Core 的 `instantiableModelIds` 为记录中的运行配置解码可实例化机体的模型（[P3-07 CR-01](../plan/p3/02/spec.md#cr-01-世界创建输入与静态规则数据d-01)）；Core 拒绝该运行配置时不解码模型，由重放在记录或内容路径上报告 → `replayRecord` → `compareReplayResults`。版本、规则版本、内容身份、任务或 setupHash 不符都拒绝，不改写记录、忽略差异或选择兼容规则。录制中的运行配置（难度、僚机、种子、步长）只在世界创建时结合内容校验，所以这类错误在导入之后才报告。
 - **输出：** stdout 为一份报告 `{ format: 'osr-replay-check', version: 2, passed, error, identity, mission, setupHash, finalTick, events, checkpoints, comparison, completed }`，每次都有全部字段（P3-11 加入 `completed` 并把版本由 1 改为 2，[P3-04 的终局与救援衔接](../plan/p3/04/spec.md#录制replay-与核对工具)）：
   - `error` 为 `{ code, location }` 或 null；`passed` 只在 `comparison.match` 为 true 时为 true；

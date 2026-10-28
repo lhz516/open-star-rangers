@@ -13,14 +13,17 @@ import { addBudgets, EMPTY_BUDGET_USAGE, type BudgetRecord } from '../content/bu
 import { fontPayloadLength } from '../content/graphics/font-payload.ts';
 import { palettePayloadLength } from '../content/graphics/palette-payload.ts';
 import { SOUND_PAYLOAD_HEADER_BYTES } from '../content/sound-payload.ts';
+import { syntheticCockpitInstruments } from '../content/hud/instruments.test-support.ts';
+import { executableRegion, type ExecutableRegionLocator } from '../original-data/source-mapping.ts';
 import {
-  cockpitLayoutBlock, fontDeclaration, fontTable, GRAPHICS_ARCHIVE, GRAPHICS_ENTRIES, graphicsArchive, graphicsMapping, imageDeclaration, instrumentRecord,
-  layoutDeclaration, mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock, tableBlock, viewLabelTable,
+  blockEntry, dataPaletteBlock, fontDeclaration, fontTable, GRAPHICS_ARCHIVE, GRAPHICS_ENTRIES, graphicsMapping, hudFontTables, imageDeclaration,
+  layoutDeclaration, mfdBlock, paletteDeclaration, rawImageBlock, spriteImageBlock, tableBlock, textureBlock, viewLabelTable,
 } from '../original-data/conversion/conversion.test-support.ts';
 import { FLIGHT_GRAPHICS_USAGE } from '../original-data/conversion/production-flight-graphics.test-support.ts';
-import { HUD_TEXT_USAGE, syntheticHudTextSource } from '../original-data/conversion/production-hud-text.test-support.ts';
+import { HUD_TEXT_USAGE, SYNTHETIC_HUD_TEXT, syntheticHudTextSource } from '../original-data/conversion/production-hud-text.test-support.ts';
 import {
-  COCKPIT_HUD_MAP_USAGE, MAP_GEOMETRY_USAGE, MODEL_TEXTURE_USAGE, PRODUCTION_GRAPHICS_REGION_WRITES, productionCockpitBlock, productionGraphicsFiles, regionExecutable,
+  cockpitInstrumentsBlock, COCKPIT_HUD_MAP_USAGE, COCKPIT_INSTRUMENTS_USAGE, f32Bytes, MAP_GEOMETRY_USAGE, MODEL_TEXTURE_USAGE, PRODUCTION_GRAPHICS_REGION_WRITES,
+  productionCockpitEntry, productionGraphicsFiles, regionExecutable, type SyntheticInstrumentSlot,
 } from '../original-data/conversion/production-graphics.test-support.ts';
 import { productionRuleData, productionRuleDataContents } from '../original-data/conversion/production-rule-data.test-support.ts';
 import type { RuleDataContents } from '../original-data/conversion/rule-data.test-support.ts';
@@ -103,14 +106,14 @@ export async function syntheticImport(covered: Readonly<Record<string, Synthetic
 }
 
 /** A CCKD block in the production cockpit structure whose 4×6 font table is one byte short. */
-const CORRUPT_FONTS = productionCockpitBlock([fontTable(8, 8), fontTable(8, 8), fontTable(4, 6, 4 + 256 * 6 - 1)]);
+const CORRUPT_FONTS = productionCockpitEntry([fontTable(8, 8), fontTable(8, 8), fontTable(4, 6, 4 + 256 * 6 - 1)]);
 
 /** A corrupt production CCKD: a 4×6 font table one byte short, or a first front element with a draw-pass flag of 2. */
 export type CockpitCorruption = 'font' | 'element';
 
 const corruptCockpit = (corrupt: CockpitCorruption | undefined) => {
   if (corrupt === undefined) return {};
-  return { CCKD: corrupt === 'font' ? CORRUPT_FONTS : productionCockpitBlock(undefined, [2, 0]) };
+  return { CCKD: corrupt === 'font' ? CORRUPT_FONTS : productionCockpitEntry(undefined, [2, 0]) };
 };
 
 /** A graphics step with nothing to convert, for jobs whose test is about identification or group transfer. */
@@ -141,6 +144,9 @@ export const NO_MODELS: ModelStepInput = Object.freeze({
 });
 
 let sliceExecutable: Uint8Array | undefined;
+/** The slice `MAIN/SR.NOB`, intact and with the corrupt mesh; it does not depend on the other options. */
+let sliceArchive: Uint8Array | undefined;
+let corruptSliceArchive: Uint8Array | undefined;
 
 /**
  * The covered files of a disc for every production step: `MAIN/SR.NOB` with the production graphics and flight graphics
@@ -162,9 +168,11 @@ export function sliceCoveredFiles({ scenario = syntheticScenario(defaultScenario
   const build = () => regionExecutable([...productionEffectRegionWrites(), ...PRODUCTION_GRAPHICS_REGION_WRITES, ...sources.writes], sources.fixups);
   // Only the default rule data's executable is cached.
   const executable = ruleData === undefined ? (sliceExecutable ??= build()) : build();
+  const buildArchive = () => buildImfat(10_000, productionSliceEntries(corruptMesh));
+  const archive = corruptMesh ? (corruptSliceArchive ??= buildArchive()) : (sliceArchive ??= buildArchive());
   return {
     'MAIN/SCENARIO.NOB': syntheticScenarioArchive(campaign, scenario),
-    'MAIN/SR.NOB': buildImfat(10_000, productionSliceEntries(corruptMesh)),
+    'MAIN/SR.NOB': archive.slice(),
     ...sources.archives,
     'MAIN/SRANGERS.EXE': executable.slice(),
   };
@@ -175,10 +183,12 @@ export const DOCKING_BASE_KIND = 17;
 /** The kind bits without speed in the docking mission: the player's and the base's. */
 export const DOCKING_STILL_KINDS: readonly number[] = Object.freeze([0, DOCKING_BASE_KIND]);
 /**
- * Their +0xB8: the base's 0; the player's the smallest positive f32 (2^-149), positive as P3-09's Warp check requires
- * (docs/plan/p3/02/spec.md, MW-01 check 4), whose movement in a tick rounds to 0.
+ * Their +0xB8: the base's 0; the player's 1, the least P3-09's Warp check and P3-12's speed share allow
+ * (docs/plan/p3/02/spec.md, MW-01 check 4, FS-12), with DOCKING_PLAYER_AT88.
  */
-export const DOCKING_STILL_SPEEDS: readonly number[] = Object.freeze([2 ** -149, 0]);
+export const DOCKING_STILL_SPEEDS: readonly number[] = Object.freeze([1, 0]);
+/** The player's +0x88, which keeps its energy-limited maximum speed trunc(E × 1000 ÷ +0x88) at 0 below the threshold. */
+export const DOCKING_PLAYER_AT88 = 2 ** 30;
 /** The base kind as a category's kind mask. */
 export const DOCKING_BASE_KIND_MASK = 1 << DOCKING_BASE_KIND;
 /** The communications command codes of the base status request and the docking request (P3-10). */
@@ -190,7 +200,7 @@ export const DOCKING_COMMAND_CODES = Object.freeze({ status: 7, docking: 9 });
  * category; the gated base menu holds the status request at key 1 and the docking request at key 2 before its exit; the
  * base face table (TABL 20011) has as many faces as the base face pool, 5, by taking a face of TABL 20985, so whichever
  * face the base draws has its docking reply (index 0) and status reply (index 1); and the player and base craft have no
- * speed (+0xB8 0), so the base stays within the docking range. Made-up values only.
+ * speed (the base's +0xB8 0, the player's energy-limited maximum 0), so the base stays within the docking range. Made-up values only.
  */
 export function dockingRuleDataContents(): RuleDataContents {
   const contents = productionRuleDataContents();
@@ -214,7 +224,8 @@ export function dockingRuleDataContents(): RuleDataContents {
       ...info,
       craft: info.craft.map((record, kindBit) => {
         const still = DOCKING_STILL_KINDS.indexOf(kindBit);
-        return still < 0 ? record : { ...record, atB8: DOCKING_STILL_SPEEDS[still] };
+        if (still < 0) return record;
+        return { ...record, atB8: DOCKING_STILL_SPEEDS[still], ...(kindBit === 0 ? { at88: DOCKING_PLAYER_AT88 } : {}) };
       }),
     },
   };
@@ -343,17 +354,20 @@ const P2_05_PAYLOAD_BYTES = 2 * palettePayloadLength(256) + fontPayloadLength(25
 /**
  * The payload bytes of the production graphics converted from `graphicsCoveredFiles()` or `productionCoveredFiles()`:
  * the P2-05 palettes and fonts, the slice textures with their palettes, the P2-07 cockpit, HUD and map Assets, the
- * P3-03 flight graphics and HUD text, and the P3-09 map geometry.
+ * P3-03 flight graphics and HUD text, the P3-09 map geometry and the P3-13 cockpit instruments.
  */
 export const GRAPHICS_PAYLOAD_BYTES = P2_05_PAYLOAD_BYTES + MODEL_TEXTURE_USAGE.payloadBytes + COCKPIT_HUD_MAP_USAGE.payloadBytes + FLIGHT_GRAPHICS_USAGE.payloadBytes
-  + HUD_TEXT_USAGE.payloadBytes + MAP_GEOMETRY_USAGE.payloadBytes;
+  + HUD_TEXT_USAGE.payloadBytes + MAP_GEOMETRY_USAGE.payloadBytes + COCKPIT_INSTRUMENTS_USAGE.payloadBytes;
 
 /**
  * The conversion usage of the production graphics step on `graphicsCoveredFiles()` or `productionCoveredFiles()`: the
  * P2-05 Assets, two 256-entry palettes and fonts of 256, 256 and 192 glyphs, plus the slice textures, the P2-07
- * cockpit, HUD and map Assets, the P3-03 flight graphics and HUD text, and the P3-09 map geometry.
+ * cockpit, HUD and map Assets, the P3-03 flight graphics and HUD text, the P3-09 map geometry and the P3-13 cockpit
+ * instruments.
  */
-export const GRAPHICS_CONVERSION_USAGE: BudgetRecord = [MODEL_TEXTURE_USAGE, COCKPIT_HUD_MAP_USAGE, FLIGHT_GRAPHICS_USAGE, HUD_TEXT_USAGE, MAP_GEOMETRY_USAGE].reduce((total, usage) => addBudgets(total, usage, 'usage'), {
+export const GRAPHICS_CONVERSION_USAGE: BudgetRecord = [
+  MODEL_TEXTURE_USAGE, COCKPIT_HUD_MAP_USAGE, FLIGHT_GRAPHICS_USAGE, HUD_TEXT_USAGE, MAP_GEOMETRY_USAGE, COCKPIT_INSTRUMENTS_USAGE,
+].reduce((total, usage) => addBudgets(total, usage, 'usage'), {
   ...EMPTY_BUDGET_USAGE,
   assets: 5,
   paletteEntries: 512,
@@ -402,12 +416,33 @@ const COCKPIT_MAP_GEOMETRY: CockpitAsset = (() => {
 /** The HUD text of the synthetic cockpit disc: its regions in the disc's small executable. */
 const COCKPIT_HUD_TEXT = syntheticHudTextSource();
 
+/** The target view distances of the synthetic cockpit disc: 20 f32 values at the start of the executable's object 2. */
+const COCKPIT_DISTANCES = Object.freeze({ discPath: 'MAIN/SRANGERS.EXE', entry: null, subresource: 'le/2/0x0/80' });
+
+/**
+ * The cockpit instruments of the synthetic cockpit disc: the CCKD slots of layouts 0, 6 and 8, then the distances
+ * (P3-03 spec, 修订 4).
+ */
+const COCKPIT_INSTRUMENTS: CockpitAsset = (() => {
+  const id = 'data/hud/instruments';
+  const { mapping } = cockpitAsset({ asset: { id, kind: 'data' } }, 'CCKD', CCKD_ENTRY, 'layouts/0');
+  const parts = mapping.parts as readonly { readonly alternatives: readonly Record<string, unknown>[] }[];
+  const slots = ['layouts/6', 'layouts/8'].map(subresource => ({ alternatives: [{ ...parts[0].alternatives[0], subresource }] }));
+  return {
+    id, role: 'cockpit-instruments', group: 'cockpit-hud-map',
+    declaration: { asset: { id, kind: 'data' }, role: 'cockpit-instruments', group: 'cockpit-hud-map' },
+    mapping: { ...mapping, parts: [...parts, ...slots, { alternatives: [COCKPIT_DISTANCES] }] },
+  };
+})();
+
 /**
  * The Assets of the synthetic cockpit disc in ascending ID order. The `cockpit-hud-map` partition fills every role of
  * the group with the P2-05 shapes (the flight palette and three fonts), the P2-07 ones (the front and map frame layouts
  * with their CCKD element images, an element's embedded palette, MFDD and TABL records) and the P3-03 ones (a target
  * display image from the TEX entry with its embedded palette, the view labels, and the HUD text from the executable's
- * regions) and the P3-09 map geometry from the CCKD's map slot and font 1; the `models` partition is one texture with its palette and the models flight palette.
+ * regions), the P3-09 map geometry from the CCKD's map slot and font 1 and the P3-13 cockpit instruments from its slots of
+ * layouts 0, 6 and 8 and the executable; the `models` partition is one texture with its palette and the models flight
+ * palette.
  */
 const COCKPIT_ASSETS: readonly CockpitAsset[] = [
   cockpitAsset(fontDeclaration('font/hud/4x6', { cell: { width: 4, height: 6 } }), 'CCKD', CCKD_ENTRY, 'fonts/2'),
@@ -435,6 +470,7 @@ const COCKPIT_ASSETS: readonly CockpitAsset[] = [
   cockpitAsset({ asset: { id: 'data/hud/view-labels', kind: 'data' }, role: 'view-labels', group: 'cockpit-hud-map' }, 'TABL', LABELS_ENTRY, 'labels/8'),
   { id: 'data/hud/text', role: 'hud-text', group: 'cockpit-hud-map' as const, declaration: COCKPIT_HUD_TEXT.declaration, mapping: COCKPIT_HUD_TEXT.mapping },
   COCKPIT_MAP_GEOMETRY,
+  COCKPIT_INSTRUMENTS,
 ].sort((left, right) => compareText(left.id, right.id));
 
 /** The ID, role and group of every Asset `cockpitGraphics()` converts, in ascending ID order. */
@@ -477,24 +513,58 @@ const MFD = mfdBlock([[rawImageBlock(3, 2, [9, 8, 7, 6, 5, 4])], [rawImageBlock(
 const TABLE = tableBlock([rawImageBlock(2, 3, [1, 2, 3, 4, 5, 6]), rawImageBlock(1, 2, [0, 15])]);
 
 /**
+ * The instruments of the synthetic cockpit disc's eight directory slots: the front cockpit (layout 0) with the records
+ * of `syntheticCockpitInstruments()`, an empty slot 1 (layout 5), the map (layout 6) with its type-10 record and a
+ * message line, filler in slots 3–6 and the external views (layout 8) in slot 7.
+ */
+const COCKPIT_SLOTS: readonly (SyntheticInstrumentSlot | null)[] = (() => {
+  const [front, , external] = syntheticCockpitInstruments().slots;
+  const records = ({ instruments }: typeof front) => instruments.map(({ type, rectangle: { x0, y0, x1, y1 }, redrawInterval, drawParam, params }) =>
+    ({ type, rectangle: [x0, y0, x1, y1] as const, redrawInterval, drawParam, params }));
+  return [
+    { layout: 0, records: records(front) },
+    { layout: 5, records: [] },
+    { layout: 6, records: [{ type: 10, rectangle: [1, 1, 9, 5] }, { type: 8, rectangle: [0, 6, 3, 7] }] },
+    null, null, null, null,
+    { layout: 8, alwaysRedraw: true, records: records(external) },
+  ];
+})();
+
+/** The executable of the synthetic cockpit disc: the HUD texts at their regions in object 1 and the distances in object 2. */
+function cockpitExecutable(): Uint8Array {
+  const parts = COCKPIT_HUD_TEXT.mapping.parts as readonly { readonly alternatives: readonly [ExecutableRegionLocator] }[];
+  const keys = COCKPIT_HUD_TEXT.declaration.regions as readonly (keyof typeof SYNTHETIC_HUD_TEXT.entries)[];
+  const texts = parts.map(({ alternatives: [locator] }, part) => ({
+    ...executableRegion(locator), bytes: Uint8Array.from(`${SYNTHETIC_HUD_TEXT.entries[keys[part]]}\0`, character => character.charCodeAt(0)),
+  }));
+  const distances = executableRegion(COCKPIT_DISTANCES as ExecutableRegionLocator);
+  return regionExecutable([...texts, { ...distances, bytes: f32Bytes(syntheticCockpitInstruments().targetViewDistances) }]);
+}
+
+/**
  * The covered files of a synthetic disc whose `MAIN/SR.NOB` holds the DATA, TEX, CCKD, MFDD and the two TABL entries
- * `cockpitGraphics()` maps, and whose `MAIN/SRANGERS.EXE` holds the HUD text regions: the CCKD has the front layout in
- * slot 0 (layout 0), an empty slot 1 (layout 5) and the map frame in slot 2 (layout 6, with the map's type-10 instrument
- * record). `corrupt` sets a front element's +44 field to 2, which the converter rejects as `invalid-payload`.
+ * `cockpitGraphics()` maps, and whose `MAIN/SRANGERS.EXE` holds the HUD text and target view distance regions: the CCKD
+ * has the front layout in slot 0 (layout 0), an empty slot 1 (layout 5), the map frame in slot 2 (layout 6, with the
+ * map's type-10 instrument record) and the instruments of `COCKPIT_SLOTS`. `corrupt` sets a front element's +44 field
+ * to 2, which the converter rejects as `invalid-payload`.
  */
 export function cockpitCoveredFiles(corrupt = false): Record<string, Uint8Array> {
-  const cockpit = cockpitLayoutBlock([
+  const cockpit = cockpitInstrumentsBlock([
     [{ record: FRONT_RAW, x: 0, y: 6 }, { record: FRONT_SPRITE, x: 3, y: 0, flags: [corrupt ? 2 : 0, 0] }],
     [],
-    [{ record: MAP_FRAME, x: 1, y: 1, flags: [1, 0] }],
-  ], undefined, [], [
-    { layout: 0, records: [instrumentRecord(8, [0, 0, 7, 1])] },
-    { layout: 5, records: [] },
-    { layout: 6, records: [instrumentRecord(10, [1, 1, 9, 5]), instrumentRecord(8, [0, 6, 3, 7])] },
-  ]);
+    [{ record: MAP_FRAME, x: 1, y: 1, flags: [1, 1] }],
+    [], [], [], [], [],
+  ], hudFontTables(), [], COCKPIT_SLOTS);
   return {
-    [GRAPHICS_ARCHIVE]: graphicsArchive({ cockpit, mfd: MFD, table: TABLE, labels: viewLabelTable('\x80synthetic-label') }),
-    'MAIN/SRANGERS.EXE': COCKPIT_HUD_TEXT.executable.slice(),
+    [GRAPHICS_ARCHIVE]: buildImfat(10_000, [
+      { id: DATA_ENTRY, type: 'DATA', data: dataPaletteBlock() },
+      { id: TEX_ENTRY, type: 'TEX', data: textureBlock() },
+      { id: CCKD_ENTRY, type: 'CCKD', ...cockpit },
+      { id: MFDD_ENTRY, type: 'MFDD', data: MFD },
+      { id: TABL_ENTRY, type: 'TABL', data: TABLE },
+      blockEntry(LABELS_ENTRY, 'TABL', viewLabelTable('\x80synthetic-label')),
+    ]),
+    'MAIN/SRANGERS.EXE': cockpitExecutable(),
   };
 }
 

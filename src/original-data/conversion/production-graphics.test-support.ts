@@ -3,17 +3,18 @@ import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { imagePayloadLength } from '../../content/graphics/image-payload.ts';
 import { layoutPayloadLength } from '../../content/graphics/layout-payload.ts';
 import { palettePayloadLength } from '../../content/graphics/palette-payload.ts';
+import { encodeCockpitInstrumentsPayload, readCockpitInstruments, type CockpitInstruments } from '../../content/hud/instruments-payload.ts';
+import { syntheticCockpitInstruments } from '../../content/hud/instruments.test-support.ts';
 import { encodeMapGeometryPayload, type MapGeometry } from '../../content/hud/map-geometry-payload.ts';
 import { statusMessagesPayloadLength, type StatusMessagesPayload } from '../../content/hud/status-messages-payload.ts';
 import { archiveLocator, executableRegion, isRegionLocator, type ArchiveEntryLocator, type ExecutableRegionLocator } from '../source-mapping.ts';
-import { buildImfat, syntheticDiag, syntheticLeExecutable, syntheticSnip, type SyntheticDiagFields, type SyntheticEntry } from '../synthetic.test-support.ts';
 import {
-  cockpitLayoutBlock, dataPaletteBlock, hudFontTables, instrumentRecord, mfdBlock, rawImageBlock, spriteImageBlock, tableBlock,
-  type SyntheticInstruments,
-} from './conversion.test-support.ts';
+  buildImfat, ByteWriter, syntheticDiag, syntheticLeExecutable, syntheticSnip, type SyntheticDiagFields, type SyntheticEntry,
+} from '../synthetic.test-support.ts';
+import { cockpitLayoutBlock, dataPaletteBlock, hudFontTables, mfdBlock, rawImageBlock, spriteImageBlock, tableBlock } from './conversion.test-support.ts';
 import { PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS } from './production-flight-graphics.ts';
 import { productionFlightGraphicsEntries } from './production-flight-graphics.test-support.ts';
-import { PRODUCTION_EFFECT_IMAGES, PRODUCTION_GRAPHICS_MAPPINGS } from './production-graphics.ts';
+import { PRODUCTION_EFFECT_IMAGES, PRODUCTION_GRAPHICS_MAPPINGS, TARGET_VIEW_DISTANCES } from './production-graphics.ts';
 import { PRODUCTION_HUD_TEXT_REGION_WRITES } from './production-hud-text.test-support.ts';
 import { PRODUCTION_MODEL_TEXTURES, modelTexturePaletteId } from './production-model-textures.ts';
 
@@ -24,7 +25,10 @@ const FLIGHT_GRAPHICS = new Set(PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS.mappings.map
 const locators: readonly ArchiveEntryLocator[] = PRODUCTION_GRAPHICS_MAPPINGS.mappings.filter(({ asset }) => !FLIGHT_GRAPHICS.has(asset.id))
   .flatMap(({ parts }) => parts.flatMap(({ alternatives }) => alternatives)).filter(locator => !isRegionLocator(locator)).map(archiveLocator);
 
-type GraphicsBlocks = Partial<Record<'DATA' | 'CCKD' | 'TEX' | 'MFDD' | 'BITM' | 'TABL' | 'SNIP' | 'DIAG', Uint8Array | null>>;
+/** An entry's data, with the relocations its reader checks when it has any. */
+type GraphicsBlock = Uint8Array | { readonly data: Uint8Array; readonly relocations: readonly number[] };
+
+type GraphicsBlocks = Partial<Record<'DATA' | 'CCKD' | 'TEX' | 'MFDD' | 'BITM' | 'TABL' | 'SNIP' | 'DIAG', GraphicsBlock | null>>;
 
 const TEXTURE = Object.freeze({ width: 4, height: 2, paletteEntries: 4 });
 const FLIGHT_PALETTE = readAssetId('palette/flight/models');
@@ -119,10 +123,13 @@ const COCKPIT_HUD_MAP_IMAGES: readonly SyntheticImage[] = [
   ...UNIT_MARKERS, ...ZOOM_ICONS, ...INTERFERENCE_FRAMES,
 ];
 
-/** Made-up status display texts in the DIAG structure: line breaks, conversions and one startup message. */
+/**
+ * Made-up status display texts in the DIAG structure: line breaks, one startup message and the conversions DC-08 allows
+ * (formats 0 and 1 a `%d` and a `%%`, 2 a `%s`, 3 a `%d`), as the shipped texts have.
+ */
 export const SYNTHETIC_STATUS_MESSAGES: SyntheticDiagFields = {
   timings: [2, 31, 3, 47],
-  statusFormats: ['S1\n%d%%', 'S2\n%d', 'S3\n%s', 'S4 %u'],
+  statusFormats: ['S1\n%d%%', 'S2\n%d%%', 'S3\n%s', 'S4 %d'],
   ratings: [['r-four', 30], ['r-three', 20], ['r-two', 12], ['r-one', 4], ['r-zero', 0]],
   subsystemNames: Array.from({ length: 15 }, (_, index) => `part ${index}`),
   stateWords: ['ok?', 'hurt', 'gone'],
@@ -139,18 +146,26 @@ const regionOf = (id: string) => {
 };
 const COLOUR_TABLE = regionOf('image/hud/display-interference/frame-0');
 const FORMAT_REGION = regionOf('data/hud/status-display/messages');
+const DISTANCE_REGION = executableRegion(TARGET_VIEW_DISTANCES as ExecutableRegionLocator);
 
-/** A made-up lower-line format filling the production format region, its NUL last, as a byte string. */
-export const SYNTHETIC_SUBSYSTEM_FORMAT = String.fromCharCode(...Array.from({ length: FORMAT_REGION.length - 1 }, (_, index) => [0x7b, 0x25, 0x73, 0x7d][index % 4]));
+/** A made-up lower-line format filling the production format region, its NUL last: two `%s`, as the shipped one has. */
+export const SYNTHETIC_SUBSYSTEM_FORMAT = String.fromCharCode(...Array.from({ length: FORMAT_REGION.length - 1 }, (_, index) => [0x25, 0x73, 0x3a, 0x25, 0x73][index % 5]));
+
+/** Made-up target view distances, exact f32 values: the synthetic cockpit instruments' table. */
+const SYNTHETIC_VIEW_DISTANCES: readonly number[] = Object.freeze(syntheticCockpitInstruments().targetViewDistances);
+
+/** `values` as little-endian f32 bytes. */
+export const f32Bytes = (values: readonly number[]): Uint8Array => new ByteWriter().f32(...values).toBytes();
 
 /**
- * The bytes of each production executable region the graphics Assets map to: the colour table, the format and the 64
- * HUD texts.
+ * The bytes of each production executable region the graphics Assets map to: the colour table, the format, the 64
+ * HUD texts and the target view distances.
  */
 export const PRODUCTION_GRAPHICS_REGION_WRITES: readonly RegionWrite[] = Object.freeze([
   Object.freeze({ object: COLOUR_TABLE.object, offset: COLOUR_TABLE.offset, bytes: SYNTHETIC_INTERFERENCE_COLOURS }),
   Object.freeze({ object: FORMAT_REGION.object, offset: FORMAT_REGION.offset, bytes: Uint8Array.from(`${SYNTHETIC_SUBSYSTEM_FORMAT}\0`, character => character.charCodeAt(0)) }),
   ...PRODUCTION_HUD_TEXT_REGION_WRITES,
+  Object.freeze({ object: DISTANCE_REGION.object, offset: DISTANCE_REGION.offset, bytes: f32Bytes(SYNTHETIC_VIEW_DISTANCES) }),
 ]);
 
 /** Bytes to place at an offset of an executable object. */
@@ -223,18 +238,112 @@ export const SYNTHETIC_MAP_GEOMETRY: MapGeometry = Object.freeze({
   rectangle: Object.freeze({ x0: 21, y0: 45, x1: 611, y1: 444 }), redrawInterval: 0, informationLineHeight: 8,
 });
 
-const { x0, y0, x1, y1 } = SYNTHETIC_MAP_GEOMETRY.rectangle;
+/** A CCKD instrument record's fields (cockpit §1, record fields) for `cockpitInstrumentsBlock`. */
+export interface SyntheticInstrument {
+  readonly type: number;
+  readonly rectangle: readonly [number, number, number, number];
+  readonly redrawInterval?: number;
+  readonly drawParam?: number;
+  /** The i32 parameter table; none by default, which leaves +0x24 null and +0x28 0. */
+  readonly params?: readonly number[];
+}
+
+/** The always-redraw flag and instrument records of the CCKD slot that carries `layout`. */
+export interface SyntheticInstrumentSlot {
+  readonly layout: number;
+  readonly alwaysRedraw?: boolean;
+  readonly records: readonly SyntheticInstrument[];
+}
+
+/** A 48-byte record of `instrument`: +0x1C, +0x20 and +0x2C are 0 and +0x24 is null until its table is placed. */
+const recordBytes = ({ type, rectangle, redrawInterval = 0, drawParam = 0, params = [] }: SyntheticInstrument): Uint8Array =>
+  new ByteWriter().u32(type, ...rectangle, drawParam, redrawInterval, 0, 0, 0, params.length, 0).toBytes();
+
+/** The block offsets of the instrument records of each directory slot of a CCKD block that `cockpitLayoutBlock` built. */
+function recordOffsets(block: Uint8Array, slots: number): number[][] {
+  const view = new DataView(block.buffer, block.byteOffset, block.byteLength);
+  return Array.from({ length: slots }, (_, slot) => {
+    const at = view.getUint32(8, true) + slot * 32;
+    return Array.from({ length: view.getUint32(at + 0x1c, true) }, (_, index) => view.getUint32(at + 0x18, true) + index * 48);
+  });
+}
 
 /**
- * The layout numbers and instrument records of the synthetic production cockpit's three slots (cockpit §1): the front
- * cockpit (layout 0) and the empty full-screen slot (layout 5) with other instrument types, and the map (layout 6) with
- * its type-10 record before the message line (type 8), whose rectangle is elsewhere.
+ * A CCKD entry (cockpit §1) of `groups` with `fonts` and `palettes` as `cockpitLayoutBlock` builds it, where each slot
+ * with `instruments` also carries its always-redraw flag at +0x0C (0 or 1) and its records' fields, and each parameter
+ * table follows the block, pointed to from its record's +0x24 and listed in the relocations. A slot without
+ * instruments keeps the builder's filler.
  */
-export const PRODUCTION_COCKPIT_INSTRUMENTS: readonly SyntheticInstruments[] = Object.freeze([
-  { layout: 0, records: [instrumentRecord(0, [5, 400, 60, 470], 2), instrumentRecord(8, [100, 300, 282, 316])] },
-  { layout: 5, records: [instrumentRecord(1, [5, 5, 60, 60], 4), instrumentRecord(10, [0, 0, 9, 9], 9)] },
-  { layout: 6, records: [instrumentRecord(10, [x0, y0, x1, y1], SYNTHETIC_MAP_GEOMETRY.redrawInterval), instrumentRecord(8, [30, 460, 212, 476])] },
-]);
+export function cockpitInstrumentsBlock(
+  groups: Parameters<typeof cockpitLayoutBlock>[0],
+  fonts: readonly Uint8Array[],
+  palettes: readonly (Uint8Array | null)[],
+  instruments: readonly (SyntheticInstrumentSlot | null)[],
+): { data: Uint8Array; relocations: number[] } {
+  const base = cockpitLayoutBlock(groups, fonts, palettes, instruments.map(slot => slot && { layout: slot.layout, records: slot.records.map(recordBytes) }));
+  const writer = new ByteWriter().raw(base);
+  const relocations: number[] = [];
+  const view = new DataView(base.buffer, base.byteOffset, base.byteLength);
+  recordOffsets(base, groups.length).forEach((records, slot) => {
+    const spec = instruments[slot];
+    if (!spec) return;
+    view.setUint32(view.getUint32(8, true) + slot * 32 + 0x0c, spec.alwaysRedraw ? 1 : 0, true);
+    spec.records.forEach(({ params = [] }, index) => {
+      if (params.length === 0) return;
+      view.setUint32(records[index] + 0x24, writer.length, true);
+      relocations.push(records[index] + 0x24);
+      writer.u32(...params);
+    });
+  });
+  const data = writer.toBytes();
+  data.set(base);
+  return { data, relocations };
+}
+
+/** `<prefix>0` … `<prefix><count − 1>`, the production Asset IDs of a list. */
+const indexed = (prefix: string, count: number): string[] => Array.from({ length: count }, (_, index) => `${prefix}${index}`);
+
+/** The synthetic cockpit instruments' slots in their CCKD form: each payload slot with its records as stored. */
+const instrumentSlot = ({ layoutNumber, alwaysRedraw, instruments }: CockpitInstruments['slots'][number]): SyntheticInstrumentSlot => ({
+  layout: layoutNumber, alwaysRedraw,
+  records: instruments.map(({ type, rectangle: { x0, y0, x1, y1 }, redrawInterval, drawParam, params }) => ({ type, rectangle: [x0, y0, x1, y1], redrawInterval, drawParam, params })),
+});
+
+/** The production layouts' images with the draw pass and every-frame flag of their synthetic elements. */
+const schedules = (ids: readonly string[], placed: readonly PlacedImage[]) =>
+  ids.map((image, index) => ({ image, pass: placed[index].flags[0], everyFrame: placed[index].flags[1] !== 0 }));
+
+/**
+ * The cockpit instruments the synthetic production cockpit converts to: the records of `syntheticCockpitInstruments()`
+ * with the production layouts' element schedules, slot 2's type-10 record moved onto `SYNTHETIC_MAP_GEOMETRY`, and the
+ * synthetic target view distances. The values are made up, not the original records'.
+ */
+export const SYNTHETIC_COCKPIT_INSTRUMENTS: CockpitInstruments = (() => {
+  const content = syntheticCockpitInstruments();
+  const [front, map] = content.slots;
+  front.elements = schedules(indexed('image/cockpit/front/element-', FRONT.length), FRONT);
+  map.elements = schedules(indexed('image/map/frame/element-', MAP_FRAME.length), MAP_FRAME);
+  const { rectangle, redrawInterval } = SYNTHETIC_MAP_GEOMETRY;
+  map.instruments = map.instruments.map(record => (record.type === 10 ? { ...record, rectangle: { ...rectangle }, redrawInterval } : record));
+  return readCockpitInstruments({ ...content, targetViewDistances: [...SYNTHETIC_VIEW_DISTANCES] });
+})();
+
+/**
+ * The instruments of the synthetic production cockpit's eight directory slots in the HI order of layout numbers (cockpit
+ * §1): slots 0, 2 and 7 (layouts 0, 6 and 8) as `SYNTHETIC_COCKPIT_INSTRUMENTS`, slot 1 (layout 5) with other records,
+ * slots 3–6 (layouts 1–4) with a message line each.
+ */
+export const PRODUCTION_COCKPIT_INSTRUMENTS: readonly SyntheticInstrumentSlot[] = Object.freeze((() => {
+  const [front, map, external] = SYNTHETIC_COCKPIT_INSTRUMENTS.slots.map(instrumentSlot);
+  const line = (layout: number): SyntheticInstrumentSlot => ({ layout, records: [{ type: 8, rectangle: [30, 460, 212, 476] }] });
+  const full: SyntheticInstrumentSlot = { layout: 5, alwaysRedraw: true, records: [{ type: 1, rectangle: [5, 5, 60, 60], redrawInterval: 4 }, { type: 10, rectangle: [0, 0, 9, 9] }] };
+  return [front, full, map, line(1), line(2), line(3), line(4), external];
+})());
+
+/** The synthetic cockpit instruments' payload length. */
+export const COCKPIT_INSTRUMENTS_USAGE: BudgetRecord = Object.freeze({
+  ...EMPTY_BUDGET_USAGE, assets: 1, payloadBytes: encodeCockpitInstrumentsPayload(SYNTHETIC_COCKPIT_INSTRUMENTS).length,
+});
 
 /** The synthetic map geometry's payload length. */
 export const MAP_GEOMETRY_USAGE: BudgetRecord = Object.freeze({
@@ -242,23 +351,28 @@ export const MAP_GEOMETRY_USAGE: BudgetRecord = Object.freeze({
 });
 
 /**
- * A CCKD entry in the production cockpit structure: `fonts` in its font directory, the front cockpit in slot 0, an empty
- * slot 1, and the map frame with the group palette in slot 2, each with `instruments`. `firstFrontFlags` replaces the
- * flags of the first front element, such as a value the reader rejects.
+ * A CCKD entry in the production cockpit structure: `fonts` in its font directory, the front cockpit in slot 0, the map
+ * frame with the group palette in slot 2 and five empty slots, each slot with `instruments`, by default
+ * `PRODUCTION_COCKPIT_INSTRUMENTS`. `firstFrontFlags` replaces the flags of the first front element, such as a value the
+ * reader rejects.
  */
-export const productionCockpitBlock = (
+export const productionCockpitEntry = (
   fonts: readonly Uint8Array[] = hudFontTables(),
   firstFrontFlags?: readonly [number, number],
-  instruments: readonly (SyntheticInstruments | null)[] = PRODUCTION_COCKPIT_INSTRUMENTS,
-): Uint8Array => {
+  instruments: readonly (SyntheticInstrumentSlot | null)[] = PRODUCTION_COCKPIT_INSTRUMENTS,
+): { data: Uint8Array; relocations: number[] } => {
   const front = FRONT.map((placed, index) => (index === 0 && firstFrontFlags ? { ...placed, flags: firstFrontFlags } : placed));
-  return cockpitLayoutBlock(
-    [front, [], MAP_FRAME].map(elements => elements.map(({ image, x, y, flags }) => ({ record: image.block, x, y, flags }))),
+  const groups = [front, [], MAP_FRAME, ...Array.from({ length: 5 }, () => [])];
+  return cockpitInstrumentsBlock(
+    groups.map(elements => elements.map(({ image, x, y, flags }) => ({ record: image.block, x, y, flags }))),
     fonts,
     [null, null, MAP_PALETTE_BLOCK],
     instruments,
   );
 };
+
+/** The data of `productionCockpitEntry`, for a test that replaces the CCKD entry's bytes. */
+export const productionCockpitBlock = (...args: Parameters<typeof productionCockpitEntry>): Uint8Array => productionCockpitEntry(...args).data;
 
 /** The `MAIN/SR.NOB` entry a production Asset maps to. */
 const entryOf = (id: string): number => archiveLocator(PRODUCTION_GRAPHICS_MAPPINGS.mappings.find(({ asset }) => asset.id === id)!.parts[0].alternatives[0]).entry.id;
@@ -267,11 +381,14 @@ const entryOf = (id: string): number => archiveLocator(PRODUCTION_GRAPHICS_MAPPI
 export const interferenceIndices = (frame: number): Uint8Array =>
   Uint8Array.from(interferenceFrame(frame), value => SYNTHETIC_INTERFERENCE_COLOURS[value]);
 
-/** The synthetic CCKD, MFDD, BITM and TABL blocks by the entry the production cockpit, HUD and map Assets map to. */
-const cockpitHudMapBlocks = (): ReadonlyMap<number, Uint8Array> => {
+/**
+ * The synthetic CCKD, MFDD, BITM, TABL, SNIP and DIAG blocks by the entry the production cockpit, HUD and map Assets map
+ * to, the CCKD, SNIP and DIAG with their relocations.
+ */
+const cockpitHudMapBlocks = (): ReadonlyMap<number, GraphicsBlock> => {
   const blocks = (images: readonly SyntheticImage[]) => images.map(({ block }) => block);
-  return new Map([
-    [entryOf('layout/cockpit/front'), productionCockpitBlock()],
+  return new Map<number, GraphicsBlock>([
+    [entryOf('layout/cockpit/front'), productionCockpitEntry()],
     [entryOf('image/hud/status-display/background-0'), mfdBlock([blocks(STATUS_BACKGROUNDS), blocks(STATUS_OVERLAYS)])],
     [entryOf('image/hud/display-page/background'), DISPLAY_PAGE.block],
     [entryOf('image/hud/gauge-bar-1/0'), tableBlock(blocks(GAUGE_BARS))],
@@ -279,27 +396,28 @@ const cockpitHudMapBlocks = (): ReadonlyMap<number, Uint8Array> => {
     [entryOf('image/map/zoom-icon/0'), tableBlock(blocks(ZOOM_ICONS))],
     [entryOf('image/hud/display-interference/frame-0'), syntheticSnip({
       ...INTERFERENCE, frames: Array.from({ length: INTERFERENCE.frames }, (_, frame) => interferenceFrame(frame)),
-    }).data],
-    [entryOf('data/hud/status-display/messages'), syntheticDiag(SYNTHETIC_STATUS_MESSAGES).data],
+    })],
+    [entryOf('data/hud/status-display/messages'), syntheticDiag(SYNTHETIC_STATUS_MESSAGES)],
   ]);
 };
 
-/** The relocations of the synthetic SNIP and DIAG entries, which their readers check. */
+/** The relocations a replaced SNIP or DIAG block keeps: the synthetic entries', which their readers check. */
 const RELOCATIONS: Readonly<Record<string, readonly number[]>> = Object.freeze({
   SNIP: syntheticSnip({ ...INTERFERENCE, frames: [] }).relocations, DIAG: syntheticDiag(SYNTHETIC_STATUS_MESSAGES).relocations,
 });
 
 /**
  * Synthetic entries at the mapped production graphics locators, in ascending ID order: a DATA palette; a
- * `productionCockpitBlock()` with two 8×8 fonts and one 4×6 font at the mapped indices; a `syntheticTexture` at every TEX
+ * `productionCockpitEntry()` with two 8×8 fonts and one 4×6 font at the mapped indices; a `syntheticTexture` at every TEX
  * entry of the production texture table; an MFDD with 3 + 9 records, a BITM image and TABL image lists of 4, 29 and 29
  * records at the status display, display page, gauge bar, unit marker and zoom icon entries; a SNIP of nine 4×2 frames
  * and a DIAG of `SYNTHETIC_STATUS_MESSAGES`. Every image is small and differs by list and entry. `blocks` replaces every
- * such entry of a type, or omits them when null. The entries of `productionFlightGraphicsEntries()` follow unchanged.
+ * such entry of a type, or omits them when null; a replacement given as bytes alone keeps the SNIP and DIAG relocations
+ * and has none otherwise. The entries of `productionFlightGraphicsEntries()` follow unchanged.
  */
 export function productionGraphicsEntries(blocks: GraphicsBlocks = {}): SyntheticEntry[] {
   const cockpitHudMap = cockpitHudMapBlocks();
-  const content = (type: string, id: number): Uint8Array | null => {
+  const content = (type: string, id: number): GraphicsBlock | null => {
     const block = blocks[type as keyof GraphicsBlocks];
     if (block !== undefined) return block;
     return type === 'DATA' ? dataPaletteBlock() : type === 'TEX' ? syntheticTexture(id) : cockpitHudMap.get(id)!;
@@ -307,8 +425,10 @@ export function productionGraphicsEntries(blocks: GraphicsBlocks = {}): Syntheti
   const entries = new Map<number, SyntheticEntry>();
   for (const { entry: { id, type } } of locators) {
     if (entries.has(id)) continue;
-    const data = content(type, id);
-    if (data) entries.set(id, { id, type, data, ...(RELOCATIONS[type] && { relocations: [...RELOCATIONS[type]] }) });
+    const block = content(type, id);
+    if (!block) continue;
+    const { data, relocations = RELOCATIONS[type] } = block instanceof Uint8Array ? { data: block } : block;
+    entries.set(id, { id, type, data, ...(relocations && { relocations: [...relocations] }) });
   }
   return [...entries.values(), ...productionFlightGraphicsEntries()].sort((left, right) => left.id - right.id);
 }

@@ -49,7 +49,7 @@ import type { WorldState } from '../world/world-state.ts';
 import { fullRepair } from './base-interior.ts';
 import { emit, type RequestOf, type TickContext } from './pipeline.ts';
 import { flushRadio } from './radio.ts';
-import { switchView } from './view-switch.ts';
+import { switchPlayerView } from './view-switch.ts';
 
 const fault = (site: string): CoreFaultError => new CoreFaultError('invariant-violated', `docking.${site}`);
 
@@ -121,14 +121,12 @@ function poseOf({ position, orientation }: Entity): Pose {
 /**
  * `0x216d4(player, viewMode, 0)`: the previous view is the old one, then P3-09's view switch (view-switch.ts; MW-09),
  * whose `0x4cd68` sets the redraw flag as one view is 6 (CB-10). It changes no page here: docking is refused in the Warp
- * views and a launch never enters one. Returns the old view.
+ * views and a launch never enters one. view-switch.ts's switchPlayerView also hides the player's model and emits
+ * `view-switched` (FS-02, FS-03). Returns the old view.
  */
-function changeView(world: WorldState, viewMode: number): number {
-  const { player } = world;
-  const previousViewMode = player.viewMode;
-  player.previousViewMode = previousViewMode;
-  player.viewMode = viewMode;
-  if (switchView(world, viewMode, previousViewMode) !== null) throw fault('view-switch');
+function changeView(context: TickContext, viewMode: number): number {
+  const previousViewMode = context.world.player.viewMode;
+  if (switchPlayerView(context, viewMode) !== null) throw fault('view-switch');
   return previousViewMode;
 }
 
@@ -159,7 +157,7 @@ export function dock(context: TickContext): void {
   stream.next();
   world.rngState = stream.state;
   // `0x3104c` clears the target as the new view is 6 (no `target-changed`, CR-06).
-  const previousViewMode = changeView(world, BASE_VIEW_MODE);
+  const previousViewMode = changeView(context, BASE_VIEW_MODE);
   world.player.target = null;
   if (player.combat.type !== 'craft') throw fault('player-combat');
   const craft = world.craftInfo.content.craft[player.kindBit];
@@ -178,7 +176,7 @@ export function depart(context: TickContext, request: RequestOf<'depart'>): void
   // Only docking enters the base view and sub-state 5, and it saves the pose first.
   if (docking.savedPose === null) throw fault('saved-pose');
   player.activity = 'active';
-  changeView(world, launchViewMode(world.player.previousViewMode));
+  changeView(context, launchViewMode(world.player.previousViewMode));
   world.baseService = null;
   const head = wingmanHead(world.entities);
   const wingman = head?.activity === 'docked' ? head : null;

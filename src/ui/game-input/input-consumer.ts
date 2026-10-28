@@ -22,7 +22,8 @@
  *   and are released after it. Leaving fullscreen clears through `clear('focus-loss')` and the end of this owner's
  *   Pointer Lock through `clear('pointer-lock-exit')`; while the pointer is locked, Esc only releases it.
  * - **Map** (`map-input.ts`, with the `map` option): fed every frame, status change, qualification change and the
- *   Pointer Lock port's pointer input; it submits through the same command feedback and is cleared with the keys.
+ *   Pointer Lock port's pointer input; it submits through the same command feedback and is cleared with the keys. It
+ *   gives the map picture the right button's level (`mapRightButton`) and decides the port's context menu requests.
  */
 import type {
   MissionConsumerConnection, MissionInputContext, MissionOwnerConsumer, MissionRunInputControl, MissionSessionView,
@@ -41,7 +42,7 @@ import {
 import type { BindingTable, DiscreteAction } from './input-action.ts';
 import { InputState, type InputMoment } from './input-state.ts';
 import { createInputStatus, type InputOperation, type InputStatusReader } from './input-status.ts';
-import { MapInput, type MapInputOptions } from './map-input.ts';
+import { MapInput, type MapButtonPort, type MapInputOptions } from './map-input.ts';
 
 /** The part of the command feedback the consumer submits through. */
 export type CommandSubmitter = Pick<GameCommandFeedback, 'submit'>;
@@ -68,6 +69,16 @@ export interface GameInputConsumer<Zone> extends MissionOwnerConsumer<'input'> {
   readonly bindZone: (zone: Zone | null) => void;
   /** The map cursor's position, for the cursor drawer the `map` option's `cursor` returns; null hides the cursor. */
   readonly mapCursor: MapCursorPositionPort;
+  /**
+   * The main map's right-button level for `CockpitTick.mapRightButton` (P3-13 DC-09): every tick of a batch takes the
+   * value read when the batch is processed. False without the `map` option and whenever the map input is not qualified.
+   */
+  readonly mapRightButton: MapButtonPort;
+  /**
+   * Re-reads the map input's facts now, as after its presentation port revoked the picture's credential: losing
+   * readiness then drops its held buttons and exits its Pointer Lock at once rather than at the next frame.
+   */
+  syncMap(): void;
   /**
    * Clears the local input and, while the run is running, sends it one `clear-input` for `reason`: for host events that
    * end the input's qualification, such as leaving fullscreen or Pointer Lock. Not for session notifications. Every
@@ -118,6 +129,7 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
   readonly #capabilities: InputCapabilityController;
   readonly #map: MapInput | null;
   readonly mapCursor: MapCursorPositionPort;
+  readonly mapRightButton: MapButtonPort;
   #source: (KeyboardSource & KeyboardZoneBinding<Zone>) | null = null;
   #zone: Zone | null = null;
   #session: MissionSessionView | null = null;
@@ -138,6 +150,7 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
       reportError: (cause) => { this.#status.reportError('map-input', cause); },
     }) : null;
     this.mapCursor = this.#map?.position ?? Object.freeze({ read: () => null });
+    this.mapRightButton = this.#map?.rightButton ?? Object.freeze({ read: () => false });
   }
 
   get status(): InputStatusReader {
@@ -173,6 +186,7 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
       this.#capabilities.connect({
         ownerId, session, previousClosed, status: this.#status, facts: this.#facts, clear: (reason) => { this.clear(reason); },
         pointer: (input) => { this.#pointer(input); },
+        contextMenu: () => !this.#released && (this.#map?.contextMenu(this.#moment(this.#eligible)) ?? false),
       });
     } catch (cause) {
       stopMap();
@@ -212,6 +226,10 @@ class InputConsumer<Zone> implements GameInputConsumer<Zone> {
     const moment = this.#moment(this.#eligible);
     this.#clearLocal();
     this.#clearRun(reason, moment);
+  }
+
+  syncMap(): void {
+    if (!this.#released) this.#map?.sync(this.#moment(this.#eligible));
   }
 
   #clearLocal(): void {

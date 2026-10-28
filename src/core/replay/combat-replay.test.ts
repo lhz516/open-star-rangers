@@ -10,7 +10,7 @@ import { thrownBy, tickInput } from '../world/world.test-support.ts';
 import { compareReplayResults } from './compare.ts';
 import { createRecordingSession, GAME_REPLAY_VERSION, type Recording } from './recording.ts';
 import { replayRecord } from './replay.ts';
-import { contentOf, PRODUCER, recordScript, roundTrip } from './replay.test-support.ts';
+import { contentOf, gameplayDigest, PRODUCER, recordScript, roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
 import { snapshotHash, type GameSnapshot } from './snapshot.ts';
 
@@ -117,6 +117,16 @@ function recordWith(change: (record: Mutable & { ticks: Mutable[] }) => void): u
 }
 
 describe('combat replay (P3-07 AC-13, CR-14)', () => {
+  // P3-12/10 (docs/plan/p3/02/spec.md, FS-08): the presentation facts change no rule outcome or draw; the digest is the
+  // one this run had before them (replay.test-support.ts).
+  // P3-03 修订 4 (P3-13/11) raised the slice definition version to 7, which the synthetic identity in the snapshot carries;
+  // the rules and draws are unchanged.
+  // P3-13/24 gave the synthetic package the shapes of the shipped HUD content and texts (drawable by the cockpit), which
+  // the synthetic identity in the snapshot carries; the rules and draws are unchanged.
+  it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
+    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('d520db010af2d2cb');
+  });
+
   it('reproduces every event and the snapshot at every checkpoint after a JSON round trip', () => {
     const { record, result } = roundTrip(RECORDING) as Recording;
     const replayed = replayRecord(record, CONTENT);

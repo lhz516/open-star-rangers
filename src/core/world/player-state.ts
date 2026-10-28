@@ -9,7 +9,9 @@
  * original's is a value pending for one frame, and the commanded speed of the movement block persists instead. P3-07
  * adds the targeting, combat records and cockpit display state (docs/plan/p3/02/spec.md, CR-04). P3-09 adds the map
  * cursor and destination, the saved left page and the Warp transit (docs/plan/p3/02/spec.md, MW-02); P3-10 the docking
- * object, the communications state and the saved docking pose (CB-02, CB-03).
+ * object, the communications state and the saved docking pose (CB-02, CB-03); P3-12 whether the player's model is shown
+ * (docs/plan/p3/02/spec.md, FS-02); P3-13 the status display's flip flag and rebuild count and the energy-page redraw
+ * count (docs/plan/p3/02/spec.md, CK-01, CK-02).
  */
 import type { Vec3 } from '../contracts/domain-events.ts';
 import type { EntityId, Matrix3, NameReference, RotationAxis } from './entity-table.ts';
@@ -72,10 +74,20 @@ export interface PlayerState {
    */
   readonly leftDisplay: { page: LeftPage };
   /**
-   * The status display's blink phase and timer (`0x4d0e0`) and the player object's redraw flag +0xF0, which the
-   * player's subsystem damage and a view switch (`0x4cd68`) set and the frame-end status display step clears (CR-10).
+   * The status display `0x4d0e0` (CR-10 as CK-01 corrects it): its blink phase `0x175ee0` and due clock `0x175ee4`; the
+   * player object's redraw flag +0xF0, which the player's instantiation and subsystem damage and a view switch to or
+   * from view 6 (`0x4cd68`) set and the frame-end status display step clears; whether the previous status page
+   * step flipped the phase (`0x175edc`); and how many times that step rebuilt fields 1, 5 and 8 (`0x4d50c`). Only the
+   * status page step writes `phaseFlipped` and `rebuilds`; the rescue keeps them.
    */
-  readonly statusDisplay: { blink: 0 | 1; blinkDueClock: number; redraw: boolean };
+  readonly statusDisplay: StatusDisplay;
+  /**
+   * How many times the original sets the player object's energy-page redraw flag +0x44 (CK-02), a non-negative safe
+   * integer: the player's instantiation and rescue (`0x3060c`), each due player energy update (`0x3071c`), each
+   * accepted level change (`0x30b20`, `0x30bc0`), each shield hit the shield takes (`0x30c60`, not its bypass) and each
+   * gun shot's charge spending (`0x30cec`). The page change, the end of interference and a view rebuild do not count.
+   */
+  energyPageRedraws: number;
   /** The strategic map's cursor and the Warp destination (MW-02). */
   readonly map: PlayerMap;
   /** `0x187020`: a Warp start saves the current page and leaving view mode 1 restores it (MW-09). 0 until first saved. */
@@ -93,6 +105,23 @@ export interface PlayerState {
   readonly communications: PlayerCommunications;
   /** `0x186af0`–`0x186b1c`: written at docking and launch (CB-10), null before the first docking. */
   readonly docking: { savedPose: Pose | null };
+  /**
+   * P3-12's player state (FS-02): the player visual's in-scene flag (visual +0x20), read by no rule, only by Render
+   * State's `display`. False at creation and at the player's instantiation; every `0x216d4` view switch writes whether
+   * the new view is 0x11 (view-switch.ts's switchPlayerView; not the map toggle nor the Warp start and completion); the
+   * player's hand-off and P3-11's rescue clear it.
+   */
+  modelShown: boolean;
+}
+
+/** The status display's state (CR-10, CK-01). */
+export interface StatusDisplay {
+  blink: 0 | 1;
+  blinkDueClock: number;
+  redraw: boolean;
+  phaseFlipped: boolean;
+  /** A non-negative safe integer. */
+  rebuilds: number;
 }
 
 /** The map part of the player state (MW-02). */
@@ -230,7 +259,9 @@ export interface ShotCounts {
  * launch, the end of a Warp), which needs the instantiated player, and the player's instantiation writes it too; the
  * sub-mode is read only in view mode 0x11, whose entry from another mode clears it. Neither creation value is
  * therefore observable by a rule; they are 0xC and 0. P3-07's and P3-10's fields take their creation values (CR-04,
- * CB-02, CB-03), and P3-09's (MW-02): the cursor at `startPixel`, no destination, saved page 0 and no Warp transit.
+ * CB-02, CB-03), and P3-09's (MW-02): the cursor at `startPixel`, no destination, saved page 0 and no Warp transit;
+ * P3-12's model not shown (FS-02); P3-13's status display step pending a rebuild as after a flip (the original's static
+ * initial value 1) with no rebuild and no energy-page redraw yet (CK-01, CK-02).
  */
 export function createPlayerState(startPixel: MapPixel): PlayerState {
   return {
@@ -247,7 +278,8 @@ export function createPlayerState(startPixel: MapPixel): PlayerState {
     shots: { projectilesFired: 0, projectileHits: 0, missilesFired: 0, missileHits: 0 },
     heavyDamage: -1,
     leftDisplay: { page: 0 },
-    statusDisplay: { blink: 0, blinkDueClock: 0, redraw: true },
+    statusDisplay: { blink: 0, blinkDueClock: 0, redraw: true, phaseFlipped: true, rebuilds: 0 },
+    energyPageRedraws: 0,
     map: { cursor: Object.freeze({ column: startPixel.column, row: startPixel.row }), destination: null },
     savedLeftPage: 0,
     warp: null,
@@ -261,6 +293,7 @@ export function createPlayerState(startPixel: MapPixel): PlayerState {
       thanks: 0,
     },
     docking: { savedPose: null },
+    modelShown: false,
   };
 }
 

@@ -2,13 +2,13 @@
 type: guide
 status: active
 phase: P2
-updated: 2026-10-15
+updated: 2026-10-28
 related: [ADR-0008, ADR-0012]
 ---
 
 # 本地导入与最小资源查看器
 
-本指南对应当前的诊断界面：导入自己的数据、查看切片资源、试听核心音效、检查任务能否载入 Core（P2-11），以及从主菜单开始任务的正式运行骨架（P3-04，见[开始任务](#开始任务)）。它不是原版菜单或飞行画面：开始任务会以导入的第一关任务创建并推进正式 Core 的世界，但还没有飞行画面、驾驶舱、HUD、游戏键位、规则或音效，不是可玩的原版任务。
+本指南对应当前的诊断界面：导入自己的数据、查看切片资源、试听核心音效、检查任务能否载入 Core（P2-11），以及从主菜单开始任务的正式运行骨架（P3-04，见[开始任务](#开始任务)）。它不是原版菜单：开始任务会以导入的第一关任务创建并推进正式 Core 的世界（P3-05 起有游戏键位，P3-06 至 P3-11 的规则已接入），在同一飞行画布中显示 P3-12 的三维世界（星云、星点、速度尘埃、爆炸与 Warp 效果）与 P3-13 的驾驶舱、HUD 和战略地图；但还没有音效（P3-14）与音乐（G-01），过场与基地内部等仍是项目占位（[切片缺省清单](../engineering/slice-gaps.md)），还不是可玩的原版切片。
 
 ## 准备文件与浏览器
 
@@ -69,7 +69,7 @@ pnpm preview --host 127.0.0.1 --port 4174 --strictPort
 - 页面刷新后先回到菜单，只列出缓存元数据。`Saved resources found in this browser, not yet verified.` 不代表资源已恢复；点击 `Open saved resources` 才会读取 payload、重新校验并载入任务。成功后再用 `View resources`。
 - 缓存属于同一浏览器 profile 和同一源（协议、主机、端口）。`localhost` 与 `127.0.0.1`、不同端口或无痕窗口不能当作同一份缓存。缓存不是备份，浏览器可能清除它。
 - 保存失败时查看原因，可在菜单或导入结果中用 `Save again` 重试。若页面尚持有完整包、但浏览器已清除缓存，返回菜单后的重新检查会改为仅内存并报告 `not-found`，仍可查看及重新保存；若已刷新且缓存不存在，就重新选择文件导入。
-- 仅提供身份与当前生产配置一致的缓存。当前版本以[生产包配置](../../src/workers/production-package.ts)和[源码结构中的转换器版本](../engineering/modules/content.md#内容基础契约与切片定义)为准。**转换器版本每次递增后（P2-11 子任务 16 递增过模型组件，2026-10-08 的 P2-06、P2-07 修订又递增了模型与图形组件，P3-03 把四个组件全部递增为 `osr-import.graphics-4.logic-2.audio-2.models-4`，P3-09 加入地图几何后又递增为 `osr-import.graphics-5.logic-2.audio-2.models-4`），此前导入的旧版本条目都不提供 `Open saved resources`，不会迁移或自动清理。此前核对过也必须重新导入，再核对导入与查看。** P3-03 同时把切片定义递增为版本 4、把声音 payload 递增为 schema 2：旧包缺少新增的必需资源，即使读到旧记录也报 `cache-incompatible`，所以 P3-03 之前保存的资源一律须重新导入。P3-09 又把切片定义递增为版本 5（新增必需的地图几何资源），版本 4 的包同样报 `cache-incompatible`，须重新导入；新增的资源只有几十字节，空间需求几乎不变。新包更大（包预算的 payload 上限约 15.8 MiB），导入前的建议性空间预检按它估算，保存需要的空间相应增加。**P3-03 修订 2（由 P3-10 子任务 29 实现）再次要求重新导入：** 逻辑组件递增为 `osr-import.graphics-4.logic-3.audio-2.models-4`，切片定义递增为版本 5（新增 `data/comm-messages`），生产白名单加入 `MAIN/COMMFACE.NOB`，来源指纹随之改变；版本 4 的旧包报 `cache-incompatible`。导入因此还要读取光盘上的 `MAIN/COMMFACE.NOB`（约 36 MiB，用于识别与通讯消息的帧时长），耗时相应增加；`MAIN/COMMFAC2.NOB` 不读取。**P3-09 与 P3-10 合入同一分支后（2026-10-15）：** 转换器版本为 `osr-import.graphics-5.logic-3.audio-2.models-4`（两者递增的是不同组件，都保留），切片定义为版本 6（两次修订各自把 4 递增为 5，合并后同时要求地图几何与 `data/comm-messages`）；任一分支单独产生的版本 5 包都报 `cache-incompatible`，须重新导入。**P3-03 修订 3（由 P3-08 子任务 13 实现）再次要求重新导入：** `data/ai-programs` 并入 EXE 中脚本参数解析用的四张关键字表，payload schema 递增为 2，逻辑组件递增为 `osr-import.graphics-5.logic-4.audio-2.models-4`；切片定义（版本 6）、白名单与来源指纹不变，所以 `osr-import.graphics-5.logic-3.audio-2.models-4` 的旧包只是不再提供 `Open saved resources`，重新导入即可；读取量与包大小几乎不变。不要把“没有可恢复条目”误认为旧记录必然已被删除。
+- 仅提供身份与当前生产配置一致的缓存。当前版本以[生产包配置](../../src/workers/production-package.ts)和[源码结构中的转换器版本](../engineering/modules/content.md#内容基础契约与切片定义)为准。**转换器版本每次递增后（P2-11 子任务 16 递增过模型组件，2026-10-08 的 P2-06、P2-07 修订又递增了模型与图形组件，P3-03 把四个组件全部递增为 `osr-import.graphics-4.logic-2.audio-2.models-4`，P3-09 加入地图几何后又递增为 `osr-import.graphics-5.logic-2.audio-2.models-4`），此前导入的旧版本条目都不提供 `Open saved resources`，不会迁移或自动清理。此前核对过也必须重新导入，再核对导入与查看。** P3-03 同时把切片定义递增为版本 4、把声音 payload 递增为 schema 2：旧包缺少新增的必需资源，即使读到旧记录也报 `cache-incompatible`，所以 P3-03 之前保存的资源一律须重新导入。P3-09 又把切片定义递增为版本 5（新增必需的地图几何资源），版本 4 的包同样报 `cache-incompatible`，须重新导入；新增的资源只有几十字节，空间需求几乎不变。新包更大（包预算的 payload 上限约 15.8 MiB），导入前的建议性空间预检按它估算，保存需要的空间相应增加。**P3-03 修订 2（由 P3-10 子任务 29 实现）再次要求重新导入：** 逻辑组件递增为 `osr-import.graphics-4.logic-3.audio-2.models-4`，切片定义递增为版本 5（新增 `data/comm-messages`），生产白名单加入 `MAIN/COMMFACE.NOB`，来源指纹随之改变；版本 4 的旧包报 `cache-incompatible`。导入因此还要读取光盘上的 `MAIN/COMMFACE.NOB`（约 36 MiB，用于识别与通讯消息的帧时长），耗时相应增加；`MAIN/COMMFAC2.NOB` 不读取。**P3-09 与 P3-10 合入同一分支后（2026-10-15）：** 转换器版本为 `osr-import.graphics-5.logic-3.audio-2.models-4`（两者递增的是不同组件，都保留），切片定义为版本 6（两次修订各自把 4 递增为 5，合并后同时要求地图几何与 `data/comm-messages`）；任一分支单独产生的版本 5 包都报 `cache-incompatible`，须重新导入。**P3-03 修订 3（由 P3-08 子任务 13 实现）再次要求重新导入：** `data/ai-programs` 并入 EXE 中脚本参数解析用的四张关键字表，payload schema 递增为 2，逻辑组件递增为 `osr-import.graphics-5.logic-4.audio-2.models-4`；切片定义（版本 6）、白名单与来源指纹不变，所以 `osr-import.graphics-5.logic-3.audio-2.models-4` 的旧包只是不再提供 `Open saved resources`，重新导入即可；读取量与包大小几乎不变。**P3-03 修订 4（由 P3-13 子任务 11 实现）再次要求重新导入：** 新增必需的驾驶舱仪表调度资源 `data/hud/instruments`（CCKD 10103 布局号 0、6、8 三个槽的调度数据与 EXE 中右显示屏的观察距离表），切片定义递增为版本 7，图形组件递增为 `osr-import.graphics-6.logic-4.audio-2.models-4`；版本 6 的旧包报 `cache-incompatible`，`graphics-5` 的旧包不再提供 `Open saved resources`。白名单与来源指纹不变，新资源只有约 2 KiB，读取量与空间需求几乎不变。不要把“没有可恢复条目”误认为旧记录必然已被删除。
 - 同键保存是原子替换；不提供删除、迁移或缓存管理界面，也不申请持久存储。不要为本指南随意清除用户其他站点或浏览器数据。
 
 ## 查看器操作与限制
@@ -78,7 +78,7 @@ pnpm preview --host 127.0.0.1 --port 4174 --strictPort
 - 模型可选 `Part list` 0、1、2，页面显示用途与置信度；效果可选记录、导弹类型或有/无贴图碎片的 `Effect view`。导弹贴图只用旋转 0，没有映射旋转选择控件。含跨接缝面的项标注 `Seam interpolation unconfirmed`，不是导入失败；原版依据见 [executable](../original/formats/executable.md#effect-texture-mappings-p2-1115-research)。
 - `Turn left/right/up/down`、`Zoom in/out`、`Reset view` 操作三维视角。Tab 到画面区域后可用方向键旋转、`+`/`=` 与 `-` 缩放、`0` 复位；焦点在列表或按钮上时不改变画面。步长、限制与键位说明见[键位文档](../engineering/keyboard-input.md#资源查看器的诊断键p2-11)。按钮可用 Tab、Enter/Space 操作。
 - 图像、调色板、布局与字库由查看渲染显示；透明处是棋盘格，字形表是黑底白字。没有游戏循环，空闲不持续绘制。`Refresh diagnostics` 只刷新诊断计数。
-- **P3-03 新增的图像：** `Images` 中另有 186 个爆炸帧（`image/explosion/<动画>/<帧>`，角色 `explosion-frame`，透明处为棋盘格）、15 个星云背景（`image/nebula/<nn>`）、受击闪烁贴图（`image/hit-shimmer`）与目标显示屏背景（`image/hud/target-display/background`，`Palettes` 中另有它的调色板）。受击闪烁贴图的存储值是受击条带的阈值，不是颜色，查看器显示的颜色不代表游戏画面（[textures](../original/formats/textures.md#tex-11069-hit-shimmer-band-map-confirmed)）。新增的机型、碎片、AI、通讯菜单、基地修理项目、飞行消息、场景设置、爆炸表、爆炸动画、星云列表、视角标签与 HUD 文字等 `data` 资源，以及 P3-09 的地图几何（`data/hud/map-geometry`），不在查看器列表中；它们的数量、字节与哈希可用[包核对](./tools.md#包核对)在本地报告。
+- **P3-03 新增的图像：** `Images` 中另有 186 个爆炸帧（`image/explosion/<动画>/<帧>`，角色 `explosion-frame`，透明处为棋盘格）、15 个星云背景（`image/nebula/<nn>`）、受击闪烁贴图（`image/hit-shimmer`）与目标显示屏背景（`image/hud/target-display/background`，`Palettes` 中另有它的调色板）。受击闪烁贴图的存储值是受击条带的阈值，不是颜色，查看器显示的颜色不代表游戏画面（[textures](../original/formats/textures.md#tex-11069-hit-shimmer-band-map-confirmed)）。新增的机型、碎片、AI、通讯菜单、基地修理项目、飞行消息、场景设置、爆炸表、爆炸动画、星云列表、视角标签与 HUD 文字等 `data` 资源，以及 P3-09 的地图几何（`data/hud/map-geometry`）与 P3-13 的驾驶舱仪表调度（`data/hud/instruments`），不在查看器列表中；它们的数量、字节与哈希可用[包核对](./tools.md#包核对)在本地报告。
 - `Sounds` 中每个声音列出 Asset ID 与角色：点击 `Play` 解锁音频并按声音的循环方式播放，`Stop` 停止该声音，`Stop all sounds` 停止全部。多数声音播放一次；循环声音（如引擎声与 HUD 循环音）一直播放到按 `Stop`；`repeat` 声音连续播放规定的遍数后自然结束，例如 P3-03 新增的 `sound/event/warp-arrival` 播放 8 遍，结束前也可用 `Stop` 提前停止。P3-03 另加入 8 个 `event-sound` 与 3 个 `hud-sound`。页面隐藏或返回菜单会停止；返回菜单会释放音频与画布，但保留资源包。短音效可能在按停止前自然结束。
 - 任务区只显示结构计数、引用校验与载入结果，不显示原版任务名、简报或消息文字。
 - **呈现限制：** P2-12 已逐行判定呈现约定，结论与置信度见[源码结构：资源查看渲染](../engineering/modules/render.md#资源查看渲染)。
@@ -88,7 +88,7 @@ pnpm preview --host 127.0.0.1 --port 4174 --strictPort
 
 ## 开始任务
 
-主菜单的 `Start mission`（P3-04）进入正式运行骨架：以导入的第一关任务创建并推进正式 Core 的世界。页面中标注的缺省项见[切片缺省清单](../engineering/slice-gaps.md)；当前构建没有游戏键位，按键见[键位文档](../engineering/keyboard-input.md#2-当前绑定表)。
+主菜单的 `Start mission`（P3-04）进入正式运行骨架：以导入的第一关任务创建并推进正式 Core 的世界。页面中标注的缺省项见[切片缺省清单](../engineering/slice-gaps.md)；游戏按键见[键位文档](../engineering/keyboard-input.md#2-当前绑定表)。
 
 **开始的条件**（同时满足时入口可用，否则禁用并在入口下说明原因）：
 
@@ -101,12 +101,12 @@ pnpm preview --host 127.0.0.1 --port 4174 --strictPort
 **流程：**
 
 1. 点击 `Start mission`，先出现第一关介绍的占位页（G-02/1）。页面可见时约 3 秒后自然结束，也可用 `Skip` 或 Enter、Space、Esc 提前结束；页面隐藏期间不计时。
-2. 开始配置页（G-04、G-07）显示任务的战役组与槽位、固定难度 19、目标与限制（项目文字，本构建尚未实现这些规则），以及僚机：名单的 5 个选项与 `No wingman`。第一次默认选第 1 项；之后在本页未刷新、资源内容相同的情况下，预选上次开始时的选择（含 `No wingman`）。点击 `Start` 创建世界；失败时留在本页显示类别、路径与原因，可以改选后重试或 `Return to main menu`。
+2. 开始配置页（G-04、G-07）显示任务的战役组与槽位、固定难度 19、目标与限制（项目文字；结果由 Core 按这些规则判定，本页只描述），以及僚机：名单的 5 个选项与 `No wingman`。第一次默认选第 1 项；之后在本页未刷新、资源内容相同的情况下，预选上次开始时的选择（含 `No wingman`）。点击 `Start` 创建世界；失败时留在本页显示类别、路径与原因，可以改选后重试或 `Return to main menu`。
 3. 出发占位页（G-02/2）写明本次是否带僚机；世界停在 tick 0，结束后进入飞行。
-4. 任务画面的游戏区域暂时是空的（飞行画面、驾驶舱与 HUD 尚未实现），区域外的状态栏显示阶段与暂停原因。可用 `Pause`/`Resume` 与 `Mission menu`（Continue、Restart mission、Return to main menu）。`Restart mission` 回到介绍，以同一资源、难度与新抽取的种子开始新的任务实例，只沿用僚机选择（G-06）；`Return to main menu` 结束本次运行。
+4. 任务画面的游戏区域显示飞行画面（同一画布，P3-12 与 P3-13）：F1 中视口内是世界与 F1 叠加，下方是驾驶舱框架与各仪表（角落仪表、雷达、左右显示屏、消息行、指示条与 Warp 灯）；Warp 中左显示屏为 Warp 页、不画叠加；`m` 打开整屏的战略地图，鼠标在主地图上点选目的地（首次点击只锁定指针，地图中再按 `m` 关闭，见[键位文档](../engineering/keyboard-input.md#地图鼠标与光标)）；被毁时只有视角标签与消息行。通讯头像与台词以标为 G-03 的项目摘要代替；停靠后游戏区域改为项目的基地页面（G-05），列出服务队列并显示同一无线电消息。没有音效：画面之外的状态栏显示 “Sound effects are not implemented yet (P3-14).”。原版画面的对照结论与仍缺的外观证据见 [P3-13/32 的完成证据](../plan/p3/13/subtasks/32-presentation-verdicts.md#完成证据)。浏览器不提供 WebGL 2 时没有画面，游戏区域以提示 “The flight picture is unavailable: this browser provides no WebGL 2.” 说明，任务照常进行，可以暂停或经任务菜单退出；图形上下文暂时丢失时同样提示，浏览器恢复后画面继续。区域外的状态栏显示阶段与暂停原因。可用 `Pause`/`Resume` 与 `Mission menu`（Continue、Restart mission、Return to main menu）。`Restart mission` 回到介绍，以同一资源、难度与新抽取的种子开始新的任务实例，只沿用僚机选择（G-06）；`Return to main menu` 结束本次运行。
 5. 页面隐藏或切到其他标签页时自动暂停；回来后仍保持暂停，须点击 `Resume`。有运行时刷新、关闭或离开页面，浏览器会先询问是否离开：取消则留在同一运行；确认离开则丢弃本次运行，刷新后回到主菜单（已保存的资源包可再从缓存恢复），不会恢复任务。
 
-**开发服务器的诊断：** 生产预览没有诊断面板。用 `pnpm dev` 打开的页面在任务画面下方另有开发诊断（实体与任务状态、事件日志、帧耗时、命令提交与录制导出）。导出的录制文件含由你的数据派生的运行状态，只放在 `local/` 下，不上传或分享；可用 `node tools/replay-check.ts <录制.json> <同一 CloneCD 文件组>` 在 Node 中重放核对（[工具指南](./tools.md#录制重放核对)）。重开、返回菜单与热更新会丢弃未导出的录制。
+**开发服务器的诊断：** 生产预览没有诊断面板。用 `pnpm dev` 打开的页面在任务画面下方另有开发诊断（实体与任务状态、事件日志、帧耗时、命令提交、录制导出、飞行渲染的状态和 GPU 计数，以及驾驶舱的消息队列、丢弃与雷达噪点计数）。导出的录制文件含由你的数据派生的运行状态，只放在 `local/` 下，不上传或分享；可用 `node tools/replay-check.ts <录制.json> <同一 CloneCD 文件组>` 在 Node 中重放核对（[工具指南](./tools.md#录制重放核对)）。重开、返回菜单与热更新会丢弃未导出的录制。
 
 ## 失败时如何处理
 

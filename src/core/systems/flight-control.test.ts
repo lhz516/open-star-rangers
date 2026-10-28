@@ -45,6 +45,7 @@ const input = (commands: readonly Command[] = [], axes: TickAxes = NEUTRAL) => r
 function stepControls(state: WorldState, commands: readonly Command[] = [], axes: TickAxes = NEUTRAL, hooks: Readonly<Record<string, (context: TickContext) => void>> = {}): readonly DomainEvent[] {
   const context = registerTick(state, input(commands, axes));
   for (const stage of PIPELINE) {
+    context.stage = stage.id;
     if (stage.id === 'movement') break;
     hooks[stage.id]?.(context);
     stage.run?.(context);
@@ -241,7 +242,7 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
       [11, ...navigateResult],
     ]);
     // The base keys' requests are applied in request handling, after every result.
-    expect(events.filter(({ type }) => type !== 'command-result').map(({ type }) => type)).toEqual(viewMode === BASE ? ['base-confirmed', 'departed', 'transition'] : []);
+    expect(events.filter(({ type }) => type !== 'command-result').map(({ type }) => type)).toEqual(viewMode === BASE ? ['base-confirmed', 'view-switched', 'departed', 'transition'] : []);
     expect(craftBlock(player).commandedSpeed).toBe(48);
     expect(state.player.control).toEqual(control);
   });
@@ -256,6 +257,7 @@ describe('command results (P3-06 AC-04, 行为与边界)', () => {
     const commands = [speed('zero'), { type: 'launch' }, speed('zero'), { type: 'confirm-selection' }] as const satisfies readonly Command[];
     const context = registerTick(state, input(commands, axes));
     for (const stage of PIPELINE) {
+      context.stage = stage.id;
       if (stage.id === 'request-handling') break;
       stage.run?.(context);
     }

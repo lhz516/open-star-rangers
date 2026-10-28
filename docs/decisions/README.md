@@ -2,7 +2,7 @@
 type: index
 status: active
 phase: all
-updated: 2026-10-10
+updated: 2026-10-25
 ---
 
 # 架构决策记录（ADR）
@@ -31,3 +31,4 @@ updated: 2026-10-10
 | [ADR-0016](./ADR-0016-parallel-goal-execution.md) | goal 默认由协调者并行执行 | superseded by ADR-0017 |
 | [ADR-0017](./ADR-0017-coordinator-current-checkout.md) | goal 协调者在当前 checkout 中运行 | accepted |
 | [ADR-0018](./ADR-0018-keyboard-flight-controls.md) | 飞行先用键盘，允许补充项目操纵键 | accepted |
+| [ADR-0019](./ADR-0019-strategic-map-render-pipeline.md) | 战略地图接入 Classic 游戏画面管线 | accepted |

@@ -9,7 +9,7 @@ import { tickInput } from '../world/world.test-support.ts';
 import { compareReplayResults } from './compare.ts';
 import { createRecordingSession, GAME_REPLAY_VERSION, type Recording } from './recording.ts';
 import { replayRecord } from './replay.ts';
-import { contentOf, PRODUCER, recordScript, roundTrip } from './replay.test-support.ts';
+import { contentOf, gameplayDigest, PRODUCER, recordScript, roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
 import { snapshotHash, snapshotText, type GameSnapshot } from './snapshot.ts';
 
@@ -161,6 +161,16 @@ function withCommands(tick: number, commands: readonly Command[]): unknown {
 
 // Whole runs of 420 ticks recorded or replayed with a checkpoint every tick: 1.6–6.5 s per case alone.
 describe('autonomous AI replay (P3-08 AC-11; CR-25)', { timeout: 120_000 }, () => {
+  // P3-12/10 (docs/plan/p3/02/spec.md, FS-08): the presentation facts change no rule outcome or draw; the digest is the
+  // one this run had before them (replay.test-support.ts).
+  // P3-03 修订 4 (P3-13/11) raised the slice definition version to 7, which the synthetic identity in the snapshot carries;
+  // the rules and draws are unchanged.
+  // P3-13/24 gave the synthetic package the shapes of the shipped HUD content and texts (drawable by the cockpit), which
+  // the synthetic identity in the snapshot carries; the rules and draws are unchanged.
+  it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
+    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('be030d7711f2e82d');
+  });
+
   it('records only the normal input of the run, in the current formats', () => {
     expect(RECORDING.record).toMatchObject({ version: GAME_REPLAY_VERSION, rulesVersion: RULES_VERSION, checkpointInterval: 1 });
     expect(RECORDING.record.ticks).toEqual(Array.from({ length: TICKS }, (_, index) => aiScript(index + 1)));

@@ -135,6 +135,33 @@ describe('the energy stage (AC-10; CR-07, D14)', () => {
     expect([combat.energy, combat.lastEnergyClock]).toEqual([first - 40, at + 0x40]);
   });
 
+  it('counts an energy-page redraw at the instantiation and at each due player update, changed or not, and none for other craft (CK-02)', () => {
+    const info = craftInfoContent();
+    Object.assign(info.craft[0], PLAYER_RECORD);
+    const created = initialWorldState(asCreateInput(worldInput({ mission: playerOnlyMission(), craftInfo: info })));
+    constructWorld(created).step(tickInput());
+    // `0x3060c` at the instantiation; the first update is due later.
+    expect(created.player.energyPageRedraws).toBe(1);
+
+    const state = energyState();
+    // At commanded speed 0 with full resources and field 0 intact, an update changes no value and still counts.
+    const combat = craftOf(addPlayer(state, { nextEnergyClock: 100 }));
+    const other = craftOf(addOther(state, { nextEnergyClock: 100 }, 'active', 'active'));
+    nextStepAt(state, 98);
+    runEnergyStage(state);
+    expect(state.player.energyPageRedraws).toBe(0);
+    nextStepAt(state, 100);
+    runEnergyStage(state);
+    expect([combat.energy, combat.shield, combat.charge, combat.lastEnergyClock, other.lastEnergyClock]).toEqual([1000, 300, 40, 100, 100]);
+    expect(state.player.energyPageRedraws).toBe(1);
+    nextStepAt(state, 102);
+    runEnergyStage(state);
+    expect(state.player.energyPageRedraws).toBe(1);
+    nextStepAt(state, 100 + 0x40);
+    runEnergyStage(state);
+    expect(state.player.energyPageRedraws).toBe(2);
+  });
+
   it.each([
     // 100.5 chops to 100: 100 × 500 ÷ 1,000 = 50 per 64 units; the charge gains min(40 − 0, 1,000 × 100) = 40 for 0.
     ['active', {}, 950],
@@ -148,6 +175,8 @@ describe('the energy stage (AC-10; CR-07, D14)', () => {
     nextStepAt(state, 64);
     expect(runEnergyStage(state)).toEqual([]);
     expect(craftOf(player)).toMatchObject({ energy, charge: 40, lastEnergyClock: 64, nextEnergyClock: 64 + 0x40, depleted: false });
+    // Every due player update counts one energy-page redraw (CK-02).
+    expect(state.player.energyPageRedraws).toBe(1);
   });
 
   it('skips a docked player', () => {
@@ -157,6 +186,8 @@ describe('the energy stage (AC-10; CR-07, D14)', () => {
     nextStepAt(state, 64);
     runEnergyStage(state);
     expect(craftOf(player)).toMatchObject({ energy: 1000, lastEnergyClock: 0, nextEnergyClock: 64 });
+    // No update, so no energy-page redraw (CK-02).
+    expect(state.player.energyPageRedraws).toBe(0);
   });
 
   it.each([
@@ -316,6 +347,19 @@ describe('the energy and damage-report commands (AC-10; CR-05, D10, D15)', () =>
     expect(constructWorld(judged).step(tickInput(commands))).toEqual(commands.map((command, index) => result(index, command, 'wrong-context')));
     constructWorld(idle).step(tickInput());
     expect(stateText(judged)).toBe(stateText(idle));
+  });
+
+  it('count an energy-page redraw for each accepted level key only, not for a page change or a refused key (CK-02)', () => {
+    const state = energyState();
+    addPlayer(state, { shieldLevel: 3 });
+    const world = constructWorld(state);
+    world.step(tickInput([energy('open')]));
+    expect(state.player.energyPageRedraws).toBe(0);
+    // `S` at level 3 is refused (`0x30b20` returns 0 before setting +0x44); `s` and `g` are accepted.
+    world.step(tickInput([energy('shield-increase'), energy('shield-decrease'), energy('gun-decrease')]));
+    expect(state.player.energyPageRedraws).toBe(2);
+    world.step(tickInput([DAMAGE_REPORT, energy('shield-decrease')]));
+    expect(state.player.energyPageRedraws).toBe(2);
   });
 
   it('change a level, recompute the maximum speed from the live E, T and field 2 and apply it to the commanded speed', () => {

@@ -64,7 +64,12 @@ function world(): { readonly state: WorldState; readonly player: CraftEntity } {
   return { state, player };
 }
 
-const contextOf = (state: WorldState): TickContext => registerTick(state, readTickInput(tickInput()));
+/** A context in the movement stage, where a projectile's hit test runs. */
+function contextOf(state: WorldState): TickContext {
+  const context = registerTick(state, readTickInput(tickInput()));
+  context.stage = 'movement';
+  return context;
+}
 
 /** An active craft of `kindBit` with this shield and hull, unturned. */
 function craftAt(state: WorldState, kindBit: number, position: Vec3, shield: number, hull: number): CraftEntity {
@@ -232,10 +237,11 @@ describe('a projectile striking a craft (H3, H4, CR-06, AC-08)', () => {
     const context = contextOf(state);
     hitTestProjectile(context, shot);
     // Its removal retires it after the kill (P3-14 FA-07).
-    expect(context.events.map(({ type }) => type)).toEqual(['hit', 'object-destroyed', 'object-retired']);
+    expect(context.events.map(({ type }) => type)).toEqual(['hit', 'object-destroyed', 'explosion-created', 'object-retired']);
     expect(context.events[0]).toMatchObject({ hull: { before: 10, after: -20 }, projectile: 'removed' });
-    expect(context.events[2]).toEqual({ type: 'object-retired', tick: context.time.tick, entityId: shot.id, kindBit: 21, state: 'pending-removal' });
+    expect(context.events[3]).toEqual({ type: 'object-retired', tick: context.time.tick, entityId: shot.id, kindBit: 21, state: 'pending-removal' });
     const [explosion] = state.entities.walk(1 << 22);
+    expect(context.events[2]).toMatchObject({ entityId: explosion.id, sourceEntityId: victim.id, stage: 'movement' });
     expect([victim.destroyed, victim.state, explosion.combat]).toMatchObject([true, 'destroyed-source', { type: 'explosion', source: victim.id, heldSource: victim.id }]);
     expect([shot.state, state.player.kills[BOXED]]).toEqual(['pending-removal', 1]);
   });
@@ -341,8 +347,12 @@ describe('a projectile striking a fragment (H3, H4, CR-08, AC-08)', () => {
     expect([fragmentOf(fragment).durability, fragmentOf(fragment).explodeOnExpiry, fragmentOf(fragment).expiry]).toEqual([0, true, { type: 'at', clock: 1 }]);
     expect(fragment.state).toBe('active');
     const next = tick(state);
-    expect(next).toMatchObject([{ type: 'fragment-expired', entityId: fragment.id, outcome: 'explodes' }]);
     const [explosion] = state.entities.walk(1 << 22);
+    // P3-12 FS-03: a fragment's own explosion, from its expiry in request handling.
+    expect(next).toMatchObject([
+      { type: 'fragment-expired', entityId: fragment.id, outcome: 'explodes' },
+      { type: 'explosion-created', entityId: explosion.id, sourceEntityId: fragment.id, sourceKindBit: 24, stage: 'request-handling' },
+    ]);
     expect([fragment.state, explosion.combat]).toMatchObject(['destroyed-source', { source: fragment.id, heldSource: fragment.id }]);
     expect(state.entities.get(shot.id)).toBeUndefined();
   });

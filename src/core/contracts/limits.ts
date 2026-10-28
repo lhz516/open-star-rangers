@@ -35,11 +35,13 @@ export const CORE_LIMITS = Object.freeze({
    * 640, 8,968 in all. P3-08 (CR-25) adds at most one `wingman-command-consumed` per wingman (32) and one
    * `transponder-deployed` per command (64): 9,064. P3-11 (ME-16) adds about 15 flow events (10 of its types at most
    * once, `player-loss-started` twice, the wingman loss message's `radio-queued` and two flush page changes), a rescue's
-   * `weapon-selected` around both lists (2 × 256 mounts) and the teardown's two page changes: 529, 9,593. P3-14 (FA-07)
-   * adds at most two `object-retired` per entity and tick (an area switch, then a pending removal): 2 × entities =
-   * 4,096, 13,689 in all, which this is about 2.4 times. At the entity limit the quadratic terms have no fixed bound, and
-   * exceeding the budget is a fault. P3-11 adds no request type: the teardown's `leave` is one of each live object's own
-   * two.
+   * `weapon-selected` around both lists (2 × 256 mounts) and the teardown's two page changes: 529, 9,593. P3-12
+   * (FS-08) adds `explosion-created` 353 (as many as `explosion-started`), `view-switched` 73 (one per `map-toggle`
+   * command, the Warp start and completion, a docking, two launches, and P3-11's two loss entries and two rescues) and
+   * one `warp-wall-contact`: 10,020. P3-14 (FA-07) adds at most two `object-retired` per entity and tick (an area
+   * switch, then a pending removal): 2 × entities = 4,096, 14,116 in all, which this is about 2.3 times. At the entity
+   * limit the quadratic terms have no fixed bound, and exceeding the budget is a fault. P3-11 adds no request type: the
+   * teardown's `leave` is one of each live object's own two.
    */
   eventsPerTick: 32_768,
   /**

@@ -14,6 +14,7 @@ import {
   type CombatPlayer,
   type BaseServiceView,
   type CombatReady,
+  type CombatTarget,
   type CombatWarpReading,
   type CommunicationsMenuView,
   type CommunicationsOption,
@@ -24,6 +25,7 @@ import {
   type IncomingView,
   type MapContact,
   type MapInformationRow,
+  type MapLabel,
   type MapOpen,
   type MapPartition,
   type MapPlayer,
@@ -83,12 +85,14 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
             speed: 30.5,
             commandedSpeed: 41.25,
             maximumSpeed: 52,
-            // P3-14 FA-03: the player craft record's +0xB8.
-            recordMaximumSpeed: state.craftInfo.content.craft[player.kindBit].atB8,
+            // P3-13 CK-03 and P3-14 FA-03: the craft record's +0xB8, not the live maximum.
+            recordMaximumSpeed: 64,
             // P3-07 recomputes it from the live energy state (CR-09).
             speedLimitStatus: 'live',
             // Group 1: off.
             speedAssist: { enabled: false, engaged: false },
+            // No steady rotation is enabled.
+            indicatorRates: { row1: 0, row3: 0 },
           },
         },
         combat: { readiness: 'ready', player: expect.objectContaining({ entityId: player.id }) },
@@ -285,6 +289,55 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
       expect(assist()).toEqual({ enabled: true, engaged: false });
     });
 
+    it('gives the record maximum speed apart from the falling maximum speed (CK-03)', () => {
+      const state = testState();
+      const player = addPlayerEntity(state, { maximumSpeed: 12 });
+      // The synthetic player craft's +0xB8 is 64; the maximum speed falls with the energy state, the record stays.
+      expect(motionPlayer(projectWorld(state))).toMatchObject({ maximumSpeed: 12, recordMaximumSpeed: 64 });
+      player.maximumSpeed = 40;
+      expect(motionPlayer(projectWorld(state))).toMatchObject({ maximumSpeed: 40, recordMaximumSpeed: 64 });
+    });
+
+    it('gives row 1\'s enabled pitch rate and row 3 as 0x21cf8 returns it, without timed rotations (CK-03)', () => {
+      const base = testState();
+      const withC4 = (atC4: number): WorldState => {
+        const craft = base.craftInfo.content.craft.map((record, kindBit) => (kindBit === 0 ? { ...record, atC4 } : record));
+        return { ...base, craftInfo: { ...base.craftInfo, content: { ...base.craftInfo.content, craft } } };
+      };
+      const coupled = withC4(1);
+      const player = addPlayerEntity(coupled);
+      const block = player.movement as SteeredMovementBlock;
+      const rates = (state: WorldState) => motionPlayer(projectWorld(state))!.indicatorRates;
+      Object.assign(block.steering.pitch, { rate: 0.75, enabled: false });
+      Object.assign(block.steering.yaw, { rate: 0.5, enabled: true });
+      Object.assign(block.steering.roll, { rate: 0.125, enabled: true });
+      block.speedRatio = 0.25;
+      // Timed rotations never count.
+      block.timedRotation.pitch = { rate: 9, decay: 1, end: 100 };
+      block.timedRotation.roll = { rate: 9, decay: 1, end: 100 };
+      // C +0xC4 and the yaw: 0.5 × 0.25 + 0.125, then without the roll 0.5 × 0.25; the pitch only while enabled.
+      expect(rates(coupled)).toEqual({ row1: 0, row3: 0.25 });
+      block.steering.pitch.enabled = true;
+      block.steering.roll.enabled = false;
+      expect(rates(coupled)).toEqual({ row1: 0.75, row3: 0.125 });
+      // The sum is rounded to f32 once, from the double product: F(D(D(yaw × ratio) + roll)).
+      Object.assign(block.steering.yaw, { rate: Math.fround(0.1) });
+      Object.assign(block.steering.roll, { rate: Math.fround(0.7), enabled: true });
+      block.speedRatio = Math.fround(0.3);
+      expect(rates(coupled).row3).toBe(Math.fround(Math.fround(0.1) * Math.fround(0.3) + Math.fround(0.7)));
+      // Without the coupling (C +0xC4 = 0, or the yaw off): the enabled roll rate, else +0.
+      block.steering.roll.rate = -0.5;
+      block.steering.yaw.enabled = false;
+      expect(rates(coupled)).toEqual({ row1: 0.75, row3: -0.5 });
+      block.steering.yaw.enabled = true;
+      const uncoupled = { ...withC4(0), entities: coupled.entities, player: coupled.player };
+      expect(rates(uncoupled)).toEqual({ row1: 0.75, row3: -0.5 });
+      block.steering.roll.enabled = false;
+      expect(Object.is(rates(uncoupled).row3, 0)).toBe(true);
+      block.steering.pitch.enabled = false;
+      expect(Object.is(rates(uncoupled).row1, 0)).toBe(true);
+    });
+
     it('is deeply frozen, detached from the world and a new copy every call; reading it changes neither the state nor its hash', () => {
       const state = assistedState();
       const world = constructWorld(state);
@@ -350,6 +403,10 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
       | 'state' | 'openedFromBase' | 'geometry' | 'cursor' | 'contacts' | 'zoomMembers' | 'information' | 'labels' | 'line' | 'destination'
       | 'cursorCost' | 'markerEntityId' | 'warpRequest'
     >();
+    expectTypeOf<keyof MapOpen['geometry']>().toEqualTypeOf<
+      'main' | 'information' | 'zoom' | 'pixelsPerUnit' | 'unitsPerPixel' | 'zoomPixelsPerUnit' | 'world' | 'sectors' | 'zoomExtent'
+    >();
+    expectTypeOf<keyof MapLabel>().toEqualTypeOf<'entityId' | 'name' | 'pixel' | 'playerOrWingman' | 'threatened'>();
     expectTypeOf<MapContact['class']>().toEqualTypeOf<'player' | 'friendly' | 'hostile'>();
     expectTypeOf<MapInformationRow['type']>().toEqualTypeOf<'unit-name' | 'unit-values' | 'count'>();
     expectTypeOf<Extract<WarpRequestReading, { accepted: false }>['reason']>()
@@ -370,16 +427,28 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
     expectTypeOf<CombatReady['readiness']>().toEqualTypeOf<'ready'>();
     expectTypeOf<CombatReady['player']>().toEqualTypeOf<CombatPlayer | null>();
     expectTypeOf<keyof CombatPlayer>().toEqualTypeOf<
-      'entityId' | 'destroyed' | 'targetMode' | 'target' | 'radar' | 'resources' | 'allocation' | 'weapons' | 'lock' | 'subsystems' | 'leftPage' | 'warp'
+      | 'entityId' | 'destroyed' | 'targetMode' | 'target' | 'radar' | 'resources' | 'allocation' | 'weapons' | 'lock' | 'subsystems' | 'leftPage' | 'warp'
+      // P3-13 CK-03.
+      | 'statusDisplay' | 'energyPageRedraws'
     >();
+    expectTypeOf<CombatPlayer['statusDisplay']>().toEqualTypeOf<{ readonly blink: 0 | 1; readonly rebuilds: number }>();
+    expectTypeOf<keyof CombatTarget>().toEqualTypeOf<
+      'entityId' | 'kindBit' | 'name' | 'position' | 'orientation' | 'distance' | 'speed' | 'shield' | 'model' | 'craftAt08' | 'activeState'
+    >();
+    expectTypeOf<CombatTarget['model']>().toEqualTypeOf<AssetId | null>();
+    expectTypeOf<keyof WeaponListReading>().toEqualTypeOf<'index' | 'mount' | 'weapon' | 'ammunition' | 'damage' | 'status' | 'ballistics'>();
+    expectTypeOf<WeaponListReading['ballistics']>().toEqualTypeOf<{ readonly speed: number; readonly range: number } | null>();
     expectTypeOf<keyof CombatWarpReading>().toEqualTypeOf<'indicator' | 'page'>();
     expectTypeOf<FlightResourceName>().toEqualTypeOf<'energy' | 'shield' | 'charge' | 'hull' | 'spare-power'>();
     expectTypeOf<WeaponRecordReference['family']>().toEqualTypeOf<'gun' | 'missile'>();
     expectTypeOf<CombatPlayer['weapons']>().toEqualTypeOf<readonly [WeaponListReading, WeaponListReading]>();
     expectTypeOf<MotionReady['player']>().toEqualTypeOf<MotionPlayer | null>();
     expectTypeOf<keyof MotionPlayer>().toEqualTypeOf<
-      'entityId' | 'position' | 'orientation' | 'speed' | 'commandedSpeed' | 'maximumSpeed' | 'recordMaximumSpeed' | 'speedLimitStatus' | 'speedAssist'
+      | 'entityId' | 'position' | 'orientation' | 'speed' | 'commandedSpeed' | 'maximumSpeed' | 'speedLimitStatus' | 'speedAssist'
+      // P3-13 CK-03.
+      | 'recordMaximumSpeed' | 'indicatorRates'
     >();
+    expectTypeOf<MotionPlayer['indicatorRates']>().toEqualTypeOf<{ readonly row1: number; readonly row3: number }>();
     expectTypeOf<SpeedLimitStatus>().toEqualTypeOf<'initial-only' | 'live'>();
     expectTypeOf<MotionPlayer['speedAssist']>().toEqualTypeOf<{ readonly enabled: boolean; readonly engaged: boolean }>();
     // P3-10 CB-14: the communications partition's final shape, ready with the player's readings or null without one;

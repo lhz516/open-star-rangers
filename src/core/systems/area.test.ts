@@ -747,6 +747,7 @@ describe('the Warp departure: message 0x800000 to the parked Warp jump (P3-08/21
   function tickPosting(state: WorldState, post: (context: TickContext) => void): readonly DomainEvent[] {
     const context = registerTick(state, readTickInput(tickInput()));
     for (const { id, run } of PIPELINE) {
+      context.stage = id;
       run?.(context);
       if (id === 'object-update') post(context);
     }

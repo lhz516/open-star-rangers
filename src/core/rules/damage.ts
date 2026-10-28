@@ -15,22 +15,28 @@ const SHIELD_SUBSYSTEM = 4;
 /** A low byte (rand & 0xFF) below it passes the shield: 84 of the 256 low bytes, 21/64. */
 const SHIELD_BYPASS_BELOW = 0x54;
 
+/** `0x30c60`'s outcome: what is left for the hull, and whether the shield took the hit rather than being bypassed. */
+export interface ShieldHit {
+  readonly hullDamage: number;
+  /** The branches that also set the player's energy-page redraw flag +0x44, which systems/damage.ts counts (CK-02). */
+  readonly taken: boolean;
+}
+
 /**
  * `0x30c60`: what is left of `damage` for the hull. With subsystem 4 at state 1, one draw: a low byte below 0x54
  * returns the damage whole and leaves the shield as it is (no draw at states 0, 2 and 3; state 2 only stops the
  * recharge). Otherwise damage below the shield (signed) comes off the shield and nothing is left; any other damage
- * empties the shield and leaves damage − the old shield, 0 when they are equal. The energy-page redraw flag the
- * original also sets for the player is display only (CR-02).
+ * empties the shield and leaves damage − the old shield, 0 when they are equal.
  */
-export function absorbByShield(combat: CraftCombat, damage: number, rand: RandSource): number {
-  if (combat.subsystems[SHIELD_SUBSYSTEM] === 1 && (rand.next() & 0xff) < SHIELD_BYPASS_BELOW) return damage;
+export function absorbByShield(combat: CraftCombat, damage: number, rand: RandSource): ShieldHit {
+  if (combat.subsystems[SHIELD_SUBSYSTEM] === 1 && (rand.next() & 0xff) < SHIELD_BYPASS_BELOW) return { hullDamage: damage, taken: false };
   const shield = combat.shield;
   if (damage < shield) {
     combat.shield = toInt32(shield - damage);
-    return 0;
+    return { hullDamage: 0, taken: true };
   }
   combat.shield = 0;
-  return toInt32(damage - shield);
+  return { hullDamage: toInt32(damage - shield), taken: true };
 }
 
 /** Step 1 of `0x2a830`: positive hull damage comes off the hull; zero or negative leaves it. Returns the hull, which may be negative. */

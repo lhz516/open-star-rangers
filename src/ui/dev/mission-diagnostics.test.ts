@@ -420,4 +420,19 @@ describe('mission diagnostics', () => {
     expect(dispose).toHaveBeenCalledOnce();
     expect(() => createMissionDiagnostics({ timing: {} as never, fileSave: () => ({}) as never })).toThrow(TypeError);
   });
+
+  it('reads the current run\'s cockpit counts only when asked, and none without a cockpit', () => {
+    const fileSave = () => ({ save: () => ({ status: 'requested' as const }), dispose: () => undefined });
+    const timing = { subscribe: () => () => undefined };
+    expect(createMissionDiagnostics({ timing, fileSave }).cockpitCounts()).toBeNull();
+    let current: { messages: number; messageDrops: number; radarNoiseDropped: number } | null = null;
+    const cockpit = vi.fn(() => current);
+    const diagnostics = createMissionDiagnostics({ timing, fileSave, cockpit });
+    expect(cockpit).not.toHaveBeenCalled();
+    expect(diagnostics.cockpitCounts()).toBeNull();
+    current = { messages: 64, messageDrops: 3, radarNoiseDropped: 17 };
+    expect(diagnostics.cockpitCounts()).toEqual({ messages: 64, messageDrops: 3, radarNoiseDropped: 17 });
+    expect(cockpit).toHaveBeenCalledTimes(2);
+    expect(() => createMissionDiagnostics({ timing, fileSave, cockpit: 1 as never })).toThrow(TypeError);
+  });
 });

@@ -1,6 +1,6 @@
 /**
  * The formal Core snapshot (docs/plan/p3/02/spec.md, 快照、哈希与 replay; 技术决定 9):
- * `{ format: 'osr-game-snapshot', version: 7, rulesVersion, state }`, deeply frozen and detached from the world. The
+ * `{ format: 'osr-game-snapshot', version: 9, rulesVersion, state }`, deeply frozen and detached from the world. The
  * state is every piece of the world's authoritative state that can affect a later result: the configuration with the
  * full content identity and setupHash, tick, clock, RNG state, the next entity ID, the entities and the order of the
  * kind lists with each entity's flight state (maximum speed, timers, movement block, AI state, formation) and combat
@@ -13,9 +13,11 @@
  * communications, friendly-fire and base service state (CB-16). P3-08 adds each entity's AI program slot with its
  * controller and the handler's private state, the transponder state, and the world's parse cache (CR-25); the static AI
  * data is not copied. P3-11 adds the whole mission flow with its settlement and result, the `ended` status and the
- * section-2 run counters (ME-16); the rescue's rewrite of the player's record is in the records. Names are held by the
- * entities that carry them. The static MissionSetup and rule data are not copied: setupHash binds them. A snapshot is a diagnostic and a checkpoint
- * source, not a save: Core restores no world from one.
+ * section-2 run counters (ME-16); the rescue's rewrite of the player's record is in the records. P3-12 adds whether the
+ * player's model is shown (FS-08). P3-13 adds the status display's flip flag and rebuild count and the energy-page
+ * redraw count (docs/plan/p3/02/spec.md, CK-05). Names are held by the entities that carry them. The static MissionSetup and rule
+ * data are not copied: setupHash binds them. A snapshot is a diagnostic and a checkpoint source, not a save: Core
+ * restores no world from one.
  *
  * The canonical text writes every object's members in the order listed here, never in an object's own key order; the
  * entities are a set written in ascending ID order, every other list keeps its order. The state hash is fnv1a64 of the
@@ -107,6 +109,7 @@ import type {
   Pose,
   ShotCounts,
   SpeedAssist,
+  StatusDisplay,
   WarpTransit,
 } from '../world/player-state.ts';
 import type { GroupState, RecordRuleInputs, RuntimeRecord, SpawnEntry } from '../world/spawn-state.ts';
@@ -137,7 +140,7 @@ import type {
 import { RULES_VERSION } from './rules-version.ts';
 
 export const GAME_SNAPSHOT_FORMAT = 'osr-game-snapshot';
-export const GAME_SNAPSHOT_VERSION = 7;
+export const GAME_SNAPSHOT_VERSION = 9;
 
 export type SnapshotEntity = Readonly<Entity>;
 export type SnapshotRecord = Readonly<RuntimeRecord>;
@@ -788,13 +791,15 @@ const state = object<SnapshotState>({
     shots: object<ShotCounts>({ projectilesFired: scalar, projectileHits: scalar, missilesFired: scalar, missileHits: scalar }),
     heavyDamage: scalar,
     leftDisplay: object<PlayerState['leftDisplay']>({ page: scalar }),
-    statusDisplay: object<PlayerState['statusDisplay']>({ blink: scalar, blinkDueClock: scalar, redraw: scalar }),
+    statusDisplay: object<StatusDisplay>({ blink: scalar, blinkDueClock: scalar, redraw: scalar, phaseFlipped: scalar, rebuilds: scalar }),
+    energyPageRedraws: scalar,
     map: object<PlayerMap>({ cursor: mapPixel, destination: nullable(vector) }),
     savedLeftPage: scalar,
     warp: nullable(warpTransit),
     dockingObject: scalar,
     communications: playerCommunications,
     docking: object<PlayerState['docking']>({ savedPose: nullable(pose) }),
+    modelShown: scalar,
   }),
   objectSets: object<ObjectSets>({ friendly: list(scalar), hostile: list(scalar) }),
   mapIcons: list(mapIcon),

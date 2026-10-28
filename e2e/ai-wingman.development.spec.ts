@@ -16,10 +16,11 @@ import {
 import { button, filePayloads, importFiles, openTestEntry } from './support/app-entry.ts';
 import { expect, test } from './support/audited-test.ts';
 import { devOrigin } from './support/environment.ts';
+import { quietly, zoneLocked } from './support/map-picture.ts';
 import { readLog, stopWatchingResume, submitEditorCommand, watchResume, type LogEntry } from './support/map-warp.ts';
 import {
   chooseWingman, devState, endPlaceholder, enterMission, expectAdvancingTick, expectStableTick, leaveGuards, missionEntry, missionFrame,
-  waitForFrame,
+  skipPlaceholder, stopWatchingPositions, waitForFrame, watchedPositions, watchPositions,
 } from './support/mission-observations.ts';
 import { nativeBrowser, NativeTarget, until } from './support/native-lifecycle.ts';
 import { ResourceBalance, settleTooling } from './support/resource-balance.ts';
@@ -151,7 +152,7 @@ test('the AI package imports and restores; in a real run the AI advances, b depl
   await expect(page.getByTestId('import-statuses')).toContainText(/Saved in this browser \(saved in /, { timeout: 30_000 });
 
   // The import saved one package under the current converter version, its AI programs as payload schema 2.
-  expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-5.logic-4.audio-2.models-4');
+  expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-6.logic-4.audio-2.models-4');
   expect(AI_PROGRAMS_SCHEMA).toBe(2);
   await loadCacheModules(page);
   const stored = await readStoredRecords(page);
@@ -196,20 +197,37 @@ test('the AI package imports and restores; in a real run the AI advances, b depl
   expect(withTransponder.rows.filter(({ source }) => source === 'rules').map(({ id, kindBit }) => [id, kindBit])).toEqual([[transponder, 14]]);
 
   // Outside flight b is refused: in the map the key binds nothing, and the command itself is ignored as out of context.
+  // The map input is ready after the map's first picture and m's own activation takes real Pointer Lock (P3-13), which
+  // sends every mouse event to the input zone; the browser's unlock (`document.exitPointerLock()` without a user gesture,
+  // standing for Chrome's native Escape, which Playwright cannot press) frees the mouse for the panel.
+  const cdp = await page.context().newCDPSession(page);
+  const inputStatus = page.getByTestId('input-status');
   await zone(page).click();
   await page.keyboard.press('m');
   await logUntil(page, current => current.some(({ type, fields }) => type === 'map-toggled' && fields.open === 'true'), 'map opened');
+  await expect.poll(() => zoneLocked(page)).toBe(true);
+  await expect(zone(page)).toBeFocused();
   await page.keyboard.press('b');
   await afterTicks(page, 8);
   expect(resultsOf(await log(page), 'drop-transponder'), 'b in the map').toHaveLength(1);
+  await quietly(cdp, 'document.exitPointerLock()');
+  await expect(inputStatus).toContainText('Click the map to lock the pointer.');
   const refused = await submitEditorCommand(page, 'drop-transponder');
   expect(refused).toMatchObject({ outcome: 'ignored', reason: 'wrong-context' });
   await afterTicks(page, 4);
   entries = await log(page);
   expect(entries.filter(({ type }) => type === 'transponder-deployed'), 'no transponder from the refused command').toHaveLength(1);
-  await zone(page).click();
+  expect(resultsOf(entries, 'map-point'), 'the panel\'s clicks select nothing in the map').toEqual([]);
+  // Focused again with the submit click's activation, the map may ask for the lock at once; after the browser's unlock,
+  // Esc closes it.
+  await zone(page).focus();
+  await expect.poll(async () => (await zoneLocked(page)) || (await inputStatus.innerText()).includes('Click the map')).toBe(true);
+  await quietly(cdp, 'document.exitPointerLock()');
+  await expect(inputStatus).toContainText('Click the map to lock the pointer.');
   await page.keyboard.press('Escape');
   await logUntil(page, current => current.some(({ type, fields }) => type === 'map-toggled' && fields.open === 'false'), 'map closed');
+  await expect(page.getByTestId('mission-menu')).toHaveCount(0);
+  await cdp.detach();
 
   // Pause holds every entity, the event log and the tick; resume continues from the held tick without catching up.
   await button(page, 'Pause').click();
@@ -320,12 +338,17 @@ test('an AI fault shows through the Runtime, the run stops at its tick, and afte
   await enterMission(page);
   await endPlaceholder(page, 'G-02/1', 'button');
   await chooseWingman(page, 0);
+  await watchPositions(page);
   await button(page, 'Start').click();
   await waitForFrame(page, frame => frame.position === 'departure' && frame.run !== null);
-  await endPlaceholder(page, 'G-02/2', 'button');
+  // The run faults a few ticks into its flight, which can end between two polls under load (the first flight frame
+  // binds and draws the flight picture); the page's own position log records it however briefly it showed.
+  await skipPlaceholder(page, 'G-02/2', 'button');
 
   const ended = page.getByTestId('mission-ended');
   await expect(ended).toHaveAttribute('data-ended', 'faulted');
+  expect(await watchedPositions(page)).toEqual(['config', 'departure', 'flight', 'ended']);
+  await stopWatchingPositions(page);
   await expect(status(page)).toHaveAttribute('data-phase', 'faulted');
   const alert = ended.getByRole('alert');
   await expect(alert).toContainText('The run stopped on a fault and cannot continue.');

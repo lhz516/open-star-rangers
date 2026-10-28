@@ -268,8 +268,24 @@ export const PRODUCTION_LISTS: readonly (readonly number[])[] = [
   PRODUCTION_EXPLOSION_RECORDS.slice(0, 7), PRODUCTION_EXPLOSION_RECORDS.slice(7, 14), PRODUCTION_EXPLOSION_RECORDS.slice(14),
 ];
 
-/** The production scene settings: other values than the small set's. */
-export const PRODUCTION_SCENE: SceneSettings = { ...SYNTHETIC_SCENE, deviceByte: 0x81, lightType0Colour: [0.5, -0.25, Math.fround(1e-3)] };
+/**
+ * The production scene settings: other values than the small set's, inside what the flight renderer draws a run with
+ * (docs/original/formats/executable.md): device values ordered as the shipped data's (+0x1C < +0x20 < +0x24, PV4), a
+ * directional light of intensity in (0, 1] and a non-negative ambient level (the single-light path, LS2), and flash
+ * levels 0–63 with finite, non-zero durations (SF4).
+ */
+export const PRODUCTION_SCENE: SceneSettings = {
+  ...SYNTHETIC_SCENE,
+  lightType3Colour: [0.75, 0.625, Math.fround(0.9)],
+  lightType0Colour: [0.25, Math.fround(0.3), 0.125],
+  deviceByte: 0x81,
+  deviceValues: { base: 600, kinds1c7c: 1200, kindsF8000: 4000 },
+  screenFlashes: [
+    { randomMask: 0x0f, duration: 0.5, drawIntervalTicks: 2, level: 40 },
+    { randomMask: 0x07, duration: 0.75, drawIntervalTicks: 3, level: 63 },
+    { randomMask: 0xffff_fffe, duration: Math.fround(1.6), drawIntervalTicks: 1, level: 24 },
+  ],
+};
 
 /**
  * The production RENS entry for the effect step and this step: the effect tests' records after a header of `settings`.

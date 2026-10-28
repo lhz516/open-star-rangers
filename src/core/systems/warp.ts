@@ -34,7 +34,7 @@ import type { WorldState } from '../world/world-state.ts';
 import { emitCommandResult, type CommandOf } from './commands.ts';
 import { availablePlayer } from './flight-control.ts';
 import { emit, type CommandView, type TickContext } from './pipeline.ts';
-import { BASE_VIEW_MODE, MAP_VIEW_MODE, switchView, WARP_VIEW_MODE } from './view-switch.ts';
+import { BASE_VIEW_MODE, commitViewSwitch, MAP_VIEW_MODE, WARP_VIEW_MODE } from './view-switch.ts';
 
 /** Message 0x400 sub-command 0, posted by an accepted `request-warp` (MW-04). */
 export interface WarpStartRequest {
@@ -120,7 +120,7 @@ function steeredBlock({ movement }: Entity): SteeredMovementBlock {
  * 1. `0x2be00`: the origin is the player's position; `inWarp`; the player's target cleared without `target-changed`
  *    (CR-09); the block in mode 3; the transit length.
  * 2. The view write and `0x3f158(1, old)`: the previous view mode is the view mode, which becomes 1; the left page is
- *    saved and page 6 shown (view-switch.ts).
+ *    saved and page 6 shown; `view-switched` at the pose before the set-up (view-switch.ts).
  * 3. `0x50188`: the tunnel path with 20 world draws; the player at the path's pose at segment 1, parameter 0, a
  *    constant identity pose at (0, 0, 10000) in the path's frame, with a new placement; the block not at its
  *    commanded speed, speed 0, commanded speed craft +0xB8; the previous path frame G at the same pose; s, a, c := 0,
@@ -146,9 +146,7 @@ export function applyWarpStart(context: TickContext, { commandIndex }: WarpStart
   const length = transitLength(check.distance, record.atA8);
 
   const fromViewMode = state.viewMode;
-  state.previousViewMode = fromViewMode;
-  state.viewMode = WARP_VIEW_MODE;
-  const page = switchView(world, WARP_VIEW_MODE, fromViewMode);
+  const page = commitViewSwitch(context, WARP_VIEW_MODE, fromViewMode);
 
   const rand = new RandStream(world.rngState);
   const path = setUpWarpPath(rand);
@@ -192,9 +190,11 @@ function transitInView(world: WorldState): WarpTransit | null {
  * The Warp step of `frame-end` (MW-07): in view 1 with a player entity, one `0x50508`/`0x50a28` pass (warp-path.ts's
  * stepWarp) at the block's speed after this tick's movement and this tick's step: the transit's u, n, path (2 world
  * draws per completed segment), a, c, s and G, and the player's position and rows. The placement is unchanged: the
- * pose is continuous.
+ * pose is continuous. A wall contact inside the error's window emits `warp-wall-contact` (FS-03), before the cockpit
+ * display step's events.
  */
-export function runWarpStep({ world }: TickContext): void {
+export function runWarpStep(context: TickContext): void {
+  const { world } = context;
   const transit = transitInView(world);
   const player = playerEntity(world);
   if (transit === null || player === undefined) return;
@@ -206,6 +206,7 @@ export function runWarpStep({ world }: TickContext): void {
   player.position = step.pose.position;
   player.orientation = step.pose.orientation;
   Object.assign(transit, step.transit);
+  if (step.wallContact) emit(context, { type: 'warp-wall-contact', tick: context.time.tick, serial: transit.serial });
 }
 
 /**
@@ -256,8 +257,8 @@ function arrive(world: WorldState, player: Entity, transit: WarpTransit): WarpAr
 /**
  * The `warp-completion` stage (`0x2bf08`; MW-08): in view 1 when the progress is 1.0. The view returns to the previous
  * one (the map as 0xC), the previous view becomes 1 and view-switch.ts restores the saved page; with a player entity
- * the arrival follows. `warp-completed` comes once per Warp, before the page's `left-page-changed`. Nothing of the
- * transit, the destination, the marker or the target is written: the next start resets the transit.
+ * the arrival follows. `warp-completed` comes once per Warp, after the switch's `view-switched` (at the pose before
+ * the arrival) and before the page's `left-page-changed`. Nothing of the transit, the destination, the marker or the target is written: the next start resets the transit.
  */
 export function completeWarp(context: TickContext): void {
   const { world } = context;
@@ -265,9 +266,7 @@ export function completeWarp(context: TickContext): void {
   if (transit === null || warpProgress(transit) !== 1) return;
   const { player: state } = world;
   const viewMode = state.previousViewMode === MAP_VIEW_MODE ? COCKPIT_VIEW_MODE : state.previousViewMode;
-  state.previousViewMode = WARP_VIEW_MODE;
-  state.viewMode = viewMode;
-  const page = switchView(world, viewMode, WARP_VIEW_MODE);
+  const page = commitViewSwitch(context, viewMode, WARP_VIEW_MODE);
   const player = playerEntity(world);
   const arrival = player === undefined ? null : arrive(world, player, transit);
   const { tick } = context.time;

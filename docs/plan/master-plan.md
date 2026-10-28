@@ -2,8 +2,8 @@
 type: plan
 status: active
 phase: all
-updated: 2026-10-10
-related: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0014, ADR-0015, ADR-0018]
+updated: 2026-10-25
+related: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0014, ADR-0015, ADR-0018, ADR-0019]
 ---
 
 # Star Rangers 重制版：架构与开发总计划
@@ -180,7 +180,7 @@ local/                   原版镜像与研究产物，git 忽略，永不提交
 
 目录就是职责边界。边界由 lint 规则检查，而不是靠拆包：`src/core`、`src/original-data` 和 `src/content` 不得导入 React、Zustand、Three.js、DOM 或 IndexedDB；`src/core` 不得导入 `render`、`ui`、`platform`、`app`，也不得使用 `Math.random`、`Date.now`、`performance.now` 等非确定性 API（见 §5）。`src/original-data` 通过抽象的字节读取接口访问数据，浏览器端用 `File.slice` 实现，Node 端用 `fs` 实现，因此同一份解析代码可同时供 Worker 和 `tools/` 使用。首版不建设插件市场、通用编辑器或通用游戏引擎。
 
-UI projection 是 Core 内把权威状态映射为纯数据视图的函数，不依赖 Zustand；`src/ui` 中的桥接层按采样频率调用它并写入 Zustand store。Classic 模式下，飞行中的驾驶舱、HUD、MFD（通讯、能量、损伤）全部由 `src/render` 在同一画面管线中绘制，以保证缩放与对齐一致；React 负责菜单、导入、设置以及飞行之外的界面。
+UI projection 是 Core 内把权威状态映射为纯数据视图的函数，不依赖 Zustand；`src/ui` 中的桥接层按采样频率调用它并写入 Zustand store。Classic 模式下，驾驶舱、HUD、MFD（通讯、能量、损伤）与战略地图由 `src/render` 在同一游戏画面管线中绘制，以保证缩放与对齐一致；地图的消费归属见 [ADR-0019](../decisions/ADR-0019-strategic-map-render-pipeline.md)。React 负责菜单、导入、设置、任务壳与其他非游戏画面页面，不负责战略地图像素绘制。
 
 ### 4.2 数据流
 
@@ -212,8 +212,10 @@ Game Core 不导入 React、Zustand、Three.js、DOM 或 IndexedDB，也不持�
 |---|---|---|
 | 坐标、速度、血量、能量、AI、任务、Warp | Game Core | 系统更新；GameRuntime 每 tick 后提取 Render State 与 UI projection |
 | Classic 飞行中的护盾、弹药、目标名称、速度等 HUD/MFD 数据 | Core 的 UI projection | `src/render` 每个渲染帧直接读取最新 projection 绘制，不经 Zustand |
-| 菜单、简报、地图、设置等 React 页面需要的游戏数据 | Core 的 UI projection → Zustand | 桥接层按 10–20 Hz 采样写入，重要状态变化立即发布；React 通过 selector 订阅 |
-| 菜单页、对话框、设置表单、地图缩放 | React 本地状态或 UI Zustand store | 仅影响界面；涉及游戏的动作转 Command |
+| Classic 战略地图画面 | Core 的 `map` projection | `src/render` 在同一游戏画面管线逐显示帧读取；逻辑绘制调度、消息行、指针与闪光按任务合同合成，不经 Zustand 采样（ADR-0019） |
+| 菜单、简报、设置等 React 页面需要的游戏数据 | Core 的 UI projection → Zustand | 桥接层按 10–20 Hz 采样写入，重要状态变化立即发布；React 通过 selector 订阅 |
+| 菜单页、对话框、设置表单 | React 本地状态或 UI Zustand store | 仅影响界面；涉及游戏的动作转 Command |
+| 地图距离标签开关等纯呈现状态 | 地图表现模型 | 经现有输入适配器提供刺激；不修改 Core，不另建循环或保存格式 |
 | 用户偏好与键位 | 设置 store + 持久化适配器 | 运行时应用；不冒充游戏事实 |
 | 插值坐标、相机平滑、粒子生命周期 | Renderer | 逐渲染帧处理 |
 | 开火、爆炸、Warp 开始等已发生事件 | `GameCore.step()` 的返回值，由 GameRuntime 发布到会话级 Event Bus | 音频、特效、提示和开发事件日志订阅 |

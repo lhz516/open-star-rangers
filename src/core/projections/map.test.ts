@@ -117,6 +117,8 @@ describe('map partition (MW-11)', () => {
     expect(state.player.map.destination).toEqual(destination);
     const marker = [...state.entities.walk(1 << 25)][0];
 
+    // A threat stamp (+0x17C, a clock) makes the friendly's label blink (CK-03); the wingman's stays unstamped.
+    friendly.communications.threatStamp = 40;
     const reading = openMap(world.projection());
     const record = (kindBit: number) => state.craftInfo.content.craft[kindBit]!;
     const disc = { radius: 1, style: 'disc' };
@@ -155,11 +157,13 @@ describe('map partition (MW-11)', () => {
       capacity: 25,
       rows: [...unit(player), ...unit(wingman), ...unit(friendly), { type: 'count', kindBit: 8, count: 1 }, { type: 'count', kindBit: 14, count: 1 }],
     });
-    const label = (entity: Entity, pixel: unknown, playerOrWingman = false) => ({ entityId: entity.id, name: entity.name, pixel, playerOrWingman });
+    const label = (entity: Entity, pixel: unknown, playerOrWingman = false, threatened = false) => ({
+      entityId: entity.id, name: entity.name, pixel, playerOrWingman, threatened,
+    });
     expect(reading.labels).toEqual([
       label(player, playerPixel, true),
       label(wingman, { column: playerPixel.column + 3, row: playerPixel.row + 3 }, true),
-      label(friendly, mainPixel(friendly.position)),
+      label(friendly, mainPixel(friendly.position), false, true),
       label(outsideZoom, mainPixel(outsideZoom.position)),
     ]);
     // Cursor: √(4050² + 4650²) = 6166.4, cost 616; destination: √(2925² + 75² + 300²) = 2941.3, cost 294; both against
@@ -178,6 +182,9 @@ describe('map partition (MW-11)', () => {
         unitsPerPixel: { x: 225, y: 225 },
         zoomPixelsPerUnit: { x: Math.fround(19 / 1500), y: Math.fround(1 / 150) },
         world: { minX: -45000, minY: -45000, maxX: 45000, maxY: 45000 },
+        // CK-03: the mission's 6 × 6 sectors and the cursor box of one sector by two (integer runtime units).
+        sectors: 6,
+        zoomExtent: { x: 15000, y: 30000 },
       },
       cursor: { pixel: CURSOR, world: CURSOR_WORLD, zoomBounds: ZOOM },
       contacts: reading.contacts,
@@ -357,6 +364,7 @@ describe('map partition (MW-11)', () => {
     expect(reading.destination?.position).not.toBe(state.player.map.destination);
     expect(reading.cursor.pixel).not.toBe(state.player.map.cursor);
     expect(reading.geometry.main).not.toBe(state.ruleData.map.main);
+    expect(reading.geometry.zoomExtent).not.toBe(state.ruleData.map.zoomExtent);
     const json = JSON.stringify(first);
     step(world, [select(10, 10)]);
     step(world, [toggle]);

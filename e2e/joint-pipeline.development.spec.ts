@@ -470,8 +470,9 @@ interface MissionReading { readonly owner: number | null; readonly ticks: { read
 
 /**
  * Runs the mission beside the held package (P3-04, replacing the retired synthetic demo): it starts a run from the main
- * menu with the preselected wingman, sees its tick advance, and returns. It creates no Worker, audio context or WebGL
- * surface and leaves the held package and its statuses as they were.
+ * menu with the preselected wingman, sees its tick advance, and returns. It creates no Worker or audio context, only the
+ * owner's WebGL surfaces for the flight picture (P3-12), released on return, and leaves the held package and its
+ * statuses as they were.
  */
 async function runMission(page: Page): Promise<MissionReading> {
   const menu = await statuses(page, 'resource-statuses').allInnerTexts();
@@ -480,6 +481,7 @@ async function runMission(page: Page): Promise<MissionReading> {
     return { workers: workers.length, canvases: canvases.length, contexts: window.osrAudioProbe.records().length };
   });
   const before = await count();
+  const flightCanvas = () => page.evaluate(at => window.osrProbe.snapshot().canvases.slice(at), before.canvases);
   const { owner } = await enterMission(page);
   await endPlaceholder(page, 'G-02/1', 'button');
   await button(page, 'Start').click();
@@ -488,7 +490,13 @@ async function runMission(page: Page): Promise<MissionReading> {
   await button(page, 'Mission menu').click();
   await button(page, 'Return to main menu').click();
   await expect(missionEntry(page)).toBeFocused();
-  expect(await count()).toEqual(before);
+  // The owner's flight surfaces: the test entry's StrictMode opens and releases a first owner before the one that runs,
+  // so the probes saw two canvases, each released with its context.
+  const after = await count();
+  expect({ ...after, canvases: before.canvases }).toEqual(before);
+  expect(await flightCanvas()).toEqual([
+    expect.objectContaining({ connected: false, lost: true }), expect.objectContaining({ connected: false, lost: true }),
+  ]);
   expect(await statuses(page, 'resource-statuses').allInnerTexts()).toEqual(menu);
   return { owner, ticks };
 }

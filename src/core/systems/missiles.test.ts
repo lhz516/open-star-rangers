@@ -79,7 +79,12 @@ function world(): WorldState {
   return state;
 }
 
-const contextOf = (state: WorldState): TickContext => registerTick(state, readTickInput(tickInput()));
+/** A context in request handling, where a missile's expiry detonates. */
+function contextOf(state: WorldState): TickContext {
+  const context = registerTick(state, readTickInput(tickInput()));
+  context.stage = 'request-handling';
+  return context;
+}
 
 /** The requests `work` posts in a fresh context, taken by handling them without effect. */
 function posted(state: WorldState, work: (context: TickContext) => void): Request[] {
@@ -455,16 +460,19 @@ describe('the expire request (0x2b408)', () => {
     // Damage 700 × (1 − (d − 2) ÷ 10), truncated: 350 at 7, 210 at 9, 560 at 4; the contact craft at 10 counts as 0, so 700.
     const attacker = { type: 'shooter', entityId: shooter.id, kindBit: PLAIN };
     const hit = (victim: CraftEntity, damage: number) => ({ type: 'hit', victimEntityId: victim.id, cause: 'missile', sourceEntityId: entity.id, attacker, damage, impact: null, projectile: null });
+    // P3-12 FS-03: each explosion's `explosion-created` right after its source's end or destruction.
     expect(context.events).toMatchObject([
       ended(context, entity, shooter.id, 'detonated'),
+      { type: 'explosion-created', sourceEntityId: entity.id, sourceKindBit: 20, variant: 'missile', stage: 'request-handling', position: at(0, 0, 0) },
       hit(player, 350),
       hit(exempt, 210),
       hit(contact, 700),
       { type: 'object-destroyed', entityId: contact.id, attacker },
+      { type: 'explosion-created', sourceEntityId: contact.id, sourceKindBit: BOXED, stage: 'request-handling', position: contact.position },
       hit(shooter, 560),
       hit(docked, 350),
     ]);
-    expect(context.events).toHaveLength(7);
+    expect(context.events).toHaveLength(9);
     // The missile is the held source of its explosion; the destroyed contact craft, without parts, holds its own.
     const explosions = [...state.entities.walk(1 << 22)].map(({ combat }) => combat);
     expect(explosions).toMatchObject([{ source: entity.id, sourceKindBit: 20, heldSource: entity.id }, { source: contact.id, heldSource: contact.id }]);
@@ -485,6 +493,7 @@ describe('the expire request (0x2b408)', () => {
     const entity = missileAt(state, UNGUIDED, at(0, 0, 0), { detonate: true, guidance: guidanceOf({ phase: 4 }) });
     expect(emitted(state, expire(entity))).toMatchObject([
       { type: 'missile-ended' },
+      { type: 'explosion-created' },
       { type: 'hit', victimEntityId: victim.id, damage: DAMAGE, shield: { before: 1000, after: 300 }, hull: { before: 100, after: 100 } },
     ]);
     // u = 700 × 1/700 (f64 0x170f20): A = F(u), B = F(u × 5/7) (above the floor); per row two draws, rate F(r × C × (A
@@ -515,7 +524,7 @@ describe('the expire request (0x2b408)', () => {
     const victim = craftAt(state, EXEMPT, at(0, 0, 1));
     const before = structuredClone(blockOf(victim));
     const entity = missileAt(state, UNGUIDED, at(0, 0, 0), { detonate: true, guidance: guidanceOf({ phase: 4 }) });
-    expect(emitted(state, expire(entity))).toMatchObject([{ type: 'missile-ended' }, { type: 'hit', victimEntityId: victim.id, damage: DAMAGE }]);
+    expect(emitted(state, expire(entity))).toMatchObject([{ type: 'missile-ended' }, { type: 'explosion-created' }, { type: 'hit', victimEntityId: victim.id, damage: DAMAGE }]);
     expect(blockOf(victim)).toEqual(before);
     expect(victim.communications.face).toBe(randValues(seed, 1)[0] % 3);
     expect(state.rngState).toBe(rngStateAfter(seed, 2));

@@ -93,15 +93,34 @@ export async function expectAdvancingTick(page: Page, duration = 600): Promise<{
 /** The main menu's mission entry. */
 export const missionEntry = (page: Page) => button(page, 'Start mission');
 
-/** In flight, the only canvas is the hidden 2D map cursor, not a WebGL scene. */
-export async function expectFlightCursorWithoutWebGL(page: Page): Promise<void> {
+/**
+ * The listeners of a mission owner's flight surface (P3-12) while the owner exists, by type: the pixel-ratio media
+ * query's `change`, and on the canvas Three.js's and the surface's context loss and restoration, and Three.js's context
+ * creation error.
+ */
+export const FLIGHT_SURFACE_LISTENERS = Object.freeze([
+  'change', 'webglcontextcreationerror', 'webglcontextlost', 'webglcontextlost', 'webglcontextrestored', 'webglcontextrestored',
+]);
+
+/**
+ * In flight with WebGL 2 (P3-12): the owner's flight canvas, named and drawing in the flight area, the only canvas of
+ * the page (P3-13 draws the cockpit and the map's pointer in it and removed the hidden 2D map cursor) and the only
+ * connected WebGL canvas the probes know, with a live context.
+ */
+export async function expectFlightCanvas(page: Page): Promise<void> {
   await expect(page.locator('canvas')).toHaveCount(1);
-  const cursor = page.getByTestId('game-input-zone').locator('canvas');
-  await expect(cursor).toHaveCount(1);
-  await expect(cursor).toHaveAttribute('aria-hidden', 'true');
-  await expect(cursor).toBeHidden();
-  await expect(cursor).toHaveCSS('pointer-events', 'none');
-  expect(await cursor.evaluate(canvas => canvas instanceof HTMLCanvasElement && canvas.getContext('2d') !== null)).toBe(true);
+  const flight = page.getByTestId('flight-area').locator('canvas');
+  await expect(flight).toHaveCount(1);
+  await expect(flight).toHaveAttribute('role', 'img');
+  await expect(flight).toHaveAttribute('aria-label', 'Flight view');
+  await expect(page.getByTestId('flight-area')).toHaveAttribute('data-state', 'ready');
+  expect(await page.evaluate(() => window.osrProbe.snapshot().canvases.filter(({ connected }) => connected).map(({ extension, lost }) => ({ extension, lost }))))
+    .toEqual([{ extension: true, lost: false }]);
+}
+
+/** In flight without WebGL 2 there is no canvas: no WebGL scene, and no 2D map cursor since P3-13. */
+export async function expectFlightCursorWithoutWebGL(page: Page): Promise<void> {
+  await expect(page.locator('canvas')).toHaveCount(0);
   expect(await page.evaluate(() => window.osrProbe.snapshot().canvases)).toEqual([]);
 }
 
@@ -155,10 +174,24 @@ export function stopWatchingPositions(page: Page): Promise<void> {
   });
 }
 
-/** How long the mission screen showed `from` before it last changed to `to`, by the `watchPositions` log. */
-async function shownFor(page: Page, from: string, to: string): Promise<number> {
+/** The `watchPositions` log so far: each position the mission screen committed, with the time it did. */
+async function positionLog(page: Page): Promise<{ readonly position: string | null; readonly time: number }[]> {
   const log = await page.evaluate(() => window.osrPositions?.log.map(entry => ({ ...entry })) ?? null);
   if (!log) throw new Error('watchPositions was not installed');
+  return log;
+}
+
+/**
+ * Every position the mission screen committed since `watchPositions`, in order, however briefly each showed: a
+ * position a few ticks long, such as the flight of a run that faults at once, can end between two polls.
+ */
+export async function watchedPositions(page: Page): Promise<(string | null)[]> {
+  return (await positionLog(page)).map(({ position }) => position);
+}
+
+/** How long the mission screen showed `from` before it last changed to `to`, by the `watchPositions` log. */
+async function shownFor(page: Page, from: string, to: string): Promise<number> {
+  const log = await positionLog(page);
   const end = log.findLastIndex(entry => entry.position === to);
   if (end < 1 || log[end - 1].position !== from) throw new Error(`No change from ${from} to ${to}: ${JSON.stringify(log)}`);
   return log[end].time - log[end - 1].time;
@@ -182,13 +215,21 @@ export async function endPlaceholder(page: Page, gap: keyof typeof PLACEHOLDER_P
     expect(await shownFor(page, from, to), 'A placeholder ended before 3 s of visible time').toBeGreaterThanOrEqual(2_900);
     return frame;
   }
+  await skipPlaceholder(page, gap, end);
+  return waitForFrame(page, frame => frame.position === to);
+}
+
+/**
+ * Ends the shown G-02 placeholder `gap` by its skip button or a key, with focus on that button first, without waiting
+ * for the position after it.
+ */
+export async function skipPlaceholder(page: Page, gap: keyof typeof PLACEHOLDER_POSITIONS, end: Exclude<PlaceholderEnd, 'natural'>): Promise<void> {
   const placeholder = page.getByTestId('mission-placeholder');
   await expect(placeholder).toHaveAttribute('data-gap', gap);
   await expect(placeholder).toHaveAttribute('data-status', 'timing');
   await expect(button(page, 'Skip')).toBeFocused();
   if (end === 'button') await button(page, 'Skip').click();
   else await page.keyboard.press(KEYS[end]);
-  return waitForFrame(page, frame => frame.position === to);
 }
 
 /**

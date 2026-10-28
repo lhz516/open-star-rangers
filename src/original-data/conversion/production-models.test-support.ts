@@ -37,15 +37,15 @@ const MODELS: ReadonlyMap<number, SyntheticModlFields> = new Map([
   [DEFAULT_MODEL_IDS[0], {
     partLists: [
       [{ mesh: quad, texture: texture(13), flags: 1 }, { mesh: pair, texture: texture(11), flags: 1, colour: [255, 0, 0] }],
-      [{ mesh: pair, flags: 3 }],
-      [{ mesh: triangle, flags: 2, colour: [0, 0, 0] }],
+      [{ mesh: pair, flags: 3 }, { mesh: triangle, flags: 3, colour: [0, 255, 0] }, { mesh: quad, texture: texture(13), flags: 3 }],
+      [{ mesh: triangle, texture: texture(5), flags: 1 }],
     ],
     sounds: [10_679, 10_669, 10_647, 0, 10_175],
   }],
-  [DEFAULT_MODEL_IDS[7], { partLists: [[{ mesh: pair, texture: texture(6) }], [{ mesh: quad, flags: 3 }], []], sounds: [0, 10_179, 0, 0, 10_177] }],
-  [DEFAULT_MODEL_IDS[8], { partLists: [[{ mesh: quad, texture: texture(3) }], [], []], sounds: [0, 10_037, 0, 0, 10_177] }],
-  [DEFAULT_MODEL_IDS[17], { partLists: [[{ mesh: triangle, texture: texture(1) }, { mesh: quad, texture: texture(1) }], [], []], sounds: [0, 10_155, 0, 0, 0] }],
-  [DEFAULT_MODEL_IDS[14], { partLists: [[{ mesh: triangle }], [], []] }],
+  [DEFAULT_MODEL_IDS[7], { partLists: [[{ mesh: pair, texture: texture(6), flags: 2 }], [{ mesh: quad, flags: 3 }], []], sounds: [0, 10_179, 0, 0, 10_177] }],
+  [DEFAULT_MODEL_IDS[8], { partLists: [[{ mesh: quad, texture: texture(3), flags: 3 }], [], []], sounds: [0, 10_037, 0, 0, 10_177] }],
+  [DEFAULT_MODEL_IDS[17], { partLists: [[{ mesh: triangle, texture: texture(1), flags: 2 }, { mesh: quad, texture: texture(1), flags: 1 }], [], []], sounds: [0, 10_155, 0, 0, 0] }],
+  [DEFAULT_MODEL_IDS[14], { partLists: [[{ mesh: triangle, flags: 2 }], [], []] }],
   [EFFECT_MODEL_ENTRIES[0], { partLists: [[], [{ mesh: quad, texture: texture(16), flags: 3 }, { mesh: triangle, texture: texture(16), flags: 3 }], []] }],
 ]);
 

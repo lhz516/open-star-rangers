@@ -27,6 +27,8 @@ import {
   type DockingRequestedEvent,
   type DomainEvent,
   type EntitySource,
+  EXPLOSION_CONSTRUCTION_STAGES,
+  type ExplosionCreatedEvent,
   type FlightMessageEvent,
   type GroupMembership,
   type HitEvent,
@@ -37,6 +39,8 @@ import {
   type ObjectInstantiatedEvent,
   type ObjectLeftWorldEvent,
   type ObjectRetiredEvent,
+  PIPELINE_STAGE_NAMES,
+  type PipelineStageName,
   type PlayerLossStartedEvent,
   type PlayerRescuedEvent,
   type RadioFlushedEvent,
@@ -55,11 +59,13 @@ import {
   type TransitionEvent,
   type TransponderDeployedEvent,
   type Vec3,
+  type ViewSwitchedEvent,
   type WarpArrival,
   type WarpCompletedEvent,
   type WarpDestinationSetEvent,
   type WarpMarkerChange,
   type WarpStartedEvent,
+  type WarpWallContactEvent,
   isWingmanCommandReply,
   type WingmanCommandConsumedEvent,
   WINGMAN_COMMAND_OUTCOMES,
@@ -83,7 +89,7 @@ import { CoreInputError } from '../errors.ts';
 import { isFiniteFloat32 } from '../rules/float32.ts';
 import { PLAYER_KIND_BIT, WINGMAN_KIND_BIT } from '../rules/spawn-schedule.ts';
 import { ENEMY_KINDS } from '../rules/targeting.ts';
-import type { Level, Matrix3, NameReference } from '../world/entity-table.ts';
+import { EXPLOSION_VARIANTS, type Level, type Matrix3, type NameReference } from '../world/entity-table.ts';
 import { MAP_SIDE_LIMIT, type MapPixel } from '../world/map-rule-data.ts';
 import type { LeftPage } from '../world/player-state.ts';
 import type {
@@ -113,6 +119,8 @@ type AiEvent = WingmanCommandConsumedEvent | TransponderDeployedEvent;
 type MissionEvent =
   | AllClearEvent | SettlementStartedEvent | SettlementDeferredEvent | FlightMessageEvent | PlayerLossStartedEvent | PlayerRescuedEvent
   | ResultLatchedEvent | TeardownStartedEvent | MissionCompletedEvent | WingmanLossTimerStartedEvent | WingmanLossTimerExpiredEvent;
+/** P3-12's presentation facts (docs/plan/p3/02/spec.md, FS-03). */
+type PresentationEvent = ExplosionCreatedEvent | ViewSwitchedEvent | WarpWallContactEvent;
 
 /** P3-07's events (docs/plan/p3/02/spec.md, CR-06). */
 type CombatEvent = Exclude<
@@ -123,6 +131,7 @@ type CombatEvent = Exclude<
   | AiEvent
   | ObjectRetiredEvent
   | MissionEvent
+  | PresentationEvent
 >;
 
 /** Difference data, not an error. */
@@ -189,6 +198,9 @@ const EVENT_FIELDS = {
   'mission-completed': ['type', 'tick', 'outcome'],
   'wingman-loss-timer-started': ['type', 'tick', 'wingmanEntityId', 'dueClock'],
   'wingman-loss-timer-expired': ['type', 'tick', 'queued'],
+  'explosion-created': ['type', 'tick', 'entityId', 'sourceEntityId', 'sourceKindBit', 'variant', 'stage', 'position', 'velocity'],
+  'view-switched': ['type', 'tick', 'fromViewMode', 'fromSubMode', 'viewMode', 'subMode', 'stage', 'player'],
+  'warp-wall-contact': ['type', 'tick', 'serial'],
   'object-retired': ['type', 'tick', 'entityId', 'kindBit', 'state'],
 } as const satisfies {
   readonly [Type in Exclude<DomainEvent['type'], 'speed-matched' | 'player-loss-started'>]: readonly (keyof Extract<DomainEvent, { type: Type }>)[];
@@ -213,7 +225,7 @@ const ENTITY_ID = integerIn(1, Number.MAX_SAFE_INTEGER);
 const KIND_BIT = integerIn(0, 31);
 const COMMAND_INDEX = integerIn(0, CORE_LIMITS.commandsPerTick - 1);
 const COORDINATE: NumberRule = [Number.isFinite, 'must be a finite number'];
-/** P3-08's transponder pose (CR-22) and P3-14's forward rows and speeds of shots and hits (FA-05) are f32. */
+/** P3-08's transponder pose (CR-22), P3-12's construction and switch poses (FS-03) and P3-14's forward rows and speeds of shots and hits (FA-05) are f32. */
 const F32: NumberRule = [isFiniteFloat32, 'must be a finite f32'];
 const INT32 = integerIn(-0x80000000, 0x7fffffff);
 const LEVEL = integerIn(0, 3);
@@ -223,8 +235,9 @@ const AI_CHANNEL = integerIn(0, 2);
 const FACE = integerIn(0, 5);
 /** A list's index: −1 for an empty list. */
 const LIST_INDEX = integerIn(-1, 0x7fffffff);
-/** View modes are the original's byte ps +0x28. */
+/** View modes are the original's byte ps +0x28, sub-modes its byte ps +0x2A. */
 const VIEW_MODE = integerIn(0, 0xff);
+const SUB_MODE = integerIn(0, 0xff);
 /** A cursor pixel lies in the main map. */
 const MAP_PIXEL = integerIn(0, MAP_SIDE_LIMIT - 1);
 const SERIAL = integerIn(1, Number.MAX_SAFE_INTEGER);
@@ -257,6 +270,8 @@ const RETURN_VARIANTS = ['solo', 'wingman'] as const;
 const FLIGHT_MESSAGES = ['missionComplete', 'beacon'] as const;
 /** The destruction view (ME-09). */
 const DESTRUCTION_VIEW = 0x11;
+/** The destruction camera's sub-mode of view 0x11 (ME-09). */
+const DESTRUCTION_SUB_MODE = 8;
 /** An i8 summary selector: −1 without a matched range, otherwise one world creation admits (≤ 0 or 13–19). */
 const SUMMARY_SELECTOR: NumberRule = [(value) => Number.isInteger(value) && ((value >= -0x80 && value <= 0) || (value >= 13 && value <= 19)), 'must be an i8 of at most 0 or within 13–19'];
 const CINC_ROW = integerIn(13, 19);
@@ -598,7 +613,7 @@ function readCombatEvent(event: Record<string, unknown>, path: string, tick: num
         entityId: readEntityId(event.entityId, at('entityId')),
         sourceEntityId: readEntityId(event.sourceEntityId, at('sourceEntityId')),
         sourceKindBit: readKindBit(event.sourceKindBit, at('sourceKindBit')),
-        variant: readChoice(event.variant, at('variant'), ['large', 'other', 'missile']),
+        variant: readChoice(event.variant, at('variant'), EXPLOSION_VARIANTS),
         position: readVector(event.position, at('position')),
         activationClock: readNumber(event.activationClock, at('activationClock'), INDEX),
       };
@@ -1038,6 +1053,48 @@ function readMissionEvent(event: Record<string, unknown>, path: string, tick: nu
   }
 }
 
+/** Reads the fields of a P3-12 event (docs/plan/p3/02/spec.md, FS-03) after its type and field list. */
+function readPresentationEvent(event: Record<string, unknown>, path: string, tick: number, type: PresentationEvent['type']): PresentationEvent {
+  const at = (field: string): string => `${path}.${field}`;
+  switch (type) {
+    case 'explosion-created':
+      return {
+        type,
+        tick,
+        entityId: readEntityId(event.entityId, at('entityId')),
+        sourceEntityId: readEntityId(event.sourceEntityId, at('sourceEntityId')),
+        sourceKindBit: readKindBit(event.sourceKindBit, at('sourceKindBit')),
+        variant: readChoice(event.variant, at('variant'), EXPLOSION_VARIANTS),
+        stage: readChoice(event.stage, at('stage'), EXPLOSION_CONSTRUCTION_STAGES),
+        position: readVector(event.position, at('position'), F32),
+        velocity: readVector(event.velocity, at('velocity'), F32),
+      };
+    case 'view-switched': {
+      let player: ViewSwitchedEvent['player'] = null;
+      if (event.player !== null) {
+        const fields = readExactRecord(event.player, at('player'), ['entityId', 'position', 'orientation']);
+        player = {
+          entityId: readEntityId(fields.entityId, at('player.entityId')),
+          position: readVector(fields.position, at('player.position'), F32),
+          orientation: readMatrix(fields.orientation, at('player.orientation'), F32),
+        };
+      }
+      return {
+        type,
+        tick,
+        fromViewMode: readNumber(event.fromViewMode, at('fromViewMode'), VIEW_MODE),
+        fromSubMode: readNumber(event.fromSubMode, at('fromSubMode'), SUB_MODE),
+        viewMode: readNumber(event.viewMode, at('viewMode'), VIEW_MODE),
+        subMode: readNumber(event.subMode, at('subMode'), SUB_MODE),
+        stage: readChoice(event.stage, at('stage'), PIPELINE_STAGE_NAMES),
+        player,
+      };
+    }
+    case 'warp-wall-contact':
+      return { type, tick, serial: readNumber(event.serial, at('serial'), SERIAL) };
+  }
+}
+
 /** Validates one event against the DomainEvent union, reading each field once, and returns a detached, unfrozen copy. */
 function readEvent(value: unknown, path: string, tickRule: NumberRule): DomainEvent {
   const event = readDataRecord(value, path, MAX_EVENT_FIELDS);
@@ -1107,6 +1164,10 @@ function readEvent(value: unknown, path: string, tickRule: NumberRule): DomainEv
     case 'wingman-loss-timer-started':
     case 'wingman-loss-timer-expired':
       return readMissionEvent(event, path, tick, type);
+    case 'explosion-created':
+    case 'view-switched':
+    case 'warp-wall-contact':
+      return readPresentationEvent(event, path, tick, type);
     default:
       return readCombatEvent(event, path, tick, type);
   }
@@ -1124,17 +1185,44 @@ function readEvent(value: unknown, path: string, tickRule: NumberRule): DomainEv
  * display's clearing at the end of the frame, and last the incoming message's presentation sub-step. P3-11's (ME-13):
  * the settlement, the completion message, the wingman loss message, the beacon's expiry and the result's due in the
  * mission flow, the escape pod's rescue or third loss in request handling, the beacon in the energy stage, and the
- * teardown and its completion in the teardown stage. `hit`, `object-destroyed` and P3-11's destruction entries happen
- * from the object updates on, in several stages; `object-instantiated`, `radio-queued` and a selection or page change
- * without a command are not ordered against the stages.
+ * teardown and its completion in the teardown stage. P3-12's (FS-03) `explosion-created` and `view-switched` report
+ * their pipeline stage (STAGE_OF) and `warp-wall-contact` comes at the frame end. `hit`, `object-destroyed` and P3-11's
+ * destruction entries happen from the object updates on, in several stages; `object-instantiated`, `radio-queued` and a
+ * selection or page change without a command are not ordered against the stages.
  */
 const STAGE = Object.freeze({
   missionFlow: 0, assist: 1, commands: 2, objects: 3, reply: 4, requests: 5, energy: 6, parked: 7, warpCompletion: 8, teardown: 9, frameEnd: 10,
   presentation: 11,
 });
 
-/** What TickOrder counts: P3-10's and P3-11's event types, and the two places a docking is cancelled. */
-type CountedEvent = CommunicationsEvent['type'] | MissionEvent['type'] | 'gate' | 'flow-cancellation';
+/** What TickOrder counts: P3-10's and P3-11's event types, the two places a docking is cancelled, and P3-12's wall contact. */
+type CountedEvent = CommunicationsEvent['type'] | MissionEvent['type'] | 'gate' | 'flow-cancellation' | 'warp-wall-contact';
+
+/**
+ * The STAGE a P3-12 event reports by its pipeline stage (FS-03): the order checks of the stages it falls between. The
+ * stages of request handling to the delayed player explosion share `requests`, as `hit` does.
+ */
+const STAGE_OF: { readonly [Stage in PipelineStageName]: number } = Object.freeze({
+  'input-registration': STAGE.missionFlow,
+  'mission-flow': STAGE.missionFlow,
+  clock: STAGE.missionFlow,
+  'object-update': STAGE.objects,
+  'communications-reply': STAGE.reply,
+  'spawn-queue-check': STAGE.reply,
+  'request-handling': STAGE.requests,
+  movement: STAGE.requests,
+  collision: STAGE.requests,
+  'delayed-player-explosion': STAGE.requests,
+  energy: STAGE.energy,
+  'object-sets': STAGE.energy,
+  'parked-update': STAGE.parked,
+  'warp-completion': STAGE.warpCompletion,
+  'base-interior': STAGE.warpCompletion,
+  'mission-teardown': STAGE.teardown,
+  'area-check': STAGE.teardown,
+  'frame-end': STAGE.frameEnd,
+  commit: STAGE.presentation,
+});
 
 /** A docking, launch or rescue whose `transition` must come next. */
 interface PendingTransition {
@@ -1167,9 +1255,15 @@ interface PendingTransition {
  * `player-rescued` followed at once by its `transition` (G-02/5 or G-02/6); once a run, a result latched right after
  * its cause (#latch) and followed by `teardown-started` in its tick, and `mission-completed` with the latched outcome
  * in the next tick, last.
+ * P3-12's (FS-03): `explosion-created` and `view-switched` in the order of the stage they report, and at most one
+ * `warp-wall-contact`, at the frame end.
  */
 class TickOrder {
   #previous: DomainEvent | null = null;
+  /** The event before #previous, kept for the next read. */
+  #prior: DomainEvent | null = null;
+  /** For the event being read, the one before its previous: the destruction entry's flush when its switch sits between. */
+  #beforePrevious: DomainEvent | null = null;
   #stage: number = STAGE.missionFlow;
   #commands = 0;
   #assisted = false;
@@ -1206,6 +1300,8 @@ class TickOrder {
 
   reset(): void {
     this.#previous = null;
+    this.#prior = null;
+    this.#beforePrevious = null;
     this.#stage = STAGE.missionFlow;
     this.#commands = 0;
     this.#assisted = false;
@@ -1230,6 +1326,8 @@ class TickOrder {
   /** Checks `event`, the next of the tick, and returns whether it is a command result. */
   read(event: DomainEvent, path: string): boolean {
     const previous = this.#previous;
+    this.#beforePrevious = this.#prior;
+    this.#prior = previous;
     this.#previous = event;
     const pending = this.#pendingTransition;
     if (pending !== null && (event.type !== 'transition' || event.gap !== pending.gap)) {
@@ -1354,6 +1452,14 @@ class TickOrder {
       case 'wingman-loss-timer-expired':
         this.#readMission(event, previous, playerDestruction, path);
         return false;
+      case 'explosion-created':
+      case 'view-switched':
+        this.#enter(STAGE_OF[event.stage], `${path}.stage`);
+        return false;
+      case 'warp-wall-contact':
+        this.#enter(STAGE.frameEnd, path);
+        this.#count(event.type, 1, path);
+        return false;
       default:
         this.#readCommunications(event, previous, path);
         return false;
@@ -1391,17 +1497,27 @@ class TickOrder {
           throw new CoreInputError(path, 'must come right after its completion-message flush');
         }
         return;
-      case 'player-loss-started':
+      case 'player-loss-started': {
         if (event.loss === 'energy') {
           this.#enter(STAGE.energy, path);
           if (previous?.type !== 'flight-message' || previous.message !== 'beacon') throw new CoreInputError(path, 'must come right after its beacon message');
           return;
         }
         this.#reach(STAGE.objects);
-        if (previous?.type !== 'radio-flushed' || previous.cause !== 'player-destroyed' || playerDestruction !== event.playerEntityId) {
+        // A switch to the destruction view emits its `view-switched` between the flush and the loss (FS-03 with ME-09):
+        // the loss then comes right after that switch, and the switch right after the flush.
+        if (event.viewSwitched) {
+          if (previous?.type !== 'view-switched' || previous.viewMode !== DESTRUCTION_VIEW || previous.subMode !== DESTRUCTION_SUB_MODE
+            || previous.fromViewMode !== event.previousViewMode) {
+            throw new CoreInputError(path, 'must come right after its switch to the destruction view 0x11/8');
+          }
+        }
+        const flush = event.viewSwitched ? this.#beforePrevious : previous;
+        if (flush?.type !== 'radio-flushed' || flush.cause !== 'player-destroyed' || playerDestruction !== event.playerEntityId) {
           throw new CoreInputError(path, 'must come right after its player-destroyed flush, which follows the player\'s destruction');
         }
         return;
+      }
       case 'player-rescued':
         // The energy loss's rescue comes in the mission flow, the destruction's at the escape pod's expiry (ME-10).
         this.#enter(event.loss === 'energy' ? STAGE.missionFlow : STAGE.requests, path);
@@ -1439,7 +1555,11 @@ class TickOrder {
   #trackPlayerDestruction(event: DomainEvent): number | null {
     const before = this.#playerDestruction;
     if (event.type === 'object-destroyed') this.#playerDestruction = event.kindBit === PLAYER_KIND_BIT ? event.entityId : null;
-    else if (!(event.type === 'left-page-changed' && event.commandIndex === null) && !(event.type === 'radio-flushed' && event.cause === 'player-destroyed')) {
+    else if (
+      !(event.type === 'left-page-changed' && event.commandIndex === null) && !(event.type === 'radio-flushed' && event.cause === 'player-destroyed')
+      // The destruction entry's own switch (FS-03) sits between its flush and its loss.
+      && !(event.type === 'view-switched' && event.viewMode === DESTRUCTION_VIEW && event.subMode === DESTRUCTION_SUB_MODE)
+    ) {
       this.#playerDestruction = null;
     }
     return before;

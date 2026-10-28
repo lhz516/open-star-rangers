@@ -9,11 +9,14 @@ import type { MissionStartFailure } from '../../app/mission/mission-flow.ts';
 import type { MissionWingmanOption } from '../../app/mission/mission-owner.ts';
 import type { MissionFailure } from '../../app/resources/mission-diagnostics.ts';
 import type { GameSessionStatus } from '../../app/session/game-session.ts';
+import type { FlightRendererStatus } from '../../render/flight/renderer/flight-renderer.ts';
+import { GraphicsDeviceError } from '../../render/scene/render-surface.ts';
 
 /** What this build is, wherever the mission is offered or shown. */
 export const MISSION_SKELETON =
   'This is the formal runtime skeleton, not yet a playable slice: Core runs the mission\'s world and the rules implemented '
-  + 'so far, the mission result included, but there is no flight view, cockpit, HUD or audio yet.';
+  + 'so far, the mission result included, and the flight view draws the cockpit, HUD and strategic map, but there are no sound '
+  + 'effects yet (P3-14).';
 
 const CATEGORY: Readonly<Record<MissionFailure['kind'], string>> = Object.freeze({ 'core-input': 'Core input', content: 'content contract' });
 
@@ -103,6 +106,34 @@ export function pauseText({ pauseReason }: GameSessionStatus): string | null {
 export function resumeBlockedText({ phase, environmentVisible }: GameSessionStatus): string | null {
   if (phase !== 'paused' || environmentVisible) return null;
   return 'Resume is unavailable while the page is hidden or being left.';
+}
+
+/**
+ * The mission shell's in-progress note (not a G item) until P3-14 connects the sound effects. P3-13 drew the cockpit, HUD
+ * and map, so the note no longer covers the picture: the status bar shows it, outside the game view.
+ */
+export const FLIGHT_IN_PROGRESS = 'Sound effects are not implemented yet (P3-14).';
+
+const WITHOUT_PICTURE = 'The mission continues without the picture; you can pause it or exit through the mission menu.';
+
+/**
+ * Why the flight picture is missing (docs/plan/p3/12/spec.md, 行为与边界): null while it draws. `alert` for a state that
+ * will not end by itself; `detail` describes the error structurally.
+ */
+export function flightNotice({ state, error }: FlightRendererStatus): { readonly alert: boolean; readonly text: string; readonly detail: string | null } | null {
+  switch (state) {
+    case 'ready':
+    case 'disposed':
+      return null;
+    case 'context-lost':
+      return { alert: false, text: `The flight picture's graphics context was lost until the browser restores it. ${WITHOUT_PICTURE}`, detail: null };
+    case 'unavailable':
+      return { alert: true, text: `The flight picture is unavailable: this browser provides no WebGL 2. ${WITHOUT_PICTURE}`, detail: describeStructure(error) };
+    case 'failed':
+      return error instanceof GraphicsDeviceError
+        ? { alert: true, text: `The flight picture stopped: the graphics device failed. ${WITHOUT_PICTURE}`, detail: describeStructure(error) }
+        : { alert: true, text: 'The flight picture failed, so the run cannot continue.', detail: describeStructure(error) };
+  }
 }
 
 /** The game input zone's accessible name. */

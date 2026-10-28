@@ -31,8 +31,8 @@ type Mutable = Record<string | number, unknown>;
  * every optional part other tasks write (a formation, a timed rotation, an impulse, a disturbance, AI targets, mounts,
  * references); one of each of P3-07's runtime kinds with every optional part of its combat state and its own movement
  * block variant; and P3-09's map marker. The player state has P3-07's targeting and references, P3-09's destination,
- * saved page and Warp transit, and P3-10's docking object, open command menu, partner, saved pages, stamps, thanks and
- * saved pose set; the unnamed craft has P3-10's communications fields and a pending command; the world has object sets,
+ * saved page and Warp transit, P3-10's docking object, open command menu, partner, saved pages, stamps, thanks and
+ * saved pose, and P3-12's model flag set; the unnamed craft has P3-10's communications fields and a pending command; the world has object sets,
  * map icons and a map-visible craft (MW-02), and is in the docking countdown with two radio items (one per message
  * variant, with and without a speaker), a playing message, taken portraits, stamped limits, a friendly-fire total and a
  * base service. P3-08's: the unnamed craft has a table program whose interpreter runs a script with every part of its
@@ -73,6 +73,7 @@ function richState(): WorldState {
     menu: COMMAND_MENU, partner: 4, menuSavedPage: 1, incomingSavedPage: 5, limits: { friendlyHit: 11, friendlyKill: 12 }, thanks: 2,
   });
   state.player.docking.savedPose = { position: { x: 1, y: -2, z: 3 }, orientation: [0, 0, -1, 0, 1, 0, 1, 0, 0] };
+  state.player.modelShown = true;
   Object.assign(state.flow, { subState: 4, dockingDeadline: 0x204 });
   const { communications } = state;
   communications.queue.push(DIRECT_ITEM, { ...SPOKEN_ITEM, due: 3 });
@@ -201,9 +202,10 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     // P3-06 incremented both once (docs/plan/p3/06/spec.md, D-07), then P3-07 (docs/plan/p3/02/spec.md, CR-14); P3-05's
     // speed-preset only the rules version (docs/plan/p3/05/spec.md, 持久化与兼容). P3-09/12 and P3-10/11 each incremented
     // both from 3 and 4 on their branches (MW-14, CB-16); their merge increments both once more, so that neither branch's
-    // snapshots share a version with the merged state. P3-08/12 increments both once more (CR-25), and P3-11/08 (ME-16).
-    // P3-14/08 increments only the rules version (FA-08), so merged with P3-11 the rules are 9 and the snapshot format 7.
-    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 7, 9]);
+    // snapshots share a version with the merged state. P3-08/12 increments both once more (CR-25), P3-11/08 (ME-16) and
+    // P3-12/10 (FS-08) each once on their branches, and their merge once more; P3-13/12 both once more (CK-05). P3-14/08
+    // increments only the rules version (FA-08), so merged with them the rules are 11 and the snapshot format 9.
+    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 9, 11]);
     const { state } = snapshot;
     expect(Object.keys(state)).toEqual([
       'config', 'tick', 'clock', 'rngState', 'nextEntityId', 'entities', 'kindOrder', 'spawn', 'missionStatus', 'missionEvents', 'flow', 'player',
@@ -225,10 +227,10 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
       entityId: null, viewMode: 0xc, previousViewMode: 0xc, subMode: 0, target: null, control: null, targeting: null, followedEntity: null,
       delayedExplosionClock: null, kills: { 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 16: 0, 19: 0 },
       shots: { projectilesFired: 0, projectileHits: 0, missilesFired: 0, missileHits: 0 }, heavyDamage: -1, leftDisplay: { page: 0 },
-      statusDisplay: { blink: 0, blinkDueClock: 0, redraw: true }, dockingObject: null,
+      statusDisplay: { blink: 0, blinkDueClock: 0, redraw: true, phaseFlipped: true, rebuilds: 0 }, energyPageRedraws: 0, dockingObject: null,
       map: { cursor: { column: 178, row: 154 }, destination: null }, savedLeftPage: 0, warp: null,
       communications: { menu: null, partner: null, menuSavedPage: 0, incomingSavedPage: 0, limits: { friendlyHit: null, friendlyKill: null }, thanks: 0 },
-      docking: { savedPose: null },
+      docking: { savedPose: null }, modelShown: false,
     });
     expect([state.objectSets, state.mapIcons]).toEqual([{ friendly: [], hostile: [] }, []]);
     // P3-10's and P3-11's creation values (CB-02, CB-05, CB-11, ME-03, ME-04).
@@ -263,8 +265,25 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     const player = state.entities.get(1)!;
     expect(snapshot.state.entities[0].combat).toEqual(player.combat);
     expect(snapshot.state.entities[0].maximumSpeed).toBe(player.maximumSpeed);
-    // The frame-end status display has consumed the redraw instantiation set (CR-10).
-    expect(snapshot.state.player).toMatchObject({ targeting: { mode: 'enemy', autoTargetDueClock: 0 }, statusDisplay: { redraw: false } });
+    // The frame-end status display has consumed the redraw instantiation set (CR-10) in its one rebuild, and `0x3060c`
+    // set the energy-page redraw flag once (CK-01, CK-02).
+    expect(snapshot.state.player).toMatchObject({
+      targeting: { mode: 'enemy', autoTargetDueClock: 0 }, statusDisplay: { redraw: false, rebuilds: 1 }, energyPageRedraws: 1,
+    });
+    expect(snapshotText(snapshot)).toContain(
+      `"statusDisplay":{"blink":${state.player.statusDisplay.blink},"blinkDueClock":${state.player.statusDisplay.blinkDueClock},"redraw":false,`
+      + `"phaseFlipped":${state.player.statusDisplay.phaseFlipped},"rebuilds":1},"energyPageRedraws":1,`,
+    );
+    // The new state is in the hash (CK-05).
+    for (const change of [
+      (copy: Mutable) => void ((copy.statusDisplay as Mutable).phaseFlipped = !state.player.statusDisplay.phaseFlipped),
+      (copy: Mutable) => void ((copy.statusDisplay as Mutable).rebuilds = 2),
+      (copy: Mutable) => void (copy.energyPageRedraws = 2),
+    ]) {
+      const copy = copyOf(snapshot);
+      change(copy.state.player as unknown as Mutable);
+      expect(snapshotHash(copy as unknown as GameSnapshot)).not.toBe(snapshotHash(snapshot));
+    }
     // Nothing of the static data is written: replacing it leaves the text as it is.
     const text = snapshotText(snapshot);
     expect(text).not.toContain('explosion-animation');
@@ -563,7 +582,7 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     const snapshot = takeSnapshot(richState());
     const text = snapshotText(snapshot);
     expect(text).toMatch(/^[\x20-\x7e]+$/);
-    expect(text.startsWith('{"format":"osr-game-snapshot","version":7,"rulesVersion":9,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
+    expect(text.startsWith('{"format":"osr-game-snapshot","version":9,"rulesVersion":11,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
     expect(snapshotHash(snapshot)).toBe(fnv1a64(text));
     expect(snapshotHash(snapshot)).toMatch(/^[0-9a-f]{16}$/);
 

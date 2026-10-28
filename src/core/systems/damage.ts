@@ -10,7 +10,8 @@
  *
  * `0x2a694` gates the hit (a destroyed victim; the player while the destruction view follows its escape pod, which
  * protects no other craft; the typed cheat flag, which Core never sets, so it has no state here), takes it through the
- * shield and the hull (rules/damage.ts) and may damage a subsystem (rules/subsystems.ts). `hit` follows (CR-06), also for
+ * shield and the hull (rules/damage.ts; a hit the player's shield takes, not its bypass, counts an energy-page redraw,
+ * CK-02) and may damage a subsystem (rules/subsystems.ts). `hit` follows (CR-06), also for
  * a gated hit, which changes nothing. A hull at 0 or below that the shield did not fully cover destroys the victim once:
  * its destroyed flag, the player's kill counters, `object-destroyed`, then a parked victim waits for removal and any
  * other goes to destruction.ts's entry (P3-07/18: the explosion, or the player's delayed one).
@@ -31,6 +32,7 @@ import { CoreFaultError } from '../errors.ts';
 import type { CraftEntity } from '../rules/combat-init.ts';
 import { attackerKind } from '../rules/comm-reactions.ts';
 import { absorbByShield, damageHull } from '../rules/damage.ts';
+import { countEnergyPageRedraw } from '../rules/displays.ts';
 import { rowOf } from '../rules/movement-builders.ts';
 import { RandStream } from '../rules/original-random.ts';
 import { toInt32 } from '../rules/record-defaults.ts';
@@ -160,8 +162,10 @@ function damageCraft(context: TickContext, victim: CraftEntity, damage: number, 
     const craft = world.craftInfo.content.craft[victim.kindBit];
     if (craft === undefined) throw fault('craft');
     const shieldRand = new RandStream(world.rngState);
-    const hullDamage = absorbByShield(combat, damage, shieldRand);
+    const { hullDamage, taken } = absorbByShield(combat, damage, shieldRand);
     world.rngState = shieldRand.state;
+    // `0x30c60` sets the energy-page redraw flag +0x44 for the player when the shield takes the hit (CK-02).
+    if (taken && victim.kindBit === PLAYER_KIND_BIT) countEnergyPageRedraw(world.player);
     const kind = attackerKind(blow.attacker);
     if (kind !== 0) reactToHit(context, kind, blow.source, victim, damage);
     const rand = new RandStream(world.rngState);

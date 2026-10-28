@@ -8,6 +8,7 @@ import { button } from './support/app-entry.ts';
 import { expect, test } from './support/audited-test.ts';
 import { openKeyboardMenu, startKeyboardFlight, tabTo } from './support/keyboard-input.ts';
 import { bridgeView, countPointerLockChanges, FLIGHT_VIEW, MAP_VIEW, pointerLockChanges, waitForBridge } from './support/map-warp.ts';
+import { canvasBox, mapView, quietly, waitForMapView, zoneLocked } from './support/map-picture.ts';
 import {
   checkedWingman, chooseWingman, endPlaceholder, enterMission, expectAdvancingTick, expectGaps, expectStableTick, holdKey, leaveGuards,
   missionEntry, missionFrame, stopWatchingPositions, waitForFrame, watchPositions,
@@ -180,53 +181,84 @@ test('the whole production flow from a restored cache, with and without a wingma
   expect(await violations(page)).toEqual([]);
 });
 
-// P3-09 subtask 22 (docs/plan/p3/09/spec.md, AC-12): the production map while its geometry port is still null (P3-13).
-// Core's map comes through the session bridge's UI store (e2e/support/map-warp.ts, read only); the build has no command
-// editor, so no destination can be drafted.
+// P3-09 subtask 22 (docs/plan/p3/09/spec.md, AC-12) with P3-13's production map geometry (subtask 28): Core's map comes
+// through the session bridge's UI store (e2e/support/map-warp.ts, read only); the build has no command editor, so the
+// destination is selected through the map input itself: real Pointer Lock and real mouse input. Playwright cannot press
+// Chrome's native Escape, so the browser's own unlock is `document.exitPointerLock()` evaluated without a user gesture.
 
-test('the production map without geometry: m opens Core\'s map with a not-ready hint, no lock and no mouse command; m and the unlocked Esc close it; no editor is built', async ({ page }) => {
+test('the production map with its geometry: m opens Core\'s map, ready after its first picture and locked; a real locked move and click select a destination; m and the unlocked Esc close it; no editor is built', async ({ page }) => {
   await page.addInitScript(countPointerLockChanges);
   await openKeyboardMenu(page, 'production');
   await startKeyboardFlight(page);
   const zone = page.getByTestId('game-input-zone');
   const inputStatus = page.getByTestId('input-status');
+  const cdp = await page.context().newCDPSession(page);
+  // Chrome reports no movement for the page's first mouse event: the mouse starts on the zone, where in flight it does nothing.
+  const box = (await zone.boundingBox())!;
+  const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await page.mouse.move(start.x, start.y);
   let view = await waitForBridge(page, candidate => candidate.map?.warpRequest === 'no-destination', 'The flight did not reach its player');
   expect(view).toMatchObject({ context: 'flight', map: { state: 'closed', destination: null, markerEntityId: null }, results: [] });
 
+  // m: Core's map; the input is ready once the map's first picture is drawn, and m's activation locks it at once.
   await page.keyboard.press('m');
   view = await waitForBridge(page, candidate => candidate.context === 'map', 'm did not open the map');
   expect(view).toMatchObject({ viewMode: MAP_VIEW, map: { state: 'open', destination: null }, results: [{ commandType: 'toggle-map', outcome: 'accepted' }] });
-  await expect(inputStatus).toContainText('Map input is not ready.');
-  expect(await zone.evaluate(element => (element as HTMLElement).style.cursor)).not.toBe('none');
-
-  // With no geometry the mouse moves and clicks nothing: no lock, no command, no destination.
-  const box = (await zone.boundingBox())!;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.move(box.x + box.width / 4, box.y + box.height / 4, { steps: 5 });
-  await page.mouse.click(box.x + box.width / 4, box.y + box.height / 4);
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect.poll(() => zoneLocked(page)).toBe(true);
+  await expect(inputStatus).not.toContainText('Map input');
+  expect(await zone.evaluate(element => (element as HTMLElement).style.cursor)).toBe('none');
   await expect(zone).toBeFocused();
-  const tick = (await missionFrame(page))!.tick!;
-  await waitForFrame(page, frame => (frame.tick ?? 0) >= tick + 16);
-  view = await bridgeView(page);
-  expect(view).toMatchObject({ context: 'map', map: { state: 'open', destination: null, markerEntityId: null } });
-  expect(view.results.map(({ commandType }) => commandType)).toEqual(['toggle-map']);
-  await expect(inputStatus).toContainText('Map input is not ready.');
 
-  // m closes it; reopened, the unlocked Esc closes it without the mission menu.
+  // A locked move: Core's cursor follows by the move over the canvas's CSS px per logical px, from the start point.
+  const opened = await mapView(page);
+  const from = opened.map!.cursor.pixel;
+  const target = { column: from.column + 40, row: from.row - 30 };
+  const { scale, scaleY } = await canvasBox(page);
+  await page.mouse.move(start.x + 40 * scale, start.y - 30 * scaleY);
+  await waitForMapView(page, candidate => candidate.map?.cursor.pixel.column === target.column && candidate.map.cursor.pixel.row === target.row,
+    'The cursor did not follow the locked move');
+  // A click selects there: Core's destination, its new marker and an accepted Warp gate.
+  await page.mouse.down();
+  await page.mouse.up();
+  view = await waitForBridge(page, candidate => candidate.map?.markerEntityId !== null && candidate.map?.destination !== null, 'The click selected no destination');
+  expect(view.map).toMatchObject({ state: 'open', warpRequest: 'accepted' });
+  const selected = await mapView(page);
+  expect(selected.map!.destination!.pixel).toEqual(target);
+  expect(selected.map!.markerEntityId).toBe(view.map!.markerEntityId);
+  const reading = view.map!.destinationCost!;
+  expect(reading.cost).toBeGreaterThan(0);
+  expect(reading.percent).toBe(Math.max(Math.trunc((reading.cost / reading.energy) * 100), 1));
+  expect(view.results.map(({ commandType }) => commandType).filter(type => type !== 'map-point')).toEqual(['toggle-map']);
+  expect(view.results.every(({ outcome }) => outcome === 'accepted')).toBe(true);
+
+  // m closes it, keeping the destination; reopened, it locks again. A page-delivered Esc leaves the locked map open;
+  // after the browser's unlock, Esc closes it without the mission menu.
   await page.keyboard.press('m');
   view = await waitForBridge(page, candidate => candidate.context === 'flight', 'm did not close the map');
-  expect(view.map?.state).toBe('closed');
+  expect(view.map).toMatchObject({ state: 'closed', destination: selected.map!.destination!.position });
   await expect(inputStatus).not.toContainText('Map input');
+  await expect.poll(() => zoneLocked(page)).toBe(false);
   await page.keyboard.press('m');
   await waitForBridge(page, candidate => candidate.context === 'map', 'm did not reopen the map');
+  await expect.poll(() => zoneLocked(page)).toBe(true);
+  await page.keyboard.press('Escape');
+  const tick = (await missionFrame(page))!.tick!;
+  await waitForFrame(page, frame => (frame.tick ?? 0) >= tick + 8);
+  expect((await bridgeView(page)).context).toBe('map');
+  expect(await zoneLocked(page)).toBe(true);
+  await quietly(cdp, 'document.exitPointerLock()');
+  await expect(inputStatus).toContainText('Click the map to lock the pointer.');
   await page.keyboard.press('Escape');
   view = await waitForBridge(page, candidate => candidate.context === 'flight', 'Esc did not close the map');
-  expect(view).toMatchObject({ phase: 'running', viewMode: FLIGHT_VIEW, map: { state: 'closed', destination: null } });
-  expect(view.results.map(({ commandType, outcome }) => `${commandType} ${outcome}`)).toEqual(Array(4).fill('toggle-map accepted'));
+  expect(view).toMatchObject({ phase: 'running', viewMode: FLIGHT_VIEW, map: { state: 'closed' } });
+  expect(view.results.filter(({ commandType }) => commandType === 'toggle-map').map(({ outcome }) => outcome)).toEqual(Array(4).fill('accepted'));
   expect(await missionFrame(page)).toMatchObject({ position: 'flight' });
   await expect(page.getByTestId('mission-menu')).toHaveCount(0);
-  expect(await pointerLockChanges(page)).toEqual({ changes: 0, locked: false });
+  // Every lock the map took ended.
+  const { changes, locked } = await pointerLockChanges(page);
+  expect(locked).toBe(false);
+  expect(changes! % 2).toBe(0);
+  expect(changes).toBeGreaterThanOrEqual(4);
   await expectNoDiagnostics(page);
 
   // The build holds neither the development panel nor its command editor (production-preview.spec.ts also scans the

@@ -77,7 +77,7 @@ function prepared(queued: number) {
   const run = current(setup.session);
   const log: string[] = [], notices: GameCommandsCancelled[] = [];
   run.onCommandsCancelled((notice) => { notices.push(notice); log.push(`cancel:${notice.reason}`); });
-  run.onFrame((frame) => { log.push(`frame:${frame.phase}:${JSON.stringify(frame.report)}`); });
+  run.onFrame((frame) => { log.push(`frame:${frame.phase}:${JSON.stringify(frame.report && { ...frame.report, outputs: frame.report.outputs.map(({ tick }) => tick) })}`); });
   setup.session.onStatus((status) => { log.push(`status:${status.phase}`); });
   setup.host.deliver(0);
   log.length = 0;
@@ -125,6 +125,15 @@ describe('session faults', () => {
     expect(notices).toHaveLength(1);
     session.control({ type: 'start', spec: runSpec() });
     expect(session.status()).toMatchObject({ phase: 'running', runId: 2, error: null });
+  });
+
+  it('a Core fault reading the second tick\'s Render State faults the run without any frame, the first tick\'s output included', () => {
+    const { host, run, log, errors } = prepared(10);
+    injection.arm('renderState', 2, () => { throw fault('world.renderState'); });
+    host.deliver(3 * TICK_MS);
+    expect(log).toEqual(['status:faulted']);
+    expect(errors[0].failures?.[0].cause).toMatchObject({ kind: 'faulted' });
+    expect(run.renderFrame().current.tick).toBe(1);
   });
 
   it('a snapshot that finds a Core fault faults the run and throws to its caller', () => {
@@ -193,7 +202,7 @@ describe('recording-capacity stop', () => {
     injection.arm('step', 3, () => { throw refusal(); });
     host.deliver(5 * TICK_MS);
     expect(log).toEqual([
-      `frame:running:${JSON.stringify({ ticks: 2, capped: false, stop: 'recording-capacity', cut: null, transitions: [], completion: null })}`,
+      `frame:running:${JSON.stringify({ ticks: 2, capped: false, stop: 'recording-capacity', cut: null, transitions: [], completion: null, outputs: [1, 2] })}`,
       'cancel:recording-capacity', 'frame:stopped:null', 'status:stopped',
     ]);
     expect(new Set(delivered.map((event) => event.tick))).toEqual(new Set([1, 2]));
@@ -245,7 +254,7 @@ describe('recording-capacity stop', () => {
     injection.arm('step', 2, () => { throw refusal(); });
     host.deliver(3 * TICK_MS);
     expect(log).toEqual([
-      `frame:running:${JSON.stringify({ ticks: 1, capped: false, stop: 'recording-capacity', cut: null, transitions: [], completion: null })}`,
+      `frame:running:${JSON.stringify({ ticks: 1, capped: false, stop: 'recording-capacity', cut: null, transitions: [], completion: null, outputs: [1] })}`,
       'cancel:recording-capacity', 'frame:stopped:null', 'status:faulted',
     ]);
     expect(errors[0].failures).toEqual([{ phase: 'consumer', cause }]);

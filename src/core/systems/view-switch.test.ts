@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { readTickInput } from '../contracts/tick-input.ts';
 import type { LeftPage } from '../world/player-state.ts';
-import { testState } from '../world/world.test-support.ts';
-import { BASE_VIEW_MODE, MAP_VIEW_MODE, switchView, WARP_VIEW_MODE } from './view-switch.ts';
+import { addPlayerEntity, testState, tickInput } from '../world/world.test-support.ts';
+import { registerTick } from './pipeline.ts';
+import { BASE_VIEW_MODE, commitViewSwitch, MAP_VIEW_MODE, switchPlayerView, switchView, WARP_VIEW_MODE } from './view-switch.ts';
 
 // docs/plan/p3/02/spec.md, MW-09 (and MW-04, MW-08 for the Warp view's page): entering view 1 saves the left page and
 // shows page 6; leaving it restores the saved page, 5 as 0; the map has no rule effect. The base's 0x4cd68 is P3-10's.
@@ -61,5 +63,71 @@ describe('switchView (MW-09)', () => {
     state.player.previousViewMode = FLIGHT;
     switchView(state, WARP_VIEW_MODE, FLIGHT);
     expect([state.player.viewMode, state.player.previousViewMode]).toEqual([BASE_VIEW_MODE, FLIGHT]);
+  });
+});
+
+// P3-12 (docs/plan/p3/02/spec.md, FS-02, FS-03): the shared switch writes the modes, runs switchView and emits
+// `view-switched` with the stage and the player's pose at the write; only `0x216d4` writes whether the model is shown.
+describe('commitViewSwitch and switchPlayerView (FS-02, FS-03)', () => {
+  function context(stage: 'request-handling' | 'warp-completion' = 'request-handling') {
+    const state = stateWith(1, 0);
+    const player = addPlayerEntity(state, { position: { x: 1, y: -2, z: 3.5 } });
+    state.player.subMode = 8;
+    const tick = registerTick(state, readTickInput(tickInput()));
+    tick.stage = stage;
+    return { state, player, context: tick };
+  }
+
+  it('writes both modes, runs the rule effects, and reports the switch with the pose at the write', () => {
+    const { state, player, context: tick } = context();
+    expect(commitViewSwitch(tick, WARP_VIEW_MODE, FLIGHT)).toEqual({ page: 6, previousPage: 1 });
+    expect([state.player.viewMode, state.player.previousViewMode, state.player.subMode]).toEqual([WARP_VIEW_MODE, FLIGHT, 8]);
+    expect(pages(state)).toEqual([6, 1, false]);
+    // A later move does not reach the event: it is a detached snapshot.
+    player.position = { x: 9, y: 9, z: 9 };
+    expect(tick.events).toEqual([{
+      type: 'view-switched', tick: 1, fromViewMode: FLIGHT, fromSubMode: 8, viewMode: WARP_VIEW_MODE, subMode: 8, stage: 'request-handling',
+      player: { entityId: player.id, position: { x: 1, y: -2, z: 3.5 }, orientation: [...player.orientation] },
+    }]);
+  });
+
+  it('leaves the model flag on a switch outside 0x216d4 (the map toggle, the Warp start and completion)', () => {
+    for (const shown of [false, true]) {
+      const { state, context: tick } = context();
+      state.player.modelShown = shown;
+      commitViewSwitch(tick, 0x11, FLIGHT);
+      commitViewSwitch(tick, MAP_VIEW_MODE, 0x11);
+      expect(state.player.modelShown).toBe(shown);
+    }
+  });
+
+  it('writes a new sub-mode and reports the old one', () => {
+    const { state, context: tick } = context();
+    commitViewSwitch(tick, 0x11, FLIGHT, 0);
+    expect(state.player.subMode).toBe(0);
+    expect(tick.events[0]).toMatchObject({ fromViewMode: FLIGHT, fromSubMode: 8, viewMode: 0x11, subMode: 0 });
+  });
+
+  it('0x216d4 keeps the old view as the previous one and shows the player\'s model in view 0x11 only', () => {
+    const { state, context: tick } = context();
+    switchPlayerView(tick, 0x11);
+    expect([state.player.viewMode, state.player.previousViewMode, state.player.modelShown]).toEqual([0x11, FLIGHT, true]);
+    for (const viewMode of [MAP_VIEW_MODE, 0x11, FLIGHT, BASE_VIEW_MODE, 0x13]) {
+      const previous = state.player.viewMode;
+      switchPlayerView(tick, viewMode);
+      expect([state.player.previousViewMode, state.player.modelShown]).toEqual([previous, viewMode === 0x11]);
+    }
+    expect(tick.events.map((event) => (event.type === 'view-switched' ? [event.fromViewMode, event.viewMode] : null))).toEqual([
+      [FLIGHT, 0x11], [0x11, MAP_VIEW_MODE], [MAP_VIEW_MODE, 0x11], [0x11, FLIGHT], [FLIGHT, BASE_VIEW_MODE], [BASE_VIEW_MODE, 0x13],
+    ]);
+  });
+
+  it('reports no pose without a player entity, and the stage that runs it', () => {
+    const { state, context: tick } = context('warp-completion');
+    state.player.entityId = null;
+    commitViewSwitch(tick, FLIGHT, WARP_VIEW_MODE);
+    expect(tick.events).toEqual([{
+      type: 'view-switched', tick: 1, fromViewMode: FLIGHT, fromSubMode: 8, viewMode: FLIGHT, subMode: 8, stage: 'warp-completion', player: null,
+    }]);
   });
 });

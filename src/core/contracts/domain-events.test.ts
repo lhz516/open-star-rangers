@@ -140,6 +140,17 @@ const missionEvents: DomainEvent[] = [
   { type: 'radio-flushed', tick: 24, cause: 'player-destroyed', removed: 1, interrupted: 'playing' },
 ];
 
+// P3-12's presentation facts (docs/plan/p3/02/spec.md, FS-03), one of each type and a switch without a player.
+const presentationEvents: DomainEvent[] = [
+  { type: 'explosion-created', tick: 17, entityId: 21, sourceEntityId: 4, sourceKindBit: 7, variant: 'other', stage: 'collision', position: at, velocity: at },
+  {
+    type: 'view-switched', tick: 17, fromViewMode: 0xc, fromSubMode: 0, viewMode: 1, subMode: 0, stage: 'request-handling',
+    player: { entityId: 1, position: at, orientation: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
+  },
+  { type: 'view-switched', tick: 18, fromViewMode: 1, fromSubMode: 0, viewMode: 0xc, subMode: 0, stage: 'warp-completion', player: null },
+  { type: 'warp-wall-contact', tick: 18, serial: 1 },
+];
+
 // P3-14's event (docs/plan/p3/02/spec.md, FA-07), one of each state.
 const retiredEvents: DomainEvent[] = [
   { type: 'object-retired', tick: 17, entityId: 7, kindBit: 8, state: 'area-switch' },
@@ -171,7 +182,7 @@ describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06;
   it('is plain data that survives a JSON round trip unchanged', () => {
     const events: DomainEvent[] = [
       rejected, instantiated, toggled, matchedByCommand, matchedByAssist, released, leftWorld, ...combatEvents, ...mapWarpEvents, ...communicationsEvents,
-      ...aiEvents, ...missionEvents, ...retiredEvents,
+      ...aiEvents, ...missionEvents, ...presentationEvents, ...retiredEvents,
     ];
     expect(JSON.parse(JSON.stringify(events))).toEqual(events);
     expect(Object.keys(rejected)).toEqual(['type', 'tick', 'commandIndex', 'commandType', 'outcome', 'reason']);
@@ -189,6 +200,7 @@ describe('domain event envelopes (P3-02 S-04, 任务实例化; P3-06 D-04, D-06;
       | 'wingman-command-consumed' | 'transponder-deployed'
       | 'all-clear' | 'settlement-started' | 'settlement-deferred' | 'flight-message' | 'player-loss-started' | 'player-rescued' | 'result-latched'
       | 'teardown-started' | 'mission-completed' | 'wingman-loss-timer-started' | 'wingman-loss-timer-expired'
+      | 'explosion-created' | 'view-switched' | 'warp-wall-contact'
       | 'object-retired'
     >();
     expect(new Set(missionEvents.map(({ type }) => type)).size).toBe(13);

@@ -15,7 +15,7 @@ import type { WorldState } from '../world/world-state.ts';
 import { compareReplayResults } from './compare.ts';
 import { createRecordingSession, GAME_REPLAY_VERSION, type Recording, type RecordingSession } from './recording.ts';
 import { replayRecord } from './replay.ts';
-import { contentOf, PRODUCER, roundTrip } from './replay.test-support.ts';
+import { contentOf, gameplayDigest, PRODUCER, roundTrip } from './replay.test-support.ts';
 import { RULES_VERSION } from './rules-version.ts';
 import { snapshotHash, type GameSnapshot } from './snapshot.ts';
 
@@ -76,13 +76,13 @@ function messagesContent(status: readonly number[]) {
 
 /**
  * The synthetic craft info with the player and the base kinds 17 and 18 without speed, so nothing moves: the bases'
- * +0xB8 is 0; the player's is the smallest positive f32 (2^-149), positive as P3-09's Warp check requires (MW-01 check
- * 4), whose movement in a tick rounds to 0.
+ * +0xB8 is 0; the player's is 1, the least P3-09's Warp check and P3-12's speed share allow (MW-01 check 4, FS-12), and
+ * its +0x88 of 2^30 keeps the energy-limited maximum speed trunc(E × 1000 ÷ +0x88) at 0 below the threshold.
  */
 function stillCraftInfo() {
   const info = craftInfoContent();
   for (const kindBit of [17, 18]) info.craft[kindBit].atB8 = 0;
-  info.craft[0].atB8 = 2 ** -149;
+  Object.assign(info.craft[0], { atB8: 1, at88: 2 ** 30 });
   return info;
 }
 
@@ -208,6 +208,17 @@ function rerun(inputs: readonly TickInput[], read: Reader, group: number, hold: 
 
 // Whole runs of several hundred ticks: like the other limit-sized replay tests, longer than the default timeout under load.
 describe('communications replay (P3-10 AC-12, CB-16)', { timeout: 60_000 }, () => {
+  // P3-12/10 (docs/plan/p3/02/spec.md, FS-08): the presentation facts change no rule outcome or draw; the digest is the
+  // one this run had before them (replay.test-support.ts). P3-12/32 raised the player's +0xB8 to 1 (FS-12); the digest
+  // of that input is the one the code before FS-12 gives (main at e6684c84, with P3-11's rules).
+  // P3-03 修订 4 (P3-13/11) raised the slice definition version to 7, which the synthetic identity in the snapshot carries;
+  // the rules and draws are unchanged.
+  // P3-13/24 gave the synthetic package the shapes of the shipped HUD content and texts (drawable by the cockpit), which
+  // the synthetic identity in the snapshot carries; the rules and draws are unchanged.
+  it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
+    expect(gameplayDigest(DOCKING_INPUT, RECORDING.record.ticks)).toBe('841cc6cd41088357');
+  });
+
   it('runs the docking chain twice in one world: wait, reply, countdown, docking, base keys and launch', () => {
     expect(of('docking-requested').map(({ tick, dockingObject, previousSubState }) => [tick, dockingObject, previousSubState])).toEqual([
       [62, BASE_A, 0], [ticksOf('departed')[0] + 3, BASE_B, 0],
