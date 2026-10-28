@@ -45,6 +45,7 @@ updated: 2026-10-28
 - `src/render/cockpit/composition/**`：计划新增合成层与测试。
 - `docs/engineering/modules/app.md`：运行/API同步。
 - `docs/engineering/modules/render.md`：合成/API同步。
+- `src/render/cockpit/presentation/cockpit-limits.ts`：右显示屏改为 CPU 设备后的 GPU 计划（renderTargets 0，协调者增补）。
 
 ## 验收标准
 
