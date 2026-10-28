@@ -41,6 +41,7 @@ updated: 2026-10-28
 - `docs/engineering/keyboard-input.md`：右键/资格/恢复。
 - `docs/engineering/slice-gaps.md`：标注状态。
 - `docs/guides/local-import.md`：新导入与真实功能入口。
+- `src/content/hud/hud-text-payload.ts`：仅更正 `mapCornerLabel` 注释（放大窗原点 + (4,4)，06/22；协调者增补）。
 
 ## 验收标准
 
