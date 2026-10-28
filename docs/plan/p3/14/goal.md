@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "14"
-updated: 2026-10-24
+updated: 2026-10-28
 ---
 
 # P3-14：飞行音效触发 — Goal
@@ -80,7 +80,7 @@ updated: 2026-10-24
 | [04-mode-reachability-research.md](./subtasks/04-mode-reachability-research.md) | — | completed |
 | [05-evidence-contract-baseline.md](./subtasks/05-evidence-contract-baseline.md) | 01, 02, 03, 04 | completed |
 | [06-shared-contract-approval.md](./subtasks/06-shared-contract-approval.md) | 05 | completed |
-| [07-presentation-contract-approval.md](./subtasks/07-presentation-contract-approval.md) | 06 | blocked |
+| [07-presentation-contract-approval.md](./subtasks/07-presentation-contract-approval.md) | 06 | in-progress |
 | [08-core-audio-read-models.md](./subtasks/08-core-audio-read-models.md) | 06 | completed |
 | [09-content-bindings.md](./subtasks/09-content-bindings.md) | 06 | completed |
 | [10-voice-parameters-progress.md](./subtasks/10-voice-parameters-progress.md) | 06 | completed |
@@ -97,7 +97,7 @@ updated: 2026-10-24
 | [21-runtime-replay-boundaries.md](./subtasks/21-runtime-replay-boundaries.md) | 19, 20 | pending |
 | [22-browser-audio-output.md](./subtasks/22-browser-audio-output.md) | 18, 19, 20 | pending |
 | [23-browser-lifecycle-resources.md](./subtasks/23-browser-lifecycle-resources.md) | 22 | pending |
-| [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | blocked |
+| [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | pending |
 | [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | pending |
 | [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | pending |
 | [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23, 26 | pending |
@@ -119,6 +119,7 @@ updated: 2026-10-24
   Resume when: P3-12 的相机/效果接口合入 main（或其 spec 的听者与 EXPL 交接节在 main 上可读），且 P3-13 的共享 HUD 与 P3-11 的失利/救援/结果衔接各有已批准 spec；届时协调者起草 D-02 并取得用户批准。
 - **2026-10-17 — 集成时交给 27 的文档提议：** 09、12 建议在 [app 分册](../../../engineering/modules/app.md)新增 flight-audio 一节（content.ts 的 `bindFlightSounds` 等 API、12 的声部账本）；12 建议在 audio A-03 的漂移边缘一条补注“从一致的计数出发，分配、回收、句柄停止与全部停止都到不了该边缘（高概率：代码规则推理与模拟）”；11 的三处暂停/恢复解释已写入 platform 分册，16/17 以此为准。11 首次集成因 12 的控制器替身缺 `pause`/`resume` 失败，扩展 11 的写入范围后重做通过。
 - **2026-10-24 — 合并含 P3-11 的 main：** 两边各把 `RULES_VERSION` 由 7 递增为 8，合并后为 9；快照格式取 P3-11 的 7，replay 格式仍为 3。P3-11 的退场开始改经 `retire`，活动实体各发 `object-retired`（FA-07 中原先阻塞的拆除一项）；P3-11 测试中的 `hit` 补上 FA-05 字段，若干事件次序断言加入 `object-retired`。记录见 [P3-02 审批的 2026-10-24 说明](../02/spec.md#审批)。P3-11 的 spec 现已在 main，07 仍等 P3-12 与 P3-13 的接口。
+- **2026-10-28 — 合并含 P3-12、P3-13 的 main；07、24 解除阻塞：** 合并提交 `a8c9008b`：`RULES_VERSION` 11、快照格式 9、replay 格式 3；`RenderEntity`、`CombatTarget` 并存两边字段，`recordMaximumSpeed` 只留一份；类型 9 指示条改读分区级 `communications.warnings`（FA-01）。07 的恢复条件已满足（P3-11、P3-12、P3-13 的已批准 spec 与实现都在 main 上）。24 的恢复条件已满足：用户本次执行指示“在执行 goal 的过程中，如果需要修改 spec 或其他 Decision，我都批准你修改。用任何方式来 unblock 任何问题，完成这个 goal”，授权运行 DOSBox-X 取证。同一授权覆盖 07 的 D-02 定稿及其引起的 spec/合同修订。
 
 ## 审批
 
