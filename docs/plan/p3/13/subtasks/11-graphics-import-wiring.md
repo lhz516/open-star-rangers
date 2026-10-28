@@ -41,6 +41,10 @@ updated: 2026-10-28
 - `tools/package-check.test.ts`：合成工具测试。
 - `docs/engineering/modules/content.md`：新角色与版本。
 - `docs/guides/local-import.md`：重新导入条件。
+- `src/original-data/conversion/converter-version.test.ts`、`src/app/import/import-pipeline.test.ts`、`src/app/resources/resource-holder-cache.test.ts`：版本与资产计数断言（11 的范围请求）。
+- `src/core/replay/comm-replay.test.ts`、`src/core/replay/ai-replay.test.ts`、`src/core/replay/combat-replay.test.ts`、`src/core/replay/map-warp-replay.test.ts`：仅切片定义版本引起的摘要字面量（11 的范围请求）。
+- `e2e/import-worker.spec.ts`、`e2e/ai-wingman.development.spec.ts`、`e2e/support/version-4.ts`：版本与角色断言（11 的范围请求）。
+- `docs/engineering/modules/original-data.md`、`docs/engineering/modules/workers.md`、`docs/guides/tools.md`、`src/original-data/source-error.ts`：文档与注释同步（11 的范围请求）。
 - `src/original-data/conversion/production-hud-text.ts`：观察距离表的 EXE 区域读取（08 增补）。
 - `src/original-data/conversion/production-hud-text.test.ts`：合成测试（08 增补）。
 - `src/original-data/conversion/production-executable.ts`：EXE 区域规则（08 增补）。
