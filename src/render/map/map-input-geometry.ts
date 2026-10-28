@@ -4,6 +4,11 @@
  * read the same value. Main-map positions are continuous: the left/top edges are 0 and the right/bottom edges are 1,
  * never the index of the last whole pixel. Pure arithmetic over CSS pixels with no device pixel ratio, so it runs
  * unchanged in Node and a ratio change cannot scale a position twice.
+ *
+ * Production (P3-13 spec, 地图输入几何与指针 and DC-09): the screen and main map come from `data/hud/map-geometry`
+ * (`mapPictureGeometry`, whose inclusive record's right and bottom become the last column and row + 1), and the frame
+ * is where the picture is actually shown, measured from the border-box top-left of the input zone (the Pointer Lock
+ * target), the origin absolute pointer samples use (`zoneMapGeometry`).
  */
 import type { ViewportFrame } from '../viewport/viewport-layout.ts';
 
@@ -20,8 +25,19 @@ export interface MapInputGeometry {
   readonly screen: { readonly width: number; readonly height: number };
   /** The main map inside the logical screen. */
   readonly mainMap: MapBounds;
-  /** Where the logical screen is shown: CSS px inside the container whose content box the layout measured. */
+  /** Where the logical screen is shown: CSS px from the input zone's (Pointer Lock target's) border-box top-left. */
   readonly frame: ViewportFrame;
+}
+
+/** The geometry without its frame: the map picture's (`MapPictureGeometry`), from the map's content. */
+export type MapLogicalGeometry = Omit<MapInputGeometry, 'frame'>;
+
+/** An element's border box in client (viewport) CSS px, as `getBoundingClientRect` reports it. */
+export interface ClientBox {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 /** The presentation owner's read-only port; null while the map cannot be presented ("地图输入未就绪"). */
@@ -35,7 +51,7 @@ export interface MapPosition {
   readonly down: number;
 }
 
-/** CSS px from the top-left corner of the container's content box; also a movement in CSS px. */
+/** CSS px from the input zone's border-box top-left; also a movement in CSS px. */
 export interface ContainerPoint {
   readonly x: number;
   readonly y: number;
@@ -92,6 +108,63 @@ export function checkMapInputGeometry(geometry: MapInputGeometry | null): MapInp
   checkEdges(mainMap.left, mainMap.right, screen.width, 'mainMap.left', 'mainMap.right');
   checkEdges(mainMap.top, mainMap.bottom, screen.height, 'mainMap.top', 'mainMap.bottom');
   return frame.width === 0 || frame.height === 0 ? null : geometry;
+}
+
+/**
+ * The geometry of a logical map picture shown at `shown` inside the input zone whose border box is `zone`, both client
+ * CSS px: the frame is their offset and the shown size, so black bars, borders, fullscreen, zoom and the pixel ratio
+ * all enter through the measured boxes. Null while any is missing; a hidden picture's empty box gives a frame that
+ * checkMapInputGeometry treats as not ready, and non-finite or inverted values remain its contract errors.
+ */
+export function zoneMapGeometry(logical: MapLogicalGeometry | null, zone: ClientBox | null, shown: ClientBox | null): MapInputGeometry | null {
+  if (logical === null || zone === null || shown === null) return null;
+  return Object.freeze({
+    screen: logical.screen,
+    mainMap: logical.mainMap,
+    frame: Object.freeze({ left: shown.left - zone.left, top: shown.top - zone.top, width: shown.width, height: shown.height }),
+  });
+}
+
+/** What a geometry port measures of an element: an `HTMLElement` in the browser. */
+export interface MeasuredElement {
+  readonly isConnected: boolean;
+  getBoundingClientRect(): ClientBox;
+}
+
+export interface ZoneGeometrySources {
+  /** The map picture's geometry (`mapPictureGeometry` of the run's content); null while there is none. */
+  readonly logical: () => MapLogicalGeometry | null;
+  /** The input zone, the Pointer Lock target; null while unmounted. */
+  readonly zone: () => MeasuredElement | null;
+  /** The element showing the logical screen, such as the canvas; null while there is none. A hidden one is not ready. */
+  readonly shown: () => MeasuredElement | null;
+}
+
+const boxOf = (element: MeasuredElement | null): ClientBox | null => (element?.isConnected ? element.getBoundingClientRect() : null);
+
+/**
+ * The production geometry port: each read measures the zone's and the shown element's boxes (zoneMapGeometry), so a
+ * resize, fullscreen, zoom or pixel ratio change applies at once; it observes and schedules nothing.
+ */
+export function createZoneGeometryPort({ logical, zone, shown }: ZoneGeometrySources): MapInputGeometryPort {
+  return Object.freeze({
+    read() {
+      const picture = logical();
+      return picture && zoneMapGeometry(picture, boxOf(zone()), boxOf(shown()));
+    },
+  });
+}
+
+/** Whether two geometries hold the same values; null only equals null. */
+export function sameMapInputGeometry(a: MapInputGeometry | null, b: MapInputGeometry | null): boolean {
+  return a === b || (a !== null && b !== null && sameLogicalGeometry(a, b) && a.frame.left === b.frame.left
+    && a.frame.top === b.frame.top && a.frame.width === b.frame.width && a.frame.height === b.frame.height);
+}
+
+/** Whether two geometries have the same screen and main map, whatever their frames. */
+export function sameLogicalGeometry(a: MapLogicalGeometry, b: MapLogicalGeometry): boolean {
+  return a.screen.width === b.screen.width && a.screen.height === b.screen.height && a.mainMap.left === b.mainMap.left
+    && a.mainMap.top === b.mainMap.top && a.mainMap.right === b.mainMap.right && a.mainMap.bottom === b.mainMap.bottom;
 }
 
 const position = (right: number, down: number): MapPosition => Object.freeze({ right, down });

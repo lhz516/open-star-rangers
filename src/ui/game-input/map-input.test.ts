@@ -133,6 +133,10 @@ function setup(options: Options = {}) {
     press(button = 0) { input.pointer(relative('down', 0, 0, button), now({})); },
     release(button = 0) { input.pointer(relative('up', 0, 0, button), now({})); },
     position: () => input.position.read(),
+    /** The right button's level as the map picture reads it. */
+    right: () => input.rightButton.read(),
+    /** Whether a context menu request now is suppressed. */
+    menu: (patch: Partial<InputMoment> = {}) => input.contextMenu(now(patch)),
     mapState: () => state.status?.state,
     /** The log since the last call. */
     take() { return log.splice(0); },
@@ -545,5 +549,139 @@ describe('held left button', () => {
     s.pointer(absolute('move', clientX(0.5), clientY(0.5)));
     s.frame(30);
     expect(s.take().filter((entry) => entry.startsWith('select'))).toEqual(['select 0.5,0.5 @10', 'select 0.5,0.5 @18']);
+  });
+});
+
+// P3-13 subtask 23: the right button's level for the map picture's distance labels (P3-13 spec 地图输入几何与指针
+// “右键”, DC-09 and Δ-09; P3-05's P3-13 sync “右键”), and the context menu's scope.
+describe('right button level', () => {
+  it('is held from a locked press until its release, across frames, and never submits or moves', () => {
+    const s = locked();
+    expect(s.right()).toBe(false);
+    s.press(2);
+    // Held: every read until the release sees it, which the map picture's debounce turns into its repeat.
+    for (const clock of [12, 14, 40]) {
+      s.frame(clock);
+      expect(s.right()).toBe(true);
+    }
+    s.release(2);
+    expect(s.right()).toBe(false);
+    // A press and release before the next read are not seen, as the original's level read.
+    s.press(2);
+    s.release(2);
+    s.frame(42);
+    expect({ right: s.right(), position: s.position(), log: s.take() }).toEqual({ right: false, position: FIXED_START, log: [] });
+  });
+
+  it('leaves the left button alone: its select, repeat and release are unchanged by a right press or release', () => {
+    const s = locked();
+    s.press();
+    s.press(2);
+    s.release(2);
+    s.frame(18);
+    s.release();
+    s.frame(26);
+    expect({ right: s.right(), log: s.take() }).toEqual({
+      right: false, log: ['hover 0.25,0.75 @10', 'select 0.25,0.75 @10', 'select 0.25,0.75 @18'],
+    });
+    // A left release does not end a held right button.
+    s.press(2);
+    s.press();
+    s.release();
+    expect(s.right()).toBe(true);
+  });
+
+  it('counts unlocked only on the main map and ends once the pointer leaves it; locking and click-to-lock ignore it', () => {
+    const s = setup({ lock: 'unsupported' });
+    s.frame(10);
+    s.pointer(absolute('down', RECT.left + 50, clientY(0.5), 2));
+    expect(s.right()).toBe(false);
+    s.pointer(absolute('down', clientX(0.5), clientY(0.5), 2));
+    expect({ right: s.right(), position: s.position() }).toEqual({ right: true, position: FIXED_START });
+    s.pointer(absolute('move', clientX(0.9), clientY(0.5)));
+    expect(s.right()).toBe(true);
+    s.pointer(absolute('move', clientX(1.01), clientY(0.5)));
+    s.pointer(absolute('move', clientX(0.5), clientY(0.5)));
+    expect(s.right()).toBe(false);
+    // The main map's edges count, as the clamp includes them.
+    s.pointer(absolute('down', clientX(1), clientY(0), 2));
+    expect(s.right()).toBe(true);
+    expect(s.take().filter((entry) => entry.startsWith('select'))).toEqual([]);
+
+    for (const lock of ['idle', 'pending'] as const) {
+      const t = setup({ lock });
+      t.frame(10);
+      t.take();
+      t.pointer(absolute('down', clientX(0.5), clientY(0.5), 2));
+      expect({ lock, right: t.right(), log: t.take() }).toEqual({ lock, right: false, log: [] });
+    }
+  });
+
+  it('clears on pause, focus loss, unlock, leaving the map, a run change and an unlocked geometry change; only a new press holds again', () => {
+    const ends: readonly [string, (s: ReturnType<typeof setup>) => void][] = [
+      ['pause', (s) => { s.frame(12, { running: false }); s.state.lock = 'active'; s.frame(14); }],
+      ['stop', (s) => { s.sync({ running: false }); s.state.lock = 'active'; s.sync(); }],
+      ['hidden or blurred', (s) => { s.sync({ eligible: false }); s.state.lock = 'active'; s.sync(); }],
+      ['unlock', (s) => {
+        s.state.lock = 'idle';
+        s.input.clear();
+        s.state.lock = 'active';
+        s.input.refresh();
+      }],
+      ['leaving the map', (s) => { s.frame(12, { context: 'flight' }); s.state.lock = 'active'; s.frame(14); s.frame(16); }],
+      ['run change', (s) => { s.frame(12, { runId: 2 }); s.state.lock = 'active'; s.frame(14); }],
+      ['geometry loss', (s) => {
+        s.state.geometry = null;
+        s.frame(12);
+        s.state.geometry = GEOMETRY;
+        s.state.lock = 'active';
+        s.frame(14);
+      }],
+    ];
+    for (const [name, end] of ends) {
+      const s = locked();
+      s.press(2);
+      end(s);
+      expect({ name, state: s.mapState(), right: s.right() }).toEqual({ name, state: 'locked', right: false });
+      s.press(2);
+      expect({ name, right: s.right() }).toEqual({ name, right: true });
+    }
+    const s = setup({ lock: 'failed' });
+    s.frame(10);
+    s.pointer(absolute('down', clientX(0.5), clientY(0.5), 2));
+    s.state.geometry = { ...GEOMETRY, frame: { ...GEOMETRY.frame, left: 0 } };
+    s.frame(12);
+    expect(s.right()).toBe(false);
+  });
+
+  it('reads false whenever the map input is not qualified, even before the clear reached it', () => {
+    const s = locked();
+    s.press(2);
+    // A paused frame's facts: the map picture reading the level in between sees it released.
+    s.input.sync(moment({ context: 'map', running: false }));
+    expect(s.right()).toBe(false);
+  });
+});
+
+describe('context menu', () => {
+  it('is suppressed exactly while the map input qualifies, locked or not', () => {
+    const s = setup({ lock: 'idle' });
+    expect(s.menu({ context: 'flight' })).toBe(false);
+    s.state.geometry = null;
+    expect({ menu: s.menu(), state: s.mapState() }).toEqual({ menu: false, state: 'not-ready' });
+    s.state.geometry = GEOMETRY;
+    s.frame(10);
+    expect({ menu: s.menu(), state: s.mapState() }).toEqual({ menu: true, state: 'click-to-lock' });
+    for (const patch of [{ running: false }, { eligible: false }, { runId: null }] as const) {
+      expect(s.menu(patch)).toBe(false);
+      s.sync();
+      s.frame(12);
+    }
+    s.state.lock = 'active';
+    expect(s.menu()).toBe(true);
+    s.state.lock = 'unsupported';
+    expect(s.menu()).toBe(true);
+    // It neither selects nor locks.
+    expect(s.take().filter((entry) => entry !== 'start')).toEqual([]);
   });
 });

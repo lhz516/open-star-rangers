@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-24
+updated: 2026-10-28
 related: [ADR-0004, ADR-0018, U-011, U-012]
 ---
 
@@ -55,7 +55,7 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 | `KeyP`（可带 Shift；不带有效 Ctrl/Meta；Alt 独立并行） | 所有游戏输入上下文，包括 paused | 任务所有者暂停/继续控制 | 项目宿主控制 |
 | `Escape` | flight、warp、base；map 中未锁指针 | 打开任务菜单；地图中关闭地图 | 前者为项目适配，后者与原版 Q-02 一致 |
 | 数值态小键盘 `Numpad1`–`Numpad9` / 状态相同态小键盘键 | flight/base | NumLock 与 Shift 状态不同表示数字；相同态下的 `Numpad8` 前视/基地上导航、`Numpad2` 飞行 G-08/基地下导航，其余已列视角键为 G-08 | 原版扫描码语义 |
-| 鼠标输入 | map | 地图 hover、select 与按住左键重复；见 §6 | 原版地图行为，项目换算与输入策略 |
+| 鼠标输入 | map | 地图 hover、select 与按住左键重复；主地图内右键为距离标签的按住电平（无命令）；见 §6 | 原版地图行为，项目换算与输入策略；右键清除时机见 Δ-09 |
 
 表格是生产绑定的高层索引；精确 modifier 状态、重复标志、动作对象与上下文按 [bindings.ts](../../src/ui/game-input/bindings.ts) 及其矩阵测试为准。`KEYBOARD_LOCK_CODES` 从实际绑定 code 与 Ctrl 修饰码推导，去除浏览器不能锁定的 Escape、Tab、Meta 与 F12。
 
@@ -97,17 +97,19 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 `GameInputConsumer.capabilities` 由 [capabilities.ts](../../src/ui/game-input/capabilities.ts) 实现，三种能力状态是 `unsupported`、`idle`、`pending`、`active`、`failed`，并带 ownerId、runId、请求代次与稳定失败类别。状态基于真实文档/平台端口事实，不以 API 存在或 Promise 成功冒充活动状态。
 
 - 开始按钮的用户手势可同步请求全屏；只有该次 start 成功后才将申请关联到新 run。能力控制器只退出本任务自己进入且仍拥有的全屏。Keyboard Lock 只在 API 全屏、running、输入区合格且无未结全屏变更时锁绑定表中的 code；暂停、失焦、菜单、停止、离页或离开全屏时立即解锁。失败不自动重试，须新的明确手势。
-- 全屏或 Pointer Lock 退出造成的运行清键必须走 §5 的 `GameInputConsumer.clear(reason)`。Pointer Lock 的目标是被测量地图 frame 的同一无边框、无内边距输入容器；所有权、申请代次、迟到结果与异步释放屏障由能力控制器管理。
+- 全屏或 Pointer Lock 退出造成的运行清键必须走 §5 的 `GameInputConsumer.clear(reason)`。Pointer Lock 的目标就是输入区，地图 frame 从它的边框盒左上量起，与绝对指针采样同一原点；所有权、申请代次、迟到结果与异步释放屏障由能力控制器管理。Pointer Lock 端口同时把宿主报告的输入区 context menu 请求（`PointerLockHost.listenContextMenu`）交给能力控制器，只在地图输入合格时阻止默认菜单（P3-13 的地图输入几何与指针）；浏览器宿主在输入区所在文档上监听、只处理目标为输入区的请求，没有该方法的宿主不阻止。Chrome 在 Pointer Lock 中不派发 context menu，所以实际只在无锁回退与等待锁定时起作用（[P3-13/23 的完成证据](../plan/p3/13/subtasks/23-map-input-geometry.md#完成证据)）。
 - `Escape` 不在 Keyboard Lock 清单中。锁指针时 Escape 仅交浏览器解锁；接收到 Pointer Lock 结束通知后，地图仍开，须再点击显式重锁，不选目标。
 
 ### 地图鼠标与光标
 
 [map-input.ts](../../src/ui/game-input/map-input.ts) 将地图上下文的指针输入转成 `map-point`，不把地图规则放进 React 或 Core 外部。地图状态在 `InputStatus.map`：`off`、`invalid`、`not-ready`、`suspended`、`click-to-lock`、`locking`、`locked`、`unlocked`；同时提供 `systemPointerHidden` 与几何错误。策略是注入项，生产选择见 [map-input-policy.ts](../../src/ui/game-input/map-input-policy.ts)：每次打开按原版起点公式初始化，左键按住重复间隔为 8 个 projection clock 单位；策略无默认回退值。
 
-- 输入位置为主地图内归一化的 `{ right, down }`，几何由呈现所有者经 [map-input-geometry.ts](../../src/render/map/map-input-geometry.ts) 提供；屏幕像素、主地图边界与逻辑画面在容器 content-box 中的 CSS 像素 frame 共用同一只读几何。零尺寸/缺几何为未就绪，非法几何显式报错。
+- 输入位置为主地图内归一化的 `{ right, down }`，几何由呈现所有者经 [map-input-geometry.ts](../../src/render/map/map-input-geometry.ts) 提供；屏幕像素、主地图边界与逻辑画面的 CSS 像素 frame 共用同一只读几何。生产几何（P3-13/23）的屏幕与主地图取自同一 `data/hud/map-geometry`（`mapPictureGeometry`：含端点记录的右/下边界为末列/末行 + 1），frame 由 `createZoneGeometryPort` 在每次读取时测量输入区边框盒与实际显示画面的元素（`zoneMapGeometry`），所以黑边、边框、全屏、缩放与像素比都只经测得的 CSS 盒进入。零尺寸/缺几何（含隐藏的画面）为未就绪，非法几何显式报错。
 - 锁定态用平台相对移动，乘注入的 `movementScale` 转成 CSS 像素后钳制到主地图；非锁定态在支持或申请失败时用地图内的绝对位置回退，区域外/黑边不选取并显示系统指针。`movementScale` 依据引擎报告单位选择（CSS px 时为 1，device px 时为 1/devicePixelRatio）。
-- 合格时如仍有用户激活则申请 Pointer Lock，否则提示点击锁定。普通移动只保留最新 hover，每个 running 帧至多提交一次；左键新按下先补同点 hover 再 select，按住按策略间隔重复，每帧至多一次且不追赶。锁定/聚焦点击只建立锁，不选目标；右键无项目动作（原版右键的距离标签开关归 P3-13 的呈现，见下节）。
-- [map-cursor.ts](../../src/render/map/map-cursor.ts) 绘制本项目的十字光标，只绘制、不持有规则或调度；这不是原版选取框外观。几何测量容器必须与 Pointer Lock 目标一致。
+- 合格时如仍有用户激活则申请 Pointer Lock，否则提示点击锁定。普通移动只保留最新 hover，每个 running 帧至多提交一次；左键新按下先补同点 hover 再 select，按住按策略间隔重复，每帧至多一次且不追赶。锁定/聚焦点击只建立锁，不选目标；右键从不选取、不提交命令。
+- **右键（P3-13/23）：** `GameInputConsumer.mapRightButton` 是主地图右键的电平，供 `CockpitTick.mapRightButton`：同一批中各 tick 取处理该批时读到的值，去抖与翻转节奏归 P3-13 的地图画面（DC-09）。只有合格时的按下才计入：锁定态任何按下（指针总在主地图内），无锁回退时按在主地图内（含边缘）；`click-to-lock` 与 `locking` 中忽略，也不申请锁定。松开、无锁回退时移出主地图，以及结束左键按住的各条件（暂停、隐藏、失焦、解锁、离图、换运行、几何失效）都清为未按，须新按下（Δ-09）；锁定态的 resize 保留。按下与松开都在两次读取之间时不会被读到，与原版读取当前电平一致。
+- **绘制 ready（P3-13/23）：** 生产的 `MapInputOptions.cursor()` 是 [map-presentation-port.ts](../../src/render/map/map-presentation-port.ts) 的 `cursor`：`draw()` 不绘制、不提交、不推进，只核对最近一次实际提交的地图画面凭证（`MapPictureModule.drawn()`）与当前几何的屏幕/主地图一致；地图首帧照常绘制，不等待输入资格，输入在其提交后的下一帧取得资格。装配在每次实际提交后调用 `submitted(drawn())`，失去布局、设备或画布绑定或提交失败时调用 `revoke()`，它经 `revoked`（接 `GameInputConsumer.syncMap`）立即清键、退出本运行的锁定并恢复系统指针；恢复后先画，再按既有资格申请锁定，不自动选取。
+- [map-cursor.ts](../../src/render/map/map-cursor.ts) 绘制本项目的十字光标，只绘制、不持有规则或调度；这不是原版选取框外观，只留给隔离测试入口。几何测量的输入区必须与 Pointer Lock 目标一致。
 
 ### 地图与 Warp 上下文中的命令结果
 
@@ -118,11 +120,11 @@ P3-09 起 `toggle-map`、`map-point` 与 `request-warp` 由 Core 判定（门禁
 - `w`：依次为玩家不可用（`player-unavailable`）、Warp 或基地上下文与从基地打开的地图（`wrong-context`）、尚未选过目的地（`no-destination`）、Warp 间隔未到（`cooldown`）与能量不足（`insufficient-energy`）。
 - 同一批次中被接受的 `m` 或 `w` 之后的命令按新的上下文判定：开图之后的速度、开火、目标与能量命令为 `wrong-context`，`w` 之后的第二个 `w` 与 `map-point` 为 `wrong-context`；本 tick 的手动轴按批次结束时的上下文处理（地图中为 0）。与原版每次轮询一键的差异见 MW-12 的差异 1。
 - 地图上下文中的数字、Enter、菜单导航、通讯（`c`、`x`）与离港（`l`）在玩家不可用时为 `player-unavailable`，否则为 `wrong-context`（后两类由 P3-10 的 CB-07 判定）。Warp 上下文中速度、档位、目标、开火、能量、数字与 Enter 为 `wrong-context`，操纵轴照常进入 Warp 中的积分。
-- 原版的右键在地图中切换放大窗口的距离标签显示并去抖，没有规则读者：它是 P3-13 的呈现状态，不需要 Core 命令（P3-02 spec 的 MW-11、MW-16；P3-05 审批节的交接已按此同步）。项目当前不为它绑定动作。
+- 原版的右键在地图中切换放大窗口的距离标签显示并去抖，没有规则读者：它是 P3-13 的呈现状态，不需要 Core 命令（P3-02 spec 的 MW-11、MW-16；P3-05 审批节的交接已按此同步）。输入层只给出上文的右键电平，不录制、不提交命令。
 
 ### 对照差异与下游责任
 
-项目明确不仿真 DOS 单键轮询/丢键与 BIOS 按键重复：采用逐 tick FIFO 命令队列和帧后有界 32/16 时钟单位重复。上下文切换不保留手动输入；Alt 是可与其他绑定并行的主炮电平；`p`/Shift+`P` 是项目暂停控制，不复现原版屏幕闪光差异；被毁序列仍可用宿主暂停；Esc 遵从 Pointer Lock 浏览器解锁语义；地图 select 在新按下时立即入队、不丢轮询间短按，hover 按帧刷新，地图关闭/暂停/解锁时的指针移动不累计，重锁不延续左键按住。项目操纵轴在地图与基地为 0。Q-06 的重复数值只属于配置/模拟器源码推导，不是真实持续按住样本。完整逐项证据与置信度见[原版键位表](../original/input/key-map.md)及 [P3-05 R-23](../plan/p3/05/spec.md#对照r-23)。
+项目明确不仿真 DOS 单键轮询/丢键与 BIOS 按键重复：采用逐 tick FIFO 命令队列和帧后有界 32/16 时钟单位重复。上下文切换不保留手动输入；Alt 是可与其他绑定并行的主炮电平；`p`/Shift+`P` 是项目暂停控制，不复现原版屏幕闪光差异；被毁序列仍可用宿主暂停；Esc 遵从 Pointer Lock 浏览器解锁语义；地图 select 在新按下时立即入队、不丢轮询间短按，hover 按帧刷新，地图关闭/暂停/解锁时的指针移动不累计，重锁不延续左键按住；右键电平在暂停、隐藏、失焦、解锁、离开无锁回退区、离图与换运行时清为未按，原版则每次读取都取当前电平（P3-13 的 Δ-09）。项目操纵轴在地图与基地为 0。Q-06 的重复数值只属于配置/模拟器源码推导，不是真实持续按住样本。完整逐项证据与置信度见[原版键位表](../original/input/key-map.md)及 [P3-05 R-23](../plan/p3/05/spec.md#对照r-23)。
 
 下游交接：
 
@@ -130,7 +132,7 @@ P3-09 起 `toggle-map`、`map-point` 与 `request-warp` 由 Core 判定（门禁
 - **P3-11（被毁序列与终局，已交付）：** 被毁序列（子状态 2）中玩家不可用：飞行命令为 `player-unavailable`；视角已是 0x11，MW-04 的地图例外（只在地图中先于玩家可用性判断）不适用，所以 `toggle-map` 同样遇到不可用的玩家；F1 的 `cockpit-front` 仍没有规则（`not-implemented`），不会离开被毁视角；`p` 暂停与任务菜单仍走项目控制；信标等待与结算等待中照常飞行。结果锁存之后（锁存与退场的 tick）每条命令为 `ignored`/`mission-ended`。完成截断的帧与运行中保持的截断帧同样不算运行中，输入消费者不再提交重复命令并清除按住的键；完成之后 Runtime 以 `completed` 拒绝输入，终局占位与结果页不接受游戏输入（P3-11/18 的浏览器回归核对了结果页上的 `p`、Backspace 与 `m` 不推进 tick）。
 - **P3-08（`b`，已交付）：** Core 按飞行命令的共同门禁判定 `drop-transponder`（玩家不可用为 `player-unavailable`，非飞行上下文为 `wrong-context`；没有次数、能量或冷却门禁），在同一 tick 的请求处理中于玩家身后创建 Xpon 并发出 `transponder-deployed`。原版按住 `b` 靠 BIOS 重复、按住 Alt 时只有空格起作用；项目按上文的可重复节奏，Alt+`b` 仍投放，两项都归入本节已列的同类差异。切片中通讯菜单从不占用 `b`（菜单只用数字与 `x`），菜单打开时仍提交并由 Core 判定。Node 证据见 [P3-08 子任务 22](../plan/p3/08/subtasks/22-xpon-b-key.md#完成证据)，浏览器触发归其子任务 24。
 - **P3-10（已交付）：** 通讯菜单对数字与 `x` 的捕获优先级、菜单行为与基地服务队列/离港规则已在 Core 中实现，规则 5 的阻塞由“菜单只用数字与 `x`”的创建检查闭合；浏览器中的停靠、基地页面与离港由 P3-10/23 验证（`e2e/base-interaction.development.spec.ts`），正式通讯画面归 P3-13。
-- **P3-13：** 生产地图几何、地图指针与原版外观；接通完整画面时核对与输入共同使用的 geometry/container。
+- **P3-13：** 生产几何端口、右键电平、context menu 作用域与绘制 ready 凭证端口已由 23 交付（见上文）；地图画面与原版指针外观由 22 交付；运行装配（以凭证端口取代生产十字光标、把电平接入 `CockpitTick`）归 24。
 - **P3-15：** 真实任务完整地图路径及输入层/Core 联合复验，包括地图上下文、同 tick 门禁、指针合成和清键。
 
 <a id="7-尚未实现的键盘能力"></a>

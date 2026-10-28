@@ -22,13 +22,19 @@
  *   lock, a left click on the input zone only asks for one and selects nothing, and nothing moves the cursor. Where the
  *   lock is unsupported or its latest request failed, absolute input inside the main map moves the cursor and selects
  *   the same way; outside it shows the system pointer and submits nothing. A right button never selects.
+ * - **Right button** (P3-13 spec, 地图输入几何与指针 and DC-09; P3-05's P3-13 sync): no command, only a level for the
+ *   map picture's distance-label toggle, read when the cockpit presentation processes a batch (`rightButton`). A
+ *   press counts only while qualified and on the main map: locked, or unlocked on the main map; a click-to-lock or
+ *   locking input zone ignores it. Release, leaving the main map unlocked and everything that ends a held left button
+ *   clear it (Δ-09), so it takes a new press. A press and release between two reads are not seen, as in the original.
+ *   While qualified, the input zone suppresses the context menu (`contextMenu`).
  */
 import type { Command } from '../../core/contracts/tick-input.ts';
-import type { PointerInput, PointerSample } from '../../platform/input/pointer-lock.ts';
+import type { AbsolutePointerSample, PointerInput, PointerSample } from '../../platform/input/pointer-lock.ts';
 import type { MapCursorDrawer, MapCursorPositionPort } from '../../render/map/map-cursor.ts';
 import {
-  checkMapInputGeometry, clampMapPosition, insideMap, mapPositionAt, moveMapPosition, type MapInputGeometry, type MapInputGeometryPort,
-  type MapPosition,
+  checkMapInputGeometry, clampMapPosition, insideMap, mapPositionAt, moveMapPosition, sameMapInputGeometry, type MapInputGeometry,
+  type MapInputGeometryPort, type MapPosition,
 } from '../../render/map/map-input-geometry.ts';
 import type { InputCapabilities } from './capabilities.ts';
 import type { InputMoment } from './input-state.ts';
@@ -48,8 +54,10 @@ export interface MapInputOptions {
   /** The map's presentation owner's geometry; its `read` returns null while the map cannot be presented. */
   readonly geometry: MapInputGeometryPort;
   /**
-   * The cursor drawer, which reads `GameInputConsumer.mapCursor`; read at each frame, which draws it. Null while there is
-   * none, which keeps the map input not ready.
+   * Read at each frame, which calls its `draw`: in production the map presentation port (map-presentation-port.ts),
+   * whose `draw` only reads the credential of the map picture actually submitted; in the isolated test entry the
+   * project crosshair drawer, which reads `GameInputConsumer.mapCursor`. Null while there is none, which keeps the map
+   * input not ready.
    */
   readonly cursor: () => Pick<MapCursorDrawer, 'draw' | 'ready'> | null;
   /**
@@ -59,6 +67,11 @@ export interface MapInputOptions {
   readonly movementScale: () => number;
   /** Whether the host still reports a user activation, such as `navigator.userActivation.isActive`. */
   readonly userActivation: () => boolean;
+}
+
+/** A button's level as the map input holds it now. */
+export interface MapButtonPort {
+  read(): boolean;
 }
 
 /** What the map input needs of the input consumer. */
@@ -80,14 +93,9 @@ const MODES: Readonly<Record<CapabilityState, Mode>> = Object.freeze({
 });
 
 const LEFT = 0;
+const RIGHT = 2;
 
 const same = (a: MapPosition | null, b: MapPosition): boolean => a !== null && a.right === b.right && a.down === b.down;
-
-const sameGeometry = (a: MapInputGeometry | null, b: MapInputGeometry | null): boolean => a === b || (a !== null && b !== null
-  && a.screen.width === b.screen.width && a.screen.height === b.screen.height
-  && a.mainMap.left === b.mainMap.left && a.mainMap.top === b.mainMap.top && a.mainMap.right === b.mainMap.right
-  && a.mainMap.bottom === b.mainMap.bottom && a.frame.left === b.frame.left && a.frame.top === b.frame.top
-  && a.frame.width === b.frame.width && a.frame.height === b.frame.height);
 
 function checkedPolicy(policy: MapInputPolicy | null): MapInputPolicy | null {
   if (policy === null) return null;
@@ -120,10 +128,15 @@ export class MapInput {
   #due: number | null = null;
   /** Unlocked: the latest absolute input lay on the main map. */
   #inside = false;
+  /** The right button is held from a press that counted. */
+  #right = false;
   #drawFailed = false;
 
   /** The cursor's read-only position: the opening's, also while suspended, for a still cursor; null hides it. */
   readonly position: MapCursorPositionPort = Object.freeze({ read: () => this.#position });
+
+  /** The right button's level for the map picture: held from a counted press, and only while qualified. */
+  readonly rightButton: MapButtonPort = Object.freeze({ read: () => this.#qualified && this.#right });
 
   constructor(options: MapInputOptions, host: MapInputHost) {
     this.#options = options;
@@ -154,6 +167,12 @@ export class MapInput {
     this.#publish();
   }
 
+  /** A context menu request on the input zone, with the facts of its moment: whether to suppress it. */
+  contextMenu(moment: InputMoment): boolean {
+    this.#settle(this.#observe(moment));
+    return this.#qualified;
+  }
+
   /** After the Pointer Lock state changed, which decides the mode. */
   refresh(): void {
     this.#publish();
@@ -170,6 +189,7 @@ export class MapInput {
     this.#pending = false;
     this.#due = null;
     this.#inside = false;
+    this.#right = false;
   }
 
   /**
@@ -199,9 +219,12 @@ export class MapInput {
     }
     if (this.#geometry === null) this.#drawn = null;
     // An unlocked pointer's place on the main map is unknown under another geometry until its next input.
-    if (this.#inside && !sameGeometry(previous, this.#geometry)) {
-      this.#inside = false;
-      this.#due = null;
+    if (!sameMapInputGeometry(previous, this.#geometry)) {
+      if (this.#inside) {
+        this.#inside = false;
+        this.#due = null;
+      }
+      if (this.#mode() !== 'locked') this.#right = false;
     }
     return running && eligible;
   }
@@ -222,7 +245,7 @@ export class MapInput {
   /** Gaining qualification waits for a draw of the current geometry; keeping it, as across a resize, does not. */
   #ready(): boolean {
     return this.#geometry !== null && this.#position !== null && (this.#options.cursor()?.ready ?? false)
-      && (this.#qualified || sameGeometry(this.#drawn, this.#geometry));
+      && (this.#qualified || sameMapInputGeometry(this.#drawn, this.#geometry));
   }
 
   /**
@@ -244,10 +267,17 @@ export class MapInput {
   #input(input: PointerInput, clock: number): void {
     if (input.type === 'up') {
       if (input.button === LEFT) this.#due = null;
+      else if (input.button === RIGHT) this.#right = false;
+      return;
+    }
+    const mode = this.#mode();
+    if (input.type === 'down' && input.button === RIGHT) {
+      // A press only reads where it is: the move before it has already placed the cursor.
+      if (mode === 'locked') this.#right = true;
+      else if (mode === 'unlocked' && input.sample.mode === 'absolute') this.#right = insideMap(this.#absolute(input.sample));
       return;
     }
     if (input.type === 'down' && input.button !== LEFT) return;
-    const mode = this.#mode();
     if (mode === 'click-to-lock') {
       if (input.type === 'down') this.#host.lock.requestPointerLock();
       return;
@@ -281,15 +311,20 @@ export class MapInput {
    */
   #moveUnlocked(sample: PointerSample): boolean {
     if (sample.mode !== 'absolute') return false;
-    // The Pointer Lock target is the container whose content box the geometry's frame is measured in.
-    const at = mapPositionAt(this.#geometry!, { x: sample.clientX - sample.rect.left, y: sample.clientY - sample.rect.top });
+    const at = this.#absolute(sample);
     this.#inside = insideMap(at);
     if (!this.#inside) {
       this.#due = null;
+      this.#right = false;
       return false;
     }
     this.#setPosition(clampMapPosition(at));
     return true;
+  }
+
+  /** The position under an absolute sample: the geometry's frame is measured from the Pointer Lock target's border box. */
+  #absolute(sample: AbsolutePointerSample): MapPosition {
+    return mapPositionAt(this.#geometry!, { x: sample.clientX - sample.rect.left, y: sample.clientY - sample.rect.top });
   }
 
   #setPosition(position: MapPosition): void {

@@ -36,6 +36,11 @@ export interface PointerLockHost {
   readRect(): PointerClientRect;
   listenLock(type: PointerLockSignalType, listener: () => void): () => void;
   listenPointer(type: PointerEventType, listener: (event: PointerHostEvent) => void): () => void;
+  /**
+   * Context menu requests on the target (P3-13 spec 地图输入几何与指针: suppressed only in the qualified game area); a
+   * true return from `listener` prevents the request's default, the browser's menu. A host without it never suppresses.
+   */
+  listenContextMenu?(listener: () => boolean): () => void;
 }
 
 /** While the target is locked: `movementX/Y` unchanged, in the platform's unit (CSS or device pixels, by engine). */
@@ -77,6 +82,8 @@ export interface PointerLockSink {
   /** This port's own confirmed lock started (true) or ended (false), once per transition; true precedes promise observers. */
   lock(locked: boolean): void;
   pointer(input: PointerInput): void;
+  /** A context menu request on the target: whether to suppress it. Without it, none is. */
+  contextMenu?(): boolean;
 }
 
 export interface PointerLockPort {
@@ -84,7 +91,8 @@ export interface PointerLockPort {
   /** Whether this port's confirmed lock is still in force. */
   locked(): boolean;
   /**
-   * One owner, one connection. Throws on registration failure. Release invalidates first, then exits this port's lock;
+   * One owner, one connection: pointer input and context menu requests go to the sink until release. Throws on
+   * registration failure. Release invalidates first, then exits this port's lock;
    * an owner that must close a pending request keeps the port connected until its outcome, exits, then releases.
    */
   connect(sink: PointerLockSink): () => void;
@@ -136,6 +144,7 @@ class Port implements PointerLockPort {
       for (const type of POINTER_TYPES) {
         this.#cleanups.push(this.#host.listenPointer(type, event => { if (this.#sink) this.#pointer(type, event); }));
       }
+      if (this.#host.listenContextMenu) this.#cleanups.push(this.#host.listenContextMenu(() => this.#sink?.contextMenu?.() ?? false));
     } catch (cause) {
       const errors = this.#drain();
       if (errors.length) throw new RollbackError(cause, errors, 'Pointer lock registration and rollback failed');

@@ -59,6 +59,18 @@ class Host implements PointerLockHost {
   }
 }
 
+/** A host that also reports context menu requests, whose answer it keeps. */
+class MenuHost extends Host {
+  menu: (() => boolean) | null = null;
+  prevented: boolean[] = [];
+  listenContextMenu(listener: () => boolean) {
+    return this.add(() => { this.menu = listener; });
+  }
+  contextMenu(): void {
+    if (this.menu) this.prevented.push(this.menu());
+  }
+}
+
 function setup(host = new Host()) {
   const locks: boolean[] = [];
   const inputs: PointerInput[] = [];
@@ -361,5 +373,41 @@ describe('pointer lock port', () => {
     expect(() => s.release()).not.toThrow();
     expect(s.host.exits).toBe(1);
     expect(s.host.removals).toHaveLength(5);
+  });
+
+  // P3-13 subtask 23: context menu requests reach the sink, which decides suppression (P3-13 spec 地图输入几何与指针).
+  it('passes context menu requests to the sink while connected, locked or not, and suppresses none otherwise', async () => {
+    const host = new MenuHost();
+    let suppress = true;
+    const s = setup(host);
+    const sink = { ...s.sink, contextMenu: () => suppress };
+    const release = s.port.connect(sink);
+    expect(host.adds).toBe(6);
+    host.contextMenu();
+    suppress = false;
+    host.contextMenu();
+    suppress = true;
+    const outcome = s.port.request();
+    host.fire('pointerlockchange', 'target');
+    expect(await outcome).toEqual({ status: 'locked' });
+    host.contextMenu();
+    release();
+    host.contextMenu();
+    expect(host.prevented).toEqual([true, false, true, false]);
+    expect(host.removals).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(s.inputs).toEqual([]);
+
+    // A sink without a decision suppresses nothing.
+    const t = setup(new MenuHost());
+    t.port.connect(t.sink);
+    (t.host as MenuHost).contextMenu();
+    expect((t.host as MenuHost).prevented).toEqual([false]);
+  });
+
+  it('rolls back the pointer registrations when the context menu registration fails', () => {
+    const s = setup(new MenuHost());
+    s.host.failAdd = 5;
+    expect(() => s.port.connect(s.sink)).toThrow(s.host.failure);
+    expect(s.host.removals).toEqual([0, 1, 2, 3, 4]);
   });
 });
