@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "13"
-updated: 2026-10-25
+updated: 2026-10-28
 ---
 
 # P3-13：Classic 驾驶舱、HUD/MFD 与地图画面 — Goal
@@ -75,9 +75,9 @@ updated: 2026-10-25
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-layout-scheduling-research.md](./subtasks/01-layout-scheduling-research.md) | — | pending |
-| [02-gauges-radar-research.md](./subtasks/02-gauges-radar-research.md) | — | pending |
-| [03-left-display-research.md](./subtasks/03-left-display-research.md) | — | pending |
+| [01-layout-scheduling-research.md](./subtasks/01-layout-scheduling-research.md) | — | in-progress |
+| [02-gauges-radar-research.md](./subtasks/02-gauges-radar-research.md) | — | in-progress |
+| [03-left-display-research.md](./subtasks/03-left-display-research.md) | — | in-progress |
 | [04-target-overlay-research.md](./subtasks/04-target-overlay-research.md) | — | pending |
 | [05-messages-text-research.md](./subtasks/05-messages-text-research.md) | — | pending |
 | [06-map-presentation-research.md](./subtasks/06-map-presentation-research.md) | — | pending |
