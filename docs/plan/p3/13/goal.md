@@ -97,7 +97,7 @@ updated: 2026-10-28
 | [19-warp-display.md](./subtasks/19-warp-display.md) | 14, 15 | completed |
 | [20-target-display.md](./subtasks/20-target-display.md) | 14, 15, 17 | in-progress |
 | [21-flight-overlay-cues.md](./subtasks/21-flight-overlay-cues.md) | 09, 14, 15 | in-progress |
-| [22-map-picture.md](./subtasks/22-map-picture.md) | 14, 15 | in-progress |
+| [22-map-picture.md](./subtasks/22-map-picture.md) | 14, 15 | completed |
 | [23-map-input-geometry.md](./subtasks/23-map-input-geometry.md) | 22 | pending |
 | [24-run-composition-wiring.md](./subtasks/24-run-composition-wiring.md) | 11, 13, 16, 17, 18, 19, 20, 21, 23 | pending |
 | [25-ui-bridge-gaps.md](./subtasks/25-ui-bridge-gaps.md) | 18, 24 | pending |
