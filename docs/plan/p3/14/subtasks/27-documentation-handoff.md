@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "14"
 subtask: "27"
-updated: 2026-10-15
+updated: 2026-10-28
 ---
 
 # 27 — 工程说明、检查与 V-06 交接
@@ -16,7 +16,7 @@ updated: 2026-10-15
 
 ## 工作范围
 
-- 汇总 app 的触发/账本/所有权、platform 参数与进度、Core 输出/版本、render 共享读模型、UI 状态/日志与浏览器边界说明；原版事实只链接 audio。
+- 汇总 app 的触发/账本/所有权、platform 参数与进度、Core 输出/版本、render 的表现接口增补（DW-02，无共享 HUD 读模型）、UI 状态/日志与浏览器边界说明；原版事实只链接 audio。
 - 同步源码结构、输入/本地导入指南和受影响缺省说明，不以音效交付声称其他缺失功能完成。
 - 给 P3-15 提供 V-06 逐项结论、参考/候选身份、置信度和残留差异的链接；声明受共享契约变化影响而需重验的历史项，不改写旧通过证据。
 - 在集成候选上核对 pnpm check、合规和本任务相关 E2E；缺口形成修复任务，不在文档项新增功能。
@@ -35,7 +35,7 @@ updated: 2026-10-15
 - `docs/engineering/modules/app.md`：消费者接口与交接。
 - `docs/engineering/modules/platform.md`：播放器能力及错误。
 - `docs/engineering/modules/core.md`：只读输出与版本。
-- `docs/engineering/modules/render.md`：共享 HUD/相机接口。
+- `docs/engineering/modules/render.md`：D2-05 的表现接口扩展与 P3-14 交接（无共享 HUD，D-02 修订）。
 - `docs/engineering/modules/ui.md`：状态/DEV 边界。
 - `docs/engineering/source-structure.md`：实际模块落点。
 - `docs/engineering/keyboard-input.md`：激活与焦点说明。

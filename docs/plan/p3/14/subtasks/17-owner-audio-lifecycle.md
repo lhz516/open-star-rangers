@@ -4,19 +4,20 @@ status: active
 phase: P3
 task: "14"
 subtask: "17"
-updated: 2026-10-15
+updated: 2026-10-28
 ---
 
 # 17 — 任务所有者音频与关闭屏障
 
 **契约来源：** [spec](../spec.md#模式与生命周期) 的 S-08、AC-10、AC-11。
-**依赖：** 16。
+**依赖：** 16, 20。
 **执行方式：** 自动。
 **执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
 
 ## 工作范围
 
 - 实现 media 消费者：等待 previousClosed 后创建控制器/加载同包内容，attachRun 连接 16，release 观察真实 close 并加入屏障。
+- 按 D-02 的 DW-01、DW-11（D2-01、D2-14）：飞行消费者新增 `presentation()`，保存 `wireFlightRun` 返回的同一表现实例（含没有驾驶舱的分支），随运行结束撤回；媒体消费者的选项接收 `presentation` 取值函数，在 `attachRun` 中取得并核对 owner、run 与 tick 0，取得 20 增补后的实际 `FlightPresentation`；会话进入 `completed` 时与 `stopped`、`faulted` 一样立即失效。
 - 暴露 D-01 的声音状态与可信操作入口供 18 使用；运行身份、主动暂停、隐藏、结果页和 stopped 的播放门禁与宿主状态独立。
 - 可信操作异步完成仅在当前许可仍有效时恢复；跨 run/owner 的迟到 resume、ended、close 不改变新运行。
 - 能力失败且清理成功可无声继续；内容、装配、挂起失败和清理锁存分别处理，部分创建回滚每步都尝试。
@@ -40,6 +41,8 @@ updated: 2026-10-15
 - `src/app/composition/mission-slot.ts`：仅必要关闭屏障接线。
 - `src/app/composition/mission-slot.test.ts`：新旧所有者隔离。
 - `docs/engineering/modules/app.md`：所有权与错误说明。
+- `src/app/mission/flight-consumer.ts`：新增 `presentation()` 取得同一表现实例（D2-01，协调者 2026-10-28 扩展）。
+- `src/app/mission/flight-consumer.test.ts`：同上的测试。
 
 ## 验收标准
 

@@ -4,49 +4,48 @@ status: active
 phase: P3
 task: "14"
 subtask: "20"
-updated: 2026-10-15
+updated: 2026-10-28
 ---
 
-# 20 — 真实相机、EXPL 与共享 HUD 集成
+# 20 — 表现接口增补与真实模块联合验证
 
-**契约来源：** [spec](../spec.md#需要-p3-12-提供的只读接口) 的 S-05、S-06、AC-05、AC-07、AC-14。
-**依赖：** 17。
+**契约来源：** [spec](../spec.md#需要-p3-12-提供的只读接口) 的 S-05、S-06、AC-05、AC-07、AC-14；[D-02 定稿](../spec.md#d-02-定稿已批准)的 DW-02、DW-03、DW-05、DW-07、DW-08、D2-05。
+**依赖：** 16。
 **执行方式：** 自动。
 **执行状态：** 仅由 [goal tracker](../goal.md#子任务跟踪) 维护。
 
 ## 工作范围
 
-- 外部前提：P3-12 真实相机/效果选择器和 P3-13 实际 HUD 消费接口满足 07 的已批准交接；缺少时不以替身通过。
-- 装配同次 EXPL 选择、当前效果和本帧激活，声音/动画用同一个原列表下标；处理短命额外效果及双列表重复来源。
-- 将 14 的单实例读模型同时交给实际 HUD 和音效，明确相机/状态/音频的帧后顺序，覆盖地图/基地保留相机与模式门禁。
-- 锁定、抢占、静止帧、隐藏恢复、GPU 显示释放均不重抽变体、不增加状态机。
+- 在 P3-12 的表现模块实现 DW-02：`PresentationExplosion.forward`、`speed`（爆炸移动块的 R2 与 +0x08；Core 爆炸取同 tick Render State 的值，额外爆炸取构造时主爆炸来源项的值，碎片爆炸取其漂移 F(R2′ × s) 的 R2′ 与 s），`PresentationTick.explosions`（该 tick 结束时的当前爆炸，等于该 tick 后的 `explosions()`）。纯表现输出：不改变选择、相机、绘制、预算或抽取次序，不进入 Core、快照或 replay。
+- 使 16 以结构类型声明的 `PresentationTick` 输入可直接接受实际类型。
+- 以真实 `createFlightPresentation`（含真实表现效果与被毁相机）与 16 的消费者做联合测试：两个帧消费者两种调用次序结果相同；1×5、5、2+0+3 的 tick 分组结果相同；同次 EXPL 的原列表下标与声音一致、被阻止或抢占不重抽；表现层爆炸在离开 `explosions` 的 tick 停止；Warp 中听者为 `afterStep`（D2-04）；静止帧、晚接与重试不重放激活；驾驶舱与音效各自读同一 `TickOutput`、互不推进。
+- 在 P3-02 FS-07 之后加一条指向 DW-02 的交接注记，附依用户 2026-10-28 授权的批准记录。
 
 ## 不包含
 
-- 不复制相机/选择器、补写仪表画面或修改后续视角范围；生产者缺接口回负责项。
+- 不复制相机或选择器，不改 P3-12 的任何选择、相机、绘制规则或验收；不实现音效消费者（16）或所有者接线（17、18）；生产者缺接口回负责项。
 
 ## 关键文件与契约
 
-- 17 所有者、14 audio-cues 和 P3-12/P3-13 在 07 记录的实际公开接口。
-- 计划新增 `src/app/flight-audio/presentation.ts`、`presentation.test.ts`，仅消费/适配生产者。
+- 现有 [presentation-contract.ts](../../../../../src/render/flight/presentation/presentation-contract.ts)、[flight-presentation.ts](../../../../../src/render/flight/presentation/flight-presentation.ts)、[presentation-effects.ts](../../../../../src/render/flight/presentation/effects/presentation-effects.ts)、[flight-run.ts](../../../../../src/render/flight/renderer/flight-run.ts) 的 `wireFlightRun`，以及 16 的 `consumer.ts`。
 
 ## 写入范围
 
-- `src/app/flight-audio/presentation.ts`：相机/效果/HUD 的装配适配。
-- `src/app/flight-audio/presentation.test.ts`：真实模块联合测试。
-- `src/app/composition/use-mission-owner.ts`：显式单帧接线顺序。
-- `src/render/cockpit/audio-cues.ts`：仅已批准的共享消费接口同步。
-- `src/render/cockpit/audio-cues.test.ts`：双消费者回归。
+- `src/render/flight/presentation/presentation-contract.ts`：DW-02 的类型。
+- `src/render/flight/presentation/flight-presentation.ts`、`flight-presentation.test.ts`、`presentation.test-support.ts`：`explosions` 与 Core 爆炸的 `forward`/`speed` 及测试。
+- `src/render/flight/presentation/effects/presentation-effects.ts`、`effects/presentation-effects.test.ts`、`effects/effects.test-support.ts`：额外爆炸与碎片爆炸的 `forward`/`speed` 及测试。
+- `src/app/flight-audio/consumer.test.ts`、`src/app/flight-audio/consumer.test-support.ts`：以真实表现模块与消费者的联合测试用例（不改 16 的生产代码）。
+- `docs/plan/p3/02/spec.md`：仅 FS-07 之后指向 DW-02 的交接注记与批准记录。
 
 ## 验收标准
 
-- [ ] 每个声音尝试与动画同次选择一致；list-1 与原 item 索引正确，失败不重抽。
-- [ ] 实际 HUD 与音频每帧读取同一结果，无额外 RNG 或重复推进。
-- [ ] 真实相机模式、短命效果、释放和恢复边界通过；外部模块和候选版本可追溯。
+- [ ] DW-02 的字段在各爆炸来源取值正确、冻结、读取无副作用；P3-12 既有测试与抽取次序不变（`pnpm exec vitest run src/render/flight` 通过）。
+- [ ] 联合测试中每个声音尝试与动画同次选择一致（list − 1 与原 item 下标），两种调用次序与不同 tick 分组结果相同，表现层爆炸的移除 tick 正确，失败不重抽。
+- [ ] Warp 与被毁视角的听者、静止帧、晚接、重试与隐藏恢复边界通过；驾驶舱与音效互不推进；没有新增循环或 Core 回写。
 
 ## 验证方法
 
-- 真实生产者加合成数据的 Node 测试；`pnpm test -- src/app/flight-audio/presentation.test.ts src/render/cockpit/audio-cues.test.ts`、`pnpm check`。
-- 按 [browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md)核对实际表现接线，证据纳入 22；[simplify](../../../../../.agents/skills/simplify/SKILL.md)仅适配层。
+- `pnpm test -- src/render/flight/presentation src/app/flight-audio/consumer.test.ts tools/engineering-boundaries.test.ts`、`pnpm check`。
+- 对本项调用 [simplify](../../../../../.agents/skills/simplify/SKILL.md)；浏览器中的实际接线证据归 22。
 
 ## 完成证据
