@@ -202,13 +202,14 @@ export const FAILURE_MATRIX: readonly FailureCase[] = Object.freeze([
     expected: failed('source', 'invalid-payload', 'models[model/base-1].parts[0][1].mesh'), holder: 'unchanged',
   },
   {
-    // Mapping 288 of the production graphics table is the first naming the removed TEX entry: the 97 P2 mappings before
+    // Mapping 289 of the production graphics table is the first naming the removed TEX entry: the 97 P2 mappings before
     // it, the 190 P3-03 mappings whose IDs sort before it (the HUD text, the view labels, 186 explosion frames, the
-    // hit-shimmer and the target display background) and the P3-09 map geometry. The graphics step verifies its mappings in table order, and P2-03
-    // reports an absent entry at the mapping's first alternative.
+    // hit-shimmer and the target display background), the P3-13 cockpit instruments and the P3-09 map geometry. The
+    // graphics step verifies its mappings in table order, and P2-03 reports an absent entry at the mapping's first
+    // alternative.
     id: 'F-08 referenced texture missing from an identified disc', row: 'F-08', worker: 'texture-missing',
     files: async () => (await syntheticImport(scenarioSource('texture-missing')!.covered)).files,
-    expected: failed('source', 'entry-not-found', 'sources.mappings[288].parts[0].alternatives[0]'), holder: 'unchanged',
+    expected: failed('source', 'entry-not-found', 'sources.mappings[289].parts[0].alternatives[0]'), holder: 'unchanged',
   },
   {
     // The models group requires the player model's slot-0 sound, twelfth of its sound requirements in ID order: after

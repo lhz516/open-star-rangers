@@ -17,7 +17,9 @@ import {
 } from '../src/workers/synthetic-import.test-support.ts';
 import { PRODUCTION_EFFECT_USAGE } from '../src/original-data/conversion/production-effects.test-support.ts';
 import { PRODUCTION_MODEL_USAGE } from '../src/original-data/conversion/production-models.test-support.ts';
-import { COCKPIT_HUD_MAP_USAGE, MAP_GEOMETRY_USAGE, MODEL_TEXTURE_USAGE } from '../src/original-data/conversion/production-graphics.test-support.ts';
+import {
+  COCKPIT_HUD_MAP_USAGE, COCKPIT_INSTRUMENTS_USAGE, MAP_GEOMETRY_USAGE, MODEL_TEXTURE_USAGE,
+} from '../src/original-data/conversion/production-graphics.test-support.ts';
 import { PRODUCTION_FLIGHT_DATA_USAGE } from '../src/original-data/conversion/flight-data.test-support.ts';
 import { PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS } from '../src/original-data/conversion/production-flight-graphics.ts';
 import { HUD_TEXT_USAGE } from '../src/original-data/conversion/production-hud-text.test-support.ts';
@@ -35,9 +37,10 @@ import {
 const FLIGHT_COCKPIT_ASSETS = PRODUCTION_FLIGHT_GRAPHICS_DECLARATIONS.filter(({ group }) => group === 'cockpit-hud-map').length;
 /**
  * The cockpit-hud-map group of a production graphics disc: the P2-05 palette and fonts, the P2-07 Assets, the flight
- * graphics, the HUD text and the map geometry.
+ * graphics, the HUD text, the map geometry and the cockpit instruments.
  */
-const COCKPIT_ASSETS = 4 + COCKPIT_HUD_MAP_USAGE.assets + FLIGHT_COCKPIT_ASSETS + HUD_TEXT_USAGE.assets + MAP_GEOMETRY_USAGE.assets;
+const COCKPIT_ASSETS = 4 + COCKPIT_HUD_MAP_USAGE.assets + FLIGHT_COCKPIT_ASSETS + HUD_TEXT_USAGE.assets + MAP_GEOMETRY_USAGE.assets
+  + COCKPIT_INSTRUMENTS_USAGE.assets;
 
 /**
  * The models group of the slice disc: the flight palette, the textures, the flight images of the group, the bound
@@ -336,7 +339,7 @@ test('test entry converts the synthetic sounds after the graphics and hands over
   // no craft model is bound.
   const basis = readContentIdentityBasis({
     schemaVersion: CONTENT_SCHEMA_VERSION, sliceId: CLASSIC_P2_SLICE.sliceId, sliceDefinitionVersion: CLASSIC_P2_SLICE.version,
-    converterVersion: 'osr-import.graphics-5.logic-4.audio-2.models-4', origin: { type: 'original-import', sourceFingerprint: final.identity.sourceFingerprint },
+    converterVersion: 'osr-import.graphics-6.logic-4.audio-2.models-4', origin: { type: 'original-import', sourceFingerprint: final.identity.sourceFingerprint },
   });
   const source = await syntheticSource(audioCoveredFiles(), 'synthetic-audio');
   expect(source.identity.fingerprint).toBe(final.identity.sourceFingerprint);

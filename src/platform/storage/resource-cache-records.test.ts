@@ -3,7 +3,7 @@ import { BUDGET_DIMENSIONS, readBudgetRecord } from '../../content/budget.ts';
 import { validatePackage } from '../../content/completeness.ts';
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import {
-  diagnosticCodes, syntheticGroup, syntheticOriginalGroup, syntheticPackage, SYNTHETIC_ASSETS,
+  diagnosticCodes, syntheticGroup, syntheticOriginalGroup, syntheticPackage, syntheticPayloadBytes, SYNTHETIC_ASSETS,
 } from '../../content/synthetic-content.test-support.ts';
 import {
   cacheKeyOf, packageRecordKey, readPackageRecordKey, ResourceCacheFailureError, type ResourceCacheFailure,
@@ -51,7 +51,7 @@ describe('record layout', () => {
     expect(record.groups.every(group => Object.keys(group).sort().join() === 'manifest,sources')).toBe(true);
     const assets = Object.values(SYNTHETIC_ASSETS).flat();
     expect(record.payloadCount).toBe(assets.length);
-    expect(record.payloadBytes).toBe(assets.reduce((sum, { id }) => sum + `payload:${id}`.length, 0));
+    expect(record.payloadBytes).toBe(assets.reduce((sum, { id }) => sum + syntheticPayloadBytes(id).length, 0));
     expect(record.key).toEqual(cacheKeyOf(record.groups[0].manifest.identity));
     expect(JSON.stringify(record)).not.toMatch(/"(complete|bytes|timestamp|createdAt|updatedAt)":/);
   });
@@ -145,6 +145,8 @@ describe('stored package record reading', () => {
     ['slice definition version 3', record => { groupsOf(record).forEach(group => { at(group, 'manifest', 'identity').sliceDefinitionVersion = 3; }); return record; }, 'record.groups[0].manifest.identity.sliceDefinitionVersion'],
     // The P3-09 revision of P3-03: a package of slice definition version 4, stored before the map geometry.
     ['slice definition version 4', record => { groupsOf(record).forEach(group => { at(group, 'manifest', 'identity').sliceDefinitionVersion = 4; }); return record; }, 'record.groups[0].manifest.identity.sliceDefinitionVersion'],
+    // P3-03 修订 4 (P3-13): a package of slice definition version 6, stored before the cockpit instruments.
+    ['slice definition version 6', record => { groupsOf(record).forEach(group => { at(group, 'manifest', 'identity').sliceDefinitionVersion = 6; }); return record; }, 'record.groups[0].manifest.identity.sliceDefinitionVersion'],
   ];
 
   it.each(incompatible)('reads %s as cache-incompatible', (_name, change, location) => {
@@ -152,6 +154,17 @@ describe('stored package record reading', () => {
     expect(failureOf(() => readPackageRecord(record))).toMatchObject({ code: 'cache-incompatible', location });
     const key = packageRecordKey(cacheKeyOf(recordOf(syntheticPackage()).groups[0].manifest.identity));
     expect(cacheEntryOf(key, record)).toEqual({ key: cacheKeyOf(recordOf(syntheticPackage()).groups[0].manifest.identity), status: 'incompatible', identity: null, payloadBytes: null });
+  });
+
+  it('lists the package imported again under the key of an incompatible record before it as compatible', () => {
+    // P3-03 修订 4: a version 6 record stays incompatible until the user imports again, whose record has the same key.
+    const old = stored();
+    groupsOf(old).forEach(group => { at(group, 'manifest', 'identity').sliceDefinitionVersion = 6; });
+    const record = recordOf(syntheticPackage());
+    const key = [...packageRecordKey(record.key)];
+    expect(cacheEntryOf(key, old)).toMatchObject({ status: 'incompatible', identity: null });
+    expect(cacheEntryOf(key, structuredClone(record))).toMatchObject({ status: 'compatible', identity: { sliceDefinitionVersion: CLASSIC_P2_SLICE.version } });
+    expect(CLASSIC_P2_SLICE.version).toBe(7);
   });
 
   it('rejects a stored key other than the record key', () => {
@@ -187,7 +200,7 @@ describe('stored package record reading', () => {
       manifest,
       sources,
       payloads: manifest.assets.map(({ id, payloadIdentity: { schemaVersion } }) =>
-        readStoredPayload({ schemaVersion, bytes: Uint8Array.from(`payload:${id}`, c => c.charCodeAt(0)).buffer }, id)),
+        readStoredPayload({ schemaVersion, bytes: syntheticPayloadBytes(id).buffer as ArrayBuffer }, id)),
     }));
     expect(validatePackage(CLASSIC_P2_SLICE, groups)).toMatchObject({ status: 'complete' });
   });

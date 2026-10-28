@@ -151,7 +151,7 @@ test('the AI package imports and restores; in a real run the AI advances, b depl
   await expect(page.getByTestId('import-statuses')).toContainText(/Saved in this browser \(saved in /, { timeout: 30_000 });
 
   // The import saved one package under the current converter version, its AI programs as payload schema 2.
-  expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-5.logic-4.audio-2.models-4');
+  expect(PRODUCTION_CONVERTER_VERSION).toBe('osr-import.graphics-6.logic-4.audio-2.models-4');
   expect(AI_PROGRAMS_SCHEMA).toBe(2);
   await loadCacheModules(page);
   const stored = await readStoredRecords(page);

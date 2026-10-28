@@ -211,8 +211,10 @@ describe('communications replay (P3-10 AC-12, CB-16)', { timeout: 60_000 }, () =
   // P3-12/10 (docs/plan/p3/02/spec.md, FS-08): the presentation facts change no rule outcome or draw; the digest is the
   // one this run had before them (replay.test-support.ts). P3-12/32 raised the player's +0xB8 to 1 (FS-12); the digest
   // of that input is the one the code before FS-12 gives (main at e6684c84, with P3-11's rules).
+  // P3-03 修订 4 (P3-13/11) raised the slice definition version to 7, which the synthetic identity in the snapshot carries;
+  // the rules and draws are unchanged.
   it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
-    expect(gameplayDigest(DOCKING_INPUT, RECORDING.record.ticks)).toBe('494bb9108dcb57e1');
+    expect(gameplayDigest(DOCKING_INPUT, RECORDING.record.ticks)).toBe('4b00850ff1f53eb7');
   });
 
   it('runs the docking chain twice in one world: wait, reply, countdown, docking, base keys and launch', () => {

@@ -6,10 +6,14 @@ import { encodeFontPayload, fontPayloadLength, type CharMapEntry } from '../../c
 import { imagePalettes, layoutImages } from '../../content/graphics/graphics-binding.ts';
 import { GRAPHICS_LIMITS, GRAPHICS_SCHEMA_VERSION } from '../../content/graphics/graphics-format.ts';
 import { encodeImagePayload, imagePayloadLength, maskStride } from '../../content/graphics/image-payload.ts';
-import { encodeLayoutPayload, layoutPayloadLength, type LayoutElement } from '../../content/graphics/layout-payload.ts';
+import { encodeLayoutPayload, layoutPayloadLength, type LayoutElement, type LayoutPayload } from '../../content/graphics/layout-payload.ts';
 import { encodePalettePayload, palettePayloadLength } from '../../content/graphics/palette-payload.ts';
 import { HUD_TEXT_SCHEMA_VERSION, encodeHudTextPayload, type HudText } from '../../content/hud/hud-text-payload.ts';
-import { MAP_GEOMETRY_SCHEMA_VERSION, encodeMapGeometryPayload } from '../../content/hud/map-geometry-payload.ts';
+import {
+  checkCockpitInstruments, COCKPIT_INSTRUMENTS_FORMAT, COCKPIT_INSTRUMENTS_SCHEMA_VERSION, encodeCockpitInstrumentsPayload, readCockpitInstruments,
+  type CockpitInstruments,
+} from '../../content/hud/instruments-payload.ts';
+import { MAP_GEOMETRY_SCHEMA_VERSION, encodeMapGeometryPayload, type MapGeometry } from '../../content/hud/map-geometry-payload.ts';
 import { STATUS_MESSAGES_SCHEMA_VERSION, encodeStatusMessagesPayload } from '../../content/hud/status-messages-payload.ts';
 import { VIEW_LABELS_SCHEMA_VERSION, encodeViewLabelsPayload } from '../../content/hud/view-labels-payload.ts';
 import type { PayloadRecord } from '../../content/payload.ts';
@@ -27,15 +31,17 @@ import {
 } from './graphics-declarations.ts';
 import {
   checkPaletteIndices, cockpitElementRecordOffset, decodeImageRecord, decodeSnipFrame, mfdRecordOffset, readCockpitFont, readCockpitGroup,
-  readCockpitGroupPalette, readCockpitInstrument, readDataPalette, readEmbeddedPalette, readImageRecordHeader, readSnipFrames, tableRecordOffset, type SourceImage,
+  readCockpitGroupPalette, readCockpitInstrument, readCockpitInstrumentSlot, readDataPalette, readEmbeddedPalette, readImageRecordHeader, readSnipFrames,
+  tableRecordOffset, type RelocatedBlock, type SourceImage,
 } from './source-graphics.ts';
 import { readStatusMessages } from './source-messages.ts';
 
 /**
  * The graphics converter's component of the production `ConverterVersion`; bump it when graphics output changes. Version 4
- * adds the P3-03 flight images and view labels, version 5 the map geometry (P3-03 spec, P3-09 的修订：地图几何（修订 2））.
+ * adds the P3-03 flight images and view labels, version 5 the map geometry (P3-03 spec, P3-09 的修订：地图几何（修订 2）),
+ * version 6 the cockpit instruments (P3-03 spec, 修订 4).
  */
-export const GRAPHICS_CONVERTER_COMPONENT = 'graphics-5';
+export const GRAPHICS_CONVERTER_COMPONENT = 'graphics-6';
 
 /**
  * An image record inside a container entry: a CCKD element (`groups/<s>/elements/<i>`), an MFDD list record
@@ -134,6 +140,18 @@ interface MapGeometrySource {
   readonly font: number;
 }
 
+interface CockpitInstrumentsSource {
+  /**
+   * The `layouts/<n>` subresources of one CCKD entry for the slots of `COCKPIT_INSTRUMENTS_FORMAT`, read with the entry's
+   * relocations, and the bytes of the target view distance region of the executable (P3-03 spec, 修订 4).
+   */
+  readonly type: 'cockpit-instruments';
+  readonly entry: RelocatedBlock;
+  readonly distances: Uint8Array;
+  /** Per format slot, the declared images of its elements `groups/<slot>/elements/<i>` in element order. */
+  readonly elementImages: readonly (readonly AssetId[])[];
+}
+
 interface HudTextSource {
   /** The HUD text, already read from the mapping's EXE regions and checked against the schema (`parseHudText`). */
   readonly type: 'hud-text';
@@ -147,7 +165,7 @@ interface HudTextSource {
  */
 export type GraphicsSource =
   | PaletteSource | ImageSource | SnipFrameSource | AnimFrameSource | FontSource | LayoutSource | MessagesSource | ViewLabelsSource | HudTextSource
-  | MapGeometrySource;
+  | MapGeometrySource | CockpitInstrumentsSource;
 
 export interface ConvertedGraphic {
   readonly descriptor: AssetDescriptor;
@@ -231,6 +249,9 @@ class Conversion {
   #usage: BudgetRecord;
   /** Entry counts of the palettes converted so far. */
   readonly #paletteEntries = new Map<AssetId, number>();
+  /** The converted map geometry and cockpit instruments, which `checkInstruments` compares. */
+  #mapGeometry: MapGeometry | null = null;
+  #instruments: { readonly at: string; readonly content: CockpitInstruments } | null = null;
   readonly assets: ConvertedGraphic[] = [];
 
   constructor(limits: unknown, usage: unknown) {
@@ -364,14 +385,53 @@ class Conversion {
   mapGeometry(declaration: DataDeclaration, { block, layout, instrumentType, font }: MapGeometrySource): void {
     const at = `graphics[${declaration.asset.id}]`;
     const content = { ...readCockpitInstrument(block, layout, instrumentType, at), informationLineHeight: readCockpitFont(block, font, at).height };
-    let bytes: Uint8Array;
-    try {
-      bytes = encodeMapGeometryPayload(content, payloadBytes => this.#charge(declaration, { payloadBytes }));
-    } catch (error) {
-      if (error instanceof ContentContractError) throw new SourceError('unsupported-payload', `${at}.${error.path}`, error.reason);
-      throw error;
-    }
+    const bytes = unsupportedContent(at, () => encodeMapGeometryPayload(content, payloadBytes => this.#charge(declaration, { payloadBytes })));
+    this.#mapGeometry = content;
     this.#add(declaration, [], bytes, 'palette', MAP_GEOMETRY_SCHEMA_VERSION);
+  }
+
+  /**
+   * The cockpit instruments (P3-13 spec, DC-02) from the CCKD slots of the format's layout numbers and the target view
+   * distance region: each slot must be at the format's directory index, and each element is paired with its declared
+   * image, so every element needs one. The encoder reads the content strictly before it is charged and allocated;
+   * content the reader rejects is `unsupported-payload` at the reader's structural path.
+   */
+  instruments(declaration: DataDeclaration, { entry, distances, elementImages }: CockpitInstrumentsSource): void {
+    const at = `graphics[${declaration.asset.id}]`;
+    const { slots: formats, targetViewDistances: distanceCount } = COCKPIT_INSTRUMENTS_FORMAT;
+    if (distances.length !== distanceCount * 4) {
+      throw new SourceError('unsupported-payload', `${at}.targetViewDistances`, 'the target view distance region must hold exactly 20 f32 values');
+    }
+    const slots = formats.map((format, index) => {
+      const slot = readCockpitInstrumentSlot(entry, format.layoutNumber, at);
+      if (slot.slot !== format.slot) throw new SourceError('unsupported-payload', `${at}.groups`, 'the slot of the layout number must be at its directory index');
+      const images = elementImages[index];
+      if (slot.elements.length !== images.length) throw new SourceError('invalid-declaration', `${at}.elements`, 'every element of the slot must have its declared image');
+      return {
+        slot: format.slot, layoutNumber: format.layoutNumber, alwaysRedraw: slot.alwaysRedraw, layout: format.layout,
+        elements: slot.elements.map(({ flags: [pass, everyFrame] }, index) => ({ image: images[index], pass, everyFrame: everyFrame !== 0 })),
+        instruments: slot.instruments,
+      };
+    });
+    const view = new DataView(distances.buffer, distances.byteOffset, distances.byteLength);
+    const targetViewDistances = Array.from({ length: distanceCount }, (_, index) => view.getFloat32(index * 4, true));
+    const content = unsupportedContent(at, () => readCockpitInstruments({ slots, targetViewDistances }));
+    const bytes = unsupportedContent(at, () => encodeCockpitInstrumentsPayload(content, payloadBytes => this.#charge(declaration, { payloadBytes })));
+    this.#instruments = { at, content };
+    this.#add(declaration, [], bytes, 'palette', COCKPIT_INSTRUMENTS_SCHEMA_VERSION);
+  }
+
+  /**
+   * Checks the converted cockpit instruments against the converted layouts and map geometry they share facts with
+   * (checkCockpitInstruments), when the set holds all three; a disagreement between the source records is
+   * `unsupported-payload`. A set without them is an incomplete group, which package validation reports.
+   */
+  checkInstruments(layouts: ReadonlyMap<string, LayoutPayload>): void {
+    if (!this.#instruments || !this.#mapGeometry) return;
+    const { at, content } = this.#instruments;
+    const [front, mapFrame] = COCKPIT_INSTRUMENTS_FORMAT.slots.map(({ layout }) => layouts.get(layout ?? ''));
+    const mapGeometry = this.#mapGeometry;
+    if (front && mapFrame) unsupportedContent(at, () => checkCockpitInstruments(content, { front, mapFrame, mapGeometry }));
   }
 
   /** A layout of checked elements; the element images themselves are converted as images. */
@@ -379,6 +439,16 @@ class Conversion {
     const at = `graphics[${declaration.asset.id}]`;
     this.#charge(declaration, { dependencyEdges: elements.length, payloadBytes: layoutPayloadLength({ elements }) });
     this.#add(declaration, layoutImages({ elements }), encodeLayoutPayload({ frame: declaration.frame, elements }, at), 'image');
+  }
+}
+
+/** The result of `read`, whose content contract errors are source content the readers reject at `at`. */
+function unsupportedContent<T>(at: string, read: () => T): T {
+  try {
+    return read();
+  } catch (error) {
+    if (error instanceof ContentContractError) throw new SourceError('unsupported-payload', `${at}.${error.path}`, error.reason);
+    throw error;
   }
 }
 
@@ -403,9 +473,10 @@ function reverseRows(rows: Uint8Array, rowBytes: number, height: number): Uint8A
 
 /**
  * Converts a declaration set from its Assets' source bytes: palettes first, then images, fonts, data (status messages,
- * view labels, the HUD text and the map geometry, a `data` Asset's role selecting its source) and layouts, each kind in Asset ID order. Layouts are
- * checked against their groups before anything is converted, so an element the group lacks
- * is reported as the layout's count mismatch rather than as its image's missing record. Every Asset is charged against
+ * view labels, the HUD text, the map geometry and the cockpit instruments, a `data` Asset's role selecting its source)
+ * and layouts, each kind in Asset ID order. Layouts are checked against their groups before anything is converted, so an
+ * element the group lacks is reported as the layout's count mismatch rather than as its image's missing record. The
+ * cockpit instruments are checked last against their layouts and the map geometry when the set holds them. Every Asset is charged against
  * `limits` on top of `usage`, the conversion usage of earlier steps (never source reads), before anything sized by it
  * is read or allocated. Any failure rejects the whole set without results; a rejected charge leaves the caller's usage
  * as it was.
@@ -441,9 +512,12 @@ export function convertGraphics(
     else if (source.type === 'view-labels') conversion.viewLabels(declaration as DataDeclaration, source);
     else if (source.type === 'hud-text') conversion.hudText(declaration as DataDeclaration, source);
     else if (source.type === 'map-geometry') conversion.mapGeometry(declaration as DataDeclaration, source);
+    else if (source.type === 'cockpit-instruments') conversion.instruments(declaration as DataDeclaration, source);
     else conversion.messages(declaration as DataDeclaration, source as MessagesSource);
   }
   layouts.forEach((declaration, index) => conversion.layout(declaration, layoutElements[index]));
+  conversion.checkInstruments(new Map(layouts.map((declaration, index) =>
+    [declaration.asset.id as string, { kind: 'layout', frame: declaration.frame, elements: layoutElements[index] } as const])));
   return Object.freeze({
     assets: Object.freeze(conversion.assets.sort((left, right) => compareText(left.descriptor.id, right.descriptor.id))),
     usage: conversion.usage,

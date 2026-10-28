@@ -1,10 +1,12 @@
 import { RESOURCE_GROUPS, type AssetDescriptor, type ResourceGroup } from '../../content/asset-contract.ts';
+import type { AssetId } from '../../content/asset-id.ts';
 import { EMPTY_BUDGET_USAGE, type BudgetRecord } from '../../content/budget.ts';
 import { compareText } from '../../content/contract-validation.ts';
 import type { GroupDraft } from '../../content/manifest-identity.ts';
 import { readAssetDescriptors } from '../../content/manifest.ts';
 import { readPayloadRecords, type PayloadRecord } from '../../content/payload.ts';
 import { readSourceStateSet, type AssetSourceState, type SourceStateSet } from '../../content/source-state.ts';
+import { COCKPIT_INSTRUMENTS_FORMAT, COCKPIT_INSTRUMENTS_ROLE } from '../../content/hud/instruments-payload.ts';
 import { MAP_GEOMETRY_ROLE } from '../../content/hud/map-geometry-payload.ts';
 import { STATUS_MESSAGES_LIMITS } from '../../content/hud/status-messages-payload.ts';
 import { VIEW_LABELS_FORMAT } from '../../content/hud/view-labels-payload.ts';
@@ -14,8 +16,8 @@ import { requireEntryBytes } from '../formats/payload-block.ts';
 import { VIEW_LABEL_LIMITS } from '../formats/view-labels.ts';
 import { SourceError } from '../source-error.ts';
 import {
-  assetSourceStates, compareLocators, executableRegion, isRegionLocator, readSourceMappingTable, type ArchiveEntryLocator, type SourceMapping,
-  type SourceMappingTable,
+  archiveLocator, assetSourceStates, compareLocators, executableRegion, isRegionLocator, readSourceMappingTable, type ArchiveEntryLocator, type OriginalAssetLocator,
+  type SourceMapping, type SourceMappingTable,
 } from '../source-mapping.ts';
 import type { VerifiedSource } from '../source/open-verified-source.ts';
 import { verifySourceMappings, type EntryReader } from '../source/verify-source-mappings.ts';
@@ -24,7 +26,7 @@ import {
   isHudTextDeclaration, readGraphicsDeclarations, type GraphicsDeclaration, type HudTextDeclaration, type LayoutDeclaration,
 } from './graphics-declarations.ts';
 import { SNIP_COLOURS } from './source-graphics.ts';
-import { stepEntryReader, stepRegionReader, type RegionReader } from './step-entry-reader.ts';
+import { stepEntryReader, stepRegionReaders, type FixedUpRegionReader, type RegionReader } from './step-entry-reader.ts';
 
 export interface GraphicsStepGroup {
   readonly group: ResourceGroup;
@@ -228,6 +230,58 @@ async function mapGeometrySource({ id }: GraphicsDeclaration['asset'], mapping: 
 }
 
 /**
+ * The cockpit instruments from their mapping, `mappings[index]` of the step's table, whose parts must be exactly
+ * `layouts/<n>` of one CCKD entry for the layout number of each slot of `COCKPIT_INSTRUMENTS_FORMAT`, in canonical locator
+ * order, and then the target view distance region (P3-03 spec, 修订 4). The map geometry and the slot layouts, when
+ * declared, must map to that entry (to `groups/<slot>` for a layout), so they describe the same records; each element's
+ * image is the declared image mapped to `groups/<slot>/elements/<i>` of it. The entry is read once through the step's
+ * entry reader, with its relocations; the region, exactly 20 f32 values, through the step's fixed-up region reader, and a
+ * fixup that patches it is `unsupported-payload`.
+ */
+async function cockpitInstrumentsSource(
+  { id }: GraphicsDeclaration['asset'], mapping: SourceMapping, index: number, mappings: readonly SourceMapping[], mapGeometryId: string | undefined,
+  readEntry: EntryReader, readFixedUp: FixedUpRegionReader,
+): Promise<GraphicsSource> {
+  const { slots: formats, targetViewDistances } = COCKPIT_INSTRUMENTS_FORMAT;
+  const locators = mapping.parts.map(({ alternatives: [locator] }) => locator);
+  const [entry] = locators;
+  const region = locators[formats.length];
+  /** The subresource of `locator` when it locates the instruments' CCKD entry, otherwise undefined. */
+  const subresourceIn = (locator: OriginalAssetLocator | null | undefined): string | null | undefined =>
+    (locator && !isRegionLocator(locator) && !isRegionLocator(entry) && entry.entry.type === 'CCKD'
+      && compareLocators({ ...locator, subresource: null }, { ...entry, subresource: null }) === 0 ? locator.subresource : undefined);
+  const byId = new Map(mappings.map(item => [item.asset.id as string, item]));
+  const geometry = mapGeometryId === undefined ? undefined : byId.get(mapGeometryId);
+  const layoutAt = (layout: string | null): string | null | undefined => {
+    const layoutMapping = layout === null ? undefined : byId.get(layout);
+    return layoutMapping && subresourceIn(locatorOf(layoutMapping));
+  };
+  if (locators.length !== formats.length + 1 || !isRegionLocator(region)
+    || formats.some(({ layoutNumber }, part) => subresourceIn(locators[part]) !== `layouts/${layoutNumber}`)
+    || formats.some(({ slot, layout }) => layout !== null && byId.has(layout) && layoutAt(layout) !== `groups/${slot}`)
+    || geometry?.parts.some(({ alternatives: [locator] }) => subresourceIn(locator) === undefined)) {
+    throw new SourceError('invalid-declaration', `graphics[${id}].messages`, 'the mapping must name the slots of the layouts and the map geometry\'s CCKD entry, then a region');
+  }
+  const regionPath = `sources.mappings[${index}].parts[${formats.length}].alternatives[0]`;
+  if (executableRegion(region).length !== targetViewDistances * 4) {
+    throw new SourceError('unsupported-payload', regionPath, 'the target view distance region must be exactly 20 f32 values');
+  }
+  const images = new Map(mappings.filter(({ asset }) => asset.kind === 'image').flatMap(item => {
+    const subresource = subresourceIn(locatorOf(item));
+    return subresource ? [[subresource, item.asset.id] as const] : [];
+  }));
+  const elementImages = formats.map(({ slot }) => {
+    const ids: AssetId[] = [];
+    for (let image; (image = images.get(`groups/${slot}/elements/${ids.length}`)) !== undefined;) ids.push(image);
+    return ids;
+  });
+  const { bytes, relocations } = await readEntry(archiveLocator(entry));
+  const distances = await readFixedUp(region, regionPath);
+  if (distances.fixups.length > 0) throw new SourceError('unsupported-payload', regionPath, 'no fixup may patch the target view distance region');
+  return { type: 'cockpit-instruments', entry: { bytes, relocations }, distances: distances.bytes, elementImages };
+}
+
+/**
  * Requires element i of every layout to be mapped to `groups/<s>/elements/<i>` of the layout's own CCKD entry and slot,
  * so the layout and its element images describe the same records.
  */
@@ -270,8 +324,9 @@ function graphicsEntryReader(source: VerifiedSource, table: SourceMappingTable):
  * each layout's element images to be mapped to that layout's group elements, converts the Assets from step-shared
  * entry and region reads (ANIM and view label entries limited by their directory size first; the HUD text from its EXE
  * regions, read like the SNIP colour table and the DIAG format; the map geometry from an instrument record and a font
- * of the cockpit entry), and only then marks their mappings, including subresource and region ones such as ANIM frames,
- * the view label, the HUD text and the map geometry, verified.
+ * of the cockpit entry; the cockpit instruments from three slots of that entry and an EXE region), and only then marks
+ * their mappings, including subresource and region ones such as ANIM frames, the view label, the HUD text, the map
+ * geometry and the cockpit instruments, verified.
  * Returns frozen locator-free results by resource group. Any failure rejects the whole step without results; read
  * failures keep their P2-02/P2-03 layer, code and location, and reads already issued stay charged to the source.
  */
@@ -284,7 +339,8 @@ export async function runGraphicsStep(
 ): Promise<GraphicsStepResult> {
   const declared = readSourceMappingTable(mappings);
   const readEntry = graphicsEntryReader(source, declared);
-  const readRegion = stepRegionReader(source);
+  const regions = stepRegionReaders(source);
+  const readRegion = regions.read;
   const table = await verifySourceMappings(declared, source, readEntry);
   const checked = readGraphicsDeclarations(declarations);
   const mappingById = new Map<string, SourceMapping>(table.mappings.map(mapping => [mapping.asset.id, mapping]));
@@ -293,14 +349,19 @@ export async function runGraphicsStep(
   });
   if (table.mappings.length !== checked.length) throw new SourceError('invalid-declaration', 'graphics.declarations', 'every mapped Asset must be declared');
   const sources = new Map<string, GraphicsSource>();
+  const dataRole = (declaration: GraphicsDeclaration) => (declaration.asset.kind === 'data' ? declaration.role : null);
+  const mapGeometryId = checked.find(declaration => dataRole(declaration) === MAP_GEOMETRY_ROLE)?.asset.id;
   for (const declaration of checked) {
     const mapping = mappingById.get(declaration.asset.id)!;
-    const isMapGeometry = declaration.asset.kind === 'data' && declaration.role === MAP_GEOMETRY_ROLE;
+    const index = table.mappings.indexOf(mapping);
+    const role = dataRole(declaration);
     sources.set(declaration.asset.id, isHudTextDeclaration(declaration)
-      ? await hudTextSource(declaration, mapping, table.mappings.indexOf(mapping), readRegion)
-      : isMapGeometry
+      ? await hudTextSource(declaration, mapping, index, readRegion)
+      : role === MAP_GEOMETRY_ROLE
         ? await mapGeometrySource(declaration.asset, mapping, readEntry)
-        : await graphicsSource(declaration.asset, mapping, readEntry, readRegion));
+        : role === COCKPIT_INSTRUMENTS_ROLE
+          ? await cockpitInstrumentsSource(declaration.asset, mapping, index, table.mappings, mapGeometryId, readEntry, regions.readFixedUp)
+          : await graphicsSource(declaration.asset, mapping, readEntry, readRegion));
   }
   checkLayoutElements(checked, mappingById);
   const conversion = convertGraphics(checked, sources, limits, usage);

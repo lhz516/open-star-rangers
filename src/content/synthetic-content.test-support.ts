@@ -2,6 +2,8 @@ import type { ResourceGroup } from './asset-contract.ts';
 import type { GroupCompletenessResult, PackageCompletenessResult } from './completeness.ts';
 import { SLICE_ID } from './content-identity.ts';
 import { sha256Fingerprint } from './sha256.ts';
+import { encodeCockpitInstrumentsPayload, readCockpitInstruments } from './hud/instruments-payload.ts';
+import { syntheticCockpitInstruments } from './hud/instruments.test-support.ts';
 import { CLASSIC_P2_SLICE, type SliceDefinition, type SliceRole } from './slice-definition.ts';
 import { SOUND_PAYLOAD_SCHEMA_VERSION } from './sound-payload.ts';
 
@@ -52,6 +54,8 @@ export const SYNTHETIC_ASSETS: Readonly<Record<ResourceGroup, readonly Synthetic
   ],
   'cockpit-hud-map': [
     { id: 'data/synthetic-hud-text', role: 'hud-text' },
+    // A canonical payload its reader decodes (P3-13 spec, DC-02), in fresh bytes on every read since a test may transfer them.
+    { id: 'data/synthetic-instruments', role: 'cockpit-instruments', get bytes() { return encodeCockpitInstrumentsPayload(readCockpitInstruments(syntheticCockpitInstruments())); } },
     { id: 'data/synthetic-map-geometry', role: 'map-geometry' },
     { id: 'data/synthetic-view-labels', role: 'view-labels' },
     { id: 'font/synthetic-hud', role: 'font' },
@@ -78,6 +82,12 @@ const asciiBytes = (text: string): Uint8Array => Uint8Array.from(text, character
 
 export const kindOf = (id: string): string => id.split('/')[0];
 export const syntheticBytes = (id: string): Uint8Array => asciiBytes(`payload:${id}`);
+
+/** The payload bytes of the synthetic Asset `id`: its spec's bytes, or else the label of its ID. */
+export function syntheticPayloadBytes(id: string): Uint8Array {
+  const spec = Object.values(SYNTHETIC_ASSETS).flat().find(asset => asset.id === id);
+  return spec?.bytes ?? syntheticBytes(id);
+}
 export const payloadIdentityOf = (bytes: Uint8Array) =>
   ({ schemaVersion: 1, byteLength: bytes.length, fingerprint: sha256Fingerprint(bytes) as string });
 
@@ -142,8 +152,11 @@ export const VERSION_4_ROLES: readonly SliceRole[] = Object.freeze([
  */
 export const VERSION_6_ROLES: readonly SliceRole[] = Object.freeze(['map-geometry', 'comm-messages']);
 
-/** The roles P3-03 added to the slice: those of versions 4 and 6, in definition order. */
-export const P3_ROLES: readonly SliceRole[] = Object.freeze([...VERSION_4_ROLES, ...VERSION_6_ROLES]);
+/** The role slice definition version 7 added: P3-13's cockpit instruments (P3-03 spec, 修订 4). */
+export const VERSION_7_ROLES: readonly SliceRole[] = Object.freeze(['cockpit-instruments']);
+
+/** The roles P3-03 added to the slice: those of versions 4, 6 and 7, in definition order. */
+export const P3_ROLES: readonly SliceRole[] = Object.freeze([...VERSION_4_ROLES, ...VERSION_6_ROLES, ...VERSION_7_ROLES]);
 
 /**
  * `CLASSIC_P2_SLICE` with only the roles version 3 required, for tests of a step whose group lacks the Assets P3-03

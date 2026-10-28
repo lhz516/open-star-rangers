@@ -1,4 +1,5 @@
 import { GRAPHICS_LIMITS } from '../../content/graphics/graphics-format.ts';
+import { COCKPIT_INSTRUMENTS_LIMITS } from '../../content/hud/instruments-payload.ts';
 import type { MapRectangle } from '../../content/hud/map-geometry-payload.ts';
 import { isOpaque, maskStride } from '../../content/graphics/image-payload.ts';
 import { exclusiveBytes } from '../../content/ownership.ts';
@@ -8,7 +9,7 @@ import { SourceError, type SourceLimitName } from '../source-error.ts';
 // directories and instrument records, TABL image lists and SNIP frames (docs/original/formats/textures.md, cockpit.md and hud.md). Each reader checks structure and limits before
 // it allocates anything sized by the source, copies its result into new buffers the caller owns and throws a
 // SourceError located at a field (`palette`, `record`, `pixels`, `glyphs`, `fonts`, `groups`, `elements`, `instruments`,
-// `frames`, `colours`) under the caller's `path`. Records inside containers are read at their block offset with the same rules as a whole-entry record.
+// `params`, `frames`, `colours`) under the caller's `path`. Records inside containers are read at their block offset with the same rules as a whole-entry record.
 
 const IMAGE_RECORD_BYTES = 36;
 const DATA_PALETTE_BYTES = 768;
@@ -17,7 +18,11 @@ const CCKD_FONT_COUNT = 3;
 /** CCKD directory records and elements (cockpit §1): an element is an image record, i32 x and y, and two u32 flags. */
 const COCKPIT_GROUP_BYTES = 32;
 const COCKPIT_ELEMENT_BYTES = 52;
-/** CCKD instrument records (cockpit §1): u32 type, the inclusive i32 rectangle at +0x04–+0x10, the u32 redraw interval at +0x18. */
+/**
+ * CCKD instrument records (cockpit §1): u32 type, the inclusive i32 rectangle at +0x04–+0x10, the u32 draw parameter at
+ * +0x14, the u32 redraw interval at +0x18, and the relocated pointer and entry count of an i32 parameter table at +0x24
+ * and +0x28.
+ */
 const COCKPIT_INSTRUMENT_BYTES = 48;
 
 /**
@@ -68,6 +73,32 @@ export interface CockpitInstrument {
   readonly redrawInterval: number;
 }
 
+/** One CCKD instrument record with the fields the cockpit instruments import (P3-13 spec, DC-02), as stored. */
+export interface SourceInstrumentRecord {
+  /** +0x00 (u32). */
+  readonly type: number;
+  /** +0x04–+0x10 (i32). */
+  readonly rectangle: MapRectangle;
+  /** +0x18 (u32). */
+  readonly redrawInterval: number;
+  /** +0x14 (u32). */
+  readonly drawParam: number;
+  /** The i32 table +0x24 points to, with the +0x28 entries; empty when the pointer is null. */
+  readonly params: readonly number[];
+}
+
+/** The CCKD directory slot that carries a layout number, with what the cockpit instruments import from it. */
+export interface SourceInstrumentSlot {
+  /** Index of the slot in the directory. */
+  readonly slot: number;
+  /** Directory +0x0C ≠ 0. */
+  readonly alwaysRedraw: boolean;
+  /** The slot's elements in stored order; their flags are the draw pass (+44) and the every-frame flag (+48). */
+  readonly elements: readonly CockpitElement[];
+  /** The instrument records in stored order. */
+  readonly instruments: readonly SourceInstrumentRecord[];
+}
+
 /** One CCKD element in stored order. */
 export interface CockpitElement {
   /** Block offset of the element's image record. */
@@ -75,7 +106,10 @@ export interface CockpitElement {
   /** Signed screen position of the image's top-left corner. */
   readonly x: number;
   readonly y: number;
-  /** The two fields after the position, each 0 or 1; their meaning is unconfirmed (U-029) and never enters a payload. */
+  /**
+   * The two fields after the position, each 0 or 1: the draw pass (+44) and the every-frame flag (+48), which only the
+   * cockpit instruments import (cockpit §1, element).
+   */
   readonly flags: readonly [number, number];
 }
 
@@ -407,6 +441,37 @@ export function cockpitElementRecordOffset(block: Uint8Array, slot: number, inde
   return elements[index].recordOffset;
 }
 
+/** The layout number (+0x00, i32) of every CCKD directory slot, in directory order. */
+export function readCockpitLayoutNumbers(block: Uint8Array, path = ''): readonly number[] {
+  return Object.freeze(cockpitDirectory(block, path).map(at => i32(block, at)));
+}
+
+/**
+ * The directory index and block offset of the one CCKD directory slot whose layout number (+0x00, i32) is `layout`,
+ * after the header and directory are checked to lie inside the block; no or several such slots are `unsupported-payload`.
+ */
+function layoutSlot(block: Uint8Array, layout: number, path: string): { readonly slot: number; readonly at: number } {
+  const directory = cockpitDirectory(block, path);
+  const slots = directory.filter(at => i32(block, at) === layout);
+  if (slots.length !== 1) throw new SourceError('unsupported-payload', fieldAt(path, 'groups'), 'exactly one CCKD directory slot must carry the layout number');
+  return { slot: directory.indexOf(slots[0]), at: slots[0] };
+}
+
+/**
+ * The block offsets of the instrument records of the directory slot at `at`: the count (+0x1C) is checked against its
+ * limit, then the array (+0x18, 48-byte records) must lie inside the block before any record is read.
+ */
+function instrumentRecords(block: Uint8Array, at: number, path: string): readonly number[] {
+  const instruments = fieldAt(path, 'instruments');
+  const [array, count] = [u32(block, at + 0x18), u32(block, at + 0x1c)];
+  withinLimit(count, 'cockpitInstruments', CONTAINER_LIMITS.cockpitInstruments, instruments, 0);
+  if (count > 0 && !fits(block, array, count * COCKPIT_INSTRUMENT_BYTES)) invalid(instruments, 'the CCKD instrument array extends past the block');
+  return Array.from({ length: count }, (_, index) => array + index * COCKPIT_INSTRUMENT_BYTES);
+}
+
+const instrumentRectangle = (block: Uint8Array, record: number): MapRectangle =>
+  Object.freeze({ x0: i32(block, record + 0x04), y0: i32(block, record + 0x08), x1: i32(block, record + 0x0c), y1: i32(block, record + 0x10) });
+
 /**
  * The one instrument record of type `type` in the CCKD directory slot whose layout number (+0x00, i32) is `layout`, the
  * `layouts/<layout>/instruments/type-<type>` subresource (cockpit §1). The header and directory must lie inside the
@@ -415,19 +480,48 @@ export function cockpitElementRecordOffset(block: Uint8Array, slot: number, inde
  * records) must lie inside the block before any record is read.
  */
 export function readCockpitInstrument(block: Uint8Array, layout: number, type: number, path = ''): CockpitInstrument {
-  const [groups, instruments] = [fieldAt(path, 'groups'), fieldAt(path, 'instruments')];
-  const slots = cockpitDirectory(block, path).filter(at => i32(block, at) === layout);
-  if (slots.length !== 1) throw new SourceError('unsupported-payload', groups, 'exactly one CCKD directory slot must carry the layout number');
-  const [array, count] = [u32(block, slots[0] + 0x18), u32(block, slots[0] + 0x1c)];
-  withinLimit(count, 'cockpitInstruments', CONTAINER_LIMITS.cockpitInstruments, instruments, 0);
-  if (count > 0 && !fits(block, array, count * COCKPIT_INSTRUMENT_BYTES)) invalid(instruments, 'the CCKD instrument array extends past the block');
-  const records = Array.from({ length: count }, (_, index) => array + index * COCKPIT_INSTRUMENT_BYTES).filter(at => u32(block, at) === type);
-  if (records.length !== 1) throw new SourceError('unsupported-payload', instruments, 'exactly one instrument record of the slot must have the type');
+  const records = instrumentRecords(block, layoutSlot(block, layout, path).at, path).filter(at => u32(block, at) === type);
+  if (records.length !== 1) throw new SourceError('unsupported-payload', fieldAt(path, 'instruments'), 'exactly one instrument record of the slot must have the type');
   const [record] = records;
-  return Object.freeze({
-    rectangle: Object.freeze({ x0: i32(block, record + 0x04), y0: i32(block, record + 0x08), x1: i32(block, record + 0x0c), y1: i32(block, record + 0x10) }),
+  return Object.freeze({ rectangle: instrumentRectangle(block, record), redrawInterval: u32(block, record + 0x18) });
+}
+
+/**
+ * The parameter table of the instrument record at `record` (cockpit §1, record fields): +0x28 entries, at most
+ * `COCKPIT_INSTRUMENTS_LIMITS.params`, are checked first; +0x24 is null exactly when there are none, otherwise
+ * `unsupported-payload`; a non-null +0x24 must be one of the entry's relocations and its i32 table must lie inside the
+ * block, otherwise `invalid-payload`.
+ */
+function instrumentParams({ bytes: block, relocations }: RelocatedBlock, record: number, location: string): readonly number[] {
+  const [pointer, count] = [u32(block, record + 0x24), u32(block, record + 0x28)];
+  withinLimit(count, 'payloadItems', COCKPIT_INSTRUMENTS_LIMITS.params, location, 0);
+  if ((pointer === 0) !== (count === 0)) throw new SourceError('unsupported-payload', location, 'the parameter table pointer must be null exactly when the table is empty');
+  if (count === 0) return Object.freeze([]);
+  if (!relocations.includes(record + 0x24)) invalid(location, 'the parameter table pointer must be relocated');
+  if (!fits(block, pointer, count * 4)) invalid(location, 'the parameter table extends past the block');
+  return Object.freeze(Array.from({ length: count }, (_, index) => i32(block, pointer + index * 4)));
+}
+
+/**
+ * The CCKD directory slot whose layout number (+0x00, i32) is `layout`, the `layouts/<layout>` subresource of the
+ * cockpit instruments (P3-03 spec, 修订 4): its directory index, its always-redraw flag (+0x0C), its elements with their
+ * flags (`readCockpitGroups`, which checks every slot's element array) and, in stored order, each instrument record's
+ * type, rectangle, draw parameter, redraw interval and parameter table (`instrumentParams`). The header, directory and
+ * arrays are checked as `readCockpitInstrument` checks them, before any record is read. Pointers, the last draw time
+ * (+0x1C), +0x20 and +0x2C are not read.
+ */
+export function readCockpitInstrumentSlot(entry: RelocatedBlock, layout: number, path = ''): SourceInstrumentSlot {
+  const block = entry.bytes;
+  const { slot, at } = layoutSlot(block, layout, path);
+  const elements = readCockpitGroups(block, path)[slot];
+  const instruments = instrumentRecords(block, at, path).map((record, index) => Object.freeze({
+    type: u32(block, record),
+    rectangle: instrumentRectangle(block, record),
     redrawInterval: u32(block, record + 0x18),
-  });
+    drawParam: u32(block, record + 0x14),
+    params: instrumentParams(entry, record, `${fieldAt(path, 'instruments')}[${index}].params`),
+  }));
+  return Object.freeze({ slot, alwaysRedraw: u32(block, at + 0x0c) !== 0, elements, instruments: Object.freeze(instruments) });
 }
 
 /**

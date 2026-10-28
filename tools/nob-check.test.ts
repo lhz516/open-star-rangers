@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { cockpitLayoutBlock, dataPaletteBlock, rawImageBlock } from '../src/original-data/conversion/conversion.test-support.ts';
+import { dataPaletteBlock, hudFontTables, rawImageBlock } from '../src/original-data/conversion/conversion.test-support.ts';
+import { cockpitInstrumentsBlock, type SyntheticInstrumentSlot } from '../src/original-data/conversion/production-graphics.test-support.ts';
 import { explosionListsBlock, explosionRecordBlock } from '../src/original-data/conversion/flight-data.test-support.ts';
 import { animFrame, patternFrame, solidFrame, syntheticAnimation, type SyntheticFrame } from '../src/original-data/formats/anim.test-support.ts';
 import { syntheticCraftTable } from '../src/original-data/formats/craft.test-support.ts';
@@ -76,11 +77,20 @@ describe('nob-check on a synthetic archive', () => {
 });
 
 describe('nob-check on a synthetic CCKD entry', () => {
-  // Slot 0 holds one element; slot 1 is empty with a palette, slot 2 has neither.
-  const cockpit = (palette: Uint8Array) => cockpitLayoutBlock([[{ record: rawImageBlock(1, 1, [1]), x: 0, y: 0 }], [], []], undefined, [null, palette]);
-  const checkCockpit = (name: string, palette: Uint8Array) => {
+  // The secret coordinate a record holds, which the output must never show.
+  const SECRET = 4_321;
+  // Slot 0 holds one element and two records, one with a parameter table; slot 1 is empty with a palette and always
+  // redrawn; slot 2 has neither and no records.
+  const SLOTS: readonly SyntheticInstrumentSlot[] = [
+    { layout: 0, records: [{ type: 0, rectangle: [1, 2, 30, SECRET], drawParam: 7, params: [2] }, { type: 8, rectangle: [0, 0, 9, 9] }] },
+    { layout: 8, alwaysRedraw: true, records: [{ type: 8, rectangle: [0, 0, 9, 9] }] },
+    { layout: 6, records: [] },
+  ];
+  const cockpit = (palette: Uint8Array, slots = SLOTS) =>
+    cockpitInstrumentsBlock([[{ record: rawImageBlock(1, 1, [1]), x: 0, y: 0 }], [], []], hudFontTables(), [null, palette], slots);
+  const checkCockpit = (name: string, palette: Uint8Array, entry = cockpit(palette)) => {
     const file = join(directory, name);
-    writeFileSync(file, buildImfat(10_000, [{ id: 10_001, type: 'CCKD', data: cockpit(palette) }]));
+    writeFileSync(file, buildImfat(10_000, [{ id: 10_001, type: 'CCKD', ...entry }]));
     return spawnSync(process.execPath, [join(root, 'tools/nob-check.ts'), file], { cwd: root, encoding: 'utf8', timeout: 60_000 });
   };
 
@@ -92,6 +102,22 @@ describe('nob-check on a synthetic CCKD entry', () => {
       'CCKD directory slots 3, elements per slot 1, 1 elements decoded, 1 group palettes read',
       'failures: 0',
     ]));
+  });
+
+  it('reads every slot\'s instruments with the cockpit instruments\' slot reader, printing counts only', () => {
+    const result = checkCockpit('INSTRUMENTS.NOB', dataPaletteBlock());
+    expect(result.status).toBe(0);
+    expect(result.stdout.split('\n').map(line => line.trim())).toEqual(expect.arrayContaining([
+      'CCKD instrument slots 3 (1 always redrawn), records per slot 2, 3 records read, 1 parameter tables of up to 1 entries',
+    ]));
+    expect(result.stdout).not.toContain(String(SECRET));
+  });
+
+  it('reports an instrument parameter table the reader rejects by code and location', () => {
+    const entry = cockpit(dataPaletteBlock());
+    const result = checkCockpit('UNRELOCATED.NOB', dataPaletteBlock(), { data: entry.data, relocations: [] });
+    expect(result.status).toBe(1);
+    expect(result.stdout.split('\n').map(line => line.trim())).toEqual(expect.arrayContaining(['failures: 1', '10001 CCKD: invalid-payload@instruments[0].params']));
   });
 
   it('reports a group palette the reader rejects by code and location', () => {

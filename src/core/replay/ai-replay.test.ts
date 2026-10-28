@@ -163,8 +163,10 @@ function withCommands(tick: number, commands: readonly Command[]): unknown {
 describe('autonomous AI replay (P3-08 AC-11; CR-25)', { timeout: 120_000 }, () => {
   // P3-12/10 (docs/plan/p3/02/spec.md, FS-08): the presentation facts change no rule outcome or draw; the digest is the
   // one this run had before them (replay.test-support.ts).
+  // P3-03 修订 4 (P3-13/11) raised the slice definition version to 7, which the synthetic identity in the snapshot carries;
+  // the rules and draws are unchanged.
   it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
-    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('7521fc22377f7e05');
+    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('7632c121056ead31');
   });
 
   it('records only the normal input of the run, in the current formats', () => {

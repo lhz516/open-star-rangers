@@ -9,8 +9,12 @@ import { FLIGHT_DATA_LIMITS, type FlightDataPayload } from '../src/content/fligh
 import { decodeFlightDataPayload } from '../src/content/flight/flight-data-payload.ts';
 import { checkGraphicsBinding } from '../src/content/graphics/graphics-binding.ts';
 import { isOpaque, readImagePayload } from '../src/content/graphics/image-payload.ts';
+import { readLayoutPayload } from '../src/content/graphics/layout-payload.ts';
 import { readPalettePayload } from '../src/content/graphics/palette-payload.ts';
 import { decodeHudTextPayload, HUD_TEXT_FORMATS, HUD_TEXT_KEYS, HUD_TEXT_LIMITS } from '../src/content/hud/hud-text-payload.ts';
+import {
+  checkCockpitInstruments, COCKPIT_INSTRUMENTS_FORMAT, COCKPIT_INSTRUMENTS_LIMITS, decodeCockpitInstrumentsPayload, type InstrumentRecord,
+} from '../src/content/hud/instruments-payload.ts';
 import { decodeMapGeometryPayload, MAP_GEOMETRY_LIMITS, type MapGeometry } from '../src/content/hud/map-geometry-payload.ts';
 import { decodeViewLabelsPayload, VIEW_LABELS_LIMITS } from '../src/content/hud/view-labels-payload.ts';
 import { LOGIC_LIMITS, type LogicPayload } from '../src/content/logic/logic-content.ts';
@@ -43,7 +47,8 @@ import { PRODUCTION_PACKAGE } from '../src/workers/production-package.ts';
 // Local package check (P3-03 S-16, AC-19): runs the production import job the Worker runs on a CloneCD file set,
 // validates the whole package against the slice definition, decodes every Asset of the roles P3-03 added or extended with
 // its role's reader and loads the mission in Core. The P3-09 map geometry is also compared with an independent read of
-// its source record (`mapGeometrySource`), which shares no code with the converter. The P3-08 keyword tables of
+// its source record (`mapGeometrySource`), which shares no code with the converter; so are the CCKD slots of the P3-13
+// cockpit instruments (`instrumentSlotsSource`), which are also checked against the package's layouts and map geometry. The P3-08 keyword tables of
 // `ai-programs` are reported as counts and a digest (`keywordTablesDigest`) for comparison with an independent local read.
 // Output holds only verdicts, Asset IDs, counts, limits, read amounts and hashes: never names, texts, field values,
 // pixels, samples, host paths or host error text.
@@ -154,10 +159,15 @@ interface Measured {
   readonly digests?: Readonly<Record<string, string>>;
 }
 
-/** What a measure may consult besides its Asset: other Assets by ID, and the map geometry read independently from the disc. */
+/**
+ * What a measure may consult besides its Asset: other Assets by ID or role, and the map geometry and the cockpit
+ * instruments' slots read independently from the disc.
+ */
 interface MeasureContext {
   readonly find: (id: string) => PackageAsset;
+  readonly roleAssets: (role: string) => readonly PackageAsset[];
   readonly mapGeometrySource: () => Promise<MapGeometry>;
+  readonly instrumentSlotsSource: () => Promise<readonly InstrumentSlotSource[]>;
 }
 
 type Measure = (asset: PackageAsset, context: MeasureContext) => Measured | Promise<Measured>;
@@ -230,8 +240,8 @@ const sound: Measure = ({ descriptor, bytes }) => {
 };
 
 /**
- * The roles P3-03 added, with the mission it extended, and the map geometry P3-09 added, in group order: required roles
- * and the roles their dependencies close over. The target display's palette is an Asset of a P2 role, read through its
+ * The roles P3-03 added, with the mission it extended, the map geometry P3-09 added and the cockpit instruments P3-13
+ * added, in group order: required roles and the roles their dependencies close over. The target display's palette is an Asset of a P2 role, read through its
  * image.
  */
 const ROLES: readonly { readonly role: string; readonly group: ResourceGroup; readonly measure: Measure }[] = [
@@ -372,54 +382,134 @@ const ROLES: readonly { readonly role: string; readonly group: ResourceGroup; re
     if (JSON.stringify(decoded) !== JSON.stringify(await mapGeometrySource())) throw new CheckStop('source-mismatch', 'roles.map-geometry');
     return { counts: { sourceMatches: 1 }, limits: [limit('map-geometry.payloadBytes', bytes.length, MAP_GEOMETRY_LIMITS.payloadBytes)] };
   } },
+  { role: 'cockpit-instruments', group: 'cockpit-hud-map', measure: async ({ descriptor, bytes }, { find, roleAssets, instrumentSlotsSource }) => {
+    const instruments = decodeCockpitInstrumentsPayload(bytes, descriptor);
+    const layout = (id: string) => {
+      const { descriptor: layoutDescriptor, bytes: layoutBytes } = find(id);
+      return readLayoutPayload(layoutBytes, layoutDescriptor.payloadIdentity.schemaVersion);
+    };
+    const [front, map] = instruments.slots;
+    const [geometry] = roleAssets('map-geometry');
+    if (!geometry) throw new CheckStop('missing-asset', 'roles.map-geometry');
+    checkCockpitInstruments(instruments, { front: layout(front.layout!), mapFrame: layout(map.layout!), mapGeometry: decodeMapGeometryPayload(geometry.bytes, geometry.descriptor) });
+    // Both are plain records built in the schema's field order.
+    const slots = instruments.slots.map(({ slot, alwaysRedraw, elements, instruments: records }) =>
+      ({ slot, alwaysRedraw, elements: elements.map(({ pass, everyFrame }) => ({ pass, everyFrame })), instruments: records }));
+    if (JSON.stringify(slots) !== JSON.stringify(await instrumentSlotsSource())) throw new CheckStop('source-mismatch', 'roles.cockpit-instruments');
+    const elements = instruments.slots.flatMap(slot => slot.elements);
+    const records = instruments.slots.map(slot => slot.instruments.length);
+    const params = instruments.slots.flatMap(slot => slot.instruments.map(record => record.params.length));
+    return {
+      counts: {
+        slots: instruments.slots.length, alwaysRedrawSlots: instruments.slots.filter(slot => slot.alwaysRedraw).length, elements: elements.length,
+        passOneElements: elements.filter(({ pass }) => pass === 1).length, everyFrameElements: elements.filter(({ everyFrame }) => everyFrame).length,
+        records: sum(records), parameterTables: params.filter(count => count > 0).length, params: sum(params),
+        viewDistances: instruments.targetViewDistances.length, sourceMatches: 1,
+      },
+      limits: [
+        limit('cockpit-instruments.recordsPerSlot', largest(records), COCKPIT_INSTRUMENTS_LIMITS.recordsPerSlot),
+        limit('cockpit-instruments.params', largest(params), COCKPIT_INSTRUMENTS_LIMITS.params),
+        limit('cockpit-instruments.payloadBytes', bytes.length, COCKPIT_INSTRUMENTS_LIMITS.payloadBytes),
+      ],
+    };
+  } },
   { role: 'event-sound', group: 'audio', measure: sound },
   { role: 'hud-sound', group: 'audio', measure: sound },
 ];
 
 /**
- * The map geometry's source as recorded in docs/original/formats/cockpit.md (instrument types per slot) and hud.md §1,
- * read here without the converter's readers: CCKD 10103 of `MAIN/SR.NOB`, the directory slot whose +0x00 is layout 6,
- * its one 48-byte instrument record of type 10 (rectangle +0x04–+0x10, redraw interval +0x18), and the height byte (+3)
- * of font table 1. Counts are checked against their caps and arrays against the entry before anything is iterated; any
- * structure that does not hold is `source-unreadable`, without values.
+ * The CCKD sources of the map geometry and the cockpit instruments as recorded in docs/original/formats/cockpit.md
+ * (group directory, element, instrument types per slot and instrument records) and hud.md §1, read here without the
+ * converter's readers: CCKD 10103 of `MAIN/SR.NOB`, the directory slots by layout number (+0x00), and font table 1.
+ * Counts are checked against their caps and arrays against the entry before anything is iterated; any structure that
+ * does not hold is `source-unreadable` at the role, without values.
  */
-const MAP_SOURCE = Object.freeze({
-  archive: 'MAIN/SR.NOB', entry: 10_103, type: 'CCKD', layout: 6, instrumentType: 10, font: 1,
-  /** Counts beyond the approved caps are not read: 8 directory slots, 32 instrument records per slot. */
-  slots: 8, instruments: 32,
+const COCKPIT_SOURCE = Object.freeze({
+  archive: 'MAIN/SR.NOB', entry: 10_103, type: 'CCKD', mapLayout: 6, mapInstrumentType: 10, font: 1,
+  /**
+   * Counts beyond the approved caps are not read: 8 directory slots, 16 elements and 32 instrument records per slot, 4
+   * parameters per record.
+   */
+  slots: 8, elements: 16, instruments: 32, params: 4,
 });
 
-async function readMapGeometrySource(files: readonly ImportFile[]): Promise<MapGeometry> {
-  const disc = await openDiscImage(files.map(({ name, blob }) => ({ name, source: new BlobByteSource(blob) })));
-  const archive = await openImfatArchive(await disc.openFile(MAP_SOURCE.archive));
-  const { bytes } = await archive.read(MAP_SOURCE.entry, MAP_SOURCE.type);
+/** A cockpit instruments slot as an independent read gives it: the payload slot without its images. */
+interface InstrumentSlotSource {
+  readonly slot: number;
+  readonly alwaysRedraw: boolean;
+  readonly elements: readonly { readonly pass: number; readonly everyFrame: boolean }[];
+  readonly instruments: readonly InstrumentRecord[];
+}
+
+/** Word reads of the independently read CCKD entry, failing as `source-unreadable` at `role`. */
+function cockpitReader(bytes: Uint8Array, role: string) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const unreadable = (): never => { throw new CheckStop('source-unreadable', 'roles.map-geometry'); };
+  const unreadable = (): never => { throw new CheckStop('source-unreadable', `roles.${role}`); };
   const word = (offset: number, signed = false): number => {
     if (offset < 0 || offset + 4 > bytes.length) unreadable();
     return signed ? view.getInt32(offset, true) : view.getUint32(offset, true);
   };
-  const fontEntry = word(0) + MAP_SOURCE.font * 8;
-  if (MAP_SOURCE.font >= word(4)) unreadable();
+  /** The offsets of the `count` items of `size` bytes from `start`, after the count and the array are checked. */
+  const items = (start: number, count: number, cap: number, size: number): number[] => {
+    if (count > cap || start + count * size > bytes.length) unreadable();
+    return Array.from({ length: count }, (_, index) => start + index * size);
+  };
+  /** The directory index and offset of the one slot of layout number `layout`. */
+  const slotOf = (layout: number): { readonly slot: number; readonly at: number } => {
+    const directory = items(word(8), word(12), COCKPIT_SOURCE.slots, 32);
+    const slots = directory.filter(at => word(at, true) === layout);
+    if (slots.length !== 1) unreadable();
+    return { slot: directory.indexOf(slots[0]), at: slots[0] };
+  };
+  const records = (at: number): number[] => items(word(at + 0x18), word(at + 0x1c), COCKPIT_SOURCE.instruments, 48);
+  const rectangle = (record: number) => ({ x0: word(record + 4, true), y0: word(record + 8, true), x1: word(record + 12, true), y1: word(record + 16, true) });
+  return { bytes, word, items, slotOf, records, rectangle, unreadable };
+}
+
+async function readCockpitSource(files: readonly ImportFile[]): Promise<Uint8Array> {
+  const disc = await openDiscImage(files.map(({ name, blob }) => ({ name, source: new BlobByteSource(blob) })));
+  const archive = await openImfatArchive(await disc.openFile(COCKPIT_SOURCE.archive));
+  return (await archive.read(COCKPIT_SOURCE.entry, COCKPIT_SOURCE.type)).bytes;
+}
+
+/** The map geometry: the one type-10 record of the layout-6 slot (rectangle +0x04–+0x10, interval +0x18) and font 1's height byte (+3). */
+function mapGeometrySource(entry: Uint8Array): MapGeometry {
+  const { bytes, word, slotOf, records, rectangle, unreadable } = cockpitReader(entry, 'map-geometry');
+  const fontEntry = word(0) + COCKPIT_SOURCE.font * 8;
+  if (COCKPIT_SOURCE.font >= word(4)) unreadable();
   const fontAt = word(fontEntry);
   if (word(fontEntry + 4) < 4 || fontAt + 4 > bytes.length) unreadable();
-  /** The offsets of the `count` items of `size` bytes from `start` whose `matches`, after the array is checked to fit. */
-  const matching = (start: number, count: number, cap: number, size: number, matches: (at: number) => boolean): number[] => {
-    if (count > cap || start + count * size > bytes.length) unreadable();
-    const found: number[] = [];
-    for (let at = start; at < start + count * size; at += size) if (matches(at)) found.push(at);
-    return found;
-  };
-  const slots = matching(word(8), word(12), MAP_SOURCE.slots, 32, at => word(at, true) === MAP_SOURCE.layout);
-  if (slots.length !== 1) unreadable();
-  const records = matching(word(slots[0] + 0x18), word(slots[0] + 0x1c), MAP_SOURCE.instruments, 48, at => word(at) === MAP_SOURCE.instrumentType);
-  if (records.length !== 1) unreadable();
-  const [record] = records;
-  return {
-    rectangle: { x0: word(record + 4, true), y0: word(record + 8, true), x1: word(record + 12, true), y1: word(record + 16, true) },
-    redrawInterval: word(record + 0x18),
-    informationLineHeight: bytes[fontAt + 3],
-  };
+  const matching = records(slotOf(COCKPIT_SOURCE.mapLayout).at).filter(at => word(at) === COCKPIT_SOURCE.mapInstrumentType);
+  if (matching.length !== 1) unreadable();
+  const [record] = matching;
+  return { rectangle: rectangle(record), redrawInterval: word(record + 0x18), informationLineHeight: bytes[fontAt + 3] };
+}
+
+/**
+ * The cockpit instruments' slots of the layout numbers of `COCKPIT_INSTRUMENTS_FORMAT`: each slot's directory index and
+ * +0x0C; its elements' +44 and +48; and its records' type, rectangle, interval (+0x18), +0x14 and the i32 table +0x24
+ * points to with +0x28 entries, null when there are none.
+ */
+function instrumentSlotsSource(entry: Uint8Array): InstrumentSlotSource[] {
+  const { word, items, slotOf, records, rectangle, unreadable } = cockpitReader(entry, 'cockpit-instruments');
+  return COCKPIT_INSTRUMENTS_FORMAT.slots.map(({ layoutNumber }) => {
+    const { slot, at } = slotOf(layoutNumber);
+    const elementCount = word(at + 0x14);
+    const elements = elementCount === 0 ? [] : items(word(at + 0x10), elementCount, COCKPIT_SOURCE.elements, 52);
+    return {
+      slot,
+      alwaysRedraw: word(at + 0x0c) !== 0,
+      elements: elements.map(element => ({ pass: word(element + 44), everyFrame: word(element + 48) !== 0 })),
+      instruments: records(at).map(record => {
+        const [table, count] = [word(record + 0x24), word(record + 0x28)];
+        if ((table === 0) !== (count === 0)) unreadable();
+        return {
+          type: word(record) as InstrumentRecord['type'], rectangle: rectangle(record), redrawInterval: word(record + 0x18), drawParam: word(record + 0x14),
+          params: count === 0 ? [] : items(table, count, COCKPIT_SOURCE.params, 4).map(param => word(param, true)),
+        };
+      }),
+    };
+  });
 }
 
 /** Adds the counts of each Asset and keeps the largest observation of each limit, in first-seen order. */
@@ -574,7 +664,11 @@ export async function runPackageCheck(paths: readonly string[], options: Package
     }
     const find = (id: string): PackageAsset => assets.get(id) ?? (() => { throw new CheckStop('missing-asset', `assets.${id}`); })();
     const roleAssets = (role: string): readonly PackageAsset[] => byRole.get(role) ?? [];
-    const context: MeasureContext = { find, mapGeometrySource: () => readMapGeometrySource(files) };
+    let cockpit: Promise<Uint8Array> | undefined;
+    const cockpitSource = () => (cockpit ??= readCockpitSource(files));
+    const context: MeasureContext = {
+      find, roleAssets, mapGeometrySource: async () => mapGeometrySource(await cockpitSource()), instrumentSlotsSource: async () => instrumentSlotsSource(await cockpitSource()),
+    };
     const [{ manifest: first }] = groups;
     const groupReport = ({ group, assets: descriptors }: GroupManifest): GroupReport => ({
       group,

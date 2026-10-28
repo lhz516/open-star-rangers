@@ -3,8 +3,8 @@ import { RESOURCE_GROUPS } from './asset-contract.ts';
 import { SLICE_ID } from './content-identity.ts';
 import { CLASSIC_P2_SLICE, SLICE_DEFINITION_VERSION } from './slice-definition.ts';
 
-// Oracle of the P2-01 spec S-03 roles, the P3-03 version 4 additions and version 6's map geometry and communications
-// messages: [role, group, allowed kinds, min, max].
+// Oracle of the P2-01 spec S-03 roles, the P3-03 version 4 additions, version 6's map geometry and communications
+// messages and version 7's cockpit instruments: [role, group, allowed kinds, min, max].
 const S03_ROLES = [
   ['mission', 'logic', ['mission'], 1, 1],
   ['player-ship', 'models', ['model'], 1, 1],
@@ -38,6 +38,7 @@ const S03_ROLES = [
   ['hud-sound', 'audio', ['sound'], 3, 3],
   ['map-geometry', 'cockpit-hud-map', ['data'], 1, 1],
   ['comm-messages', 'logic', ['data'], 1, 1],
+  ['cockpit-instruments', 'cockpit-hud-map', ['data'], 1, 1],
 ] as const;
 
 describe('classic-p2-slice definition', () => {
@@ -47,8 +48,9 @@ describe('classic-p2-slice definition', () => {
     // Version 2 (P2-01 revision, 2026-10-06) admits data for the effect roles and the models group; version 3
     // (P2-07 revision, 2026-10-08) lets the cockpit-hud-map group own data; version 4 (P3-03) adds the rule-data,
     // flight-data, HUD text, event and HUD sound roles; version 5 added the map geometry role (P3-09 revision of P3-03) on
-    // one branch and the communications messages (P3-03 revision 2, P3-10) on another, and version 6 merges both.
-    expect(SLICE_DEFINITION_VERSION).toBe(6);
+    // one branch and the communications messages (P3-03 revision 2, P3-10) on another, and version 6 merges both;
+    // version 7 adds the cockpit instruments (P3-03 revision 4, P3-13).
+    expect(SLICE_DEFINITION_VERSION).toBe(7);
     expect(CLASSIC_P2_SLICE.candidate).toEqual({ campaignGroup: 0, campaignSlot: 1 });
     expect(CLASSIC_P2_SLICE.configuration).toEqual({ wingman: 'optional' });
     const serialized = JSON.stringify(CLASSIC_P2_SLICE);
@@ -62,7 +64,7 @@ describe('classic-p2-slice definition', () => {
     expect(matches).toEqual([{ role, group, kinds, minAssets: min, maxAssets: max }]);
   });
 
-  it('defines exactly the S-03, version 4 and version 5 roles and all four resource groups', () => {
+  it('defines exactly the S-03, version 4, 6 and 7 roles and all four resource groups', () => {
     expect(CLASSIC_P2_SLICE.roles.map(requirement => requirement.role)).toEqual(S03_ROLES.map(([role]) => role));
     expect(CLASSIC_P2_SLICE.groups).toEqual([...RESOURCE_GROUPS]);
   });

@@ -64,8 +64,10 @@ const typesOf = (recording: Recording) => new Set(recording.result.events.map(({
 describe('map and Warp replay (P3-09 AC-11; MW-14)', { timeout: 30_000 }, () => {
   // P3-12/10 (docs/plan/p3/02/spec.md, FS-08): the presentation facts change no rule outcome or draw; the digest is the
   // one this run had before them (replay.test-support.ts).
+  // P3-03 修订 4 (P3-13/11) raised the slice definition version to 7, which the synthetic identity in the snapshot carries;
+  // the rules and draws are unchanged.
   it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
-    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('bff121f99eb315d4');
+    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('bf36a0af037e3a2c');
   });
 
   // P3-12/32 (docs/plan/p3/02/spec.md, FS-12): the speed share at every tick's end, against the snapshot's player speed
