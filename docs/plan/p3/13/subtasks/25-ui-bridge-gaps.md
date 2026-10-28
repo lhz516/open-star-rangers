@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "13"
 subtask: "25"
-updated: 2026-10-25
+updated: 2026-10-28
 ---
 
 # 25 — 基地消息桥接与缺省标注
@@ -41,6 +41,8 @@ updated: 2026-10-25
 - `src/app/composition/use-mission-owner.ts`：注入文案与桥接订阅。
 - `docs/engineering/slice-gaps.md`：G-03/G-05与在制标注。
 - `docs/engineering/modules/ui.md`：新读者/错误说明。
+- `src/app/composition/cockpit-copy.ts`：24 留下的临时文案注入点，替换为 25 的正式文案（协调者增补）。
+- `src/ui/dev/*.ts`、`src/ui/dev/*.tsx`：仅在开发面板显示驾驶舱诊断计数（`messageDrops`、`radarNoiseDropped`，协调者增补）。
 
 ## 验收标准
 
