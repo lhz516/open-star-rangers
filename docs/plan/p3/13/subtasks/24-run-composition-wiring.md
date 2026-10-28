@@ -46,6 +46,9 @@ updated: 2026-10-28
 - `docs/engineering/modules/app.md`：运行/API同步。
 - `docs/engineering/modules/render.md`：合成/API同步。
 - `src/render/cockpit/presentation/cockpit-limits.ts`：右显示屏改为 CPU 设备后的 GPU 计划（renderTargets 0，协调者增补）。
+- `src/render/cockpit/presentation/cockpit-foundation.test.ts`：renderTargets 断言随之更新（24 的范围请求）。
+- `src/original-data/conversion/production-graphics.test-support.ts`、`src/original-data/conversion/production-hud-text.test-support.ts`、`src/original-data/conversion/production-flight-graphics.test-support.ts`、`src/content/hud/instruments.test-support.ts`、`src/content/rule-data/rule-data.test-support.ts`：合成包夹具符合驾驶舱内容契约（24 的范围请求）。
+- `src/**/*.test.ts`、`src/**/*.test-support.ts`、`tools/*.test.ts`：仅限上述夹具变更引起的断言、计数与摘要字面量更新（24 的范围请求；本项执行时无其他并行子任务）。
 
 ## 验收标准
 
