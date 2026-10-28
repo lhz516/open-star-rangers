@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-24
+updated: 2026-10-28
 related: [U-001, U-006, U-007, U-008, U-009, U-010, U-011, U-012, U-014, U-017, U-018, U-021, U-022, U-024, U-025, U-026, U-027, U-028, U-029, U-031, U-032, U-033]
 ---
 
@@ -424,8 +424,8 @@ Meaning of the arguments (drawer `0x4e6c0`, expiry `0x4e964`):
 - **Mode** is the scroll behaviour of the message line, not a region. At its first draw the head item stores the sample as its start; with dt = sample − start (u32) and W = the line rectangle's width − 2, the x offset is 0 (mode 0), W − ((dt × 48) >> 6) (mode 1) or W − ((dt × 120) >> 6) (any other mode). An item is removed when its width + offset ≤ 0 (it has left the line) or, in mode 0, 0x80 units after its first draw. Only the head item is drawn; the others wait.
 - **Expiry** is read only by `0x4e964` (second type-8 handler, registered at `0x494d2`), which `0x49b2c` runs each render frame while the player exists, in view modes 1, 6, 8 and 0xC–0x12 ([cockpit](./cockpit.md)). It removes the head item when it was **never drawn** and the sample has passed post time + ECX. Once drawn, ECX no longer matters: 0x280 and 0x3C0 are not display durations, and the beacon's 0x3C0 equals the rule due only by coincidence.
 - **Region:** chosen by data. The message line is instrument type 8; every slot of the three CCKD cockpit entries has exactly one type-8 record, so the line is drawn in whichever layout is active. Font 2 in LO mode, font 0 otherwise; the width always uses font 0's advance.
-- **Visible time** of a mode-1 item from its first draw is the smallest dt with (dt × 48) >> 6 ≥ W + width, ignoring draw throttling. Derived, not measured: with the HI front rectangle (183 px inclusive, extent Likely) and 8-px glyphs, about 658 units for the completion message and 722 for the beacon message.
-- `0x4e9b0` and the flush `0x2cd20` drop only the head message-line item. Not traced: the drawer's branch for ps +0x28 = 8 and the redraw throttling of record +0x18; neither changes the constants. Whether the completion item can expire unseen depends on slot selection after the all-clear (Unconfirmed). Drawing belongs to P3-13.
+- **Visible time** of a mode-1 item from its first draw is the smallest dt with (dt × 48) >> 6 ≥ W + width; there is no draw throttling (every type-8 record has interval 0, P3-13/05). Derived, not measured: with the HI front rectangle (183 px inclusive, extent Confirmed) and 8-px glyphs, about 658 units for the completion message and 722 for the beacon message.
+- `0x4e9b0` and the flush `0x2cd20` drop only the head message-line item. The view-8 branch, the clear flag, the whole-glyph window, the per-slot geometry, the absence of throttling, every other enqueue site and the silent drop on allocation failure are in [hud §4.7](./hud.md#47-message-line-type-8) (Confirmed, code, P3-13/05). **Correction:** the completion item can expire unseen only when it waits behind other items for more than 0x280 units, and only before it becomes the head and is first drawn (expiry tests only an undrawn head).
 
 #### Numbers on the flow and rescue paths (P3-11/01–02)
 
@@ -668,7 +668,7 @@ Several Ctrl combinations produce the same extended codes. P3-06/02 settled the 
 | 8 (map) | The map; `0x3d4e4` draws no world |
 | 0x13 | Nothing |
 
-Which HUD elements `0x456e4`, `0x45de0` and `0x49b2c` draw in each mode belongs to P3-13.
+What `0x456e4`, `0x45de0` and `0x49b2c` draw in each mode is in [hud §4](./hud.md#4-instrument-overlay-and-map-drawing-p3-13) and [cockpit](./cockpit.md#instrument-records-scheduling-and-visible-persistence-p3-1301) (P3-13): `0x45de0` runs the lock tone in 0xC–0x12, draws the full overlay only in 0xC and 0xD and only the view label in 0x11.
 
 **Confirmed (the destruction view, mode 0x11 sub-mode 8):**
 
@@ -1649,7 +1649,7 @@ Research of P3-03 [subtask 24](../../plan/p3/03/subtasks/24-hud-exe-text-researc
 
 - **Drawers:** glyphs reach the screen only through `0x59fc8`, which draws them inline from a font record. Font records are built only by `0x5acac`, which is called at `0x33ed6` (the OPTIONS screen font `0x186924`) and at `0x496f1` (the three CCKD fonts, handed out only by `0x49a58`; [hud §1.1](./hud.md#11-glyph-layout-and-character-maps-likely)). Raw scans find 52 calls of `0x59f90`, which measures a string and calls `0x59fc8`, and 17 calls of `0x59fc8`, all direct. Every call's string argument was traced back to its source.
 - **Message line:** instrument type 8 draws the queue `0x175f08`, which only `0x4e9e8` fills. It has 11 callers: the seven sites of [flight message strings](#flight-message-strings-and-the-rens-header-p3-0304), `0x3cb30`, `0x4e3fd`, `0x4e461` and `0x68ff9` (below).
-- **Formatting:** `0x74a3f` takes a buffer, a format and values, calls the formatter `0x8fe92` and ends the result with NUL (Likely the C library's `sprintf`). `0x74b67` writes an integer's decimal digits (Likely `itoa`). Each formatted buffer is drawn by the sites below.
+- **Formatting:** `0x74a3f` takes a buffer, a format and values, calls the formatter `0x8fe92` and ends the result with NUL; `0x74b67` writes an integer's decimal digits. Both are Confirmed (code, P3-13/05; earlier Likely `sprintf`/`itoa`): the conversions, `%.0f`'s round-half-to-even and the sign rule are in [hud §4.1](./hud.md#41-primitives-text-and-formatting). Each formatted buffer is drawn by the sites below.
 - **Object names (+0x15C):** the target display, the target box and the map draw them. Their only writers are the mission build's name assignment `0x67d44` (CINF craft record +0x04, [craft §3.5](./craft.md#35-craft-record-and-missile-body-record-236-bytes), or SCEN names, [scenario](./scenario.md)), the allocator's clear (`0x521ff`) and the map marker builder `0x3cb80` (below). Of the 32-bit values 0x15C in the game code, the remaining hits belong to other structures: a pilot record (`0x3acb7`, `0x3aec2`) and an AI state (`0x63c82`, `0x63cda`).
 - **References:** for every literal below, the 32-bit occurrences of its address in the image are exactly the listed sites; for the Warp page titles, they are the parameter-block pointers. The regions of the drawn-in-mission literals and of the LO, F2, cheat, wave and base-interior literals (81 in all; not the menu pages' or the delivered `0x171e58`) lie in file-backed pages of object 4, start 4-byte aligned, end at their only NUL and contain no fixup: the shared reader accepted each exact region.
 - **Limits:** static analysis only; no baseline run. Each instrument below is drawn on every frame of its view (Confirmed). Formatted values are named only by their code source.
@@ -1690,10 +1690,10 @@ Research of P3-03 [subtask 24](../../plan/p3/03/subtasks/24-hud-exe-text-researc
 | `0x171c30` | `le/4/0x1c30/13` | — | `0x46b78` (four sites) | Blinks for a few steps of 0x26 ticks after the autopilot flag `0x174b24` changes. `0x27ee4` sets that flag and installs built-in AI record 0 on the player ([ai](./ai.md)); the flight key handler toggles it at `0x26eff`, and `0x2626c` calls it for a pending command |
 | `0x171c40` | `le/4/0x1c40/14` | — | `0x46d38` (four sites) | Blinks while the step counter `0x174b28` runs and the autopilot is off. The speed-assist toggle starts it at `0x269d4`, and so does `0x27f68` at `0x27ff0` and `0x280aa` (a loss of the target after a match, and a match with a large speed difference; [speed assist](#throttle-maximum-speed-and-speed-matching-p3-0603)) |
 | `0x171c60` | `le/4/0x1c60/15` | — | `0x47e50` (`0x47f3a`) | Blinks every 8 ticks while `0x2e080` returns 0 for the player, that is, while the byte at +0xF4 +0x24 of the player object is 4 (Likely) |
-| `0x171c70` | `le/4/0x1c70/6` | `%d` | `0x48055`, `0x48135` | Two integer readouts: one from the player's block (+0x08 → +0x08), one relative to the target |
+| `0x171c70` | `le/4/0x1c70/6` | `%d` | `0x48055`, `0x48135` | Two integer readouts: the player's own speed (block +0x08 → +0x08) and the closing speed on the target (corrected, P3-13/04) |
 | `0x171c78` | `le/4/0x1c78/5` | `%d`, `%%` | `0x48083` | A percentage |
-| `0x171c80` | `le/4/0x1c80/3` | — | Copied into the last two readout buffers | No target, or a distance above 10,000 |
-| `0x171c84` | `le/4/0x1c84/4` | `%d` | `0x481bf` | The integer distance up to 10,000 |
+| `0x171c80` | `le/4/0x1c80/3` | — | Copied into the last two readout buffers | No target, or a target without a movement block; in the time-to-target buffer also when the closing speed is below 1 or the time exceeds 10,000 (corrected, P3-13/04) |
+| `0x171c84` | `le/4/0x1c84/4` | `%d` | `0x481bf` | **Time to target**, chop(distance ÷ closing speed), up to 10,000; not the distance (corrected, P3-13/04; [hud §4.6](./hud.md#46-flight-view-overlay-0x45de0-and-view-label)) |
 | `0x170fc4` | `le/4/0xfc4/5` | — | Returned by `0x2dcf0`, drawn at `0x47dfc` | No weapon in the slot; otherwise the name is CINF gun or missile record +0x04 ([craft §3.3](./craft.md#33-gun-record-48-bytes)). Needs an empty weapon slot (Unconfirmed) |
 | `0x171860` | `le/4/0x1860/10` | — | Copied to the new object's +0x15C by `0x3cb80` | The name of the map/Warp marker (kind `0x2000000`) that the first left click in the main map creates ([strategic map projection](#strategic-map-projection)). It is drawn as the target's name (`0x43e47`, `0x47abd`) while the marker is the target (Confirmed: the target display's marker branch rejoins before the name, [marker](#cursor-destination-and-marker-p3-0902)) |
 
@@ -1703,10 +1703,10 @@ The four readout buffers (`0x19ba04`, `0x19ba0c`, `0x19ba14`, `0x19ba1c`) are re
 
 | Address | Region | Conversions | Site | When drawn |
 |---|---|---|---|---|
-| `0x171d18` | `le/4/0x1d18/12` | — | `0x4a76b` | Every map frame, at the top left of the main map |
+| `0x171d18` | `le/4/0x1d18/12` | — | `0x4a76b` | Every map frame, at the zoom window's origin + (4, 4) in colour 0xA, not the main map's corner (corrected, P3-13/06; [hud §4.9](./hud.md#49-strategic-map-type-10)) |
 | `0x171d10` | `le/4/0x1d10/8` | `%d`, `%%` | `0x4a43f` → `0x4a507`; `0x4a5f0` → `0x4a664` | Beside the stored destination's mark (record 27, not the marker object) and the cursor: the Warp cost `0x30d2c` as a percentage of the current energy, truncated, at least 1; coloured by the shown value: ≥ 100, 67–99, ≤ 66 ([Warp cost](#warp-cost-and-warp-start-p3-0905)) |
-| `0x171d24` | `le/4/0x1d24/5` | none | `0x4a826` → `0x4a8a5` | Cursor readout when `0x4c3ec` returns −1 |
-| `0x171d2c` | `le/4/0x1d2c/8` | `%.0f` | `0x4a84f` → `0x4a8a5` | Cursor readout otherwise |
+| `0x171d24` | `le/4/0x1d24/5` | none | `0x4a826` → `0x4a8a5` | Cursor readout when `0x4c3ec` returns −1; only with the cursor in the zoom window, which the mouse clamp makes unreachable (P3-13/06) |
+| `0x171d2c` | `le/4/0x1d2c/8` | `%.0f` | `0x4a84f` → `0x4a8a5` | Cursor readout otherwise; unreachable likewise |
 | `0x171d44` | `le/4/0x1d44/3` | `%d` | `0x4ba60` (in `0x4b98c`), drawn at `0x4a9e3` | The 3D distance from the player to each other zoom-window unit, while the map flag `0x18649c` is 1 ([zoom window](#zoom-window-information-window-and-labels-p3-0904)). The map-state set-up `0x2b814` clears it at `0x2b8ab`, every map opening clears it at `0x49e41`, and the right mouse button in the main map toggles it at `0x2bc06` (Confirmed, code, P3-05/03; [map mouse input](#map-mouse-input-p3-0503)) |
 
 The information window (`0x4ba80`; [hud](./hud.md#sources-of-the-unidentified-elements-p2-1227)) draws its lines at `0x4bf7c` and `0x4c2e5`. For each unit in the zoom window's range whose kind is in `0x6c87f` and is not `0x4000`, it formats a kind word with no argument, appends the name through `0x171db4`, and writes a second line with the shield, hull and energy percentages of the unit's craft capacities. It counts the units of the other listed kinds and writes one count line per kind in a fixed order, only while the unit lines are below the capacity ([information window](#zoom-window-information-window-and-labels-p3-0904), P3-09/04 correction). In the selected mission, SCEN 3019's records have kinds 1, 0x80, 0x100, 0x4000 and 0x20000, and the wingman roster has kind 2 ([selected-mission field inventory](./scenario.md#selected-mission-field-inventory-confirmed-structure); kinds read from the local P2-09 record table). So only the kind words of kinds 1, 2 and 0x20000 and the count lines of kinds 0x80, 0x100 and 0x4000 can appear there; the others need kinds the mission does not declare:
@@ -1722,7 +1722,7 @@ The map labels (`0x4af78`) are the units' names (+0x15C) for kinds in `0x6887f` 
 | Address | Region | Site | When drawn |
 |---|---|---|---|
 | `0x171e60`, `0x171e64`, `0x171e68` | `le/4/0x1e60/2`, `le/4/0x1e64/2`, `le/4/0x1e68/2` | Energy page `0x4d800` → `0x4d6f0` (`0x4d7f1`) | Labels of the page's three bars |
-| `0x171e6c` | `le/4/0x1e6c/15` | Communications panel `0x4da28` (`0x4db3c`) | HI, when the panel's argument is 0 |
+| `0x171e6c` | `le/4/0x1e6c/15` | Communications panel `0x4da28` (`0x4db3c`) | Title of every HI menu page; the layout argument is the display mode ([comm §4](./comm.md#4-text-rules-confirmed), P3-13/05) |
 | `0x170f98` | `le/4/0xf98/3` | Copied by `0x2c9d0` (`0x2caaa`) into each object-list entry, between the generated key and the object's name; drawn by the panel (`0x4dbec`) | Communications object lists ([comm](./comm.md)) |
 | `0x171e44` | `le/4/0x1e44/9` | Warp page `0x4dcec` (`0x4df2a`), through the pointer at +0x68 of the HI parameter block `0x175d80` (at `0x175de8`) | Warp page title |
 | `0x171e7c`, `0x171e84`, `0x171e8c` | `le/4/0x1e7c/6`, `le/4/0x1e84/6`, `le/4/0x1e8c/11` | `0x4e018` (`0x4e1a8`), called at `0x4df6a`, `0x4dfaa` and `0x4dfed`; drawn verbatim | Labels of the Warp page's three bars |
@@ -1733,8 +1733,8 @@ The key of a communications entry at position p comes from the 36-byte table `0x
 
 | Address | Region | Site | When drawn |
 |---|---|---|---|
-| `0x171e98` | `le/4/0x1e98/5` | Type 9, `0x4eb3c` (`0x4ec81`) | Blinks while `0x175f14` is set. Every 0x40 or 0x80 ticks, `0x4edf4` sets it when `0x4f000` finds a missile (kind `0x100000`, +0x02 = 1, +0x03 ≥ 7) whose +0x8C is the player, while the player's subsystem slot 0xC is in state 0 or 1. Needs an enemy missile aimed at the player (Unconfirmed). `0x4edf4` also runs the attacker check `0x4ef9c`, whose hit calls the wingman's tail warning `0x38c30`, a radio enqueue from the render path ([RX5](#rx5-wingman-reports-outside-the-damage-handler--confirmed-code)) |
-| `0x171ea0` | `le/4/0x1ea0/5` | Type 9 (`0x4ed45`) | Blinks while `0x175f10` is set: `0x4ef9c` finds an object of kinds `0x780` whose +0x8C is the player and whose byte at +0xF4 +0x24 is 3 or 4, while slot 0xC is in state 0. The selected mission's enemy kinds 0x80 and 0x100 are in that mask (Likely) |
+| `0x171e98` | `le/4/0x1e98/5` | Type 9, `0x4eb3c` (`0x4ec81`) | Blinks while `0x175f14` is set. Every 0x40 or 0x80 ticks, `0x4edf4` sets it when `0x4f000` finds a missile (kind `0x100000`, +0x02 = 1, +0x03 ≥ 7) whose +0x8C is the player, while the player's subsystem slot 0xC is in state 0 or 1. Needs an enemy missile aimed at the player (Unconfirmed); erased label ranges on first-mission captures indicate it occurred (Likely, P3-13/07, [hud §4.8](./hud.md#48-indicator-strip-type-9-and-warp-lamp-type-12)). `0x4edf4` also runs the attacker check `0x4ef9c`, whose hit calls the wingman's tail warning `0x38c30`, a radio enqueue from the render path ([RX5](#rx5-wingman-reports-outside-the-damage-handler--confirmed-code)) |
+| `0x171ea0` | `le/4/0x1ea0/5` | Type 9 (`0x4ed45`) | Blinks while `0x175f10` is set: `0x4ef9c` finds an object of kinds `0x780` whose +0x8C is the player and whose byte at +0xF4 +0x24 is 3 or 4, while slot 0xC is in state 0. The selected mission's enemy kinds 0x80 and 0x100 are in that mask (Likely); erased label ranges on first-mission captures indicate it occurred (Likely, P3-13/07) |
 | `0x171ea8` | `le/4/0x1ea8/5` | Type 12, `0x4f2a0` (`0x4f352`, `0x4f3d8`) | While `0x175f38` is set: `0x4f3e4` sets it when object +0xC8 is 0 or when 64 times the craft record's +0xA4 (the Warp interval, [craft §3.5](./craft.md#35-craft-record-and-missile-body-record-236-bytes)) has passed since +0xC8. `0x4f3e4` does this only in a campaign (`0x33504` is exactly `0x186882 == 1`; Confirmed, P3-09/01). The comparison is strict, while the Warp start already accepts at equality ([Warp start](#warp-cost-and-warp-start-p3-0905)) |
 
 **Observed values (Confirmed, local reader, P3-03/24–26):** the 64 regions on the view paths above total 467 bytes with their NULs (403 without); the longest is 15 bytes with its NUL. 39 are format strings (25 with value conversions, 14 without; 4 contain `%%`) and 25 are drawn verbatim. They are imported as `data/hud/text` ([P3-03/26](../../plan/p3/03/subtasks/26-hud-text-assembly.md)).
@@ -1753,7 +1753,7 @@ The key of a communications entry at position p comes from the 36-byte table `0x
 
 **Already delivered:** the status display's lower line formats a subsystem's name and state word with the EXE format `0x171e58` (`le/4/0x1e58/6`, two `%s`; formatted at `0x4d4e3` and drawn through `0x4f108`), which is converted with DIAG 10489 into `data/hud/status-display/messages` ([hud](./hud.md#diag-10489-confirmed-structure-p2-07-revision)).
 
-**No EXE literal:** the sub-mode labels (TABL 10399); the communications menus (COMM TABL, [comm](./comm.md)); the status display's other text (DIAG 10489); object and weapon names; and the message-line text that `0x4e368` posts from a streamed entry. `0x4e308` requests that entry through `0x6b998` with the ID of a queued message, and the entry's first word points to the text. The text is posted in both completion branches; `0x1863d8` = 0 (GAMEHIRES off) with display mode 1 and a docked player selects the text-only branch ([RQ5](#rq5-incoming-channel-load-visible-end-and-callback--confirmed-code-and-runtime-baseline)). Outside the drawers, `0x49e00` passes `0x171cc0` and `0x171ce8` to `0x74270` only when a map TABL fails to load.
+**No EXE literal:** the sub-mode labels (TABL 10399); the communications menus (COMM TABL, [comm](./comm.md)); the status display's other text (DIAG 10489); object and weapon names; and the message-line text that `0x4e368` posts from a streamed entry. `0x4e308` requests that entry through `0x6b998` with the ID of a queued message, and the entry's first word points to the text. The text is posted in both completion branches; `0x1863d8` = 0 (GAMEHIRES off) with display mode 1 (HI) and a docked player selects the text-only branch, that is, only while a switch from HI to LO is pending in view 6 ([RQ5](#rq5-incoming-channel-load-visible-end-and-callback--confirmed-code-and-runtime-baseline)). Outside the drawers, `0x49e00` passes `0x171cc0` and `0x171ce8` to `0x74270` only when a map TABL fails to load.
 
 Evidence (ignored): `local/research/p3-03/hud-text/`. It holds `ghidra_scripts/HudTextProbe.java` and `probe.sh` with the outputs `out/a1`, `out/a2`, `out/d1`–`out/d9`, `out/e1`–`out/e19`, `out/f1`–`out/f7` and `out/s1`–`out/s3`, and `instrument-types.ts` and `regions.ts` with `out/instrument-types.json` and `out/regions.json` (instrument types, verdicts, lengths and byte-class counts only). Ghidra ran on a private copy of the project; functions created in memory were discarded.
 
@@ -1795,7 +1795,7 @@ Static answers to Q-03 of the [P3-05 spec](../../plan/p3/05/spec.md#原版研究
 **Confirmed (buttons; function 03h returns the current state, not a latch):** `0x2b9bc` stores the point (`0x1864a0`, `0x1864a2`) and its region (`0x1864a4`). In the main map it converts the point to the cursor's world point and sets the zoom bounds ([above](#strategic-map-projection)).
 
 - **Left (bit 0):** a level sampled at each read. While it is down, every read makes the same read's cursor world point the target (the cursor point is stored first), takes the nearest icon and z as above, creates or moves the map/Warp marker and posts click sound 10463, whose own due time (`0x174b38`, the sample + 4) is shorter than the read interval, so the sound is posted at every such read. The effect therefore occurs at the first read after a press, repeats at every read while the button is held (the target follows the cursor), and nothing happens on release. A press and release that both fall between two reads are not seen.
-- **Right (bit 1):** in the main map and while the debounce counter `0x1864c4` is not positive, it toggles `0x18649c` and sets the counter to 20. Every `0x2b9bc` call decrements a positive counter, and the function runs once per read and once per map frame (below), so the debounce counts calls, not time, and a held right button toggles at every 20th call. The counter is not reset at an opening. Neither the flag nor the counter nor the numbers have a reader outside drawing ([zoom window](#zoom-window-information-window-and-labels-p3-0904)). `0x18649c` makes the map draw call `0x4b98c`, which writes a number next to each unit icon in the zoom window (string `0x171d44`, [HUD text](#hud-map-and-communications-text-from-the-exe-p3-0324)). It is cleared at every opening (`0x49e41`) and by the map-state set-up `0x2b814` (from the mission builder).
+- **Right (bit 1):** in the main map and while the debounce counter `0x1864c4` is not positive, it toggles `0x18649c` and sets the counter to 20. Every `0x2b9bc` call decrements a positive counter, and the function runs once per read and once per map frame (below), so the debounce counts calls, not time, and a held right button toggles at every 20th call. Within one call the test comes before the decrement (the toggling call leaves 19), and in a pass the read call (message 0x1000 in the message loop) precedes the draw call (`0x49f8c`, buttons 0); with reads every fourth pass at 2 units per pass that is a toggle every 16 passes, not every 20, and with a carried count c the first toggle of a held button comes at read ⌈(c − 1)/5⌉ + 1 (P3-13/06, Confirmed, code; cadence derived at 2 units per pass, [hud §4.9](./hud.md#49-strategic-map-type-10)). The counter is not reset at an opening; only the mission set-up `0x2b814` clears it (also on a retry), and a rescue keeps it (Likely). The read of the closing pass still runs after the close message and can toggle (invisible, cleared at the next opening) and carry 19. Neither the flag nor the counter nor the numbers have a reader outside drawing ([zoom window](#zoom-window-information-window-and-labels-p3-0904)). `0x18649c` makes the map draw call `0x4b98c`, which writes a number next to each unit icon in the zoom window (string `0x171d44`, [HUD text](#hud-map-and-communications-text-from-the-exe-p3-0324)). It is cleared at every opening (`0x49e41`) and by the map-state set-up `0x2b814` (from the mission builder).
 - **Middle and wheel:** the middle-button bit is read but never tested; the wheel byte is masked off.
 
 **Confirmed (pointer drawing; the draw cadence checked against the shipped layout record):** the map draw `0x49f8c` runs on every map frame and first calls `0x2b9bc` with buttons 0 at the block's current point, so drawing never selects. At the cursor it draws the selection rectangle (`0x4c8b0`: centred on the cursor pixel, sized by the zoom extent, edges outside the main map omitted and the rest clamped), TABL 10461 record 26 with its top-left at the cursor point (at `0x4a36d`, through `0x4abe4`) and the energy-cost text beside it; the panel containing the cursor gets a different outline colour (at `0x4aa2d`, through `0x4b8fc`). No other pointer is drawn, and the driver's cursor stays hidden.
@@ -1951,7 +1951,7 @@ There is at most one marker (Confirmed), created by the first select of a missio
 
 #### Zoom window, information window and labels (P3-09/04)
 
-**Confirmed (map draw order, `0x49f8c`):** per map frame: `0x2b9bc`(block point, buttons 0) (cursor world point, zoom bounds, debounce decrement); font 1; information capacity `0x175c78` := information height ÷ font-1 height (signed); the destination pixel (`0x4c524`) while ps +0x00 ≠ 0; the combat target := P +0x8C when valid; icon list rebuild; then `0x4ba80` (only while the cursor region is the main map), `0x4b3a8`, `0x4ad1c`, the grid `0x4ab08`, labels `0x4af78`, record 26 and the cursor's cost text, record 27 and the destination's cost text, main-map icons, the target's icon on top, the line `0x4c674`, a fixed caption, `0x4b56c`, `0x4b98c` (only while `0x18649c` = 1), zoom-window icons with boxes and numbers, panel frames, the pointer box `0x4c8b0`. Nothing else is drawn around the destination or the combat target.
+**Confirmed (map draw order, `0x49f8c`):** per map frame: `0x2b9bc`(block point, buttons 0) (cursor world point, zoom bounds, debounce decrement); font 1; information capacity `0x175c78` := information height ÷ font-1 height (signed); the destination pixel (`0x4c524`) while ps +0x00 ≠ 0; the combat target := P +0x8C when valid; icon list rebuild; then `0x4ba80` (only while the cursor region is the main map), `0x4b3a8`, `0x4ad1c`, the grid `0x4ab08`, labels `0x4af78`, record 26 and the cursor's cost text, record 27 and the destination's cost text, main-map icons, the target's icon on top, the line `0x4c674`, a fixed caption (at the zoom window's origin + (4, 4)), `0x4b56c`, `0x4b98c` (only while `0x18649c` = 1), zoom-window icons with boxes and numbers, panel frames, the pointer box `0x4c8b0`. Nothing else is drawn around the destination or the combat target. Branch conditions, colours and primitives: [hud §4.9](./hud.md#49-strategic-map-type-10) (P3-13/06).
 
 **Confirmed (the type-10 record's fields):** `0x49e74` reads only the inclusive rectangle +0x04–+0x10. The instrument scheduler `0x49b2c` reads the interval +0x18, draws when it is 0 or when sample − last (+0x1C) > +0x18 (unsigned), and writes the sample to +0x1C; it passes +0x14 and +0x24 to the handler, which `0x49f8c` does not read. With the shipped records the map draws every frame.
 
@@ -1965,9 +1965,9 @@ There is at most one marker (Confirmed), created by the first select of a missio
 
 A unit takes two rows; a name row can be the last without its value row; hostile and other non-listed kinds appear only as counts. This corrects the earlier record ("a line with three position components"; "as many as fit").
 
-**Confirmed (zoom-window numbers `0x4b98c`; presentation only):** called only while `0x18649c` = 1, with the player's own entry index (nothing happens when it is −1) and the combat target's entry index (−1 when none or not listed). For every other entry with +0x2C = 1 it sets +0x34 := 1 and writes a label: `%d` of trunc(√((dx² + dy²) + dz²)) (x87, entry positions, `FISTP` qword, low 32 bits) — the 3D distance from the player in runtime units at the list rebuild — placed at the unit's zoom pixel + the zoom origin + 2, in a highlight colour for the combat target. The toggle (`0x2bbd3`–`0x2bc24`): right button, counter ≤ 0 and cursor in the main map → flag := (flag = 0), counter := 20; then every call decrements a positive counter (the toggling call leaves 19). A held right button toggles at every 20th `0x2b9bc` call (one per map read, one per map frame). **No rule reads the flag, the counter or the number fields:** the flag is read only by its own toggle and the map draw, the counter only by the toggle; a raw scan of every 32-bit value in `0x186400`–`0x1864d0` finds only direct accesses and five base pointers passed to drawing helpers (and `0x1864c8`, the [Warp origin](#warp-cost-and-warp-start-p3-0905)); the picks read only entry +0x0A–+0x10 and +0x1C–+0x2C and `0x2bd74` only +0x08. The numbers and their toggle are presentation state.
+**Confirmed (zoom-window numbers `0x4b98c`; presentation only):** called only while `0x18649c` = 1, with the player's own entry index (nothing happens when it is −1) and the combat target's entry index (−1 when none or not listed). For every other entry with +0x2C = 1 it sets +0x34 := 1 and writes a label: `%d` of trunc(√((dx² + dy²) + dz²)) (x87, entry positions, `FISTP` qword, low 32 bits) — the 3D distance from the player in runtime units at the list rebuild — placed at the unit's zoom pixel + the zoom origin + 2, in a highlight colour for the combat target. The toggle (`0x2bbd3`–`0x2bc24`): right button, counter ≤ 0 and cursor in the main map → flag := (flag = 0), counter := 20; then every call decrements a positive counter (the toggling call leaves 19). A held right button toggles at every 20th `0x2b9bc` call (one per map read, one per map frame), which is every 16 passes at 2 units per pass ([map mouse input](#map-mouse-input-p3-0503), P3-13/06). **No rule reads the flag, the counter or the number fields:** the flag is read only by its own toggle and the map draw, the counter only by the toggle; a raw scan of every 32-bit value in `0x186400`–`0x1864d0` finds only direct accesses and five base pointers passed to drawing helpers (and `0x1864c8`, the [Warp origin](#warp-cost-and-warp-start-p3-0905)); the picks read only entry +0x0A–+0x10 and +0x1C–+0x2C and `0x2bd74` only +0x08. The numbers and their toggle are presentation state.
 
-**Confirmed (main-map de-overlap `0x4b3a8`; feeds the next select):** runs in every map draw after the rebuild and before every other user of the map pixels. It clears +0x30 of all entries; for i = 1 … count − 1 (entry 0 never moves), scanning j = 0 … count − 1, j ≠ i, with entry j in the world (+0x28 = 1): when entry i's map pixel equals entry j's, entry i moves by the next step of its own counter c (+0x30, then +1) and the scan restarts at j = 0. The cumulative offsets from the original pixel for c = 0…7 are (+3, +3), (−3, +3), (−3, −3), (+3, −3), (+3, 0), (0, +3), (−3, 0), (0, −3); c = 8 returns to the original pixel and ends i's scan (jump table `0x4b384`). The in-world flag is not recomputed. **Rule effect:** the next frame's pick `0x4c310` reads these moved pixels, so coincident icons change which icon (and destination z) a select takes. `0x4b56c` does the same for the zoom pixels, read only by drawing and the unreachable `0x4c3ec`.
+**Confirmed (main-map de-overlap `0x4b3a8`; feeds the next select):** runs in every map draw after the rebuild and before every other user of the map pixels. It clears +0x30 of all entries; for i = 1 … count − 1 (entry 0 never moves), scanning j = 0 … count − 1, j ≠ i, with entry j in the world (+0x28 = 1): when entry i's map pixel equals entry j's, entry i moves by the next step of its own counter c (+0x30, then +1) and the scan restarts at j = 0. The cumulative offsets from the original pixel for c = 0…7 are (+3, +3), (−3, +3), (−3, −3), (+3, −3), (+3, 0), (0, +3), (−3, 0), (0, −3); c = 8 returns to the original pixel and ends i's scan (jump table `0x4b384`). The in-world flag is not recomputed. **Rule effect:** the next frame's pick `0x4c310` reads these moved pixels, so coincident icons change which icon (and destination z) a select takes. `0x4b56c` moves the zoom pixels with a different algorithm (record-sized steps, overlap of boxes, bounds and a comparison limit; corrected by P3-13/06, [hud §4.9](./hud.md#49-strategic-map-type-10)); they are read only by drawing and the unreachable `0x4c3ec`.
 
 **Confirmed (labels `0x4af78` and the line `0x4c674`):**
 
@@ -2428,7 +2428,7 @@ Walks the hostile set `0x93780` (`0x5261c`) and returns 1 at the first object wh
 
 - **Render hook:** the frame render `0x3ee58` calls `0x4e308` at its end in every pass and view mode (`0x3f075`). `0x4e308` takes the first type-1 item of this pass (`0x52d60(1, 0)`); when the stream has a pending request it services it (`0x6baf8(stream, 3)`) and the item, if any, is dropped; otherwise it stores an item's callback in `0x1a9f50` and requests the message entry asynchronously (`0x6b998` → `0x6a8f0`, completion `0x4e368`). Then it always calls `0x4e5a0`.
 - **Completion `0x4e368`** (inside a later service): entry 0 → nothing (no page, no callback, channel idle again); cancel flag set → flag cleared, entry released, nothing shown. Otherwise start `0x1a9f48` := sample, frame `0x1a9f4c` := −1, sound handle 0, entry `0x1a9f58` := entry, and then:
-  - **docked text-only branch:** player activity 3 **and** display mode `0x1762a0` = 1 **and** `0x1863d8` = 0 → the entry's text goes to the message line (`0x4e9e8(text, 8, 1, 0x200)`), the entry is released, `0x1a9f58` := 0, no page 5, and **the callback is never called**;
+  - **docked text-only branch:** player activity 3 **and** display mode `0x1762a0` = 1 **and** `0x1863d8` = 0 → the entry's text goes to the message line (`0x4e9e8(text, 8, 1, 0x200)`), the entry is released, `0x1a9f58` := 0, no page 5, and **the callback is never called**. Display mode 1 is HI (`0x3f500(1)` sets 1, `0x3f500(0)` sets 2 = LO; `0x59dc0`), and `0x32d10` applies a pending GAMEHIRES change only outside view 6, so this branch occurs only while docked with GAMEHIRES already set to false and the switch to LO still pending; a real LO display takes the other branch (Confirmed, code, P3-13/05; whether the docked change sequence is reachable is Unconfirmed);
   - **otherwise** `0x4e418`: when the view mode is not 1 (Warp), `0x175efc` := the current page, page 5, forced redraw; in every view the text goes to the message line.
 - **Progress `0x4e5a0`** (every `0x4e308`): e = ((sample − start) × 8 mod 2³²) >> 6 (logical shift; units of 1/8 s); frames are consumed while e ≥ the frame's duration (signed). When all are consumed: entry released, `0x1a9f58` := 0, page := `0x175efc` **only if** the page is still 5, then `0x1a9f50()` when non-zero. Otherwise, at each frame change, the previous frame sound is stopped and the frame's sound started (`0x53bf0`), which does nothing when the sound flag `0x17618c` is 0; timing does not depend on it.
 - **So the callback runs at the end of playback, in the render of that pass** (after the dispatcher, message loop and post-loop systems), with that pass's sample; never at the take, on a flush, on a cancelled or failed load, or in the docked text-only branch.
@@ -2449,6 +2449,7 @@ Key k (`0x333b4`: +0x194 := the base, sub-state 3, due k + 0x780) → reply queu
 
 - Three separate save slots: incoming `0x175efc` (written only at visible start, view ≠ 1), the menu's controller +0x1A4 (written by `c` on any page except 2–4, including 5) and Warp `0x187020` (written on entering view 1; leaving restores it, or 0 when it was 5). Their interplay with an open menu is the matrix of [comm §7.6](./comm.md#76-other-contexts-while-a-menu-is-open-confirmed-code).
 - A message during an open menu saves its page, shows 5 (menu keys do nothing meanwhile; the menu is kept) and restores the menu page at the end. A message that starts in Warp shows no page 5 but still ends and calls its callback. `c` during page 5 opens the menu with +0x1A4 = 5; the message then ends without restoring (page ≠ 5), and closing the menu restores 5 with no entry.
+- **Picture (Confirmed, code and data, P3-13/05):** page 5 draws the current frame image of the entry at (x0, y0 + 1); the frames of all 481 CMOV entries are 96 × 96, so the image fills the panel below row y0 and the page has no text area (the message text goes only to the message line).
 - **Three failed draws:** the page-5 handler `0x4dc50` draws through `0x4e490` (0 when there is no entry or the frames are past the end); each failure clears the area and increments `0x1a9dcc`; on the third consecutive failure the page index is set to 0 directly (with `0x175c88` := 0, `0x1a9dc4` := 1); a success resets the counter. The counter counts handler calls, which follow the page's refresh rule ([D15](#d15-left-display-pages--confirmed-code)). This is the exit of the page-5-without-entry case (path Likely, mechanics Confirmed).
 
 ##### RQ9. CMOV structure — Confirmed (code and data)
@@ -2972,7 +2973,12 @@ callbacks `0x23a84` and `0x24cd9`, cleanup `0x2b5c4`, parked update `0x30117`); 
   node; in view mode 1 it builds nothing; otherwise, when `0x1752c4` < sample, it rebuilds the
   contact buffer with `0x40370` and sets `0x1752c4` := sample + 5; then it draws the buffer
   (`0x4017c`). The radar therefore exists only while the active cockpit layout has a type-5
-  instrument, and is rebuilt at most every 6 clock units, in the render path.
+  instrument, and is rebuilt at most every 6 clock units, in the render path. **Refinement
+  (P3-13/02, Confirmed, code and data):** the handler itself runs only when its record is due
+  (sample − last > record +0x18, strict); slot 0's radar interval exceeds 5, so every scheduled
+  call rebuilds and the record interval, not 6 units, sets the cadence. **Warp:** no rebuild, no
+  contacts and no blink toggle, but the disc is cleared and the background rings are drawn, so
+  the old contacts are not shown ([hud §4.3](./hud.md#43-radar-type-5)).
 - **Contact source:** `0x40370` iterates the presentation items of type 4 (`0x52d60`) and keeps
   those with sub-type byte +0x08 = 1. The only producer of type-4 sub-type-1 items is the camera
   pass `0x21584` (`0x215e8`, end of the dispatcher pass, after `0x30ef0`): it walks kinds
@@ -3002,16 +3008,18 @@ callbacks `0x23a84` and `0x24cd9`, cleanup `0x2b5c4`, parked update `0x30117`); 
   (`0x74518`), "near" when < 600 (signed). Colour: friendly missile 0x10; friendly near 0x10, far
   0xF; hostile missile 0xC; map/Warp marker 8; hostile near 0xA, far 9. Blink flag = kind &
   `0x100000` (missiles). Shape: missile 5×5 X `0x40b24`; the marker, and contacts on the
-  non-negative side of the camera row-3 plane (Likely in front of the camera; the plane offset's
-  writer was not traced), plus `0x40a98`; the others X `0x40ad4`. (Palette indices and shapes:
-  hud.md, P3-13.)
+  non-negative side of the camera row-3 plane (on or in front of the camera plane: the plane passes
+  through the camera, below), plus `0x40a98`; the others X `0x40ad4`. (Shapes, background and
+  clipping: [hud §4.3](./hud.md#43-radar-type-5).)
 - **Blink:** `0x4017c` toggles `0x1752c8` when `0x1752cc` < sample, then `0x1752cc` := sample + 0x10;
-  an entry with a non-zero blink flag is drawn in colour 0xA while the phase is 0.
+  an entry with a non-zero blink flag is drawn in colour 0xA while the phase is 0. The pre-pass
+  callback `0x40160`, which erases the previous contacts in the frame buffer, also tests and
+  toggles the phase (P3-13/02).
 - **Display geometry (camera-relative):** `0x40d44` reads the camera position `0x1b075c`–`0x1b0764`
   (`0x52e14`) and orientation `0x1b0768`–`0x1b0788` (`0x52e90`), which `0x52df4`/`0x52e34` set from
   `0x30ef0` and the per-view camera functions. The contact's position is projected onto the plane
   through the camera perpendicular to camera row 3 (offset from player-state +0xA8; +0xA0/+0xA4 for
-  rows 1/2; writer not traced), normalised, and split into row components; a second projection on
+  rows 1/2), normalised, and split into row components; a second projection on
   the row-1 or row-2 plane (chosen by |row-1 component| < 0.707) gives the forward component c;
   the screen point is the direction scaled by (1 − c) × 0.5 × scale + centre (`0x19390c`,
   `0x193900`, `0x193904`), truncated by `0x74518`. Distance does not move a contact. Each
@@ -3019,6 +3027,19 @@ callbacks `0x23a84` and `0x24cd9`, cleanup `0x2b5c4`, parked update `0x30117`); 
   sample) and reused when the projected length is within ±1e−6. So the radar turns with the
   camera: in F1/F2 the camera is the craft's pose (P3-01/09), in external views it is not. The
   contact set and classification do not depend on the camera.
+- **Plane offsets (P3-13/02):** `0x40c90` writes ps +0xA0/+0xA4/+0xA8 := −f32(R_k · camera
+  position) from the logical camera (C1) in the first call of every frame render (`0x3ee60`, all
+  views), before any radar read (Confirmed, code). No other writer was found (Likely: the other
+  +0xA0–+0xA8 stores in the image have object or 3D-library bases, and a scan for the block's
+  absolute addresses finds no store). So d = R_k · (p − camera) in f32, and the offsets can be
+  derived from the same frame's camera. The exact projection (`0x40d44`): with v the direction
+  projected on the plane perpendicular to R2 and normalised, a = v · R1, b = v · R0; when
+  \|b\| < 0.707 it projects again on the plane perpendicular to R0, else perpendicular to R1, and
+  takes c = v · R2; f = f32((1 − c) × 0.5); x = chop(cx + scale · f32(b · f)), y = chop(cy −
+  scale · f32(a · f)). Below \|n\| < 1e−6 the object's cached values (block +0xAC–+0xEC, shared
+  with `0x45de0` and the sound path `0x55984`) are reused; only +0xB0/+0xB4 are known to start
+  at 0. The radar build is the only writer of block +0xB0/+0xB4, which the flight-view
+  overlay's off-centre pointer reads (P3-13/04).
 - **Damage (player subsystem 12 through `0x52ac4`):**
   - state 0: as above;
   - state 1: after the real entries, N = rand & 7 more entries; each takes a direction from
@@ -3028,7 +3049,12 @@ callbacks `0x23a84` and `0x24cd9`, cleanup `0x2b5c4`, parked update `0x30117`); 
     in N). Real contacts are not replaced, but there is no count test, so at high counts the noise
     runs past the buffer (above);
   - state 2: no real contact and no target box; 60 noise entries (count < 0x3C), shapes by
-    rand & 3 through the jump table `0x40360` (single pixel `0x40a80`, plus, X).
+    rand & 3 through the jump table `0x40360` (single pixel, plus, X, single pixel).
+  - Overrun (P3-13/02): in state 1 the noise adds N = rand & 7 more entries with no count test,
+    up to 128 in all, writing past the buffer into the radar's layout globals (rectangle, centre,
+    radius, scale); the 121st real contact after a target box at index 119 writes past it in any
+    state. Consequences Likely (from the code), not observed; reachability in shipped missions
+    Unconfirmed.
   - other values: the build tests the field only for 2 (`0x40399`, which skips the real contacts) and for 1 and 2
     (`0x4078a`, `0x408d1`, noise). A value of 3, which no damage path writes, therefore builds like state 0
     (Confirmed, code, P3-07/13).
@@ -3038,9 +3064,11 @@ callbacks `0x23a84` and `0x24cd9`, cleanup `0x2b5c4`, parked update `0x30117`); 
 ##### T7. Right (target) display (Confirmed, code)
 
 `0x42d80` is the type-7 instrument draw handler (`0x49b2c` passes EAX = player-state, EDX = view
-mode, EBX = full-redraw flag, ECX = instrument rectangle, and calls a handler only when forced or
+mode, EBX = the slot's always-redraw flag (directory +0x0C; corrected by P3-13/01, not the global
+full-redraw flag), ECX = instrument rectangle, and calls a handler only when forced or
 when the sample minus the instrument entry's last-draw time +0x1C exceeds its period +0x18, in
-0x30-byte entries).
+0x30-byte entries). Drawing, copy and text layout: [hud §4.5](./hud.md#45-right-display-type-7)
+(P3-13/04).
 
 - **State writes in the render path:** at every call, when player +0x8C is invalid, or the view mode
   is 6, the handler clears the player's target (`0x528bc(player, 0)`, `0x42e21`). When the target
@@ -3059,7 +3087,11 @@ when the sample minus the instrument entry's last-draw time +0x1C exceeds its pe
   - position +0x6C–+0x74 and rows +0x54–+0x68 (its model is drawn through the 3D library; the view
     distance comes from the per-kind table `0x175424` indexed by kind bit, +16 entries when the
     target's +0x06 word is non-zero; a |dot product| ≤ 0.01 test on the player's orientation
-    (`0x43673`) selects one of two view set-ups);
+    (`0x43673`) selects one of two view set-ups). **P3-13/04 (Confirmed, code):** +0x06 is the
+    upper half of the kind dword +0x04, so the index is just the single kind bit's position; the
+    table holds 20 f32 values (bits 0–19), which cover every kind the player can target (masks
+    `0x93780`, `0x206c87e`, `0xfffff`), and the marker takes its own branch. The 0.01 test selects
+    a look-at with world up instead of the player's R1;
   - Euclidean distance from the player: the differences (player − target) are formed in double, and each squared
     term is the unrounded difference times its own f32 store (`FST float` before `FMUL float`), summed as
     (dy² + dz²) + dx², then `FSQRT` and an f32 store (Confirmed, code, P3-07/23); shown as is or × 0.001 when
@@ -3069,7 +3101,9 @@ when the sample minus the instrument entry's last-draw time +0x1C exceeds its pe
     [D1](#d1-object-fields-of-this-section--confirmed-code));
   - craft record +0x08 f32 × 0.001 (× 0.001 again when > 1000.0) — the first code reader of that
     field ([craft §3.5](./craft.md#35-craft-record-and-missile-body-record-236-bytes)).
-  Text formats and layout belong to P3-13.
+  Text formats and layout: [hud §4.5](./hud.md#45-right-display-type-7). The target's +0xCC
+  notice clear is covered in the project by Core's `target-cleared` (cause warp) at the end of the
+  same frame (Likely; P3-13/04).
 
 ##### T8. Left display: no target reads (Confirmed, code)
 
@@ -3085,7 +3119,9 @@ periods are already recorded in the [time base](#simulation-time-base-p3-0106)):
 | 5 | `0x4dc50` | 0 | 13 |
 | 6 (Warp) | `0x4dcec` | 0x10 | none (−1) |
 
-Page handlers receive EAX = rectangle, EDX = player-state, EBX = view mode, ECX = redraw flag; their
+Page handlers receive EAX = rectangle, EDX = player-state, EBX = view mode, ECX = redraw flag (the
+force argument of `0x4ce30`, which is the slot's always-redraw flag, directory +0x0C: 0 in F1's slot 0,
+1 in F2's slot 1; P3-13/03); their
 only +0x8C reads (`0x4d0f4`, `0x4d818`, and `0x27e6d` via `0x4da6e`) are of the player-state block,
 i.e. the player node. No page handler or helper it calls directly (`0x4d50c`, `0x4d308`,
 `0x4d44c`, `0x4e018`, `0x4d6f0`, `0x4d010`, `0x27e68`, `0x4e490`) reads the player's +0x8C. The
@@ -3903,7 +3939,15 @@ blink phase toggles when clock > the timer, which is then set to clock + 0x20. `
 
 So for the player, fields 1, 5 and 8 are rule state written by a display routine, at display times: only while
 the left display shows page 0, the page is not replaced by its interference animation (field 10, D15), and the
-cockpit instruments are drawn. They feed `0x2a830`'s forced search, its st < 2 test and the threshold count.
+cockpit instruments are drawn.
+
+**Order within `0x4d0e0` (Confirmed, code, P3-13/03):** each call first tests "the previous call toggled the blink"
+(flag, initially 1) or +0xF0, and only then tests its own timer and toggles. So the rebuild that writes fields 1, 5
+and 8 runs in the page-0 call **after** the toggle, with the new phase; if page 0 stops running right after a
+toggle (page change, interference, leaving the cockpit views) the write waits until page 0 runs again, possibly
+many frames later, and a toggle coinciding with +0xF0 writes twice. The flag, phase and due time are touched only
+here, start as static values (1, 0, 0) and are never reset, so they carry over between missions (the mission clock
+does not restart). P3-02 CR-10 (`systems/displays.ts`) writes in the same step as the toggle, one call earlier. They feed `0x2a830`'s forced search, its st < 2 test and the threshold count.
 Other objects' fields 1, 5, 8 change only through `0x2a830` (1) or never (5, 8).
 
 ##### D10. Energy levels: keys `s`/`S`/`g`/`G` — Confirmed (code)
@@ -4019,7 +4063,10 @@ next refresh, subsystem, interference on/off, next toggle, interference start; [
 instrument handler `0x4ce30` per drawn frame: field s of the page's subsystem; s = 2 → interference on (start time
 set once); s = 1 → toggle on/off when clock > next toggle, next toggle = clock + 0x40 + (rand & 0x3F); s = 0 → off.
 Off pages call their handler when forced or their next refresh is due (period 0 = every frame), on pages draw
-SNIP 10487.
+SNIP 10487. The force argument is the slot's always-redraw flag (directory +0x0C), not the global full-redraw flag;
+page changes force through the page table. Interference state per page, the refresh rule, the SNIP frame and its
+shared "last frame" with the right display, and each page's drawing: [hud §4.4](./hud.md#44-left-display-type-6)
+(P3-13/03).
 
 | Page | Handler | Subsystem | Entered by | Left by |
 |---|---|---|---|---|
@@ -4045,13 +4092,16 @@ SNIP 10487.
 | Hull | +0xD0 (clamped at 0) | c9C | corner gauge type 4 `0x415d0`; status field 1 (D9) |
 | Charge | +0x30 | c74 | energy-page right bar `0x4d800` |
 | Spare power | E +0x3C | T +0x40 | energy-page middle bar `0x4d800` |
-| Speed | mv +8 | c B8 | corner gauge type 0 `0x4117c`, field 17 |
-| Commanded speed | mv +0x6C | +0x78 (or c B8 by argument) | corner gauge type 1 `0x41238`, field 18 |
+| Speed | mv +8 | c B8 (no zero test) | corner gauge type 0 `0x4117c`, field 17 |
+| Commanded speed | mv +0x6C | +0x78, or c B8 when the view-mode argument (EDX) is 1 (Warp); 0 when the divisor is ≤ 0 | corner gauge type 1 `0x41238`, field 18 |
 
 `0x4d6f0` draws a bar of length h × value ÷ max (signed `IDIV`) when value < max, else full. The two TABL 10479
 records on the energy page are chosen by L1 and L2. Corner gauges at field state 1 show the true value only when
-(rand & 3) = 3 and a random value otherwise; at state 2 they are not drawn. *(Decompiler for the gauge colour
-thresholds.)*
+(rand & 3) = 3 and a random value of 0–10 % otherwise (a second draw); at state 2 they are not drawn and the last
+picture stays. Energy, shield and hull ratios are integer-to-float divisions stored as f32; only type 4 clamps a
+negative value to 0. The zero test exists only in type 1; the shipped B8, c54, c5C and c9C of the player are
+positive (D13, D17), so the other divisions cannot fault. Drawing, colour thresholds, blink periods and the
+gauges' own timers: [hud §4.2](./hud.md#42-corner-gauges-types-04) (Confirmed, code, P3-13/02).
 
 ##### D17. Numeric semantics — Confirmed (code)
 
@@ -5430,7 +5480,7 @@ Pixels of a capture region were classified by DATA colour and tested for members
 
 ##### FC1. One render per main-loop iteration — Confirmed (code)
 
-The main loop at `0x22e3a`–`0x22e77` calls, per iteration, `0x25894`, the object update `0x20938`, the dispatcher `0x20d10` and then the frame render `0x3ee58` (its only caller, `0x22e72`). After the render it copies the whole 8-bit frame buffer `0x1762a8` to video memory (`0x5b29b`/`0x5b312` by bank switching, or `0x5c37f`), runs `0x4e308` and, when `0x174b18` is set, writes a screenshot BMP of that buffer (`0x5800c`). Local captures are therefore the finished frame buffer, after every layer below.
+The main loop at `0x22e3a`–`0x22e77` calls, per iteration, `0x25894`, the object update `0x20938`, the dispatcher `0x20d10` and then the frame render `0x3ee58` (its only caller, `0x22e72`). After the render it copies the 8-bit frame buffer `0x1762a8` to video memory (`0x5b29b`/`0x5b312` by bank switching, or `0x5c37f`), runs `0x4e308` and, when `0x174b18` is set, writes a screenshot BMP of that buffer (`0x5800c`). **Correction (P3-13/01, Confirmed, code):** in HI, when the viewport's bottom row is below 479 (views 0xC, 1, 6, 0xE, 0xF, 0x10) `0x5b29b` copies only rows 0–315; the cockpit band reaches video memory only through the instruments' own rectangle copies ([cockpit](./cockpit.md#instrument-records-scheduling-and-visible-persistence-p3-1301)). The local captures are DOSBox-X pictures of video memory: they show the world rows of the finished buffer and the cockpit band as last copied, which in a Warp differs from the buffer (the game's own BMP is the buffer and is not a substitute).
 
 The dispatcher frees every presentation item of classes 1, 4, 8 and 0x10 at its start (`0x52c3c`, called at `0x20d19`), so items posted during one pass are seen by exactly the following render. Item lists are per class and FIFO (append at the tail in `0x531ec`, iterate from the head in `0x52d60`); `0x52d60(0x0C)` exhausts class 4 before class 8.
 
@@ -5442,7 +5492,7 @@ The dispatcher frees every presentation item of classes 1, 4, 8 and 0x10 at its 
 
 | # | Routine | Role | Depth |
 |---|---|---|---|
-| 1 | `0x40c90` (before the switch, all modes) | Radar-plane offsets for the HUD ([C1](#c1-the-3d-camera-and-its-readers--confirmed-code)) | — |
+| 1 | `0x40c90` (before the switch, all modes) | Radar-plane offsets for the HUD, rewritten every frame from the logical camera ([C1](#c1-the-3d-camera-and-its-readers--confirmed-code), [T6](#t6-radar-confirmed-code-unless-noted)) | — |
 | 2 | `0x554a0` (all modes) | Sound side of the presentation items (classes 1, 2, 4, 8), P3-14 | — |
 | 3 | `0x488b4` | Erase the previous frame's nebula images ([NB5](#nb5-the-erase-0x488b4--confirmed-code)) | none |
 | 4 | `0x3fd20` | Erase the previous frame's star pixels (index 0 at the stored positions) | none |
@@ -5450,28 +5500,28 @@ The dispatcher frees every presentation item of classes 1, 4, 8 and 0x10 at its 
 | 6 | `0x493d8` | Erase the previous frame's explosion sprites: repaint the opaque pixels of every queued sprite with index 0 at the same position and scale (`0x590b0`), then empty the sprite queue | none |
 | 7 | `0x3d318` → `0x7b8e0` | Clear the colour and depth of the 32 × 32-pixel tiles the 3D renderer drew into since the previous clear (the whole viewport after a size change) ([RS6](#rs6-clears--confirmed-code)) | clears depth |
 | 8 | `0x456e4` (modes 0xC, 0xD, 0x11 only) | Erase the HUD marks drawn inside the world view last frame (target box, lead marks, lines; index 0), P3-13 | none |
-| 9 | `0x49a6c` | Cockpit-layout pre-pass: the +0x0C callback of every element of the current layout, P3-13 | none |
+| 9 | `0x49a6c` | Cockpit-layout pre-pass: the per-frame callback (panel-type record +0x0C) of each instrument record's type in the current layout, not an element callback (corrected, P3-13/01; [cockpit](./cockpit.md#instrument-records-scheduling-and-visible-persistence-p3-1301)) | none |
 | 10 | `0x48e6c` | Screen-flash step (VGA palette, not pixels) ([SF3](#sf3-the-update-0x48e6c--cadence-and-level--confirmed-code)) | — |
 | 11 | `0x489d0` | Draw the nebula images ([NB3](#nb3-projection-visibility-and-rotation-angle-0x489d0--confirmed-code)) | none |
 | 12 | `0x3fd60` | Draw the star field: the 500-entry direction table rotated by the camera rows only, one pixel each in the entry's colour, positions kept for step 4 ([SD3](#sd3-star-projection-0x3fd60-and-erase-0x3fd20--confirmed-code)) | none |
 | 13 | `0x44f74` | Draw the speed dust: 50 world-fixed particles respawned in a camera-relative box, single pixels of colour 2–7; once initialised, nothing at all while the speed share `0x1b0758` is ≤ 1 ([SD5](#sd5-the-speed-dust-reset-initialisation-pass-and-erase--confirmed-code)). It draws no HUD element | none |
 | 14 | `0x3d4e4`(mode) | Scene messages (create, pose, remove 3D visuals) and, for every mode except 8 and 0x13, the 3D render: camera `0x3defc`, render `0x7c2ac`(viewport `0x1751d8`, scene `0x1751cc`), device update `0x7f99c` | z-buffered ([FC4](#fc4-the-3d-device-has-a-16-bit-depth-buffer--confirmed-code)) |
 | 15 | `0x49004` | Explosion sprites: process the class-8 items, queue one sprite per drawable explosion, then `0x49330` sorts and draws them ([FC6](#fc6-explosion-sprite-items--confirmed-code)–[FC8](#fc8-sprite-queue-order-clipping-and-occlusion--confirmed-code-capacity-likely)) | tested, not written |
-| 16 | `0x45de0` | View label (only mode 0x11 draws text), P3-13 | none |
-| 17 | `0x49b2c` | Cockpit and HUD: global callbacks of `0x1a23a0`, then the current layout's element callbacks (+0x10) and element images (`0x49c98`), gated by per-element dirty flags and timers, P3-13 | none |
+| 16 | `0x45de0` | Lock tone first (all these modes); then the full flight-view overlay in 0xC and 0xD, only the view label in 0x11, nothing visible in 0xE, 0xF, 0x10 and 0x12 (corrected, P3-13/04; [hud §4.6](./hud.md#46-flight-view-overlay-0x45de0-and-view-label)) | none |
+| 17 | `0x49b2c` | Cockpit and HUD: global callbacks of `0x1a23a0` → pass-0 element images (`0x49c98`) → the draw callbacks (panel-type record +0x10) of the instrument records that are due → pass-1 element images (corrected, P3-13/01; [cockpit](./cockpit.md#instrument-records-scheduling-and-visible-persistence-p3-1301)) | none |
 | 18 | `0x3f474` | Frame-rate text when the debug flag `0x174a80` is set | none |
 
 **Modes 0xE, 0xF, 0x10 and 0x12:** the same list without step 8.
 
 **Mode 1 (Warp):** `0x599e8(0)` fills the whole frame buffer (640 × H) with index 0; `0x3fd20` (star erase); `0x49a6c`; `0x48e6c`; `0x50508` (Warp advance and camera, then `0x3defc`); `0x3fd60` (stars); `0x3d4e4(1)` (scene messages and the 3D render); `0x44f74` (speed dust, drawn as lines in Warp, **after** the world); `0x505cc` (Warp effect, after the dust, [WT4](#wt4-per-pass-0x505cc--confirmed-code)); `0x49b2c`; `0x3f474`. There is no nebula, no sprite pass, no `0x456e4` and **no viewport clear `0x3d318`**.
 
-**Mode 6 (base):** `0x4f524`, `0x4f550` (base screens), `0x3d4e4(0x13)` (scene messages, no render), `0x49b2c`, `0x3f474`. **Mode 8 (map):** `0x599e8(0)`; in HI, `0x583fc` copies rows 0–0x1F of the buffer to video memory (purpose not examined); `0x48e6c`; `0x3d4e4(8)` (scene messages, no render); `0x49b2c`; `0x3f474`. **Mode 0x13:** `0x3d4e4(0x13)` only. **Modes 0, 2–5, 7, 9–0xB:** nothing (no writer sets them).
+**Mode 6 (base):** `0x4f524`, `0x4f550` (base screens), `0x3d4e4(0x13)` (scene messages, no render), `0x49b2c`, `0x3f474`. **Mode 8 (map):** `0x599e8(0)`; in HI, `0x583fc` copies rows 0–0x1F of the cleared buffer to video rows 480–511, outside the visible 640 × 480 (P3-13/01; Likely no visible effect); `0x48e6c`; `0x3d4e4(8)` (scene messages, no render); `0x49b2c`; `0x3f474`. **Mode 0x13:** `0x3d4e4(0x13)` only. **Modes 0, 2–5, 7, 9–0xB:** nothing (no writer sets them).
 
 The star field is generated once per program run by `0x3fbc0` (called from the flight initialiser at `0x3ed58`; 500 entries, two draws each, before the generator is seeded, [tunnel path](#start-up-rotations-and-the-warp-tunnel-path-p3-0928)); entry i has colour i % 6 + 1 ([WT1](#wt1-routines-state-and-order--confirmed-code)). The drawing rules of both layers are in [star field and speed dust](#star-field-and-speed-dust-p3-1230) (P3-12/30, which corrects the earlier reading that the dust's particle count follows the speed share).
 
 ##### FC3. A persistent frame buffer — Confirmed (code); equivalence Likely
 
-In the world views the frame buffer is not cleared as a whole. Each world layer erases what it drew in the previous frame (steps 3–6, 8) and the 3D device clears the tiles it drew (step 7) before anything is drawn again; cockpit and HUD drawing (P3-13) redraw only what their dirty flags or timers select. In modes 1 and 8 the whole buffer is filled with index 0 first. Because every erase precedes every draw of the same frame and covers the previous frame's output of its layer, the world viewport shows what a full redraw over index 0 in the order of FC2 would show (**Likely**: exact only where each erase covers its layer; the nebula erase covers the blit's footprint, [NB5](#nb5-the-erase-0x488b4--confirmed-code); the 3D tile clear also removes other layers' pixels in its tiles, which those layers redraw in the same frame).
+In the world views the frame buffer is not cleared as a whole. Each world layer erases what it drew in the previous frame (steps 3–6, 8) and the 3D device clears the tiles it drew (step 7) before anything is drawn again; cockpit and HUD drawing redraw only what their schedules select, and in the views with a cockpit band only their own copies reach the screen ([cockpit](./cockpit.md#instrument-records-scheduling-and-visible-persistence-p3-1301), P3-13/01). In modes 1 and 8 the whole buffer is filled with index 0 first. Because every erase precedes every draw of the same frame and covers the previous frame's output of its layer, the world viewport shows what a full redraw over index 0 in the order of FC2 would show (**Likely**: exact only where each erase covers its layer; the nebula erase covers the blit's footprint, [NB5](#nb5-the-erase-0x488b4--confirmed-code); the 3D tile clear also removes other layers' pixels in its tiles, which those layers redraw in the same frame).
 
 ##### FC4. The 3D device has a 16-bit depth buffer — Confirmed (code)
 
@@ -5870,7 +5920,7 @@ Layers as in [FC2](#fc2-layers-per-view-mode--confirmed-code) (no nebula, no exp
 - **Stars:** `0x3fd60` rotates the star directions by the camera rows only, so the star field turns with the player's steering in the tunnel; colours 1–6 keep their layout-palette colours.
 - **3D world:** rendered through the library with the camera at the player's tunnel pose, in a private frame near (0, 0, 10000 + 2000·n) ([Warp progress](#warp-progress-completion-and-interruptions-p3-0906)). Every listed scene object is drawn where it is in world coordinates, so an object near that point within the back plane would be drawn, tested against depth that mode 1 never clears ([RS6](#rs6-clears--confirmed-code)). Whether any object ever appears there is Unconfirmed (no mission was checked; the two Warp frames below show none). The player's own model is not in the scene ([PV6](#pv6-renderer-items-model-visibility-and-the-player-model--confirmed-code)).
 - **Speed dust in mode 1:** the box is ±100 with limit 1000 and near depth 250, and a particle drawn in the previous pass is drawn as a line (`0x5ad00`) from its previous screen position, otherwise as a pixel; colours 7 (within 250) and 2 ([SD5](#sd5-the-speed-dust-reset-initialisation-pass-and-erase--confirmed-code), P3-12/30, which confirms the constants read here before). These are the grey streaks of the Warp captures.
-- **Effect:** after the dust (WT4); then the cockpit (layout 0) with the left display's page 6 (P3-13).
+- **Effect:** after the dust (WT4); then the cockpit (layout 0) with the left display's page 6 ([hud §4.4](./hud.md#44-left-display-type-6)); the frame-end copy covers rows 0–315 only, and each instrument copies its own area ([cockpit](./cockpit.md#instrument-records-scheduling-and-visible-persistence-p3-1301), P3-13/01).
 - **Appearance — Likely:** in `srangers_066.png` (HI, mission identity not recorded) every pure-green pixel of the world area is a level of the green ramp (WT3) under the capture's 6-to-8-bit expansion (v << 2) | (v >> 4), with no off-ramp pixel; 96 % of the green-ramp pixels touch a grey pixel of the same level (3-pixel lines, WT6); the ramp pixels span exactly columns 1–638 and rows 1–314; brightness falls toward the far end (WT4 step 3); and the cockpit band (rows 316–479) equals the F1 capture 065 except inside the display windows, so the static cockpit art is not visibly recoloured by the Warp palette. Frame 00750 of the reference video `-_Pj5jHSXBg` shows the same rails and rings, the tunnel bending to one side, grey dust streaks, cockpit layout 0 and page 6. Per-pixel line positions (which depend on the run's path draws and pose) and the flash phases were not compared.
 
 ##### WT9. Random draws during a Warp — Confirmed (code)

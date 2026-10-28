@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "13"
-updated: 2026-10-25
+updated: 2026-10-28
 related: [ADR-0004, ADR-0006, ADR-0009, ADR-0015, ADR-0019, B-001, B-004, B-005, B-006, B-010, U-004, U-018, U-021, U-025, U-029, U-030]
 reviewed: sha256:01604a904e9d
 ---
@@ -122,20 +122,20 @@ P3-09 至 P3-12 已经把驾驶舱与地图所需的规则状态放进 Core 的 
 
 | 主题 | 已有结论 | 记录 |
 |---|---|---|
-| 驾驶舱布局 | 元素绘制遍、调色板、仪表类型/次序、+0x18/+0x1C 调度字段已确认；一般仪表矩形在 cockpit 表中仍标高概率（地图矩形另有代码确认），目录 +0x0C 与其余静态参数按 Q-01 闭合，不把整条记录都称为已确认 | [cockpit](../../../original/formats/cockpit.md#instrument-types-per-slot-confirmed-p3-0730)、[元素](../../../original/formats/cockpit.md#element-52-bytes-confirmed)、U-029 |
+| 驾驶舱布局 | 元素绘制遍、调色板、仪表类型/次序、+0x18/+0x1C 调度字段已确认；07 更新：仪表记录全部字段、矩形与目录 +0x0C（常重绘标志）已由 Q-01 确认（代码与数据），见[研究结论索引](#研究结论索引07) | [cockpit](../../../original/formats/cockpit.md#instrument-types-per-slot-confirmed-p3-0730)、[元素](../../../original/formats/cockpit.md#element-52-bytes-confirmed)、U-029 |
 | 静态区域 | 10103 slot 0 在 46 张合格截图中的 91,220 个静态像素与框架一致（0 差异，排除 10 个仪表矩形）；地图框架在 10 张截图中 0 差异 | [cockpit R5](../../../original/formats/cockpit.md#all-qualifying-captures-p2-12) |
 | 每帧的层次 | 各视角调用的例程与次序（FC2）：0xC/0xD/0x11 中 `0x456e4` 擦除、`0x49a6c` 预遍、`0x45de0` 叠加、`0x49b2c` 驾驶舱；Warp 先以 0 填充且不调用 `0x45de0`；地图为 `0x599e8`、`0x583fc`、闪光、`0x49b2c`；原版帧缓冲持续保留（FC3，等价性高概率） | [FC2](../../../original/formats/executable.md#fc2-layers-per-view-mode--confirmed-code)、[FC3](../../../original/formats/executable.md#fc3-a-persistent-frame-buffer--confirmed-code-equivalence-likely)、[WT8](../../../original/formats/executable.md#wt8-what-view-mode-1-draws--confirmed-code-unless-marked) |
 | 绘制语义 | 四个 blitter（不透明/颜色键 0、屏幕/离屏），行按存储次序；字体的步进（8 或 6）、高度、大写标志、每格 8 列、不裁剪；4×6 在 HI 中从不绘制 | [hud 绘制路径](../../../original/formats/hud.md#hud-and-map-drawing-paths-confirmed-exe)、[hud §1.1](../../../original/formats/hud.md#11-glyph-layout-and-character-maps-likely) |
 | 仪表处理例程 | 类型 0–12 的处理例程、雷达接触点的形状与绘制、能量页与 Warp 页的条带、地图圆环与圆盘、选中方框、信息小窗与标签（已确认，代码并经截图核对） | [未识别元素的来源](../../../original/formats/hud.md#sources-of-the-unidentified-elements-p2-1227) |
-| 角落仪表 | 各资源的满刻度与钳位（已确认，代码）；颜色阈值未记录 | [D16](../../../original/formats/executable.md#d16-hud-full-scales--confirmed-code-for-operands-drawing-p3-13) |
-| 雷达 | 接触点来源与筛选、容量 120、颜色、闪烁、形状、重建节奏、噪点（已确认，代码）；相机平面偏移的写入者未追踪 | [T6](../../../original/formats/executable.md#t6-radar-confirmed-code-unless-noted) |
+| 角落仪表 | 各资源的满刻度与钳位（已确认，代码）；07 更新：颜色阈值、闪烁与形状已记录（Q-03） | [D16](../../../original/formats/executable.md#d16-hud-full-scales--confirmed-code-for-operands-drawing-p3-13) |
+| 雷达 | 接触点来源与筛选、容量 120、颜色、闪烁、形状、重建节奏、噪点（已确认，代码）；07 更新：相机平面偏移由每帧的逻辑相机写入（Q-04） | [T6](../../../original/formats/executable.md#t6-radar-confirmed-code-unless-noted) |
 | 左显示屏 | 页表 `0x175c7c`、各页处理例程与子系统、切换（已确认，代码）；SNIP 的结构与按状态的绘制；DIAG 的布局、打字与光标 | [T8](../../../original/formats/executable.md#t8-left-display-no-target-reads-confirmed-code)、[D15](../../../original/formats/executable.md#d15-left-display-pages--confirmed-code)、[SNIP](../../../original/formats/hud.md#snip-10487-confirmed-structure-p2-1227)、[DIAG](../../../original/formats/hud.md#diag-10489-confirmed-structure-p2-07-revision) |
-| 右显示屏 | 状态写入、读取的字段、标记分支、刷新节奏、文字地址（已确认，代码）；TEX 11089 的视口适配与明暗未追踪 | [T7](../../../original/formats/executable.md#t7-right-target-display-confirmed-code)、[TEX 11089](../../../original/formats/textures.md#tex-11089-right-display-background-confirmed-structure-display-likely) |
-| 消息行 | 队列、记录字段、滚动模式、移除与未画出时的过期、完成与信标消息的常量（已确认，代码）；`ps +0x28 = 8` 的分支与重绘节流未追踪 | [完成与信标消息](../../../original/formats/executable.md#completion-and-beacon-messages-p3-1103)、[RENS 头部与飞行消息](../../../original/formats/executable.md#flight-message-strings-and-the-rens-header-p3-0304) |
-| HUD 文字 | 64 个文字区域（39 个格式串、25 个原样）、绘制位置与逐条可达性；格式化为类 `sprintf` 与 `itoa`（高概率） | [HUD 文字](../../../original/formats/executable.md#hud-map-and-communications-text-from-the-exe-p3-0324) |
-| 视角与叠加 | 视角模式与布局对应、F1 叠加只在 0xC/0xD、Warp 中不绘制、被毁视角（0x11/8）没有驾驶舱元素，各视角绘制哪些元素归 P3-13 | [自动视角](../../../original/formats/executable.md#automatic-views-and-cameras-p3-0109)、[TABL 10399](../../../original/formats/hud.md#tabl-10165-selectors-and-tabl-10399-labels-p3-0304) |
+| 右显示屏 | 状态写入、读取的字段、标记分支、刷新节奏、文字地址（已确认，代码）；07 更新：TEX 11089 的拉伸与不加明暗已确认（Q-08） | [T7](../../../original/formats/executable.md#t7-right-target-display-confirmed-code)、[TEX 11089](../../../original/formats/textures.md#tex-11089-right-display-background-confirmed) |
+| 消息行 | 队列、记录字段、滚动模式、移除与未画出时的过期、完成与信标消息的常量（已确认，代码）；07 更新：`ps +0x28 = 8` 分支已追踪，类型 8 没有重绘节流（Q-09） | [完成与信标消息](../../../original/formats/executable.md#completion-and-beacon-messages-p3-1103)、[RENS 头部与飞行消息](../../../original/formats/executable.md#flight-message-strings-and-the-rens-header-p3-0304) |
+| HUD 文字 | 64 个文字区域（39 个格式串、25 个原样）、绘制位置与逐条可达性；07 更新：格式化的运行库语义已确认（Q-12），`0x171c84` 是到达时间而不是距离 | [HUD 文字](../../../original/formats/executable.md#hud-map-and-communications-text-from-the-exe-p3-0324) |
+| 视角与叠加 | 视角模式与布局对应、F1 叠加只在 0xC/0xD、Warp 中不绘制、被毁视角（0x11/8）没有驾驶舱元素；07 更新：各视角绘制的元素已记录（Q-10） | [自动视角](../../../original/formats/executable.md#automatic-views-and-cameras-p3-0109)、[TABL 10399](../../../original/formats/hud.md#tabl-10165-selectors-and-tabl-10399-labels-p3-0304) |
 | 地图 | 画面布局、内容、迷雾（没有历史探索）、交互、代价文字与颜色带、选中方框、目的地标记、信息小窗（已确认）；投影与轴向（U-032 已确认） | [B-001](../../../original/behavior/B-001-strategic-map.md)、[地图投影](../../../original/formats/executable.md#strategic-map-projection)、[地图鼠标](../../../original/formats/executable.md#map-mouse-input-p3-0503)、[接触点与迷雾](../../../original/formats/executable.md#map-contacts-coverage-and-fog-p3-0903)、[放大窗口与标签](../../../original/formats/executable.md#zoom-window-information-window-and-labels-p3-0904) |
-| 通讯面板 | 菜单页的两种文字布局、颜色与闪烁、键的生成、分隔与标题（已确认，代码）；哪个面板用第二种布局未追踪 | [comm](../../../original/formats/comm.md)、[B-004](../../../original/behavior/B-004-base-communications.md#通讯菜单与回复p3-10) |
+| 通讯面板 | 菜单页的两种文字布局、颜色与闪烁、键的生成、分隔与标题（已确认，代码）；07 更新：布局由显示模式选择，HI 菜单页都用第一种（Q-07） | [comm](../../../original/formats/comm.md)、[B-004](../../../original/behavior/B-004-base-communications.md#通讯菜单与回复p3-10) |
 | HUD 音效 | SND 10455/10457 由 `0x45de0` 播放，10409 由类型 9 播放（触发与共享状态由 P3-14 研究） | [按 ID 与 HUD 音效](../../../original/formats/audio.md#sounds-played-by-id-and-hud-sounds-p3-0110) |
 | 时基 | 原版帧率与时钟速率依赖 cycles（基准约 30 帧/秒，U-021 未关闭）；Core 以每 tick 2 个时钟单位（32 Hz）模拟一次派发器 pass | [B-006](../../../original/behavior/B-006-simulation-timing.md) |
 
@@ -143,7 +143,7 @@ P3-09 至 P3-12 已经把驾驶舱与地图所需的规则状态放进 Core 的 
 
 以下证据都在 `local/` 中，按[原版证据获取](../../../guides/original-evidence.md)使用，不需要重新运行原版：
 
-- **本地截图：** `local/StarRang/captures/` 的 132 张原始像素截图（DOSBox-X Capture）。其中 46 张为合格的 F1 画面，10 张为地图画面；`srangers_066` 为 Warp 页，`068` 为 SNIP 干扰，`100` 为能量页，`062`–`065` 为远处通讯菜单，`129`–`135` 为受损画面（[cockpit R5](../../../original/formats/cockpit.md#all-qualifying-captures-p2-12)、[B-004](../../../original/behavior/B-004-base-communications.md#远处通讯已确认)）。
+- **本地截图：** `local/StarRang/captures/` 的 132 张原始像素截图（DOSBox-X Capture）。其中 46 张为 P2-12 的合格 F1 画面（07 复核：连同 P2-12/30 补拍的 `123`–`135` 共 59 张静态区域 0 差异，见 [cockpit R5 复核](../../../original/formats/cockpit.md#all-qualifying-captures-p2-12)），10 张为地图画面；`srangers_066` 为 Warp 页，`068` 为 SNIP 干扰，`100` 为能量页，`062`–`065` 为远处通讯菜单，`129`–`135` 为受损画面（[cockpit R5](../../../original/formats/cockpit.md#all-qualifying-captures-p2-12)、[B-004](../../../original/behavior/B-004-base-communications.md#远处通讯已确认)）。
 - **研究输出：** P2-12 的 U-030 元素匹配与各元素的调色板索引（`local/research/p2-12/`），CCKD 元素图（`local/research/cckd/`），P3-01、P3-03、P3-07、P3-09、P3-10、P3-11、P3-12 的 Ghidra 项目与报告。
 - **参考视频：** 战役第 1–8 关的[参考视频](../../../guides/original-evidence.md#参考视频)及其抽样帧（`local/research/video/`），可用于左显示屏头像与雪花、Warp 等动态画面的线索；只凭视频的结论最高为高概率。
 
@@ -187,7 +187,7 @@ P3-14 继续拥有共享提示模型的实现，P3-13 拥有绘制消费者，�
 |---|---|---|---|
 | 0xC（F1） | 0 / 0 | 框架元素；仪表类型 0、1、2、3、5、7、8、6、9、12（按记录次序）；`0x45de0` 的 F1 叠加 | 三维世界、星云、精灵、闪光（P3-12） |
 | 1（Warp） | 0 / 0 | 同 F1 的框架与仪表，左显示屏为页 6；不调用 `0x45de0` | Warp 隧道与世界（P3-12） |
-| 8（地图） | 6 / 2 | 框架（绘制遍 0 在仪表之前、1 在之后）；类型 10 的地图与类型 8 的消息行 | 无世界 |
+| 8（地图） | 6 / 2 | 框架（slot 2 的四个元素都是绘制遍 1，画在仪表之后；没有遍 0 元素）；类型 10 的地图与类型 8 的消息行 | 无世界 |
 | 0x11/8（被毁视角） | 8 / 7 | 类型 8 的消息行；`0x45de0` 的视角标签 | 相机与世界（P3-12） |
 | 6（基地） | 0 / 10097 slot 0 | 无（G-05 项目页面） | CCKD 10097 与 HUD 组 `0x175eb4`（P4） |
 
@@ -228,7 +228,7 @@ P3-14 继续拥有共享提示模型的实现，P3-13 拥有绘制消费者，�
 ### 左显示屏
 
 - **页面：** 按 `flight.combat.player.leftPage`（0–6）选择处理例程，页面序号与切换是 Core 状态（D15），本任务不改变页面。左显示屏页面在 (x0, y0+1) 绘制。
-- **页 0（状态）：** MFDD 列表 0 的三张背景按原版比例选择、不透明绘制；列表 1 的叠加图按 19 个子系统的状态以颜色键 0 绘制，部分按原版闪烁；两行 DIAG 文字按 DIAG 的计时逐字打出、保持与轮换，打字后显示光标框（Q-05）。闪烁相位与字段 1、5、8 由 Core 的显示步写入，本任务只绘制。
+- **页 0（状态）：** MFDD 列表 0 的三张背景按原版比例选择、不透明绘制；列表 1 的叠加图按字段 0–8 的状态以颜色键 0 绘制（只有这 9 个字段有叠加图，[hud §4.4](../../../original/formats/hud.md#44-left-display-type-6)），部分按原版闪烁；两行 DIAG 文字按 DIAG 的计时逐字打出、保持与轮换，打字后显示光标框（Q-05）。闪烁相位与字段 1、5、8 由 Core 的显示步写入，本任务只绘制。
 - **页 1（能量）：** BITM 10467 不透明，按两项分配档位选择的 TABL 10479 记录以颜色键绘制（不含末行），三条带按原版的半宽表与间隔线绘制，带标签来自 `data/hud/text`。
 - **页 2–4（通讯菜单）：** 只绘制 `communications.player.menu` 中已有选项，使用各项 `key`、表/项引用、对象名称快照与 `tone`；不重新生成按键、枚举对象或重新筛选选项。文字来源、两种布局、颜色闪烁、分隔及宽度截断按 Q-07；菜单不存在或被页 5 遮住时不画旧菜单，也不修改 Core 页面。
 - **页 5（来电）：** 按当前 `incoming` 与 `shown` 显示 G-03 占位，不从入队事件重建当前来电；其项目摘要在 `incoming-started` 时进入消息行。短标注留在 MFD 内，完整摘要由消息行呈现，不能把英文长句硬塞进 96 像素面板后截掉规则信息。未知摘要映射给出明确的“项目摘要未覆盖”反馈，不伪造答复；切片实际可达的消息映射须在验收前补齐。
@@ -267,7 +267,7 @@ P3-14 继续拥有共享提示模型的实现，P3-13 拥有绘制消费者，�
 
 以下同管线方案已由 [ADR-0019](../../../decisions/ADR-0019-strategic-map-render-pipeline.md) 落档，并同步总计划与 P3-09；实现仍须经 goal 及相应实施关卡。地图规则信息只来自 `map` 分区，不从 Render State、整个世界或其他分区扩大可见集合。
 
-- **框架与调色板：** `layout/map/frame` 的元素，绘制遍 0 在地图之前、1 在之后（D-01 导入的标志）；整屏使用 `palette/map/screen`。六对三字母按钮只绘制，没有点击区域。
+- **框架与调色板：** `layout/map/frame` 的元素，绘制遍 0 在地图之前、1 在之后（D-01 导入的标志；随附数据中 slot 2 的元素全为遍 1）；整屏使用 `palette/map/screen`。六对三字母按钮只绘制，没有点击区域。
 - **重绘：** 地图内容按 `data/hud/map-geometry` 的重绘间隔与原版的强制条件重绘，两次重绘之间保留上次画面；每次地图重绘从清空的背景开始（原版每帧以 0 填充后复制，Q-11）。
 - **绘制次序：** 按 `0x49f8c` 的次序（Q-11），其中：
   - **覆盖与迷雾：** 非敌对接触点的 `coverage`（`disc`）画填充圆盘，玩家最后画且用自己的颜色；敌对接触点画 1 像素圆环；半径 0 不画。迷雾就是未被圆盘覆盖的清空背景，没有历史探索。
@@ -301,7 +301,7 @@ P3-14 继续拥有共享提示模型的实现，P3-13 拥有绘制消费者，�
 ### 缺省与标注
 
 - **G-03：** 来电页的头像与动画位置显示可见的标注与项目摘要文字（[P3-10 缺省与标注](../10/spec.md#缺省与标注)）；文案只在 `slice-gaps-copy.ts`，经应用装配传入 render，不从 render 导入 React 页面。
-- **G-05：** 视角 6 继续用项目基地页，但其现有实现没有通讯正文，S-12 必须补齐。应用将同一消息模型的当前队首/当前来电项目摘要桥接到基地页，不创建第二条队列或计时器；队首变化立即发布，其余按现有 React 采样。项目页完整显示正文而不仿制滚动像素，消息逻辑沿用前视类型 8 的宽度/到期策略，这是 G-05 的项目呈现，不宣称原版基地像素一致。开地图后交回地图消息行，返基地不重播。RQ5 的 docked text-only 路径需 GAMEHIRES=0（LO），本 HI 切片不实现，也不改变 Core 的回调链。
+- **G-05：** 视角 6 继续用项目基地页，但其现有实现没有通讯正文，S-12 必须补齐。应用将同一消息模型的当前队首/当前来电项目摘要桥接到基地页，不创建第二条队列或计时器；队首变化立即发布，其余按现有 React 采样。项目页完整显示正文而不仿制滚动像素，消息逻辑沿用前视类型 8 的宽度/到期策略，这是 G-05 的项目呈现，不宣称原版基地像素一致。开地图后交回地图消息行，返基地不重播。RQ5 的 docked text-only 路径只在视角 6 中 GAMEHIRES 已改为假、HI→LO 切换尚待应用时出现（显示模式 1 即 HI，见 [RQ5](../../../original/formats/executable.md#rq5-incoming-channel-load-visible-end-and-callback--confirmed-code-and-runtime-baseline)），本 HI 切片不实现，也不改变 Core 的回调链。
 - **在制标注：** 驾驶舱与地图接入后移除 `FLIGHT_IN_PROGRESS`、`MISSION_SKELETON` 中关于驾驶舱与 HUD 的文字及 slice-gaps 的在制标注条目。
 - **不新增缺省：** 本任务不新增 G 项。研究若发现切片画面必需而无法实现的元素，按阻塞处理并交用户决定，不以未披露的省略或近似外观代替（[标注规则](../01/spec.md#标注规则)）。
 
@@ -324,6 +324,36 @@ P3-14 继续拥有共享提示模型的实现，P3-13 拥有绘制消费者，�
 | Q-11 | 地图：绘制次序、网格、外框、读数、记录 26、指针、图标错开、威胁闪烁、距离标签；将已确认的“读输入调用 + 按钮 0 绘制调用”映射到项目调度，冻结同 tick 次序及开图保留计数；零能量沿 MW-12 项目分支 | B-001、地图鼠标、P3-09 Q-03 至 Q-05 | 静态；合格地图截图 | 已确认代码与项目取舍分列 | 是 |
 | Q-12 | 文字：格式化的运行库语义（舍入、宽度、负数）、字符映射之外的代码、fonts/1 大写替换与映射的关系、字体头字节 +1 是否影响绘制 | hud §1、HUD 文字 | 静态；截图中的文字逐字形对照 | 已确认（代码） | 是（读数文字） |
 | Q-13 | 全部显示随机抽取、门禁和容量；区分纯表现抽取与 Core 已迁移的状态写入，核对 CR-11 已批准差异 | T6、SNIP、DIAG、Core 显示步 | 静态 | 不因交还上游就把依赖标为完成；切片必需规则缺口阻塞相关验收 | 是（受损信息门禁） |
+
+#### 研究结论索引（07）
+
+2026-10-28 由 07 汇总 01–06 的研究并写入原版文档；本表只给记录位置、置信度与缺口，事实以链接的原版文档为准。未新增 DOSBox-X 运行。缺口的最小补采与恢复条件见 [07 完成证据](./subtasks/07-evidence-contract-baseline.md#完成证据)，D-01 候选交 08。
+
+| ID | 结论记录 | 置信度 | 缺口与交接 |
+|---|---|---|---|
+| Q-01 | [cockpit 记录与调度](../../../original/formats/cockpit.md#instrument-records-scheduling-and-visible-persistence-p3-1301)（字段表、`0x49b2c` 次序、目录 +0x0C、元素 +44/+48 的送屏）；[01](./subtasks/01-layout-scheduling-research.md#完成证据) | 已确认（代码与数据）；+0x28 的运行时读者未找到（高概率只是表长） | 导入字段交 08；无运行缺口 |
+| Q-02 | 同上“每个视角显示什么”与送屏规则；[FC1/FC2/FC3](../../../original/formats/executable.md#frame-composition-depth-and-explosion-sprites-p3-1203) 已更正 | 代码已确认；与逐帧合成的等价为高概率 | 两帧保留序列（07 缺证 M-5）只在要求“保留外观一致”时需要 |
+| Q-03 | [hud §4.2](../../../original/formats/hud.md#42-corner-gauges-types-04)、[D16](../../../original/formats/executable.md#d16-hud-full-scales--confirmed-code-for-operands-drawing-p3-13) | 读数、门禁、颜色、形状已确认（代码）；外观 204/204 截图拟合 | 速度 ÷ B8 > 1 的可达性未确认；D-01 需玩家机型 B8 |
+| Q-04 | [hud §4.3](../../../original/formats/hud.md#43-radar-type-5)、[T6](../../../original/formats/executable.md#t6-radar-confirmed-code-unless-noted) | 已确认（代码）；平面偏移无其他写入者、越界后果为高概率；背景环经 51 张截图核对，没有十字 | 接触点位置映射无原版画面配对（M-1 共采）；D-01 撤销“相机平面偏移”候选 |
+| Q-05 | [hud §4.4](../../../original/formats/hud.md#44-left-display-type-6) 页 0、[DIAG](../../../original/formats/hud.md#diag-10489-confirmed-structure-p2-07-revision)、[D9](../../../original/formats/executable.md#d9-status-display-writes-subsystem-fields-1-5-and-8--confirmed-code) | 已确认（代码；背景/叠加集合与次序经 48 张截图）；评级越界由导入数据唯一决定 | D9 写入在翻转后一次调用、跨任务保留，与 Core CR-10 不同，交 08；真实打字节奏受 U-021 限制（M-6） |
+| Q-06 | [hud §4.4](../../../original/formats/hud.md#44-left-display-type-6) 页 1、页 6 | 已确认（代码；页 6 经 `srangers_066`，页 1 经 `srangers_100`） | 能量页 +0x44 重画标记的 D-01 候选与历史 94 项上限交 08 |
+| Q-07 | [comm §4](../../../original/formats/comm.md#4-text-rules-confirmed)、[RQ8](../../../original/formats/executable.md#rq8-page-5-and-the-other-saved-pages--confirmed-code) | 已确认（代码）：HI 页 2–4 用第一种布局并画标题；页 5 为 96×96 帧图像、无文字区 | 无运行缺口 |
+| Q-08 | [hud §4.5](../../../original/formats/hud.md#45-right-display-type-7)、[T7](../../../original/formats/executable.md#t7-right-target-display-confirmed-code)、[TEX 11089](../../../original/formats/textures.md#tex-11089-right-display-background-confirmed) | 已确认（代码；背景、文字、模型色经 49 张截图）；+0x06 不是独立事实 | 三维剪影无位姿配对（M-1）；D-01 需模型引用与机型 +0x08 |
+| Q-09 | [hud §4.7](../../../original/formats/hud.md#47-message-line-type-8)、[完成与信标消息](../../../original/formats/executable.md#completion-and-beacon-messages-p3-1103)、[RQ5](../../../original/formats/executable.md#rq5-incoming-channel-load-visible-end-and-callback--confirmed-code-and-runtime-baseline) | 已确认（代码）；原版规则与 G-03 项目取舍分列（[05](./subtasks/05-messages-text-research.md#完成证据)） | 地图消息行分支无截图（M-3）；15 个未覆盖的 G-03 序号交 25；预算交 08 |
+| Q-10 | [hud §4.6](../../../original/formats/hud.md#46-flight-view-overlay-0x45de0-and-view-label)、[HUD 文字](../../../original/formats/executable.md#hud-map-and-communications-text-from-the-exe-p3-0324) | 已确认（代码；准星、读数、武器行经截图）；被毁视角标签经 `srangers_091/092/122` | 目标框、提前量、锁定环无位姿配对（M-1、M-2）；角速率、武器速度/射程等 D-01 候选交 08 |
+| Q-11 | [hud §4.9](../../../original/formats/hud.md#49-strategic-map-type-10)、[地图鼠标](../../../original/formats/executable.md#map-mouse-input-p3-0503)、[B-001](../../../original/behavior/B-001-strategic-map.md#地图画面的绘制已确认代码p3-1306) | 已确认（代码；外框、网格、标题、标签经 10 张截图）；右键节奏为运算级推演 | 无截图覆盖的状态见 hud §4.9 末段（M-4）；零能量提示、连线退化与右键模型交 08 |
+| Q-12 | [hud §4.1](../../../original/formats/hud.md#41-primitives-text-and-formatting) | 已确认（代码）；`%.0f` 负值输出负零为高概率（切片实参非负） | 无运行缺口 |
+| Q-13 | 见下段 | 已确认（代码） | 无运行缺口；表现抽取按 Δ-03 披露 |
+
+**Q-13 汇总（随机抽取与规则/表现边界）。** 原版这些抽取都在渲染路径中，与规则共用 C 库 LCG（[T6](../../../original/formats/executable.md#t6-radar-confirmed-code-unless-noted) 末段）；本项目全部归驾驶舱表现随机源（技术决定 5、Δ-03）：
+
+- 角落仪表 0–3：对应子系统状态 1 时每次实际绘制 1–2 次；能量/护盾在自身到期之前返回且不抽取（[hud §4.2](../../../original/formats/hud.md#42-corner-gauges-types-04)）。
+- 雷达：子系统 12 状态 1 每次重建 1 次 + 每个噪点 5 次 + 尚有剩余时的假框 1 次；状态 2 每次重建 300 次；Warp 中不抽（[hud §4.3](../../../original/formats/hud.md#43-radar-type-5)）。
+- 左显示屏：页面子系统状态 1 时每次干扰切换 1 次；DIAG 下行在启动消息计数 > 0 时每条消息 1 次（计数从不清零）（[hud §4.4](../../../original/formats/hud.md#44-left-display-type-6)）。
+- 右显示屏：子系统 14 状态 1 时每次切换 1 次（[hud §4.5](../../../original/formats/hud.md#45-right-display-type-7)）。
+- F1 叠加：子系统 9 状态 1、已显示至少 0x40 单位后每次合格调用 1 次（[hud §4.6](../../../original/formats/hud.md#46-flight-view-overlay-0x45de0-and-view-label)）。
+- 其他显示（类型 8、9、12，页 1、2–6，目标文字，地图与被毁视角标签）不抽取。
+- **边界：** 字段 1/5/8 与状态显示闪烁由 Core 的显示步写入（CR-10），原版写在翻转后的下一次页 0 调用且相位跨任务保留，差异交 08；子系统字段、雷达接触点与 120 上限（CR-11 差异 7）、9 型警告采样及僚机尾随警告（FA-01、P3-14）、主地图错开 `0x4b3a8` 与 T7 的目标清除都是规则状态；放大窗口错开 `0x4b56c`、全部显示计时/相位、SNIP、噪点、DIAG、消息队列、距离标签开关与指针是表现状态。原版的显示计时与相位都是静态初值、跨任务保留，本项目每运行重建，须披露。左显示屏干扰切换在原版中决定页 0 是否运行、从而影响 D9 写入时机，按 CR-10 末段与 CR-11 差异 4 处理。
 
 ### 表现对照与判定
 
@@ -457,6 +487,11 @@ P3-14 继续拥有共享提示模型的实现，P3-13 拥有绘制消费者，�
 
 - 依赖某个关卡的实现与验收在该关卡定稿前不得开始；不依赖未定契约的研究与纯绘制例程可以先行。
 - 研究推翻已批准的方向时，不在实现中临时改变方向，先修订并重新批准。
+
+**关卡输入记录（07，2026-10-28）：**
+
+- **Q 研究与输入闭合：** Q-01 至 Q-13 的结论、置信度与缺口见[研究结论索引](#研究结论索引07)；D-01 的候选输入、限值、版本候选、需批准的差异与开放问题交 08，清单在 [07 完成证据](./subtasks/07-evidence-contract-baseline.md#完成证据)。本记录不批准 D-01。
+- **对照判据：** V-04/V-05 的逐元素判据已在任何候选画面之前冻结于 `local/research/p3-13/comparison-plan/criteria.md`（第 2 版，SHA-256 `be5df477…`；第 1 版在同日审阅中更正，未用于任何候选），截图身份清单为同目录的 `captures.json`（`a512c407…`），冻结时基线 `4c3c18d2` 尚无 `src/render/cockpit/`。截图的资格复核见 [cockpit R5](../../../original/formats/cockpit.md#all-qualifying-captures-p2-12)；最小缺证集 M-1 至 M-8 见 07 完成证据，均未豁免。
 
 ## 验收标准
 

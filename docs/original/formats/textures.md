@@ -2,7 +2,7 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-16
+updated: 2026-10-28
 related: [U-001, U-006, U-018, U-019, U-027, U-028, U-029, U-030]
 ---
 
@@ -144,7 +144,9 @@ Evidence: ignored `current-tex-equivalence-34.json`, `runtime-full-content-34-mi
 - The 4,096 stored bytes are threshold values that the code compares in their stored 8-bit form, texel for texel against the part texture. They must be kept exactly and in stored order; remapping them as colour indices (for example to the nearest DATA colour) would move the band.
 - There is no source palette, so no palette Asset can come from TEX 11069. Any palette an image payload is bound to serves only the viewer; it does not describe the game's display.
 
-### TEX 11089: right-display background (Confirmed structure; display Likely)
+<a id="tex-11089-right-display-background-confirmed-structure-display-likely"></a>
+
+### TEX 11089: right-display background (Confirmed)
 
 **Structure (Confirmed):** 96×96, encoding 0 (9,216 bytes), and an embedded 256-entry BGR palette after the pixels. Relocations are at +0x1C and +0x14. The pixels use 14 distinct indices.
 
@@ -154,9 +156,9 @@ Evidence: ignored `current-tex-equivalence-34.json`, `runtime-full-content-34-mi
 
 - `0x42b04` (view switch `0x3f158`) creates the right display's 3D device: 100×100 in HI and 50×50 in LO, 8-bit, with the DATA colour table `0x186c00` as its palette. It loads TEX 11089, or 11091 in view mode 6, with `0x65e28`. The texture made by `0x660dc` (own palette, 4 shades) goes to `0x85730`, which stores it as the scene's background texture (+0x2D8).
 - The viewport clear `0x7b8e0` hands it through `0x7d3c8` to `0x7d09c`, the device texture registration that mesh textures also use.
-- How the background is fitted to the 100×100 viewport, and whether a shade is applied, are inside the renderer and were not traced (P3-13).
+- **Fit and shade (Confirmed, captures, P3-13/04):** the background is stretched over the 100×100 device: device pixel (u, v) shows texel (⌊96u/100⌋, ⌊96v/100⌋), with no shading. On the 49 forward captures that show the right display, every pixel outside the text and the target model equals this prediction under DATA; centred, origin-anchored, tiled, flipped and centre-sampled fits all fail. The device window (2,1)–(98,98) is then copied to the display rectangle ([hud §4.5](./hud.md#45-right-display-type-7)).
 
-**Display (Likely):** colours as for mesh textures, which here equal DATA[index] for every pixel. The display's role is Likely (U-030).
+**Display (Confirmed):** colours as for mesh textures, which here equal DATA[index] for every pixel. TEX 11089 is the right (target) display's background (P3-13/04; earlier Likely, U-030).
 
 Evidence for this section: ignored `local/research/p3-03/images/` (`tex-survey.ts`, `tex11089.ts`, `list2.ts`, Ghidra probes `out/p8`–`out/p16`).
 

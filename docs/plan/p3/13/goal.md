@@ -81,7 +81,7 @@ updated: 2026-10-28
 | [04-target-overlay-research.md](./subtasks/04-target-overlay-research.md) | — | completed |
 | [05-messages-text-research.md](./subtasks/05-messages-text-research.md) | — | completed |
 | [06-map-presentation-research.md](./subtasks/06-map-presentation-research.md) | — | completed |
-| [07-evidence-contract-baseline.md](./subtasks/07-evidence-contract-baseline.md) | 01, 02, 03, 04, 05, 06 | in-progress |
+| [07-evidence-contract-baseline.md](./subtasks/07-evidence-contract-baseline.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | pending |
 | [09-shared-audio-contract-gate.md](./subtasks/09-shared-audio-contract-gate.md) | 08 | pending |
 | [10-instrument-content-payload.md](./subtasks/10-instrument-content-payload.md) | 08 | pending |

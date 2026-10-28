@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P3
-updated: 2026-10-14
+updated: 2026-10-28
 related: [U-001]
 ---
 
@@ -81,7 +81,8 @@ The object list built by `0x2c9d0` holds the objects of the chosen kinds in stat
   - when the argument is 0, the text from byte 1 onwards;
   - otherwise, byte 1, a space, then the text from byte 4 onwards, so bytes 2 and 3 are not drawn.
 
-  Which panels use the second layout was not traced (P3-13). Either way, the panel cuts the text to its width in characters (`0x758ae`) and draws it with `0x59f90`, which draws every byte as its glyph ([hud §1.1](./hud.md#11-glyph-layout-and-character-maps-likely)). No byte is interpreted as a control or format code.
+  The argument is the display mode, not the panel (Confirmed, code, P3-13/05): in HI every menu page (left-display pages 2–4) uses the first layout and draws a title; the second layout and the untitled panel are LO only. Either way, the panel cuts the text to its width in characters (`0x758ae`) and draws it with `0x59f90`, which draws every byte as its glyph ([hud §1.1](./hud.md#11-glyph-layout-and-character-maps-likely)). No byte is interpreted as a control or format code.
+- **HI panel (`0x4da28`; Confirmed, code, P3-13/05):** BITM 10467 opaque at (x0, y0 + 1) (the same picture as the energy and Warp pages) and row y0 in index 0; the title `leftCommPanelTitle` (`0x171e6c`) in fonts/1, colour 0x13, at (x0 + 6, y0 + 4); entries from y0 + 15 with a pitch of 9, only rows with y ≤ y1 − 7 (at most 9 rows in the HI rectangle; further entries are not drawn but their keys still work). Each row is the key byte followed by the text — categories and commands from data byte 2, objects as `leftCommListSeparator` plus the name copy, the exit entry from the data — cut to trunc((x1 − x0) / 6) = 15 characters, in fonts/1. Colours: ordinary 0x0F, last entry 0x0C, an object of activity 1 0x10, a threat 0x0A shown as 0x0F while bit 5 of the mission clock is 0 (period 0x40, half each), others 0x0F. Without a menu the handler sets page 0. The page refresh periods are in [T8](./executable.md#t8-left-display-no-target-reads-confirmed-code).
 - **Character range:** the code accepts any non-zero byte (1–255) before the NUL and treats every byte alike, apart from the upper-casing of byte 1 for key matching. In the baseline (data), every byte before the NUL is printable ASCII (0x20–0x7E), with no control bytes, no bytes of 0x80 or above and no `%`, and byte 1 is a letter or digit in every item. These are observations, not constraints of the format.
 
 **Load transforms (Confirmed, code):** none beyond the IMFAT relocation of item +0x00. The builders only read the blocks; they change byte 0 and byte 1 in their own copies.
