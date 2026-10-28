@@ -16,6 +16,7 @@ import {
 import { button, filePayloads, importFiles, openTestEntry } from './support/app-entry.ts';
 import { expect, test } from './support/audited-test.ts';
 import { devOrigin } from './support/environment.ts';
+import { quietly, zoneLocked } from './support/map-picture.ts';
 import { readLog, stopWatchingResume, submitEditorCommand, watchResume, type LogEntry } from './support/map-warp.ts';
 import {
   chooseWingman, devState, endPlaceholder, enterMission, expectAdvancingTick, expectStableTick, leaveGuards, missionEntry, missionFrame,
@@ -196,20 +197,37 @@ test('the AI package imports and restores; in a real run the AI advances, b depl
   expect(withTransponder.rows.filter(({ source }) => source === 'rules').map(({ id, kindBit }) => [id, kindBit])).toEqual([[transponder, 14]]);
 
   // Outside flight b is refused: in the map the key binds nothing, and the command itself is ignored as out of context.
+  // The map input is ready after the map's first picture and m's own activation takes real Pointer Lock (P3-13), which
+  // sends every mouse event to the input zone; the browser's unlock (`document.exitPointerLock()` without a user gesture,
+  // standing for Chrome's native Escape, which Playwright cannot press) frees the mouse for the panel.
+  const cdp = await page.context().newCDPSession(page);
+  const inputStatus = page.getByTestId('input-status');
   await zone(page).click();
   await page.keyboard.press('m');
   await logUntil(page, current => current.some(({ type, fields }) => type === 'map-toggled' && fields.open === 'true'), 'map opened');
+  await expect.poll(() => zoneLocked(page)).toBe(true);
+  await expect(zone(page)).toBeFocused();
   await page.keyboard.press('b');
   await afterTicks(page, 8);
   expect(resultsOf(await log(page), 'drop-transponder'), 'b in the map').toHaveLength(1);
+  await quietly(cdp, 'document.exitPointerLock()');
+  await expect(inputStatus).toContainText('Click the map to lock the pointer.');
   const refused = await submitEditorCommand(page, 'drop-transponder');
   expect(refused).toMatchObject({ outcome: 'ignored', reason: 'wrong-context' });
   await afterTicks(page, 4);
   entries = await log(page);
   expect(entries.filter(({ type }) => type === 'transponder-deployed'), 'no transponder from the refused command').toHaveLength(1);
-  await zone(page).click();
+  expect(resultsOf(entries, 'map-point'), 'the panel\'s clicks select nothing in the map').toEqual([]);
+  // Focused again with the submit click's activation, the map may ask for the lock at once; after the browser's unlock,
+  // Esc closes it.
+  await zone(page).focus();
+  await expect.poll(async () => (await zoneLocked(page)) || (await inputStatus.innerText()).includes('Click the map')).toBe(true);
+  await quietly(cdp, 'document.exitPointerLock()');
+  await expect(inputStatus).toContainText('Click the map to lock the pointer.');
   await page.keyboard.press('Escape');
   await logUntil(page, current => current.some(({ type, fields }) => type === 'map-toggled' && fields.open === 'false'), 'map closed');
+  await expect(page.getByTestId('mission-menu')).toHaveCount(0);
+  await cdp.detach();
 
   // Pause holds every entity, the event log and the tick; resume continues from the held tick without catching up.
   await button(page, 'Pause').click();
