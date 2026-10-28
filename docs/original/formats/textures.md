@@ -3,7 +3,7 @@ type: format
 status: verified
 phase: P0
 updated: 2026-10-28
-related: [U-001, U-006, U-018, U-019, U-027, U-028, U-029, U-030]
+related: [U-001, U-006, U-018, U-019, U-027, U-028, U-029, U-030, U-034]
 ---
 
 # Palettes and images (DATA, image record, TEX, BITM, ANIM, EXPL)
@@ -156,7 +156,8 @@ Evidence: ignored `current-tex-equivalence-34.json`, `runtime-full-content-34-mi
 
 - `0x42b04` (view switch `0x3f158`) creates the right display's 3D device: 100×100 in HI and 50×50 in LO, 8-bit, with the DATA colour table `0x186c00` as its palette. It loads TEX 11089, or 11091 in view mode 6, with `0x65e28`. The texture made by `0x660dc` (own palette, 4 shades) goes to `0x85730`, which stores it as the scene's background texture (+0x2D8).
 - The viewport clear `0x7b8e0` hands it through `0x7d3c8` to `0x7d09c`, the device texture registration that mesh textures also use.
-- **Fit and shade (Confirmed, captures, P3-13/04):** the background is stretched over the 100×100 device: device pixel (u, v) shows texel (⌊96u/100⌋, ⌊96v/100⌋), with no shading. On the 49 forward captures that show the right display, every pixel outside the text and the target model equals this prediction under DATA; centred, origin-anchored, tiled, flipped and centre-sampled fits all fail. The device window (2,1)–(98,98) is then copied to the display rectangle ([hud §4.5](./hud.md#45-right-display-type-7)).
+- **Fit and shade (Confirmed, captures, P3-13/04):** the background is stretched over the 100×100 device: device pixel (u, v) shows texel (⌊96u/100⌋, ⌊96v/100⌋), with no shading. On the 49 forward captures that show the right display, every pixel outside the text and the target model equals this prediction under DATA; centred, origin-anchored, tiled, flipped and centre-sampled fits all fail. The device window (2,1)–(98,98) is then copied to the display rectangle ([hud §4.5](./hud.md#45-right-display-type-7)). P3-13/31 rechecked the fit on all 56 forward captures that do not show the SNIP, with a background-only mask, through the project's nearest-colour mapping: all equal, and none of the wrong placements equals any.
+- **Only drawn on a render (Confirmed, code):** the background reaches the device when the scene is rendered (refresh), not when `0x42b04` creates the device; until the first render after a device switch the display copies the new device as it is, whose initial pixels are Unconfirmed ([hud §4.5](./hud.md#45-right-display-type-7), [U-034](../unknowns.md)).
 
 **Display (Confirmed):** colours as for mesh textures, which here equal DATA[index] for every pixel. TEX 11089 is the right (target) display's background (P3-13/04; earlier Likely, U-030).
 

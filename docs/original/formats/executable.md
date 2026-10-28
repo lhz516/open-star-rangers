@@ -2480,6 +2480,7 @@ Extends [C2](#c2-communications-reactions-0x3c208-and-0x3c0f4--confirmed-code), 
 - **Wingman line `0x38d54(speaker, type)`** (speaker 0 = W): returns 0 before any draw when the speaker handle is invalid or its face (`0x3c894`) is outside 0..4. Then it **draws before the lookup**: type 0 → rand % 3; types 3, 5, 8, 0xE, 0x10 → type + rand % 2; type 7 → 5 + rand % 3; other types no draw (signed `IDIV`, non-negative operand). Then lookup(20985, face, type'); ≤ 0 → returns 0 (nothing queued); otherwise it queues through `0x2c6ec` when the original type was 8, else `0x2c6c0`, and returns 1. The draw does not depend on the speech archive.
 - **W's face** is +0xDC − 1. Object +0xDC is written only by the allocator (0) and [instantiation](#instantiation-p3-0203) step 8 (record +0x70); the other displacement-0xDC stores are on movement blocks or sound channels. So W's face = its `SCCT` wingman record +0x70 − 1; the 5 wingman records give 5 distinct faces in 0..4 (data), so the wingman-line draws are always reachable with shipped data.
 - **Name index `0x3c7bc` / `0x3c828`:** position of the object's name (+0x15C) in COMM TABL 2001 / 2011 (`strcmp`), −1 if absent. TABL 2001 has 20 names and TABL 2011 19, disjoint. Over the 52 missions the 237 friendly declarations (kinds `0x6887c` except `0x800`) are 60 bases, all of whose possible names are in 2001, and 177 craft of kinds `0x7c`, 174 of which can receive a name in 2011; no friendly declaration uses the type-name rule (data).
+- **Call sites (Confirmed, code; P3-13/25, read-only private copy):** `0x38d54` has exactly seven references, all rel32 direct calls: `0x38c19` (in the kill report `0x38bf8`), `0x38cb8` (`0x38c30`), `0x38d2e` (`0x38cd4`), `0x38f09`, `0x38fba`, `0x6155f` and `0x62128`; a scan of the whole image finds no rel8, conditional-jump or 32-bit pointer reference. `0x38bf8` selects its line with a conditional jump that follows a comparison of a register with itself, so the branch to line 5 is never taken: it always passes 7 and its line-5 path is dead; no other caller passes 5 (they pass 0xA, 8, 0x13, a name offset ≥ 0x16 or a WB3/WB4 reply line). So the type-5 branch above is never used, and the 20985 entries 5–6 are reached only through the kill report's 5 + rand % 3.
 - **Lookups (data, both archives):** every index the reactions can request resolves to a non-zero entry: 20983 indices 4, 5, 6, 0–3 and every TABL 2001/2011 position + 0x1A / + 7 / + 0x41 / + 0x2E; 20011 faces 0–4 indices 0–4; 20019 faces 0–2 indices 0–2 and every 2011 position + 3; 20985 faces 0–4, every wingman type and every 2001/2011 position + 0x29 / + 0x16.
 
 ##### RX2. `0x3c208(attackerKind, source, victim, damage)` — Confirmed (code)
@@ -3080,7 +3081,8 @@ when the sample minus the instrument entry's last-draw time +0x1C exceeds its pe
 - **Cached display target:** `0x19b1c0` holds a counted reference to the shown target
   (`0x52780`/`0x52774`); a change resets the display's 3D view state.
 - **Subsystem 14:** state 1 alternates content and the SNIP noise at rand-drawn intervals of
-  0x40 + (rand & 0x3F); state 2 shows only the noise (hud.md).
+  0x40 + (rand & 0x3F); state 2 shows only the noise; state 3 takes the state-1 path, because the handler
+  tests only for 2 before its toggle branch (Confirmed, code, P3-13/20; [hud §4.5](./hud.md#45-right-display-type-7)).
 - **Fields read from the target (refresh when `0x17547c` < sample, then `0x17547c` := sample + 9,
   or on a change; without a target the empty-display text is refreshed every 0x80):**
   - kind +0x04 (`0x2000000`, the map/Warp marker, gets a crosshair and its distance instead of a
@@ -3093,7 +3095,7 @@ when the sample minus the instrument entry's last-draw time +0x1C exceeds its pe
     upper half of the kind dword +0x04, so the index is just the single kind bit's position; the
     table holds 20 f32 values (bits 0–19), which cover every kind the player can target (masks
     `0x93780`, `0x206c87e`, `0xfffff`), and the marker takes its own branch. The 0.01 test selects
-    a look-at with world up instead of the player's R1;
+    a look-at with world up instead of the player's R1 (its up vector: [hud §4.5](./hud.md#45-right-display-type-7));
   - Euclidean distance from the player: the differences (player − target) are formed in double, and each squared
     term is the unrounded difference times its own f32 store (`FST float` before `FMUL float`), summed as
     (dy² + dz²) + dx², then `FSQRT` and an f32 store (Confirmed, code, P3-07/23); shown as is or × 0.001 when
@@ -4948,7 +4950,7 @@ On resume `0x61d64` turns the parked effects into b: code 1 → b 0 against PT; 
 ##### WB5. Replies `0x38d54`(handle, line) — Confirmed (code)
 
 - Handle 0 → the first kind-2 object; unresolved → return 0 (no draw). Voice v = `0x3c894` (kind 2: +0xDC − 1); v ∉ [0, 5) → return 0 (no draw).
-- **Draws (the only ones):** line 0 → rand % 3; lines 3 and 5 → + rand % 2; line 7 → 5 + rand % 3; lines 8, 0xE, 0x10 → + rand % 2; others (0xB–0xD, 0x12–0x15, …) none. Then `0x3c618`(0x51F9, v, line) (an entry lookup, no draw) gives the message, queued on C2's queue (delay 0) when positive.
+- **Draws (the only ones):** line 0 → rand % 3; lines 3 and 5 → + rand % 2 (no caller passes 5, [RX1](#rx1-helpers--confirmed-code-and-data)); line 7 → 5 + rand % 3; lines 8, 0xE, 0x10 → + rand % 2; others (0xB–0xD, 0x12–0x15, …) none. Then `0x3c618`(0x51F9, v, line) (an entry lookup, no draw) gives the message, queued on C2's queue (delay 0) when positive.
 - **Per command:** exactly one `0x38d54` call per consumed command, except parked codes 3/4 without P (none): 1 draw for replies 0, 3, 0xE, 0x10; 0 for 0x12, 0x14, 0x15, 0xB–0xD. Blocked and overwritten commands: none.
 - **Media does not act on AI:** both consumers ignore the result, and the draw precedes the media-dependent lookup, so the draw count depends only on the line and the voice index. Queueing and presentation stay P3-10/P3-13; the other wingman lines (`0x38bf8` kill report, `0x38c30`, `0x38cd4`, `0x38e4c`, the hull-low line of `0x38f20`) are P3-10's.
 

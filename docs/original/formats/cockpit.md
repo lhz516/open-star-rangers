@@ -244,6 +244,8 @@ The container limits come from [the P2-07 spec](../../plan/p2/07/spec.md#限值�
 | MFDD records per list | 9 | 0–16 |
 | CCKD group palettes read | 3: 10097 slot 0, 10101 slot 2, 10103 slot 2 (2026-10-06, [P2-07 subtask 18](../../plan/p2/07/subtasks/18-cockpit-group-palette.md#完成证据)); every other slot's +0x04 is 0 | +0x08 = 768; components ≤ 63 |
 
+**Instrument records (P3-13/11 and /30, local check, counts only):** `nob-check` reads 17 instrument slots with 66 records and 17 parameter tables (at most 4 entries each) across the 3 CCKD entries, every relocation checked. The project's converted instrument schedule (`data/hud/instruments`: 3 slots of 10103, one of them always-redraw, 8 elements, 13 records, 5 parameter tables with 8 entries in total and the 20 view distances) is 2,351 bytes for the baseline package, under the project's 8,192-byte payload cap; the browser import and the Node import give the same payload hash (P3-13/31).
+
 The two element flag fields after the position (+44, +48) hold only 0 or 1 on every element: +44 is 1 on 8 of 38 elements and +48 on 33 of 38. Their meaning is confirmed ([element](#element-52-bytes-confirmed), P3-13/01).
 
 ## 4. Open questions
