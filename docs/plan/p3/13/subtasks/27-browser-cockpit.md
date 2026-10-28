@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "13"
 subtask: "27"
-updated: 2026-10-25
+updated: 2026-10-28
 ---
 
 # 27 — 合成浏览器驾驶舱验证
@@ -38,6 +38,8 @@ updated: 2026-10-25
 - `e2e/flight-render.development.spec.ts`：旧“HUD待实现”断言更新。
 - `e2e/flight-render.production.spec.ts`：相同生产断言同步。
 - `e2e/flight-scenes.development.spec.ts`：保留世界和共享深度回归。
+- `e2e/support/flight-flow.ts`、`e2e/support/mission-observations.ts`：F1 背景与单画布断言随驾驶舱更新（协调者增补，24/25 交接）。
+- `e2e/base-interaction.development.spec.ts`：在制提示移到状态栏后的断言（协调者增补，25 交接）。
 
 ## 验收标准
 
