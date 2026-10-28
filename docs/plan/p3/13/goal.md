@@ -104,7 +104,7 @@ updated: 2026-10-28
 | [26-replay-contract-integration.md](./subtasks/26-replay-contract-integration.md) | 25 | completed |
 | [27-browser-cockpit.md](./subtasks/27-browser-cockpit.md) | 25 | completed |
 | [28-browser-map.md](./subtasks/28-browser-map.md) | 25 | completed |
-| [29-browser-lifecycle.md](./subtasks/29-browser-lifecycle.md) | 27, 28 | in-progress |
+| [29-browser-lifecycle.md](./subtasks/29-browser-lifecycle.md) | 27, 28 | completed |
 | [30-real-content-import.md](./subtasks/30-real-content-import.md) | 11 | completed |
 | [31-real-content-pictures.md](./subtasks/31-real-content-pictures.md) | 27, 28, 30 | in-progress |
 | [32-presentation-verdicts.md](./subtasks/32-presentation-verdicts.md) | 07, 26, 29, 31 | pending |
