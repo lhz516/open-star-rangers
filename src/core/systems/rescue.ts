@@ -10,7 +10,7 @@
  *   the rescue count stays 2 until the latch captures and clears it.
  * - Otherwise the rescue, in the original's order: the dead flag cleared, `fullRepair` (its selection messages handled
  *   by both callers' message loops, so each advance emits `weapon-selected`), the weapon block `0x2d400`, the resources
- *   `0x3060c` at the sample (one draw), the view and the previous view 0xC; the base selection (one draw, or none) and
+ *   `0x3060c` at the sample (one draw, and one energy-page redraw, CK-02), the view and the previous view 0xC; the base selection (one draw, or none) and
  *   the player record's rewrite, then its placement (no draw from a stored point, two from the world default); the
  *   view switch from the old view (leaving the Warp abandons it, MW-09); object state 7 and sub-state 0; the block
  *   rebuilt in mode 0; the communication limits cleared and the count increased; `player-rescued` and its `transition`
@@ -23,6 +23,7 @@
 import type { CraftRecord } from '../../content/rule-data/craft-info.ts';
 import { CoreFaultError } from '../errors.ts';
 import { initialiseResources, rebuildWeaponBlock, type CraftEntity } from '../rules/combat-init.ts';
+import { countEnergyPageRedraw } from '../rules/displays.ts';
 import { RandStream } from '../rules/original-random.ts';
 import { replaceRescueRecord, rescueMovementBlock, rescuePoint, selectRescueBase } from '../rules/rescue.ts';
 import { PLAYER_KIND_BIT } from '../rules/spawn-schedule.ts';
@@ -76,6 +77,7 @@ export function resolvePlayerLoss(context: TickContext, loss: PlayerLoss): void 
   fullRepair(context, player, true);
   rebuildWeaponBlock(player, craft);
   initialiseResources(player, craft, world.clock, rand);
+  countEnergyPageRedraw(state);
   const { base, candidates } = selectRescueBase(world.entities, rand);
   replaceRescueRecord(record, rescuePoint(base));
   const { position, attitude } = placeWorldRecord(world, record, rand);

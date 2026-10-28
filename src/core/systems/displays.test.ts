@@ -10,8 +10,8 @@ import { idleBaseService } from './base-interior.test-support.ts';
 import type { TickContext } from './pipeline.ts';
 import type * as Targeting from './targeting.ts';
 
-// docs/plan/p3/02/spec.md, CR-07, CR-10 and CR-11; docs/original/formats/executable.md, T7, D9 and D15;
-// docs/original/formats/cockpit.md, instrument types per slot. Expectations worked out by hand.
+// docs/plan/p3/02/spec.md, CR-07, CR-10 (as CK-01 corrects it) and CR-11; docs/original/formats/executable.md, T7, D9
+// and D15; docs/original/formats/cockpit.md, instrument types per slot. Expectations worked out by hand.
 
 /** The redraw flag each time the right display's clearing ran, which shows whether the status display had run before it. */
 const observed = vi.hoisted(() => ({ redrawAtClear: [] as boolean[] }));
@@ -33,7 +33,7 @@ const fields = (entries: Record<number, SubsystemState> = {}): readonly Subsyste
 /**
  * A world whose player (the synthetic record: hull capacity c9C = 12, list 0 = mounts 0 and 1, list 1 = mount 2, mount
  * 1 firing together with mount 2) stands in view `viewMode` with a full hull, field 1 at 3 so that a write shows, a
- * blink due at clock 0, `redraw` set and no energy update due.
+ * blink due at clock 0, `redraw` and `phaseFlipped` set as at creation, no rebuild yet and no energy update due.
  */
 function displayState(viewMode = 0x0c, combat: Partial<CraftCombat> = {}): [WorldState, Entity] {
   const state = testState({ group: 1 });
@@ -49,6 +49,9 @@ function displayState(viewMode = 0x0c, combat: Partial<CraftCombat> = {}): [Worl
 }
 
 const subsystems = (player: Entity): readonly SubsystemState[] => (player.combat as CraftCombat).subsystems;
+
+/** The status display at world creation (CK-01). */
+const CREATED = { blink: 0, blinkDueClock: 0, redraw: true, phaseFlipped: true, rebuilds: 0 };
 
 /** A target in Warp, which the right display clears. */
 function warpTarget(state: WorldState): Entity {
@@ -73,7 +76,8 @@ describe('the frame-end cockpit display step (CR-10)', () => {
       { type: 'target-cleared', tick: 1, playerEntityId: player.id, previousTarget: target.id, cause },
     ]);
     expect(observed.redrawAtClear).toEqual([true]);
-    expect(state.player.statusDisplay).toEqual({ blink: 1, blinkDueClock: 2 + 0x20, redraw: false });
+    // The write first (with phase 0, full hull: field 1 is 0), then the flip.
+    expect(state.player.statusDisplay).toEqual({ blink: 1, blinkDueClock: 2 + 0x20, redraw: false, phaseFlipped: true, rebuilds: 1 });
     expect(subsystems(player)).toEqual(fields());
   });
 
@@ -84,7 +88,7 @@ describe('the frame-end cockpit display step (CR-10)', () => {
     expect(constructWorld(state).step(tickInput())).toEqual([]);
     expect(observed.redrawAtClear).toEqual([]);
     expect(state.player.target).toBe(target.id);
-    expect(state.player.statusDisplay).toEqual({ blink: 0, blinkDueClock: 0, redraw: true });
+    expect(state.player.statusDisplay).toEqual(CREATED);
     expect(subsystems(player)).toEqual(fields({ 1: 3 }));
   });
 });
@@ -113,14 +117,14 @@ describe('the status display (CR-10, D9)', () => {
     prepare(state, player);
     const before = subsystems(player);
     constructWorld(state).step(tickInput());
-    expect(state.player.statusDisplay).toEqual({ blink: 0, blinkDueClock: 0, redraw: true });
+    expect(state.player.statusDisplay).toEqual(CREATED);
     expect(subsystems(player)).toBe(before);
   });
 
   it('runs at field 10 = 1, whose flashes Core ignores (CR-11, difference 4)', () => {
     const [state, player] = displayState(0x0c, { subsystems: fields({ 1: 3, 10: 1 }) });
     constructWorld(state).step(tickInput());
-    expect(state.player.statusDisplay).toEqual({ blink: 1, blinkDueClock: 34, redraw: false });
+    expect(state.player.statusDisplay).toEqual({ blink: 1, blinkDueClock: 34, redraw: false, phaseFlipped: true, rebuilds: 1 });
     expect(subsystems(player)).toEqual(fields({ 10: 1 }));
   });
 
@@ -137,36 +141,85 @@ describe('the status display (CR-10, D9)', () => {
   it('does nothing without a player entity', () => {
     const state = testState();
     constructWorld(state).step(tickInput());
-    expect(state.player.statusDisplay).toEqual({ blink: 0, blinkDueClock: 0, redraw: true });
+    expect(state.player.statusDisplay).toEqual(CREATED);
   });
 
-  it('flips the blink only once the clock is strictly past its due clock, and writes on each flip', () => {
+  it('flips the blink only once the clock is strictly past its due clock, and writes in the next status page step, with the new phase (CK-01)', () => {
     // Hull 8 of 12: q = 2,048 ÷ 12 = 170, between 0x4C and 0xC0, so field 1 is the blink phase.
     const [state, player] = displayState(0x0c, { hull: 8 });
-    Object.assign(state.player.statusDisplay, { blinkDueClock: 2, redraw: false });
+    Object.assign(state.player.statusDisplay, { blinkDueClock: 2, redraw: false, phaseFlipped: false });
     const world = constructWorld(state);
     world.step(tickInput());
-    expect(state.player.statusDisplay).toEqual({ blink: 0, blinkDueClock: 2, redraw: false });
+    expect(state.player.statusDisplay).toEqual({ blink: 0, blinkDueClock: 2, redraw: false, phaseFlipped: false, rebuilds: 0 });
     expect(subsystems(player)[1]).toBe(3);
+    // Clock 4: the flip, but no write yet.
     world.step(tickInput());
-    expect(state.player.statusDisplay).toEqual({ blink: 1, blinkDueClock: 36, redraw: false });
+    expect(state.player.statusDisplay).toEqual({ blink: 1, blinkDueClock: 36, redraw: false, phaseFlipped: true, rebuilds: 0 });
+    expect(subsystems(player)[1]).toBe(3);
+    // Clock 6: the write with phase 1.
+    world.step(tickInput());
+    expect(state.player.statusDisplay).toEqual({ blink: 1, blinkDueClock: 36, redraw: false, phaseFlipped: false, rebuilds: 1 });
     expect(subsystems(player)[1]).toBe(1);
     // Next at clock 36, not past the due clock.
     Object.assign(state, { tick: 17, clock: 34 });
     world.step(tickInput());
+    expect(state.player.statusDisplay).toMatchObject({ blink: 1, phaseFlipped: false, rebuilds: 1 });
+    world.step(tickInput());
+    expect(state.player.statusDisplay).toEqual({ blink: 0, blinkDueClock: 70, redraw: false, phaseFlipped: true, rebuilds: 1 });
     expect(subsystems(player)[1]).toBe(1);
     world.step(tickInput());
-    expect(state.player.statusDisplay).toEqual({ blink: 0, blinkDueClock: 70, redraw: false });
+    expect(state.player.statusDisplay).toEqual({ blink: 0, blinkDueClock: 70, redraw: false, phaseFlipped: false, rebuilds: 2 });
     expect(subsystems(player)[1]).toBe(0);
+  });
+
+  it('writes twice when a flip meets redraw: this tick for redraw with the old phase, the next for the flip (CK-01)', () => {
+    const [state, player] = displayState(0x0c, { hull: 8 });
+    state.player.statusDisplay.phaseFlipped = false;
+    const world = constructWorld(state);
+    const read = () => ({ ...state.player.statusDisplay, field: subsystems(player)[1] });
+    world.step(tickInput());
+    expect(read()).toEqual({ blink: 1, blinkDueClock: 34, redraw: false, phaseFlipped: true, rebuilds: 1, field: 0 });
+    world.step(tickInput());
+    expect(read()).toEqual({ blink: 1, blinkDueClock: 34, redraw: false, phaseFlipped: false, rebuilds: 2, field: 1 });
+    world.step(tickInput());
+    expect(read()).toEqual({ blink: 1, blinkDueClock: 34, redraw: false, phaseFlipped: false, rebuilds: 2, field: 1 });
+  });
+
+  it.each<[string, (state: WorldState, player: Entity) => void, (state: WorldState, player: Entity) => void]>([
+    ['the energy page', (state) => void (state.player.leftDisplay.page = 1), (state) => void (state.player.leftDisplay.page = 0)],
+    [
+      'field 10 at 2',
+      (_state, player) => void ((player.combat as CraftCombat).subsystems = fields({ 1: 3, 10: 2 })),
+      (_state, player) => void ((player.combat as CraftCombat).subsystems = fields({ 1: 3 })),
+    ],
+    ['the map view', (state) => void (state.player.viewMode = 8), (state) => void (state.player.viewMode = 0x0c)],
+  ])('keeps a flip\'s write pending while %s stops the status page, then writes with the phase it finds (CK-01)', (_, stop, resume) => {
+    const [state, player] = displayState(0x0c, { hull: 8 });
+    Object.assign(state.player.statusDisplay, { redraw: false, phaseFlipped: false });
+    const world = constructWorld(state);
+    // Clock 2: the flip to phase 1.
+    world.step(tickInput());
+    expect(state.player.statusDisplay).toEqual({ blink: 1, blinkDueClock: 34, redraw: false, phaseFlipped: true, rebuilds: 0 });
+    stop(state, player);
+    Object.assign(state, { tick: 30, clock: 60 });
+    world.step(tickInput());
+    world.step(tickInput());
+    // Past the due clock the timer still waits for the page: nothing flips or writes.
+    expect(state.player.statusDisplay).toEqual({ blink: 1, blinkDueClock: 34, redraw: false, phaseFlipped: true, rebuilds: 0 });
+    resume(state, player);
+    world.step(tickInput());
+    // The pending write with phase 1, then the due flip to 0.
+    expect(state.player.statusDisplay).toEqual({ blink: 0, blinkDueClock: 66 + 0x20, redraw: false, phaseFlipped: true, rebuilds: 1 });
+    expect(subsystems(player)[1]).toBe(1);
   });
 
   it('writes when redraw is set without a flip, clears it, and then leaves the fields to other writers', () => {
     const [state, player] = displayState(0x0c, { hull: 3 });
-    state.player.statusDisplay.blinkDueClock = 1000;
+    Object.assign(state.player.statusDisplay, { blinkDueClock: 1000, phaseFlipped: false });
     const world = constructWorld(state);
     world.step(tickInput());
     // Hull 3 of 12: q = 64 < 0x4C, so field 1 is 2.
-    expect(state.player.statusDisplay).toEqual({ blink: 0, blinkDueClock: 1000, redraw: false });
+    expect(state.player.statusDisplay).toEqual({ blink: 0, blinkDueClock: 1000, redraw: false, phaseFlipped: false, rebuilds: 1 });
     expect(subsystems(player)).toEqual(fields({ 1: 2 }));
     (player.combat as CraftCombat).subsystems = fields({ 1: 3, 5: 3, 8: 3 });
     world.step(tickInput());

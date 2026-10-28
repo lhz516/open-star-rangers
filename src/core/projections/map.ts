@@ -20,7 +20,9 @@
  *   every member when the player has no icon). The zoom-window de-overlap `0x4b56c` positions icons by the HUD icon
  *   records' sizes, which no rule reads and Core has no input for; it is P3-13's drawing (MW-11).
  * - **Information rows** (`0x4ba80`): see informationRows.
- * - **Labels** (`0x4af78`): the in-world icons of the friendly and player kinds except 0x4000, one per unit.
+ * - **Labels** (`0x4af78`): the in-world icons of the friendly and player kinds except 0x4000, one per unit; a label
+ *   blinks while its entity has a threat stamp (+0x17C ≠ 0; the stamp is a clock, never 0, CK-03).
+ * - **Geometry:** the static map rule data, with the world grid's sectors and the cursor box's extent (CK-03).
  * - **Line** (`0x4c674`): from the player's icon pixel to the cursor's pixel; no line, label or range goes to the
  *   player's target or the destination.
  * - **Readouts:** the Warp cost from the player's icon position to the cursor's world point and to the stored
@@ -196,7 +198,13 @@ function openMap(world: WorldState, player: Entity): MapOpen {
       coverage: mapCoverage(map, kindBit, craftRecord(world, kindBit).at0C),
     }));
     if (inWorld && isListedKind(kindBit)) {
-      labels.push(Object.freeze({ entityId, name: entity.name, pixel, playerOrWingman: kindBit === PLAYER_KIND_BIT || kindBit === WINGMAN_KIND_BIT }));
+      labels.push(Object.freeze({
+        entityId,
+        name: entity.name,
+        pixel,
+        playerOrWingman: kindBit === PLAYER_KIND_BIT || kindBit === WINGMAN_KIND_BIT,
+        threatened: entity.communications.threatStamp !== null,
+      }));
     }
     const zoom = zoomPixel(map, bounds, icon.position);
     if (zoom === null) continue;
@@ -226,6 +234,8 @@ function openMap(world: WorldState, player: Entity): MapOpen {
       unitsPerPixel: frozen(map.unitsPerPixel),
       zoomPixelsPerUnit: frozen(map.zoomPixelsPerUnit),
       world: frozen(map.world),
+      sectors: map.sectors,
+      zoomExtent: frozen(map.zoomExtent),
     }),
     cursor: Object.freeze({ pixel: cursorPixel, world: frozenVec(cursorWorld), zoomBounds: frozen(bounds) }),
     contacts: Object.freeze(contacts),

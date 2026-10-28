@@ -1,13 +1,13 @@
 /**
- * Rules of the left display and the status display (docs/plan/p3/02/spec.md, CR-04, CR-05 and CR-10;
+ * Rules of the left display and the status display (docs/plan/p3/02/spec.md, CR-04, CR-05, CR-10, CK-01 and CK-02;
  * docs/original/formats/executable.md, D9 and D15; docs/original/formats/cockpit.md, instrument types per slot): the
  * page changes of the `energy` open and `damage-report` commands, the views whose cockpit gauges write rule state, the
- * status display's blink and subsystem fields 1, 5 and 8, and the menu pages 2–4 (P3-10, CB-07 and CB-09). The frame-end step and the commands are
- * systems/displays.ts's and systems/energy.ts's.
+ * status display's blink and subsystem fields 1, 5 and 8, the menu pages 2–4 (P3-10, CB-07 and CB-09) and the
+ * energy-page redraw count. The frame-end step and the commands are systems/displays.ts's and systems/energy.ts's.
  */
 import { CoreFaultError } from '../errors.ts';
 import type { SubsystemState } from '../world/entity-table.ts';
-import type { LeftPage, PlayerState } from '../world/player-state.ts';
+import type { LeftPage, PlayerState, StatusDisplay } from '../world/player-state.ts';
 import { quotient } from './energy.ts';
 
 /**
@@ -76,10 +76,10 @@ export function showsStatusPage(page: LeftPage, subsystems: readonly SubsystemSt
 const BLINK_INTERVAL = 0x20;
 
 /**
- * `0x4d0e0`'s blink timer: once the clock is strictly past its due clock, the phase flips and is due again
- * BLINK_INTERVAL units after this clock. Returns whether it flipped.
+ * `0x4d0e0`'s blink timer, the status page step's second part (CK-01): once the clock is strictly past its due clock,
+ * the phase flips and is due again BLINK_INTERVAL units after this clock. Returns whether it flipped.
  */
-export function advanceBlink(display: PlayerState['statusDisplay'], clock: number): boolean {
+export function advanceBlink(display: Pick<StatusDisplay, 'blink' | 'blinkDueClock'>, clock: number): boolean {
   if (!(clock > display.blinkDueClock)) return false;
   const due = clock + BLINK_INTERVAL;
   if (!Number.isSafeInteger(due)) throw new CoreFaultError('budget-exhausted', 'displays.blink-clock');
@@ -121,4 +121,16 @@ export function withStatusFields(subsystems: readonly SubsystemState[], { hull, 
   written[MISSILE_MOUNTS_FIELD] = missileMounts;
   written[GUN_MOUNTS_FIELD] = gunMounts;
   return Object.freeze(written);
+}
+
+/** `count` + 1 for a non-negative safe-integer counter; past the safe integers a `budget-exhausted` fault at `site`. */
+export function nextCount(count: number, site: string): number {
+  const next = count + 1;
+  if (!Number.isSafeInteger(next)) throw new CoreFaultError('budget-exhausted', site);
+  return next;
+}
+
+/** One more set of the player object's energy-page redraw flag +0x44 (CK-02); the callers count only the player. */
+export function countEnergyPageRedraw(player: PlayerState): void {
+  player.energyPageRedraws = nextCount(player.energyPageRedraws, 'displays.energy-page-redraws');
 }

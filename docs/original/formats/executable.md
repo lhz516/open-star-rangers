@@ -1277,6 +1277,8 @@ Each step rotates the rows left by the previous one, in the order 1, 2, 3; the r
 
 **Correction of [craft §3.5](./craft.md#35-craft-record-and-missile-body-record-236-bytes) +0xC4:** `0x21cf8` returns in ST0 (the decompiler loses it) the steady or coupled row-3 expression of step 7 without f, ignoring a timed row-3 rotation, and the cockpit presentation `0x46fe0` follows that value each frame. Its result is therefore used.
 
+**Confirmed (code, native instructions; P3-13/12): every return of `0x21cf8`.** It reads the object's block (object +0x08); without one it returns +0.0. When block +0x80 (row 2 enabled) and C +0xC4 are both non-zero, it returns F(D(D(+0x64 × +0x74) + +0x68)) when +0x84 (row 3 enabled) is non-zero, otherwise F(D(+0x64 × +0x74)): one f32 store after the x87 product (and sum), with the f32 ratio +0x74 as the block holds it. Otherwise, when +0x84 is non-zero, it returns +0x68 unchanged (an f32 store and reload of the same bits); when neither branch applies it returns +0.0 (an integer 0 stored and loaded as f32). It reads neither the row-1 fields nor any timed-rotation field.
+
 **Confirmed (mode-3 integrator `0x22600`):** no impulse and no translation. Speed: only the accelerating branch of step 3, with the same arrival; a commanded speed at or below the speed leaves it unchanged. The ratio then becomes F(D(speed ÷ commanded speed)) unconditionally: there is no positivity test, so a zero commanded speed with the flag clear divides by zero, and that exception is unmasked ([x87 precision](#x87-precision-rounding-and-trigonometry-p3-0202)). The turn factor and the three rotations are those of mode 0, coupling included. During the player's Warp, `0x50188` (called from the display switch `0x3f158`: the Warp set-up, Confirmed by P3-09/06, [Warp progress](#warp-progress-completion-and-interruptions-p3-0906)) sets the player's pose to the start of the Warp tunnel path, the speed to 0, the commanded speed to block +0x70 and +0x78 to 0. The Warp completion `0x2bf08` sets mode 0, +0x78 = 1, speed = commanded speed = object +0x78, and the Warp timer +0xC8 from the sample; `0x50508` reads the speed for the Warp progress. The Warp itself belongs to P3-09.
 
 **Confirmed (rotation helpers):** each takes an f32 angle θ on the stack and the rows in EAX. c = F(X(cos θ)) and s = F(X(sin θ)), FCOS first, then FSIN of the same loaded value. The overwritten elements are copied first, so every new component is F(D(D(·) ± D(·))) of old values.
@@ -3829,7 +3831,7 @@ and from the collision division by (3 − group) ([H6](#h6-collision-passes--con
    still absorbs (it is just no longer recharged, D13). No draw at states 0 and 2.
 2. damage < shield (signed): shield −= damage, return 0. Otherwise shield = 0, return damage − old shield (0 when
    equal).
-3. For the player (kind = 1), +0x44 = 1 in both branches.
+3. For the player (kind = 1), +0x44 = 1 in both branches of step 2; step 1's bypass returns before it and leaves +0x44 ([hud §4.4](./hud.md#44-left-display-type-6), P3-13/12).
 
 ##### D4. Hull and subsystem damage `0x2a830(EAX victim, EDX source, EBX hullDamage, ECX noAttacker)` — Confirmed (code)
 

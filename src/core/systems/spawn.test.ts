@@ -775,6 +775,8 @@ describe('combat state at instantiation (P3-07 AC-05, CR-07)', () => {
     expect(state.player.targeting).toEqual({ mode: 'enemy', autoTargetDueClock: 0 });
     // Instantiation sets redraw, which the same tick's frame-end status display consumes (CR-10; displays.test.ts).
     expect(state.player.statusDisplay.redraw).toBe(false);
+    // `0x3060c` set +0x44 for both craft; Core counts only the player's (CK-02).
+    expect(state.player.energyPageRedraws).toBe(1);
     // Another kind keeps levels 0 and 0: E = 200 − (c64[0] + c78[0]) = 193; it has no mounts.
     const next = state.entities.get(2)!;
     expect(next.combat).toMatchObject({

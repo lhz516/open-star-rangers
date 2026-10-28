@@ -43,7 +43,7 @@ describe('radar contacts (T6, CR-12)', () => {
     expect(contactIds(state, player)).toEqual([]);
     marker.state = 'active';
     expect(readRadar(state.entities, player, marker.id).contacts).toEqual([
-      { entityId: marker.id, offset: at(5, 6, 7), class: 'marker', missile: false, near: true, target: true },
+      { entityId: marker.id, offset: at(5, 6, 7), position: marker.position, class: 'marker', missile: false, near: true, target: true },
     ]);
   });
 

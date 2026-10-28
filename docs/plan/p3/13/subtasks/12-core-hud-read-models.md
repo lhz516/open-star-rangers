@@ -45,12 +45,18 @@ updated: 2026-10-28
 
 ## 验收标准
 
-- [ ] 字段正确、深冻结脱离世界；重复 projection 不改变状态/RNG。
-- [ ] 类型 0 与动态 maximumSpeed、无玩家与 false、目标缺失与无效内容不混同。
-- [ ] 规则回归和当前版本 replay 通过，不支持版本明确拒绝。
+- [x] 字段正确、深冻结脱离世界；重复 projection 不改变状态/RNG。
+- [x] 类型 0 与动态 maximumSpeed、无玩家与 false、目标缺失与无效内容不混同。
+- [x] 规则回归和当前版本 replay 通过，不支持版本明确拒绝。
 
 ## 验证方法
 
 `pnpm test -- src/core/projections src/core/replay`、`pnpm check`；[simplify](../../../../../.agents/skills/simplify/SKILL.md) 限只读事实，不改系统次序。
 
 ## 完成证据
+
+- **实现（CK-01 至 CK-05）：** `PlayerState.statusDisplay` 增加 `phaseFlipped`（初值 true）与 `rebuilds`，[systems/displays.ts](../../../../../src/core/systems/displays.ts) 的状态页步改为先在 `phaseFlipped` 或 `redraw` 时以当前相位写字段 1、5、8 并计数，再判定闪烁计时；新增 `energyPageRedraws`，计数点为实例化与救援、每次到期的玩家能量更新、被接受的档位键、护盾吸收的伤害（`absorbByShield` 改为返回 `{ hullDamage, taken }`，绕过不计）与每次炮击；计数超过安全整数为 `budget-exhausted`。projection 增加 CK-03 的全部字段（`RadarContact.position` 由 [radar.ts](../../../../../src/core/rules/radar.ts) 与 `offset` 同一读取；`ballistics` 用 `weaponRange`；`indicatorRates` 按 `0x21cf8`；`MapRuleData.sectors`）。`RULES_VERSION` 9 → 10，快照格式 8 → 9，replay 格式仍为 3；`RECORDING_MAX_BYTES` 随规则版本多一位改为 534,251,136（[tools.md](../../../../guides/tools.md) 同步）。
+- **关卡核对（DC-13，只读静态分析，私有副本已删除）：** `0x30c60` 只在两条吸收分支对种类 1 置 +0x44，子系统 4 的绕过先返回；`0x30b20`/`0x30bc0` 只在新档位被接受时置位；`0x3071c` 在每次到期更新末尾置位；`0x30cec` 对种类 1 每次调用置位；`0x30d94` 与 `0x39820` 不置位（已确认，代码），记入 [hud §4.4](../../../../original/formats/hud.md#44-left-display-type-6) 与 executable D3。`0x21cf8` 两个分支都不成立（以及没有移动块）时返回 +0.0（已确认，代码），记入 [movement stage](../../../../original/formats/executable.md#movement-stage-and-integration-p3-0601)。
+- **测试：** `pnpm test -- src/core/projections src/core/replay` 通过；`pnpm check` 通过（397 个测试文件、10,887 项测试、生产构建）。关键断言：D9 次序的翻转/写入/`redraw` 同 tick 连写两次、切页/字段 10 = 2/离开仪表视角期间待写并在恢复后以当时相位写入；各计数写入点与不计的分支（拒绝的档位键、换页、停靠、绕过、门禁、非玩家）；`recordMaximumSpeed` 与动态 `maximumSpeed` 分开，`indicatorRates` 的耦合、单次 f32 舍入与 +0 缺省；目标 `model`/`craftAt08` 对标记、导弹与种类 19 的取值；projection 深冻结、脱离世界、重复读取不改快照哈希与 RNG；快照规范文本与哈希包含新状态、版本为 9/10；四个 replay 的玩法摘要在排除三项新键后与改动前相同（CK-01 在这些运行中不改变规则结果），旧版本记录照常被拒绝。
+- **Rubber-duck：** code-review 代理以 rubber-duck 角色审阅完整改动：误删的 energy.test `it.each` 已恢复；player-state 注释误称救援写 `redraw` 已更正（P3-02 的 CK-01 由协调者同步更正）；未发现正确性问题。Simplify：只读事实与计数点无可复用的既有辅助函数，未改动系统次序。
+- **文档影响：** 更新 [core.md](../../../../engineering/modules/core.md)（玩家状态、projection、版本、交接）、tools.md、hud.md 与 executable.md；STATUS 与 tasks.md 无须改动。私有输出：`local/research/p3-13/12-core-hud/`（反汇编清单与检查日志）。

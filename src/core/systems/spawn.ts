@@ -20,6 +20,7 @@ import type { EntitySource } from '../contracts/domain-events.ts';
 import { isDue } from '../contracts/time.ts';
 import { CoreFaultError } from '../errors.ts';
 import { initialiseCraftCombat, type CraftEntity } from '../rules/combat-init.ts';
+import { countEnergyPageRedraw } from '../rules/displays.ts';
 import { initialMovementBlock, initialWarpClock } from '../rules/flight-state.ts';
 import { selectionSubject, selectProgram } from '../rules/ai-selection.ts';
 import { aiCandidates, initialAiState } from '../rules/initial-ai.ts';
@@ -185,6 +186,8 @@ function instantiate(context: TickContext, record: RuntimeRecord, source: Entity
     world.player.control = initialPlayerControl(world.config.group);
     world.player.targeting = initialPlayerTargeting();
     world.player.statusDisplay.redraw = true;
+    // `0x3060c` above set the energy-page redraw flag +0x44 (CK-02).
+    countEnergyPageRedraw(world.player);
     // `0x67938` hides the new player visual (FS-02).
     world.player.modelShown = false;
   }

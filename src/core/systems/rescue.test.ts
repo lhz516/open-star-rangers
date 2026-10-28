@@ -162,6 +162,8 @@ describe('the rescue 0x32e14/0x67b98 at its entry (ME-10; AC-06)', () => {
     state.player.kills = Object.freeze({ ...state.player.kills, 7: 2 });
     Object.assign(state.player.communications.limits, { friendlyHit: 10, friendlyKill: 20 });
     state.player.communications.thanks = 4;
+    Object.assign(state.player.statusDisplay, { phaseFlipped: false, rebuilds: 4 });
+    state.player.energyPageRedraws = 9;
     state.communications.queue.length = 0;
     const playerBefore = structuredClone(state.player);
     const others = [base17, base15, hostile].map((entity) => structuredClone(entity));
@@ -201,11 +203,13 @@ describe('the rescue 0x32e14/0x67b98 at its entry (ME-10; AC-06)', () => {
     // The block in mode 0: F(speed ÷ +0xB8) = 0.25 → throttle 32 → entry 80 (0.25), at the new maximum.
     expect(player.movement).toMatchObject({ mode: 'craft', speed: Math.fround(THROTTLE_TABLE[80] * player.maximumSpeed), locked: false, disturbance: null });
     expect(THROTTLE_TABLE[80]).toBe(0.25);
-    // 0x32e14: views 0xC (the sub-mode kept), the limits cleared, the count; the rest of the player state kept.
+    // 0x32e14: views 0xC (the sub-mode kept), the limits cleared, the count; 0x3060c's energy-page redraw (CK-02); the
+    // rest of the player state kept, the status display's flip flag and rebuild count included (CK-01).
     const { communications } = playerBefore;
     expect(state.player).toEqual({
       ...playerBefore, viewMode: COCKPIT_VIEW_MODE, previousViewMode: COCKPIT_VIEW_MODE,
       communications: { ...communications, limits: { friendlyHit: null, friendlyKill: null } },
+      energyPageRedraws: playerBefore.energyPageRedraws + 1,
     });
     expect(state.flow).toMatchObject({ mainState: 3, subState: 0, rescues: 1, beaconDeadline: 900, dockingDeadline: 77, wingmanLoss: { pending: true, dueClock: 5000 }, result: null });
     expect(state.missionStatus).toBe('built');

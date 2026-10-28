@@ -16,6 +16,7 @@ import type { CraftEntity } from '../rules/combat-init.ts';
 import {
   acquireAutomaticTarget, fireAutomaticMounts, fireList, updateLock, type FireOutcome, type FiringData, type Launch, type ShotTarget,
 } from '../rules/firing.ts';
+import { countEnergyPageRedraw } from '../rules/displays.ts';
 import { selectMount, type MountList } from '../rules/mounts.ts';
 import { RandStream } from '../rules/original-random.ts';
 import type { Entity, EntityId } from '../world/entity-table.ts';
@@ -66,14 +67,19 @@ function judgeSelection(context: TickContext, player: CraftEntity, command: Comm
 
 /**
  * `fire` (`0x2d578` on list 0 for `primary`, list 1 for `secondary`) at the reference target: without a current mount
- * `no-weapon`; accepted when at least one mount posted a launch, otherwise the reason of the last attempt.
+ * `no-weapon`; accepted when at least one mount posted a launch, otherwise the reason of the last attempt. Each gun
+ * launch spent the player's charge and counts one energy-page redraw (CK-02).
  */
 function judgeFire(context: TickContext, player: CraftEntity, command: CommandOf<'fire'>, commandIndex: number): void {
   const { world } = context;
   const { channel } = command;
   const outcome = withRand(world, (rand) => fireList(
     firingData(world), player, channel === 'primary' ? 0 : 1, shotTarget(world, referenceTarget(context)),
-    { type: 'command', channel, commandIndex }, world.clock, rand, (launch) => deferLaunch(context, launch),
+    { type: 'command', channel, commandIndex }, world.clock, rand, (launch) => {
+      // The shot spent the player's charge (`0x30cec`), which sets the energy-page redraw flag +0x44 (CK-02).
+      if (launch.family === 'gun') countEnergyPageRedraw(world.player);
+      deferLaunch(context, launch);
+    },
   ));
   if (outcome === null) emitCommandResult(context, command, commandIndex, { outcome: 'ignored', reason: 'no-weapon' });
   else if (outcome.launched === 0 && outcome.last !== 'launched') emitCommandResult(context, command, commandIndex, { outcome: 'ignored', reason: outcome.last });

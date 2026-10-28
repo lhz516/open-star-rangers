@@ -61,6 +61,8 @@ export interface MapRuleData {
   /** (h − x0, h − y0) with h = (s − 1) >> 1: the cursor at creation and at every opening of the map. */
   readonly startPixel: MapPixel;
   readonly world: WorldRectangle;
+  /** n, the world grid's sectors per side (`0x186b38`, `0x186b3a`; WorldFrame.sectors); the two axes are equal. */
+  readonly sectors: number;
   /** f32 ppX, ppY (`0x186464`, `0x186468`). */
   readonly pixelsPerUnit: { readonly x: number; readonly y: number };
   /** f32 wppX, wppY (`0x18646c`, `0x186470`): the reciprocals of the unrounded double. */
@@ -115,6 +117,7 @@ export function buildMapRuleData(geometry: MapGeometry, frame: WorldFrame, clock
     zoom: rect(x0 + side, y0 + half, strip, half),
     startPixel: Object.freeze({ column: start - x0, row: start - y0 }),
     world: Object.freeze({ minX: -halfExtent, minY: -halfExtent, maxX: halfExtent, maxY: halfExtent }),
+    sectors: frame.sectors,
     pixelsPerUnit: Object.freeze({ x: pixelsPerUnit, y: pixelsPerUnit }),
     unitsPerPixel: Object.freeze({ x: unitsPerPixel, y: unitsPerPixel }),
     zoomExtent: Object.freeze(zoomExtent),

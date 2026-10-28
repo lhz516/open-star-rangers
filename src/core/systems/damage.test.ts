@@ -84,6 +84,31 @@ const ofType = <Type extends DomainEvent['type']>(context: TickContext, type: Ty
 const hits = (context: TickContext): HitEvent[] => ofType(context, 'hit');
 const destructions = (context: TickContext): ObjectDestroyedEvent[] => ofType(context, 'object-destroyed');
 
+describe('the energy-page redraw of the player\'s shield, 0x30c60 (CK-02)', () => {
+  it('counts each hit the player\'s shield takes, an empty shield included, and not its bypass, a gated hit or another craft\'s', () => {
+    const { state, context, player } = scene();
+    const enemy = craftIn(state, 7, 50, 100);
+    applyContactDamage(context, enemy, 20, 'collision');
+    expect(state.player.energyPageRedraws).toBe(0);
+    // 50 → 30; then emptied with 10 left for the hull; then an empty shield, which still takes the hit.
+    for (const damage of [20, 40, 5]) applyContactDamage(context, player, damage, 'collision');
+    expect([player.combat.shield, state.player.energyPageRedraws]).toEqual([0, 3]);
+    // Subsystem 4 at 1: a low byte below 0x54 bypasses the shield, any other is taken.
+    arm(player, 50, 100, { 4: 1 });
+    drawNext(state, 1, ([value]) => (value & 0xff) < 0x54);
+    applyEngagementDamage(context, enemy, player, 1);
+    expect([player.combat.shield, state.player.energyPageRedraws]).toEqual([50, 3]);
+    arm(player, 50, 100, { 4: 1 });
+    drawNext(state, 1, ([value]) => (value & 0xff) >= 0x54);
+    applyEngagementDamage(context, enemy, player, 1);
+    expect([player.combat.shield, state.player.energyPageRedraws]).toEqual([49, 4]);
+    // The destruction view's gate takes no hit.
+    state.player.followedEntity = enemy.id;
+    applyEngagementDamage(context, enemy, player, 1);
+    expect(state.player.energyPageRedraws).toBe(4);
+  });
+});
+
 describe('a projectile or missile hit, 0x2a40c (H4, AC-09)', () => {
   it('does nothing at all to a destroyed victim', () => {
     const { state, context, player } = scene();

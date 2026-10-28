@@ -46,18 +46,22 @@ export const roundTrip = (value: unknown): unknown => JSON.parse(JSON.stringify(
 /** P3-12/10's presentation facts (docs/plan/p3/02/spec.md, FS-03, FS-02), which no rule reads. */
 const PRESENTATION_EVENTS: ReadonlySet<string> = new Set(['explosion-created', 'view-switched', 'warp-wall-contact']);
 const PRESENTATION_STATE = 'modelShown';
+/** P3-13's counters and flip flag (docs/plan/p3/02/spec.md, CK-01, CK-02), which only the presentation and the status step read. */
+const COCKPIT_STATE: ReadonlySet<string> = new Set(['phaseFlipped', 'rebuilds', 'energyPageRedraws']);
 
 /**
  * The gameplay digest of a run from `input` through `ticks`: fnv1a64 of every tick's events without P3-12/10's
- * presentation facts, and of the snapshot state after it without the player's model flag. It was computed for the
- * same runs without P3-12 (at 8b6113b6; after the P3-11 merge, on main at e6684c84), so an unchanged digest shows that the facts change no rule outcome and no
- * RNG draw (the state holds the RNG state). Every tick also reads the Render State, with P3-12/32's speed share
- * (FS-12), before the snapshot: the digests stay those of the code before it.
+ * presentation facts, and of the snapshot state after it without the player's model flag and P3-13's status display
+ * flip flag and counters. It was computed for the same runs without P3-12 (at 8b6113b6; after the P3-11 merge, on main
+ * at e6684c84), so an unchanged digest shows that the facts change no rule outcome and no RNG draw (the state holds the
+ * RNG state). Every tick also reads the Render State, with P3-12/32's speed share (FS-12), before the snapshot: the
+ * digests stay those of the code before it. P3-13/12's status display order (CK-01) moves the writes of fields 1, 5 and
+ * 8 to the step after a flip; these runs still give the same digests, so no rule there read the fields in between.
  */
 export function gameplayDigest(input: CreateWorldInput, ticks: readonly TickInput[]): string {
   const world = createWorld(input);
   const parts: string[] = [];
-  const withoutFlag = (key: string, value: unknown) => (key === PRESENTATION_STATE ? undefined : value);
+  const withoutFlag = (key: string, value: unknown) => (key === PRESENTATION_STATE || COCKPIT_STATE.has(key) ? undefined : value);
   for (const tick of ticks) {
     const events = world.step(tick).filter(({ type }) => !PRESENTATION_EVENTS.has(type));
     world.renderState();

@@ -7,9 +7,10 @@
  * only what the original shows or a rule needs, never the list of all entities.
  */
 import type { AssetId } from '../../content/asset-id.ts';
+import type { CraftRecord } from '../../content/rule-data/craft-info.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
 import { CoreFaultError } from '../errors.ts';
-import type { EntityId, Level, Matrix3, NameReference, SubsystemState } from '../world/entity-table.ts';
+import type { EntityId, Level, Matrix3, NameReference, SteeredMovementBlock, SubsystemState } from '../world/entity-table.ts';
 import type { MapPixel, MapPoint, PixelRect, WorldRectangle } from '../world/map-rule-data.ts';
 import {
   interactionContext,
@@ -34,7 +35,7 @@ import type {
   SummaryReference,
   WorldState,
 } from '../world/world-state.ts';
-import { projectCombat } from './combat.ts';
+import { craftRecord, projectCombat } from './combat.ts';
 import { projectCommunications } from './communications.ts';
 import { projectMap } from './map.ts';
 
@@ -110,6 +111,10 @@ export interface CombatTarget {
   readonly speed: number | null;
   /** A craft's shield and its full scale c5C; null for every other kind. */
   readonly shield: ResourceReading | null;
+  /** The model Asset of a target whose presentation is a model (CK-03); null otherwise (the kind-25 marker). */
+  readonly model: AssetId | null;
+  /** f32: the craft record +0x08 of the target's kind (T7's readout), for kind bits 0–19; null otherwise (CK-03). */
+  readonly craftAt08: number | null;
 }
 
 /** A radar contact (T6); P3-13 projects it on the screen with its own camera. */
@@ -117,6 +122,8 @@ export interface RadarContact {
   readonly entityId: EntityId;
   /** f32: the contact's position minus the player's. */
   readonly offset: Vec3;
+  /** The contact's f32 world position, read with the offset; the presentation projects it with its camera (CK-03). */
+  readonly position: Vec3;
   /** A missile by its shooter when that resolves, otherwise hostile; a marker is P3-09's kind 0x2000000. */
   readonly class: 'friendly' | 'hostile' | 'marker';
   /** Blinks. */
@@ -138,6 +145,12 @@ export interface WeaponListReading {
   readonly damage: 0 | 1 | 2 | null;
   /** The list's mount status (`0x2e438`, `0x2e264`). */
   readonly status: 0 | 1 | 2;
+  /**
+   * The current mount's weapon record after the load (CK-03): +0x08, the f32 speed in runtime units per second (a
+   * gun's own, a missile's copied from its body record's +0xB8), and +0x0C, the f32 range in runtime units; null
+   * without a current mount.
+   */
+  readonly ballistics: { readonly speed: number; readonly range: number } | null;
 }
 
 /** The player's combat readings (docs/plan/p3/02/spec.md, CR-12). */
@@ -159,6 +172,10 @@ export interface CombatPlayer {
   readonly subsystems: readonly SubsystemState[];
   readonly leftPage: LeftPage;
   readonly warp: CombatWarpReading;
+  /** The status display's blink phase and its count of writes of fields 1, 5 and 8 (CK-01, CK-03). */
+  readonly statusDisplay: { readonly blink: 0 | 1; readonly rebuilds: number };
+  /** The count of the original's sets of the energy-page redraw flag +0x44 (CK-02, CK-03). */
+  readonly energyPageRedraws: number;
 }
 
 /**
@@ -194,11 +211,19 @@ export interface MotionPlayer {
   readonly speed: number;
   /** Runtime units per second. */
   readonly commandedSpeed: number;
-  /** Runtime units per second. */
+  /** Runtime units per second; falls with the energy state. */
   readonly maximumSpeed: number;
+  /** The player's craft record +0xB8, f32 runtime units per second: the speed gauge's full scale (CK-03). */
+  readonly recordMaximumSpeed: number;
   readonly speedLimitStatus: SpeedLimitStatus;
   /** The speed assist's switch and whether it has matched, readable without the event history. */
   readonly speedAssist: { readonly enabled: boolean; readonly engaged: boolean };
+  /**
+   * f32 rad/s (CK-03): row 1's enabled steady pitch rate, or 0; row 3 as `0x21cf8` returns it: with C +0xC4 and the
+   * yaw enabled the coupled F(D(D(yaw × speed ratio) + roll)) (the roll enabled) or F(D(yaw × speed ratio)); otherwise
+   * the enabled steady roll rate, or +0. Timed rotations are not counted.
+   */
+  readonly indicatorRates: { readonly row1: number; readonly row3: number };
 }
 
 /** The flight partition's motion group (P3-06). */
@@ -273,6 +298,8 @@ export interface MapLabel {
   readonly name: NameReference;
   readonly pixel: MapPoint;
   readonly playerOrWingman: boolean;
+  /** The labelled entity has a threat stamp (+0x17C ≠ 0), so the label blinks (CK-03). */
+  readonly threatened: boolean;
 }
 
 /** The open map: everything the map view shows. */
@@ -288,6 +315,10 @@ export interface MapOpen {
     readonly unitsPerPixel: { readonly x: number; readonly y: number };
     readonly zoomPixelsPerUnit: { readonly x: number; readonly y: number };
     readonly world: WorldRectangle;
+    /** n, the world grid's sectors per side (`0x186b38`, `0x186b3a`) (CK-03). */
+    readonly sectors: number;
+    /** Integer runtime units (`0x18648c`, `0x186490`): the cursor box's extent (CK-03). */
+    readonly zoomExtent: { readonly x: number; readonly y: number };
   };
   /** f32; the world point's z is 0. */
   readonly cursor: {
@@ -462,6 +493,20 @@ function resultProjection({ result, completedTick }: MissionFlow): ResultProject
 }
 
 /**
+ * The rates of the cockpit's angular-rate indicator (CK-03): row 1 is the enabled steady pitch rate; row 3 what
+ * `0x21cf8` returns, the steady or coupled row-3 expression of the movement integrator's step 7 without the turn factor,
+ * ignoring a timed rotation, and +0 when neither the coupling nor the roll is on.
+ */
+function indicatorRates({ steering: { pitch, yaw, roll }, speedRatio }: SteeredMovementBlock, { atC4 }: CraftRecord): MotionPlayer['indicatorRates'] {
+  const row1 = pitch.enabled ? pitch.rate : 0;
+  if (atC4 !== 0 && yaw.enabled) {
+    const coupled = yaw.rate * speedRatio;
+    return Object.freeze({ row1, row3: Math.fround(roll.enabled ? coupled + roll.rate : coupled) });
+  }
+  return Object.freeze({ row1, row3: roll.enabled ? roll.rate : 0 });
+}
+
+/**
  * The player's motion, or null without a player entity. A player entity always has its control state, and its steered
  * movement block (CR-03), which only parking releases and the area check never parks the player's kind; missing either
  * is Core's fault.
@@ -476,6 +521,7 @@ function motionPlayer(world: WorldState): MotionPlayer | null {
   }
   const { position: { x, y, z }, orientation } = entity;
   const { enabled, engaged } = control.speedAssist;
+  const craft = craftRecord(world, entity.kindBit);
   return Object.freeze({
     entityId,
     position: Object.freeze({ x, y, z }),
@@ -483,8 +529,10 @@ function motionPlayer(world: WorldState): MotionPlayer | null {
     speed: movement.speed,
     commandedSpeed: movement.commandedSpeed,
     maximumSpeed: entity.maximumSpeed,
+    recordMaximumSpeed: craft.atB8,
     speedLimitStatus: PLAYER_SPEED_LIMIT_STATUS,
     speedAssist: Object.freeze({ enabled, engaged }),
+    indicatorRates: indicatorRates(movement, craft),
   });
 }
 

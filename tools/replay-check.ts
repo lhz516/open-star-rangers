@@ -99,7 +99,7 @@ export type ReplayCheckOptions = PackageCheckOptions;
  * version with SHA-256 manifest and source fingerprints. The test pins this value to the derivation, so a change to a
  * Core capacity or format changes it on purpose, together with the tool guide.
  */
-export const RECORDING_MAX_BYTES = 534_251_135;
+export const RECORDING_MAX_BYTES = 534_251_136;
 
 /** The longest JSON text of a finite number in [-1, 1]: the longest of any finite number. */
 const LONGEST_NUMBER = -0.0000012345678901234567;
