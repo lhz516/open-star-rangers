@@ -39,6 +39,9 @@ updated: 2026-10-28
 - `src/core/rules/displays.ts`、`src/core/rules/displays.test.ts`：CR-10 次序更正（08 增补）。
 - `src/core/world/player-state.ts`、`src/core/world/player-state.test.ts`、`src/core/world/map-rule-data.ts`、`src/core/world/map-rule-data.test.ts`：状态字段与地图规则数据（08 增补）。
 - `docs/original/formats/executable.md`、`docs/original/formats/hud.md`：仅记录 CK-02 写入分支与 `indicatorRates.row3` 初值的核对结论（08 增补）。
+- `src/core/rules/radar.ts`、`src/core/rules/radar.test.ts`：`RadarContact.position` 的生成（12 的范围请求）。
+- `src/core/rules/damage.ts`、`src/core/rules/damage.test.ts`：护盾吸收区分旁路以计能量页重画（12 的范围请求）。
+- `tools/replay-check.ts`、`tools/replay-check.test.ts`、`docs/guides/tools.md`：规则版本两位数带来的录制字节上限同步（12 的范围请求）。
 
 ## 验收标准
 

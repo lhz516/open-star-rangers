@@ -2897,7 +2897,7 @@ CR-10 的“状态显示写字段 1、5、8”一条改为：条件不变（玩�
 `src/core/systems/displays.ts` 的 `updateLeftDisplay` 在状态页分支按上述两步执行；`src/core/rules/displays.ts` 的 `advanceBlink` 保持“严格大于、到期即翻转并返回是否翻转”的语义，只由第 2 步调用。结果：写入发生在翻转之后的下一次状态页步，用新相位；翻转后状态页若停止运行（换页、子系统 10 = 2、离开仪表视角），写入一直等到状态页再次运行；翻转与 `redraw` 同时出现时连写两次（本 tick 因 `redraw`，下一 tick 因 `phaseFlipped`），与原版相同。
 
 - **初值：** 世界创建时 `blink` 0、`blinkDueClock` 0、`redraw` true（不变）、`phaseFlipped` true（原版静态初值 1）、`rebuilds` 0。
-- **写入者：** 只有本步写 `phaseFlipped` 与 `rebuilds`；`redraw` 的写入者不变（伤害、`0x4cd68`、实例化与救援）。救援不复位两项新字段（原版只有 `0x4d0e0` 读写其标志）。
+- **写入者：** 只有本步写 `phaseFlipped` 与 `rebuilds`；`redraw` 的写入者不变（伤害、`0x4cd68` 与实例化；原版写 +0xF0 的只有分配器、`0x2a830` 与 `0x4cd68`，救援不写，P3-13/12 核对）。救援不复位两项新字段（原版只有 `0x4d0e0` 读写其标志）。
 - **差异：** 原版三个静态量跨任务保留；Core 每个世界从初值开始。此差异与 P3-13 的显示计时差异一并披露（[P3-13 的 Δ-04](../13/spec.md#dc-11-已批准差异)）；CR-11 差异 4（子系统 10 = 1 的闪烁暂停不复现）不变。
 
 #### CK-02 能量页重画计数（新增持久状态）
