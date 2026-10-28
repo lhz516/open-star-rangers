@@ -589,6 +589,66 @@ describe('TypeScript module environments', () => {
         expect((await lint(support, file.replace('probe.ts', 'probe.test.ts'))).messages).toEqual([]);
       });
 
+    // docs/plan/p3/13/spec.md, 涉及模块: the cockpit's pure modules are free of DOM, GPU and the app layers, read no host
+    // time or randomness, are synchronous, and import only themselves, Core, content and the flight presentation module.
+    it.each(['src/render/cockpit/presentation/probe.ts', 'src/render/cockpit/gauges/probe.ts', 'src/render/cockpit/raster/probe.ts'])(
+      'keeps the cockpit’s pure modules to themselves, Core, content and the flight presentation, without host capabilities, in %s', async (file) => {
+        const up = '../../../';
+        const imports = [
+          'three', 'three/addons/controls/OrbitControls.js', 'react', 'zustand', `${up}app/mission/mission-owner.ts`, `${up}ui/mission/MissionShell.tsx`,
+          `${up}platform/audio/audio-player.ts`, `${up}workers/import-protocol.ts`, `${up}original-data/imfat.ts`, `${up}render/scene/render-surface.ts`,
+          `${up}render/webgl/browser-webgl-surface.ts`, `${up}render/flight/renderer/flight-renderer.ts`, `${up}render/map/browser-map-cursor.ts`,
+          '../composition/cockpit-layer.ts', '../target-display/gpu/target-scene.ts', 'node:fs',
+        ];
+        const samples: [string, string][] = [
+          ...imports.flatMap((specifier, index) => importForms.map((form, kind) => [form(specifier, `${index}_${kind}`), 'osr/cockpit-imports'] as [string, string])),
+          ['export const load = (name: string) => import(name);', 'osr/cockpit-imports'],
+          [`export type Owner = import('${up}app/mission/mission-owner.ts').MissionOwner;`, 'osr/cockpit-imports'],
+          ['export const value = document.title;', 'no-restricted-globals'],
+          ['export const value = window.innerWidth;', 'no-restricted-globals'],
+          ['export const value = globalThis.navigator;', 'no-restricted-globals'],
+          ['export const value = new OffscreenCanvas(1, 1);', 'no-restricted-globals'],
+          ['export type Value = WebGL2RenderingContext; export const value = WebGL2RenderingContext;', 'no-restricted-globals'],
+          ['export const value = crypto.getRandomValues(new Uint32Array(1));', 'no-restricted-globals'],
+          ['export const value = globalThis.crypto.randomUUID();', 'no-restricted-properties'],
+          ...hostOperations.map(({ source, rule }) => [source, rule] as [string, string]),
+        ];
+        await expectSampleRules(samples, file);
+        const allowed = [
+          `import { CORE_LIMITS } from '${up}core/contracts/limits.ts'; export const value = CORE_LIMITS;`,
+          `import type { CockpitInstruments } from '${up}content/hud/instruments-payload.ts'; export type Value = CockpitInstruments;`,
+          `import type { PresentationCamera } from '${up}render/flight/presentation/presentation-contract.ts'; export type Value = PresentationCamera;`,
+          "import { plot } from '../raster/indexed-surface.ts'; export const value = plot;",
+          "import type { CockpitModule } from '../presentation/cockpit-contract.ts'; export type Value = CockpitModule;",
+          'export function value(clock: number, since: number) { return (clock - since) >>> 0; }',
+        ];
+        for (const source of allowed) expect((await lint(source, file)).messages, source).toEqual([]);
+        const support = "import { readFileSync } from 'node:fs'; export const value = async () => [readFileSync, Math.random(), await Promise.resolve(1)];";
+        expect((await lint(support, file.replace('probe.ts', 'probe.test.ts'))).messages).toEqual([]);
+        expect((await lint(support, file.replace('probe.ts', 'probe.test-support.ts'))).messages).toEqual([]);
+      });
+
+    it.each(['src/render/cockpit/composition/probe.ts', 'src/render/cockpit/target-display/gpu/probe.ts'])(
+      'lets the cockpit’s GPU adapter %s use Three.js and the render layer, but no app layer, page globals or host time', async (file) => {
+        const up = file.includes('/gpu/') ? '../../../../' : '../../../';
+        const samples: [string, string][] = [
+          ...['react', 'react-dom/client', 'zustand', `${up}app/mission/mission-owner.ts`, `${up}ui/mission/MissionShell.tsx`,
+            `${up}platform/audio/audio-player.ts`, `${up}workers/import-protocol.ts`, `${up}original-data/imfat.ts`]
+            .map((specifier, index) => [importForms[0](specifier, `${index}`), 'no-restricted-imports'] as [string, string]),
+          ['export const value = document.title;', 'no-restricted-globals'],
+          ['export const value = window.devicePixelRatio;', 'no-restricted-globals'],
+          ...hostOperations.map(({ source, rule }) => [source, rule] as [string, string]),
+        ];
+        await expectSampleRules(samples, file);
+        const allowed = [
+          "import { Scene } from 'three'; export const value = new Scene();",
+          `import type { FlightLayer } from '${up}render/flight/composition/flight-layers.ts'; export type Value = FlightLayer;`,
+          `import { createCockpitPresentation } from '${up}render/cockpit/presentation/cockpit-presentation.ts'; export const value = createCockpitPresentation;`,
+          'export type Value = WebGL2RenderingContext;',
+        ];
+        for (const source of allowed) expect((await lint(source, file)).messages, source).toEqual([]);
+      });
+
     it.each(['ts', 'tsx'])('rejects host scheduling, time, randomness and async syntax in core .%s', async (extension) => {
       await expectSampleRules(hostOperations.map(({ source, rule }) => [source, rule] as const), `src/core/probe.${extension}`);
     });
@@ -1010,6 +1070,67 @@ describe('flight presentation boundaries', () => {
         'src/render/flight/presentation/dynamic.ts -> computed import in src/render/flight/presentation/dynamic.ts',
         'src/render/flight/presentation/gpu.ts -> three in src/render/flight/presentation/gpu.ts',
         'src/render/flight/presentation/owner.ts -> src/app/owner.ts',
+      ]);
+    });
+  });
+});
+
+describe('cockpit boundaries', () => {
+  // docs/plan/p3/13/spec.md, 涉及模块: the cockpit's pure modules and everything they reach stay free of packages (Three.js
+  // among them), DOM names, the GPU adapters and every layer but Core, content, the flight presentation and themselves.
+  const banned = new Set([
+    'window', 'document', 'navigator', 'localStorage', 'indexedDB', 'fetch', 'HTMLCanvasElement', 'OffscreenCanvas',
+    'WebGLRenderingContext', 'WebGL2RenderingContext', 'requestAnimationFrame', 'performance',
+  ]);
+  /** Pure cockpit modules: everything under src/render/cockpit but the GPU adapters. */
+  const origin = /^src\/render\/cockpit\/(?!composition\/|[^/]+\/gpu\/)/;
+  const allowed = (path: string): boolean => /^src\/(?:core|content|render\/flight\/presentation)\//.test(path) || origin.test(path);
+
+  /** Pure cockpit modules that use a banned name, or reach a package, another layer, a GPU adapter or a computed import. */
+  function cockpitReach(compilation: ts.Program, directory: string): string[] {
+    const names = compilation.getRootFileNames().map(fileName => relative(directory, fileName).split(sep).join('/'))
+      .filter(path => origin.test(path) && !/\.test(?:-support)?\.ts$/.test(path))
+      .flatMap(path => [...identifierNames(compilation.getSourceFile(join(directory, path))!)].filter(name => banned.has(name)).map(name => `${path}: ${name}`));
+    return [...names, ...sourceReach(compilation, directory, { origin, forbidden: path => !allowed(path), packages: true })].sort();
+  }
+
+  it('reaches only Core, content, the flight presentation and itself, without packages, GPU adapters or DOM names', () => {
+    const compilation = sharedAppProgram();
+    expect(compilation.getRootFileNames().filter(fileName => relative(root, fileName).startsWith(join('src', 'render', 'cockpit', 'presentation'))).length)
+      .toBeGreaterThanOrEqual(5);
+    expect(cockpitReach(compilation, root)).toEqual([]);
+  });
+
+  it('flags packages, other layers, GPU adapters and DOM names reached directly or through intermediaries', () => {
+    withFixtures({
+      'src/render/cockpit/gauges/bridge.ts': "export { value } from '../../../core/bridge.ts';",
+      'src/core/bridge.ts': "export { value } from '../render/scene/surface.ts';",
+      'src/render/scene/surface.ts': 'export const value = 1;',
+      'src/render/cockpit/radar/gpu.ts': "export type Scene = import('three').Scene;",
+      'src/render/cockpit/messages/owner.ts': "export type Owner = import('../../../app/owner.ts').Owner;",
+      'src/app/owner.ts': 'export interface Owner { readonly id: number }',
+      'src/render/cockpit/overlay/dom.ts': 'export const title = () => document.title;',
+      'src/render/cockpit/presentation/dynamic.ts': 'export const load = (name: string) => import(name);',
+      'src/render/cockpit/map-picture/layer.ts': "export { layer } from '../composition/layer.ts';",
+      'src/render/cockpit/composition/layer.ts': "export { Scene as layer } from 'three';",
+      'src/render/cockpit/target-display/gpu/scene.ts': "export { Scene } from 'three';",
+      'src/render/cockpit/target-display/values.ts': "export type { Scene } from './gpu/scene.ts';",
+      'src/render/cockpit/presentation/clean.ts': [
+        "export { value } from '../../../content/value.ts';", "export { other } from '../raster/other.ts';",
+        "export type { Camera } from '../../flight/presentation/camera.ts';",
+      ].join(' '),
+      'src/render/cockpit/raster/other.ts': 'export const other = 1;',
+      'src/render/flight/presentation/camera.ts': 'export interface Camera { readonly tick: number }',
+      'src/content/value.ts': 'export const value = 1;',
+    }, directory => {
+      expect(cockpitReach(program('app', directory), directory)).toEqual([
+        'src/render/cockpit/gauges/bridge.ts -> src/render/scene/surface.ts',
+        'src/render/cockpit/map-picture/layer.ts -> src/render/cockpit/composition/layer.ts',
+        'src/render/cockpit/messages/owner.ts -> src/app/owner.ts',
+        'src/render/cockpit/overlay/dom.ts: document',
+        'src/render/cockpit/presentation/dynamic.ts -> computed import in src/render/cockpit/presentation/dynamic.ts',
+        'src/render/cockpit/radar/gpu.ts -> three in src/render/cockpit/radar/gpu.ts',
+        'src/render/cockpit/target-display/values.ts -> src/render/cockpit/target-display/gpu/scene.ts',
       ]);
     });
   });

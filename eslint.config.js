@@ -150,10 +150,49 @@ const flightPresentationImports = {
 };
 const hostMessage = 'The flight presentation module reads no DOM, host time, host randomness or host scheduling.';
 
+/** Rules against host time, host randomness, host scheduling and the `globals` names, and against async code. */
+const hostRestrictions = (message, globals, syncMessage) => ({
+  'no-restricted-properties': ['error', ...[
+    { object: 'Math', property: 'random' }, { object: 'Date', property: 'now' }, { object: 'performance', property: 'now' },
+    { property: 'getRandomValues' }, { property: 'randomUUID' },
+  ].map((restriction) => ({ ...restriction, message }))],
+  'no-restricted-globals': ['error', ...[
+    ...globals, 'Date', 'performance', 'setTimeout', 'setInterval', 'queueMicrotask', 'requestAnimationFrame', 'requestIdleCallback', 'crypto',
+  ].map((name) => ({ name, message }))],
+  'no-restricted-syntax': ['error', ...['AwaitExpression', ':function[async=true]'].map((selector) => ({ selector, message: syncMessage }))],
+});
+
+// P3-13 (docs/plan/p3/13/spec.md, 涉及模块 and 驾驶舱表现模型与时间): the cockpit's presentation model and pixel modules
+// under src/render/cockpit are free of DOM, GPU and the app layers: they reference only themselves, Core, content and
+// the flight presentation module, by relative paths. Only the GPU adapters, `composition/` and any `<module>/gpu/`, may
+// use Three.js; pure modules never import them. tools/engineering-boundaries.test.ts checks the same transitively.
+const cockpitPureTargets = /^src\/(?:core|content|render\/cockpit|render\/flight\/presentation)\//;
+const cockpitGpuTargets = /^src\/render\/cockpit\/(?:composition|[^/]+\/gpu)\//;
+const cockpitGpuFiles = ['src/render/cockpit/composition/**/*.{ts,tsx}', 'src/render/cockpit/*/gpu/**/*.{ts,tsx}'];
+const cockpitImports = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: { restricted: 'Pure cockpit modules import only themselves, Core, content and the flight presentation module, by relative paths.' },
+  },
+  create(context) {
+    const check = (node, specifier) => {
+      const target = relativeTarget(context.filename, specifier);
+      if (target === undefined || !cockpitPureTargets.test(target) || cockpitGpuTargets.test(target)) context.report({ node, messageId: 'restricted' });
+    };
+    return moduleReferenceVisitors(check, () => false);
+  },
+};
+const cockpitMessage = 'Cockpit modules read no DOM, host time, host randomness or host scheduling.';
+
 // One plugin object, so every config entry that uses it refers to the same plugin.
 const osrPlugin = {
   meta: osrMeta,
-  rules: { 'original-data-capabilities': originalDataCapabilities, 'flight-presentation-imports': flightPresentationImports },
+  rules: {
+    'original-data-capabilities': originalDataCapabilities,
+    'flight-presentation-imports': flightPresentationImports,
+    'cockpit-imports': cockpitImports,
+  },
 };
 
 export default tseslint.config(
@@ -262,18 +301,45 @@ export default tseslint.config(
     plugins: { osr: osrPlugin },
     rules: {
       'osr/flight-presentation-imports': 'error',
-      'no-restricted-properties': ['error', ...[
-        { object: 'Math', property: 'random' }, { object: 'Date', property: 'now' }, { object: 'performance', property: 'now' },
-        { property: 'getRandomValues' }, { property: 'randomUUID' },
-      ].map((restriction) => ({ ...restriction, message: hostMessage }))],
-      'no-restricted-globals': ['error', ...[
-        'window', 'document', 'navigator', 'self', 'globalThis', 'localStorage', 'indexedDB', 'fetch', 'HTMLCanvasElement',
-        'OffscreenCanvas', 'WebGLRenderingContext', 'WebGL2RenderingContext', 'Date', 'performance', 'setTimeout',
-        'setInterval', 'queueMicrotask', 'requestAnimationFrame', 'requestIdleCallback', 'crypto',
-      ].map((name) => ({ name, message: hostMessage }))],
       // Each tick is processed synchronously, its seams included.
-      'no-restricted-syntax': ['error', ...['AwaitExpression', ':function[async=true]']
-        .map((selector) => ({ selector, message: 'The flight presentation module is synchronous.' }))],
+      ...hostRestrictions(hostMessage, [
+        'window', 'document', 'navigator', 'self', 'globalThis', 'localStorage', 'indexedDB', 'fetch', 'HTMLCanvasElement',
+        'OffscreenCanvas', 'WebGLRenderingContext', 'WebGL2RenderingContext',
+      ], 'The flight presentation module is synchronous.'),
+    },
+  },
+  {
+    // The cockpit's pure modules: no DOM, GPU or app layer, and no host time, randomness or scheduling (their random
+    // stream is the run's cockpit stream and their time the mission clock); every tick is processed synchronously.
+    files: ['src/render/cockpit/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/*.test-support.{ts,tsx}', ...cockpitGpuFiles],
+    plugins: { osr: osrPlugin },
+    rules: {
+      'osr/cockpit-imports': 'error',
+      ...hostRestrictions(cockpitMessage, [
+        'window', 'document', 'navigator', 'self', 'globalThis', 'localStorage', 'indexedDB', 'fetch', 'HTMLCanvasElement',
+        'OffscreenCanvas', 'WebGLRenderingContext', 'WebGL2RenderingContext',
+      ], 'Cockpit modules are synchronous.'),
+    },
+  },
+  {
+    // The cockpit's GPU adapters may use Three.js and the render layer, but no app, ui, platform, workers or React
+    // layer, no DOM page globals and no host time, randomness or scheduling: the application wires them.
+    files: cockpitGpuFiles,
+    ignores: ['**/*.test.{ts,tsx}', '**/*.test-support.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: ['react', 'react-dom', 'zustand', 'idb', 'idb-keyval'].map((name) => ({ name, message: 'Cockpit GPU adapters must not depend on UI or storage libraries.' })),
+        patterns: [
+          originalDataImports,
+          { group: ['react/*', 'react-dom/*', 'zustand/*', 'idb/*', 'idb-keyval/*'], message: 'Cockpit GPU adapters must not depend on UI or storage libraries.' },
+          {
+            group: ['app', 'ui', 'platform', 'workers'].flatMap((layer) => [`**/${layer}`, `**/${layer}/**`]),
+            message: 'Cockpit GPU adapters must not import the app, ui, platform or workers layers.',
+          },
+        ],
+      }],
+      ...hostRestrictions(cockpitMessage, ['window', 'document', 'navigator', 'localStorage', 'indexedDB', 'fetch'], 'Cockpit modules are synchronous.'),
     },
   },
   {

@@ -89,7 +89,7 @@ updated: 2026-10-28
 | [11-graphics-import-wiring.md](./subtasks/11-graphics-import-wiring.md) | 10 | completed |
 | [12-core-hud-read-models.md](./subtasks/12-core-hud-read-models.md) | 08 | completed |
 | [13-runtime-tick-projection.md](./subtasks/13-runtime-tick-projection.md) | 08 | completed |
-| [14-cockpit-presentation-foundation.md](./subtasks/14-cockpit-presentation-foundation.md) | 10, 12 | in-progress |
+| [14-cockpit-presentation-foundation.md](./subtasks/14-cockpit-presentation-foundation.md) | 10, 12 | completed |
 | [15-indexed-raster-font-text.md](./subtasks/15-indexed-raster-font-text.md) | 10 | completed |
 | [16-cockpit-gauges-radar.md](./subtasks/16-cockpit-gauges-radar.md) | 14, 15 | pending |
 | [17-status-energy-interference.md](./subtasks/17-status-energy-interference.md) | 14, 15 | pending |
