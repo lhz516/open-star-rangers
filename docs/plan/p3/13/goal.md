@@ -102,7 +102,7 @@ updated: 2026-10-28
 | [24-run-composition-wiring.md](./subtasks/24-run-composition-wiring.md) | 11, 13, 16, 17, 18, 19, 20, 21, 23 | completed |
 | [25-ui-bridge-gaps.md](./subtasks/25-ui-bridge-gaps.md) | 18, 24 | completed |
 | [26-replay-contract-integration.md](./subtasks/26-replay-contract-integration.md) | 25 | completed |
-| [27-browser-cockpit.md](./subtasks/27-browser-cockpit.md) | 25 | in-progress |
+| [27-browser-cockpit.md](./subtasks/27-browser-cockpit.md) | 25 | completed |
 | [28-browser-map.md](./subtasks/28-browser-map.md) | 25 | completed |
 | [29-browser-lifecycle.md](./subtasks/29-browser-lifecycle.md) | 27, 28 | pending |
 | [30-real-content-import.md](./subtasks/30-real-content-import.md) | 11 | completed |

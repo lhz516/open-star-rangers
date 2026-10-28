@@ -1,7 +1,10 @@
 import { expect, type Page } from '@playwright/test';
 import { syntheticNebula } from '../../src/original-data/conversion/production-flight-graphics.test-support.ts';
 import { button } from './app-entry.ts';
-import { F1_BOTTOM, identityBackground, isBlack, logicalImage, mismatches, nextFrames, PRODUCTION_DATA, type LogicalImage, type Rgb } from './flight-pictures.ts';
+import { bandStatic, inF1Cockpit, startableCockpit, viewportCockpit, wrongPixels, type CockpitFixture } from './cockpit.ts';
+import {
+  F1_BOTTOM, identityBackground, isBlack, logicalImage, mismatches, nextFrames, PRODUCTION_DATA, rect, type LogicalImage, type Mismatch, type Rgb,
+} from './flight-pictures.ts';
 import { endPlaceholder, enterMission, waitForFrame } from './mission-observations.ts';
 
 // The flight picture of the formal mission flow (P3-12/25) with the synthetic production package
@@ -46,27 +49,17 @@ export async function flightDiagnostics(page: Page): Promise<FlightDiagnosticsRe
   };
 }
 
-/** The logical rectangle of the in-progress note over the cockpit area, which the page draws over the canvas. */
-async function noteRect(page: Page): Promise<readonly [number, number, number, number]> {
-  return page.getByTestId('flight-area').evaluate(area => {
-    const canvas = area.querySelector('canvas')!.getBoundingClientRect();
-    const note = document.querySelector('[data-testid="flight-in-progress"]')!.getBoundingClientRect();
-    const scale = 640 / canvas.width;
-    return [Math.floor((note.left - canvas.left) * scale) - 1, Math.floor((note.top - canvas.top) * scale) - 1, Math.ceil((note.right - canvas.left) * scale) + 1, Math.ceil((note.bottom - canvas.top) * scale) + 1] as const;
-  });
-}
-
 export interface FlightRead {
   readonly image: LogicalImage;
-  /** The in-progress note's logical rectangle, left, top, right, bottom. */
-  readonly note: readonly [number, number, number, number];
+  /** The synthetic package's cockpit content, whose drawing the picture shows over the 3D viewport and in the band. */
+  readonly cockpit: CockpitFixture;
 }
 
-/** The flight picture as composited, with the note's rectangle. */
+/** The flight picture as composited, with the cockpit content of the synthetic mission package. */
 export async function flightPicture(page: Page): Promise<FlightRead> {
   await nextFrames(page);
   const image = await logicalImage(page, page.getByTestId('flight-area'));
-  return { image, note: await noteRect(page) };
+  return { image, cockpit: await startableCockpit() };
 }
 
 /** The synthetic package's nebula images (`syntheticNebula`), by NEBC position. */
@@ -83,15 +76,17 @@ export interface F1Check {
 }
 
 /**
- * Expects the F1 picture of the identity rows (the player's at the start of the synthetic mission): black, the nebula of
- * one start of the package's list in slot 0 and the 57 stars, in the production DATA colours, everything below row 315
- * black but for the in-progress note; the only other pixels are speed dust: at most its 50 particles, in DATA 2–7, in
- * columns 1–638 and rows 1–314 (SD5).
+ * Expects the F1 picture of the identity rows (the player's at the start of the synthetic mission) in the 3D viewport
+ * (rows 0–315): black, the nebula of one start of the package's list in slot 0 and the 57 stars, in the production DATA
+ * colours, under the cockpit's pixels there (its element and instrument rectangles and the overlay's colours,
+ * cockpit.ts `inF1Cockpit`); the only other pixels are speed dust: at most its 50 particles, in DATA 2–7, in columns
+ * 1–638 and rows 1–314 (SD5). The cockpit band (rows 316–479) is the cockpit regression's (cockpit.*.spec.ts).
  */
-export function expectF1Background({ image, note }: FlightRead): F1Check {
-  const [left, top, right, bottom] = note;
-  const outsideNote = ({ x, y }: { x: number; y: number }) => x < left || x > right || y < top || y > bottom;
-  const fits = NEBULAE.map((indices, start) => ({ start, wrong: mismatches(image, identityBackground(PRODUCTION_DATA, indices, F1_BOTTOM)).filter(outsideNote) }))
+export function expectF1Background({ image, cockpit }: FlightRead): F1Check {
+  const covered = inF1Cockpit(cockpit);
+  const viewport = [...rect(0, 0, 639, F1_BOTTOM)];
+  const world = ({ x, y, actual }: Mismatch) => !covered(x, y, actual);
+  const fits = NEBULAE.map((indices, start) => ({ start, wrong: mismatches(image, identityBackground(PRODUCTION_DATA, indices, F1_BOTTOM), viewport).filter(world) }))
     .sort((a, b) => a.wrong.length - b.wrong.length);
   const [best, runnerUp] = fits;
   const dustColours = new Set(PRODUCTION_DATA.slice(2, 8).map(rgb => rgb.join()));
@@ -108,18 +103,20 @@ export function isTunnelColour([r, g, b]: Rgb): boolean {
   return (r === 0 && b === 0 && expanded(g)) || (r === g && g === b && expanded(r));
 }
 
-/** Counts of a picture's pixels in the 3D viewport by kind, and whether everything below it is black but for the note. */
-export function classifyWarp({ image, note }: FlightRead) {
-  const [left, top, right, bottom] = note;
-  const counts = { tunnel: 0, palette: 0, black: 0, other: 0, belowLit: 0 };
+/**
+ * Counts of a picture's pixels in the 3D viewport outside the cockpit's rectangles there, by kind, and `band`, the
+ * static band pixels (cockpit.ts `bandStatic`) not in index 0: 0 outside a flash, which recolours the whole picture.
+ */
+export function classifyWarp({ image, cockpit }: FlightRead) {
+  const rects = viewportCockpit(cockpit);
+  const counts = { tunnel: 0, palette: 0, black: 0, other: 0, band: wrongPixels(image, bandStatic(cockpit), cockpit.data[0]).length };
   const palette = new Set(PRODUCTION_DATA.slice(1, 8).map(rgb => rgb.join()));
   const dust = new Set<string>();
-  for (let y = 0; y < 480; y++) {
+  for (let y = 0; y <= F1_BOTTOM; y++) {
     for (let x = 0; x < 640; x++) {
       const rgb = image.at(x, y);
-      if (y > F1_BOTTOM) {
-        if (!isBlack(rgb) && (x < left || x > right || y < top || y > bottom)) counts.belowLit += 1;
-      } else if (isBlack(rgb)) counts.black += 1;
+      if (rects.some(({ x0, y0, x1, y1 }) => x >= x0 && x <= x1 && y >= y0 && y <= y1)) continue;
+      if (isBlack(rgb)) counts.black += 1;
       else if (isTunnelColour(rgb)) counts.tunnel += 1;
       else if (palette.has(rgb.join())) {
         counts.palette += 1;

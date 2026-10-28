@@ -157,7 +157,10 @@ async function launch(page: Page, end: PlaceholderEnd): Promise<void> {
   await page.keyboard.press('l');
   await throughHold(page, 'G-02/4', 'departed', end);
   await expect(page.getByTestId('base-page')).toHaveCount(0);
-  await expect(page.getByTestId('mission-view')).toContainText(FLIGHT_IN_PROGRESS);
+  // Back in flight: the flight view shows, and the in-progress note is the status bar's, outside the game view.
+  await expect(page.getByTestId('mission-view').getByTestId('flight-view')).toBeVisible();
+  await expect(page.getByTestId('mission-status').getByTestId('flight-in-progress')).toHaveText(FLIGHT_IN_PROGRESS);
+  await expect(page.getByTestId('mission-view').getByTestId('flight-in-progress')).toHaveCount(0);
   expect(resultsOf(await loggedEvents(page), 'launch'), 'L submitted once').toHaveLength(1);
 }
 

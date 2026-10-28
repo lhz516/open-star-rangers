@@ -3,6 +3,7 @@ import { scenarioFiles } from '../src/workers/import-scenarios.test-support.ts';
 import { FLIGHT_IN_PROGRESS } from '../src/ui/mission/mission-copy.ts';
 import { button, filePayloads, importFiles } from './support/app-entry.ts';
 import { expect, test } from './support/audited-test.ts';
+import { imageMismatches, mapFramePixels } from './support/cockpit.ts';
 import {
   classifyWarp, expectF1Background, flightDiagnostics, flightPicture, flyMission, pauseFlight, type FlightDiagnosticsRead,
 } from './support/flight-flow.ts';
@@ -19,7 +20,8 @@ import { ResourceBalance, settleTooling } from './support/resource-balance.ts';
 // package through the real module Worker; the run is driven only by trusted input on the page's controls and, for the
 // Warp destination, by the diagnostics panel's own command editor (P3-09). Pixels are the composited page and their
 // expectation is computed independently (support/flight-flow.ts); runtime facts come from the screen's attributes and
-// the panel. The network audit runs throughout. The isolated scenes are flight-scenes.development.spec.ts.
+// the panel. The network audit runs throughout. The isolated scenes are flight-scenes.development.spec.ts; the cockpit
+// drawn over the picture since P3-13 is set aside here by its rectangles and colours and checked in cockpit.*.spec.ts.
 
 test.describe.configure({ timeout: 240_000 });
 
@@ -93,11 +95,9 @@ test('the F1 picture is the start nebula, stars and dust in black borders; pause
     const below = Math.min(size - 1, Math.floor(at));
     return Number.isInteger(at) ? [below - 1, below] : [below];
   };
-  const [left, top, right, bottom] = resized.note;
   const wrongScaled: { x: number; y: number }[] = [];
   for (let y = 0; y < 480; y++) {
     for (let x = 0; x < 640; x++) {
-      if (x >= left && x <= right && y >= top && y <= bottom) continue;
       const actual = resized.image.at(x, y).join();
       if (!sources(y, 480).some(sy => sources(x, 640).some(sx => first.image.at(sx, sy).join() === actual))) wrongScaled.push({ x, y });
     }
@@ -205,7 +205,7 @@ test('a restart and a replaced package draw again, each run with its own resourc
 /** The centre of main-map pixel column 230, row 127 (of 400 × 400), clear of the synthetic mission's icons (P3-09). */
 const DESTINATION = Object.freeze({ operation: 'select', right: String(230.5 / 400), down: String(127.5 / 400) });
 
-/** Pauses, reads and resumes; resolves to the read once its cockpit rows are black, that is, outside a flash. */
+/** Pauses, reads and resumes; resolves to the read once its static cockpit band is in index 0, that is, outside a flash. */
 async function warpRead(page: Page, accept: (view: BridgeView) => boolean, what: string) {
   for (let attempt = 0; attempt < 20; attempt++) {
     await waitForBridge(page, accept, what, 90_000);
@@ -214,7 +214,7 @@ async function warpRead(page: Page, accept: (view: BridgeView) => boolean, what:
     const read = classifyWarp(await flightPicture(page));
     await button(page, 'Resume').click();
     await expect(page.getByTestId('mission-status')).toHaveAttribute('data-phase', 'running');
-    if (accept(view) && read.belowLit === 0) return { view, read };
+    if (accept(view) && read.band === 0) return { view, read };
     await waitForFrame(page, frame => (frame.tick ?? 0) >= (view.tick ?? 0) + 4);
   }
   throw new Error(`No flash-free picture: ${what}`);
@@ -228,10 +228,13 @@ test('a real Warp through the map and the panel\'s editor draws the tunnel and d
   await waitForBridge(page, candidate => candidate.context === 'map', 'm did not open the map');
   expect(await submitEditorCommand(page, 'map-point', DESTINATION)).toMatchObject({ outcome: 'accepted' });
   await waitForBridge(page, candidate => candidate.map?.warpRequest === 'accepted', 'No accepted Warp destination');
-  // In the map no world draws (AC-23): the picture is black but for the note.
+  // In the map no world draws (AC-23): the cockpit's map picture fills the screen instead (P3-13), its frame elements in
+  // the map palette and no tunnel colour (the map picture's own browser regression is P3-13/28's).
   await pauseFlight(page);
-  const map = classifyWarp(await flightPicture(page));
-  expect(map).toMatchObject({ tunnel: 0, palette: 0, other: 0, belowLit: 0 });
+  const mapRead = await flightPicture(page);
+  expect(imageMismatches(mapRead.image, mapFramePixels(mapRead.cockpit))).toEqual([]);
+  const map = classifyWarp(mapRead);
+  expect(map.tunnel).toBe(0);
   await button(page, 'Resume').click();
   // Refocused by a click, which in the map selects nothing (P3-09).
   await page.getByTestId('game-input-zone').click();
@@ -241,10 +244,11 @@ test('a real Warp through the map and the panel\'s editor draws the tunnel and d
   const started = (await waitForMapWarpLog(page, 3)).find(entry => entry.type === 'warp-started')!;
   expect(started).toBeDefined();
 
-  // In the Warp, after the start's flash: the tunnel's green and grey lines, palette colours for stars and dust, nothing
-  // else, and black cockpit rows; the dust draws lines while the share exceeds 1.
+  // In the Warp, after the start's flash: outside the cockpit's rectangles the tunnel's green and grey lines, palette
+  // colours for stars and dust, nothing else, and the static cockpit band in index 0; the dust draws lines while the
+  // share exceeds 1.
   const inWarp = await warpRead(page, candidate => candidate.viewMode === WARP_VIEW && (candidate.tick ?? 0) >= started.tick + 60, 'A Warp picture after its start flash');
-  expect(inWarp.read).toMatchObject({ other: 0, belowLit: 0 });
+  expect(inWarp.read).toMatchObject({ other: 0, band: 0 });
   expect(inWarp.read.tunnel).toBeGreaterThan(200);
   // Dust lines: palette pixels joined into runs (the stars are single pixels).
   expect(inWarp.read.joined).toBeGreaterThan(10);
@@ -253,7 +257,7 @@ test('a real Warp through the map and the panel\'s editor draws the tunnel and d
   expect(completion.fields).toMatchObject({ arrived: 'true' });
   const after = await warpRead(page, candidate => candidate.viewMode === FLIGHT_VIEW && (candidate.tick ?? 0) >= completion.tick + 60, 'An F1 picture after the Warp');
   // F1 again: no tunnel colour; the world viewport shows the stars and backgrounds of the arrival's rows.
-  expect(after.read).toMatchObject({ tunnel: 0, belowLit: 0 });
+  expect(after.read).toMatchObject({ tunnel: 0, band: 0 });
   expect(after.read.palette + after.read.other).toBeGreaterThan(30);
   expect(await missionFrame(page)).toMatchObject({ position: 'flight' });
   await testInfo.attach('warp-picture', { body: JSON.stringify({ map, started: started.tick, inWarp, completion: completion.tick, after }), contentType: 'application/json' });

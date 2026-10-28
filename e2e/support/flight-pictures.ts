@@ -9,7 +9,7 @@ export type Rgb = readonly [number, number, number];
 
 export const LOGICAL_WIDTH = 640;
 export const LOGICAL_HEIGHT = 480;
-/** The last row of the 3D viewport in F1 and Warp (rows 316–479 are the cockpit's, black until P3-13). */
+/** The last row of the 3D viewport in F1 and Warp (rows 316–479 are the cockpit band, drawn since P3-13). */
 export const F1_BOTTOM = 315;
 /** The last row in the destruction view, whose viewport is the whole screen. */
 export const FULL_BOTTOM = 479;
