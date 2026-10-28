@@ -92,7 +92,7 @@ updated: 2026-10-28
 | [14-cockpit-presentation-foundation.md](./subtasks/14-cockpit-presentation-foundation.md) | 10, 12 | completed |
 | [15-indexed-raster-font-text.md](./subtasks/15-indexed-raster-font-text.md) | 10 | completed |
 | [16-cockpit-gauges-radar.md](./subtasks/16-cockpit-gauges-radar.md) | 14, 15 | completed |
-| [17-status-energy-interference.md](./subtasks/17-status-energy-interference.md) | 14, 15 | in-progress |
+| [17-status-energy-interference.md](./subtasks/17-status-energy-interference.md) | 14, 15 | completed |
 | [18-communications-messages.md](./subtasks/18-communications-messages.md) | 14, 15 | completed |
 | [19-warp-display.md](./subtasks/19-warp-display.md) | 14, 15 | in-progress |
 | [20-target-display.md](./subtasks/20-target-display.md) | 14, 15, 17 | pending |
