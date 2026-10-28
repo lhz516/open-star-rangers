@@ -134,11 +134,13 @@ describe('slice gap copy (G IDs)', () => {
     expect(MISSION_SKELETON).toMatch(/formal runtime skeleton, not yet a playable slice/);
     expect(MISSION_SKELETON).toMatch(/mission result included/);
     expect(MISSION_SKELETON).not.toMatch(/game controls/);
-    expect(MISSION_SKELETON).toMatch(/flight view is in progress, but there is no cockpit, HUD/);
+    expect(MISSION_SKELETON).toMatch(/flight view draws the cockpit, HUD and strategic map, but there are no sound effects yet \(P3-14\)/);
+    expect(MISSION_SKELETON).not.toMatch(/no cockpit|in progress/);
   });
 
-  it('says why the flight picture is missing, whether the run goes on, and that the cockpit and HUD are P3-13\'s', () => {
-    expect(FLIGHT_IN_PROGRESS).toMatch(/Flight rendering is connected; the cockpit and HUD are not implemented yet \(P3-13\)/);
+  it('says why the flight picture is missing and whether the run goes on, and keeps only the P3-14 sound note in progress', () => {
+    expect(FLIGHT_IN_PROGRESS).toBe('Sound effects are not implemented yet (P3-14).');
+    expect(FLIGHT_IN_PROGRESS).not.toMatch(/cockpit|HUD|P3-13/);
     expect(flightNotice({ state: 'ready', error: null })).toBeNull();
     expect(flightNotice({ state: 'disposed', error: null })).toBeNull();
     expect(flightNotice({ state: 'context-lost', error: null })).toEqual({ alert: false, text: expect.stringMatching(/context was lost.*continues/), detail: null });

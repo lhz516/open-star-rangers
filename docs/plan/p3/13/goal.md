@@ -100,7 +100,7 @@ updated: 2026-10-28
 | [22-map-picture.md](./subtasks/22-map-picture.md) | 14, 15 | completed |
 | [23-map-input-geometry.md](./subtasks/23-map-input-geometry.md) | 22 | completed |
 | [24-run-composition-wiring.md](./subtasks/24-run-composition-wiring.md) | 11, 13, 16, 17, 18, 19, 20, 21, 23 | completed |
-| [25-ui-bridge-gaps.md](./subtasks/25-ui-bridge-gaps.md) | 18, 24 | in-progress |
+| [25-ui-bridge-gaps.md](./subtasks/25-ui-bridge-gaps.md) | 18, 24 | completed |
 | [26-replay-contract-integration.md](./subtasks/26-replay-contract-integration.md) | 25 | pending |
 | [27-browser-cockpit.md](./subtasks/27-browser-cockpit.md) | 25 | pending |
 | [28-browser-map.md](./subtasks/28-browser-map.md) | 25 | pending |

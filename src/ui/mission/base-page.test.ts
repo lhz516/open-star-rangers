@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { BaseServiceView, CombatPlayer, Projection } from '../../core/projections/projection.ts';
 import type { MessageIdentity } from '../../core/world/world-state.ts';
-import type { GameUiState, UiCommandResult } from '../game/game-store.ts';
-import { baseActionError, baseFeedbackStart, basePageView, lastBaseCommand, selectBaseShown, serviceItemName } from './base-page.ts';
+import type { GameUiState, UiCommandResult, UiMessageLine } from '../game/game-store.ts';
+import {
+  baseActionError, baseFeedbackStart, baseMessagesView, basePageView, lastBaseCommand, selectBaseShown, serviceItemName,
+} from './base-page.ts';
 import { BASE_PAGE, MESSAGE_SUMMARIES, messageSummary, messageSummaryKind, SLICE_GAPS } from './slice-gaps-copy.ts';
 
 // P3-10 S-10 (subtask 22): the G-05 base page's reading of the projection and the G-02/3, G-02/4, G-03 and G-05 copy,
-// read without a DOM. Expectations come from the spec's 缺省与标注 and executable.md (BS5, BS6, RQ1, RX1–RX3), not from
-// the code under test.
+// read without a DOM, and P3-13/25's bridged message line (DC-07). Expectations come from the specs' 缺省与标注 and
+// executable.md (BS5, BS6, RQ1, RX1–RX3, WB3–WB5), not from the code under test.
 
 const FLAGS = Object.freeze({ repairsComplete: false, energyAndMissilesFull: true, hullFull: false });
 
@@ -106,12 +108,12 @@ describe('radio message summaries (G-03)', () => {
     expect([0, 1, 4, 2, 3].map(index => messageSummaryKind(face(20011, index)))).toEqual([
       'docking-reply', 'base-status-clear', 'base-status-threat', 'base-enemy-near', 'base-thanks',
     ]);
-    expect(messageSummaryKind(face(20011, 5))).toBe('unidentified');
+    expect(messageSummaryKind(face(20011, 5))).toBeNull();
   });
 
   it('tell a friendly craft\'s replies and its named call for help apart (RQ1, RX2: 2011 position + 3)', () => {
     expect([0, 1, 2, 3, 21, 22].map(index => messageSummaryKind(face(20019, index)))).toEqual([
-      'craft-status-clear', 'craft-status-threat', 'craft-thanks', 'friendly-under-attack', 'friendly-under-attack', 'unidentified',
+      'craft-status-clear', 'craft-status-threat', 'craft-thanks', 'friendly-under-attack', 'friendly-under-attack', null,
     ]);
   });
 
@@ -120,26 +122,65 @@ describe('radio message summaries (G-03)', () => {
     expect(kinds).toEqual({
       0: 'friendly-under-attack-follow-up', 3: 'friendly-under-attack-follow-up', 4: 'player-hit-friendly', 5: 'player-destroyed-friendly',
       6: 'wingman-lost', 7: 'friendly-under-attack', 25: 'friendly-under-attack', 26: 'friendly-under-attack', 45: 'friendly-under-attack',
-      46: 'friendly-destroyed', 64: 'friendly-destroyed', 65: 'friendly-destroyed', 84: 'friendly-destroyed', 85: 'unidentified',
+      46: 'friendly-destroyed', 64: 'friendly-destroyed', 65: 'friendly-destroyed', 84: 'friendly-destroyed', 85: null,
     });
   });
 
-  it('read the wingman\'s lines by line type, leaving the lines P3-08 adds unidentified (RX1)', () => {
-    const kinds = Object.fromEntries([0, 4, 5, 6, 7, 8, 9, 10, 11, 19, 21, 22, 40, 41, 60, 61].map(index => [index, messageSummaryKind(face(20985, index))]));
+  it('read the wingman\'s lines by line type with its draws, and the command replies by code (RX1, WB3–WB5)', () => {
+    const indices = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 40, 41, 60, 61];
+    const kinds = Object.fromEntries(indices.map(index => [index, messageSummaryKind(face(20985, index))]));
     expect(kinds).toEqual({
-      0: 'unidentified', 4: 'unidentified', 5: 'wingman-kill-or-other', 6: 'wingman-kill-or-other', 7: 'wingman-kill',
-      8: 'wingman-enemy-appears', 9: 'wingman-enemy-appears', 10: 'wingman-enemy-on-tail', 11: 'unidentified', 19: 'wingman-low-hull',
-      21: 'unidentified', 22: 'wingman-friendly-lost', 40: 'wingman-friendly-lost', 41: 'wingman-friendly-lost', 60: 'wingman-friendly-lost',
-      61: 'unidentified',
+      // Line 0 draws 0–2: the refusal; line 3 draws 3–4: code 2 and unknown codes.
+      0: 'wingman-order-unable', 2: 'wingman-order-unable', 3: 'wingman-order-acknowledged', 4: 'wingman-order-acknowledged',
+      // Line 7 draws 5–7: the kill report, the only caller of those indices (0x38bf8's type-5 branch is dead code).
+      5: 'wingman-kill', 6: 'wingman-kill', 7: 'wingman-kill', 8: 'wingman-enemy-appears', 9: 'wingman-enemy-appears', 10: 'wingman-enemy-on-tail',
+      // Code 7's status by hull: 0xB at 80% or more, 0xC from 50%, 0xD below.
+      11: 'wingman-status-high', 12: 'wingman-status-medium', 13: 'wingman-status-low',
+      14: 'wingman-formation', 15: 'wingman-formation', 16: 'wingman-attack', 17: 'wingman-attack', 18: 'wingman-move',
+      19: 'wingman-low-hull', 20: 'wingman-engage', 21: 'wingman-move-unable',
+      22: 'wingman-friendly-lost', 40: 'wingman-friendly-lost', 41: 'wingman-friendly-lost', 60: 'wingman-friendly-lost', 61: null,
     });
   });
 
-  it('give each kind its own project text, with no refusal summary, under G-03', () => {
+  it('give each kind its own project text under G-03, with no docking refusal summary', () => {
     const texts = Object.values(MESSAGE_SUMMARIES.text);
     expect(new Set(texts).size).toBe(texts.length);
     expect(MESSAGE_SUMMARIES.gap).toBe('G-03');
-    expect(Object.keys(MESSAGE_SUMMARIES.text).some(kind => /refus|reject|cancel/.test(kind))).toBe(false);
+    expect(Object.keys(MESSAGE_SUMMARIES.text).some(kind => /docking.*(refus|reject|cancel)/.test(kind))).toBe(false);
     expect(messageSummary(face(20011, 0))).toBe(MESSAGE_SUMMARIES.text['docking-reply']);
+  });
+});
+
+describe('the base page\'s message line (G-03, P3-13 DC-07)', () => {
+  const docking: MessageIdentity = { table: 20011, face: 1, index: 0 };
+  const unknown: MessageIdentity = { table: 20985, face: 2, index: 0x3d };
+  const line = (head: UiMessageLine['head'], incoming: UiMessageLine['incoming']): UiMessageLine => Object.freeze({ runId: 1, head, incoming });
+
+  it('is empty without a run\'s cockpit or an item', () => {
+    expect(baseMessagesView(null)).toEqual({ line: null, incoming: null });
+    expect(baseMessagesView(line(null, null))).toEqual({ line: null, incoming: null });
+  });
+
+  it('labels imported text as imported and a summary as project text, never as the original line', () => {
+    const view = baseMessagesView(line(
+      { serial: 3, origin: 'original', text: 'imported text', message: null, covered: true },
+      { message: docking, summary: MESSAGE_SUMMARIES.text['docking-reply'], covered: true, shown: true },
+    ));
+    expect(view.line).toEqual({ text: 'imported text', origin: 'original', source: BASE_PAGE.messages.origin.original, uncovered: null });
+    expect(view.incoming).toEqual({
+      text: MESSAGE_SUMMARIES.text['docking-reply'], origin: 'project', source: BASE_PAGE.messages.origin.project, uncovered: null,
+    });
+    expect(BASE_PAGE.messages.origin.project).toMatch(/not the original line/);
+  });
+
+  it('keeps a missing mapping visible with the message it stands for', () => {
+    const uncovered = MESSAGE_SUMMARIES.uncovered.summary;
+    const view = baseMessagesView(line(
+      { serial: 4, origin: 'project', text: uncovered, message: unknown, covered: false },
+      { message: { table: 20983, face: null, index: 85 }, summary: uncovered, covered: false, shown: false },
+    ));
+    expect(view.line).toMatchObject({ text: uncovered, origin: 'project', uncovered: 'Not covered: table 20985, face 2, message 61.' });
+    expect(view.incoming).toMatchObject({ text: uncovered, uncovered: 'Not covered: table 20983, message 85.' });
   });
 });
 
@@ -149,7 +190,7 @@ describe('the P3-10 gap notes', () => {
       expect(SLICE_GAPS[id].text).toMatch(/no time passes for the missing cut-scene, and skipping it skips no rule/);
       expect(SLICE_GAPS[id].text).toMatch(/3 seconds of visible time/);
     }
-    expect(SLICE_GAPS['G-03'].text).toMatch(/project words.*P3-13/s);
+    expect(SLICE_GAPS['G-03'].text).toMatch(/project words.*short project label.*message line and the base page/s);
     expect(SLICE_GAPS['G-05'].text).toMatch(/unknown shows its number.*no countdown/s);
     expect(BASE_PAGE.gap).toBe('G-05');
   });

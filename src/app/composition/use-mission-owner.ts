@@ -8,10 +8,13 @@
  *   shows to the package the owner is opening on (docs/plan/p3/11/spec.md, 结果页、重试与返回);
  * - a `media` consumer for the flight picture (P3-12): the owner's one WebGL 2 surface, created in a container element of
  *   its own that the mounted flight area holds (`bindFlightArea`), so remounting the area keeps the canvas and context;
- *   with each run's cockpit, HUD and map (P3-13), drawn with the app's project copy (`cockpitCopy`). The map input's
+ *   with each run's cockpit, HUD and map (P3-13), drawn with the app's project copy (`cockpitCopy`, the G-03 copy of
+ *   `slice-gaps-copy.ts`, checked before each start). The map input's
  *   production geometry measures the input zone and the canvas against the map picture's geometry of the bound content
  *   (`createZoneGeometryPort`), and its cursor is the current run's map presentation credential, the map picture with
  *   the original pointer the composition actually submitted; the project crosshair stays in the isolated test entry;
+ * - a `ui` consumer after it that bridges each run's cockpit message line into the UI store (`bridgeMessageLine`), so
+ *   the base page reads the same head and incoming message as the cockpit (P3-13 DC-07), withdrawn as the run ends;
  * - in development builds only, the frame timing that wraps that host, the diagnostics and the recording options. Their
  *   modules load through a dynamic import behind the compile-time `import.meta.env.DEV`, so production builds contain
  *   none of them.
@@ -22,7 +25,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { MissionDiagnostics } from '../../ui/dev/mission-diagnostics.ts';
 import { createGameCommandFeedback, type GameCommandFeedback } from '../../ui/game/game-command-feedback.ts';
-import { createGameSessionBridge } from '../../ui/game/game-session-bridge.ts';
+import { bridgeMessageLine, createGameSessionBridge } from '../../ui/game/game-session-bridge.ts';
 import { createGameStore, type GameStoreWriter } from '../../ui/game/game-store.ts';
 import { GAME_INPUT_BINDINGS, KEYBOARD_LOCK_CODES } from '../../ui/game-input/bindings.ts';
 import { createInputConsumer, type GameInputConsumer } from '../../ui/game-input/input-consumer.ts';
@@ -126,6 +129,17 @@ function assemble({ mission: ports, createSurface, reportError }: AppPorts, hold
       return { release: () => { bridge.unbind(); }, onSessionError: bridge.onError };
     },
   };
+  // After the flight consumer, whose `attachRun` wires the run's cockpit first.
+  const messagesConsumer: MissionOwnerConsumer = {
+    stage: 'ui',
+    connect: () => ({
+      release: () => undefined,
+      attachRun(run, { runId }) {
+        const cockpit = flight?.consumer.cockpit();
+        if (ui && cockpit) run.ownCleanup(bridgeMessageLine(ui.store, runId, cockpit.messageLine));
+      },
+    }),
+  };
   return {
     setup() {
       const host = ports.createSessionHost();
@@ -144,15 +158,17 @@ function assemble({ mission: ports, createSurface, reportError }: AppPorts, hold
       flight = { consumer, container };
       if (development && ports.createFileSave) {
         const timing = development.createFrameTiming(host, ports.clock);
-        diagnostics = development.createMissionDiagnostics({ timing, fileSave: ports.createFileSave });
+        diagnostics = development.createMissionDiagnostics({
+          timing, fileSave: ports.createFileSave, cockpit: () => flight?.consumer.cockpit()?.diagnostics() ?? null,
+        });
         return {
           ...base,
           host: timing.host,
           recording: developmentRecording(appProducer(import.meta.env.MODE)),
-          consumers: [input, uiConsumer, timing.consumer, diagnostics.consumer, consumer],
+          consumers: [input, uiConsumer, timing.consumer, diagnostics.consumer, consumer, messagesConsumer],
         };
       }
-      return { ...base, host, recording: null, consumers: [input, uiConsumer, consumer] };
+      return { ...base, host, recording: null, consumers: [input, uiConsumer, consumer, messagesConsumer] };
     },
     parts(owner) {
       const renderer = flight?.consumer.renderer();

@@ -1,7 +1,8 @@
 /**
  * The mission screen during flight and after a run ended (docs/plan/p3/04/spec.md: 应用流程, 任务菜单、暂停与退出): the
  * game view area with the flight picture of P3-12, whose cockpit and HUD are P3-13's; the project status bar outside it with
- * the phase, the pause reason, why resume is unavailable and the missing music (G-01); pause, resume and mission menu
+ * the phase, the pause reason, why resume is unavailable, the missing music (G-01) and the sound effects still in progress
+ * (P3-14, not a G item); pause, resume and mission menu
  * controls; and, once the run faulted or stopped, its reason without imported content, with restart (unless a cleanup
  * failed) and the way back. Focus starts on the heading.
  *
@@ -19,7 +20,7 @@ import { FlightView, type MissionFlightView } from './FlightView.tsx';
 import { GameInputZone } from './GameInputZone.tsx';
 import { fullscreenButtonState, type GapNotice, type InputFocusEntry } from './input-notices.ts';
 import { InputNotices, type MissionInputView } from './InputNotices.tsx';
-import { describeStructure, FULLSCREEN_BUTTON, pauseText, phaseText, resumeBlockedText } from './mission-copy.ts';
+import { describeStructure, FLIGHT_IN_PROGRESS, FULLSCREEN_BUTTON, pauseText, phaseText, resumeBlockedText } from './mission-copy.ts';
 import { ActionErrorAlert, GapNote, GapNotes, SkeletonNote } from './MissionParts.tsx';
 import { SLICE_GAPS } from './slice-gaps-copy.ts';
 import { useShellFocus } from './use-input-focus.ts';
@@ -92,6 +93,7 @@ export function MissionShell({ snapshot, owner, onReturn, input = null, entry = 
         {paused && <span>{paused}</span>}
         {blocked && <span id="mission-resume-blocked">{blocked}</span>}
         <span data-gap="G-01">{SLICE_GAPS['G-01'].title} (G-01)</span>
+        <span data-testid="flight-in-progress">{FLIGHT_IN_PROGRESS}</span>
       </div>
       {inFlight && (
         <p className="mission-actions">

@@ -3,10 +3,13 @@
  * the base service in its one order (both the service queue and the display order, BS5), each row's item, state and
  * whether it is being serviced, the selection, the base's three completion marks, and the player's energy, hull and
  * selected missile ammunition. DOM-free, so Node tests read it; BasePage.tsx shows it. It reads the projection only and
- * derives no timing: the projection has no service dues or rates, so there is no countdown.
+ * derives no timing: the projection has no service dues or rates, so there is no countdown. It also reads the cockpit
+ * message line the store bridges (`baseMessagesView`; docs/plan/p3/13/spec.md, DC-07): the head and the incoming
+ * message with what their text is, written as they change; the page keeps no queue of its own.
  */
 import type { Projection, ResourceReading } from '../../core/projections/projection.ts';
-import { projectedBase, type GameUiState } from '../game/game-store.ts';
+import type { MessageIdentity } from '../../core/world/world-state.ts';
+import { projectedBase, type GameUiState, type UiMessageLine } from '../game/game-store.ts';
 import { GAME_INPUT_BINDINGS } from '../game-input/bindings.ts';
 import { BASE_PAGE } from './slice-gaps-copy.ts';
 
@@ -104,3 +107,36 @@ export function lastBaseCommand(results: GameUiState['recentResults'], start: Ba
 /** A submission failure since `start`; the one shown as the page opened belongs to an earlier action. */
 export const baseActionError = (actionError: GameUiState['actionError'], start: BaseFeedbackStart): GameUiState['actionError'] =>
   (actionError === start.actionError ? null : actionError);
+
+/** One shown message: its text, what the text is, and the message a missing summary leaves visible. */
+export interface BaseMessageView {
+  readonly text: string;
+  readonly origin: 'original' | 'project';
+  readonly source: string;
+  /** Null unless the uncovered feedback stands for a missing summary. */
+  readonly uncovered: string | null;
+}
+
+export interface BaseMessagesView {
+  /** The message line's head; null when the queue is empty. */
+  readonly line: BaseMessageView | null;
+  /** The message playing now; null without one. */
+  readonly incoming: BaseMessageView | null;
+}
+
+const NO_MESSAGES: BaseMessagesView = Object.freeze({ line: null, incoming: null });
+
+const projectMessage = (text: string, covered: boolean, message: MessageIdentity): BaseMessageView =>
+  ({ text, origin: 'project', source: BASE_PAGE.messages.origin.project, uncovered: covered ? null : BASE_PAGE.messages.uncovered(message) });
+
+/** The base page's reading of the bridged message line; empty without a run's cockpit. */
+export function baseMessagesView(messages: UiMessageLine | null): BaseMessagesView {
+  if (messages === null) return NO_MESSAGES;
+  const { head, incoming } = messages;
+  return {
+    line: head && (head.message === null
+      ? { text: head.text, origin: 'original', source: BASE_PAGE.messages.origin.original, uncovered: null }
+      : projectMessage(head.text, head.covered, head.message)),
+    incoming: incoming && projectMessage(incoming.summary, incoming.covered, incoming.message),
+  };
+}

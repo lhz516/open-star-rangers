@@ -1,6 +1,7 @@
 /**
  * Development diagnostics panel of the mission screen (docs/plan/p3/04/spec.md: 开发诊断): entity and mission state,
  * the event log, frame timing, the flight renderer's state, draws and GPU counts (docs/plan/p3/12/spec.md, 渲染器生命周期),
+ * the cockpit's message and radar drop counts (docs/plan/p3/13/spec.md, DC-07 and DC-08),
  * a command editor with the command feedback, and the recording export. It reads the
  * owner's diagnostics and game store through per-section selectors, acts only through the diagnostics actions and the
  * command feedback's submit, uses native controls and registers no global keyboard listener. Development builds only:
@@ -17,11 +18,11 @@ import { useGame } from '../game/use-game.ts';
 import { COMMAND_FORMS, commandDraft, editDraft, readDraft, type CommandDraft } from './command-draft.ts';
 import type { InspectionView } from './entity-inspection.ts';
 import {
-  selectCanRead, selectCanRetry, type MissionDiagnostics, type MissionDiagnosticsState, type RecordingSaveStatus,
+  selectCanRead, selectCanRetry, type CockpitCounts, type MissionDiagnostics, type MissionDiagnosticsState, type RecordingSaveStatus,
 } from './mission-diagnostics.ts';
 
 export interface MissionDevPanelProps {
-  readonly diagnostics: Pick<MissionDiagnostics, 'reader' | 'clearLog' | 'refreshSnapshot' | 'exportRecording' | 'retrySave'>;
+  readonly diagnostics: Pick<MissionDiagnostics, 'reader' | 'clearLog' | 'refreshSnapshot' | 'exportRecording' | 'retrySave' | 'cockpitCounts'>;
   readonly game: GameStoreReader;
   /** The owner's command feedback `submit`: returns the commandId, or null after writing the action error. */
   readonly submitCommand: (command: Command) => number | null;
@@ -189,6 +190,23 @@ function FlightSection({ flight }: { readonly flight: Pick<FlightRenderer, 'diag
           {flightRows(diagnostics).map(([name, value]) => (
             <div key={name}><dt>{name}</dt><dd data-testid={`dev-flight-${name}`}>{value}</dd></div>
           ))}
+        </dl>
+      )}
+    </Section>
+  );
+}
+
+function CockpitSection({ diagnostics }: { readonly diagnostics: Diagnostics }) {
+  const [counts, setCounts] = useState<CockpitCounts | null | undefined>(undefined);
+  return (
+    <Section title="Cockpit">
+      <button type="button" data-testid="dev-cockpit-refresh" onClick={() => { setCounts(diagnostics.cockpitCounts()); }}>Refresh cockpit counts</button>
+      {counts === null && <p data-testid="dev-cockpit-none">No run with a cockpit.</p>}
+      {counts && (
+        <dl data-testid="dev-cockpit" style={valueStyle}>
+          <div><dt>messages</dt><dd data-testid="dev-cockpit-messages">{counts.messages}</dd></div>
+          <div><dt>messageDrops</dt><dd data-testid="dev-cockpit-messageDrops">{counts.messageDrops}</dd></div>
+          <div><dt>radarNoiseDropped</dt><dd data-testid="dev-cockpit-radarNoiseDropped">{counts.radarNoiseDropped}</dd></div>
         </dl>
       )}
     </Section>
@@ -367,6 +385,7 @@ export function MissionDevPanel({ diagnostics, game, submitCommand, flight = nul
       <EventLogSection diagnostics={diagnostics} />
       <FrameSection diagnostics={diagnostics} />
       {flight && <FlightSection flight={flight} />}
+      <CockpitSection diagnostics={diagnostics} />
       <CommandSection game={game} submitCommand={submitCommand} />
       <RecordingSection diagnostics={diagnostics} />
     </section>

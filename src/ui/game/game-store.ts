@@ -1,6 +1,8 @@
 /**
  * Read-only UI state of one mission owner (docs/plan/p3/04/spec.md: UI 桥接与命令反馈): the session status, the
- * sampled projection, the mission flow position, pending commands with their recent results, and operation errors.
+ * sampled projection, the mission flow position, pending commands with their recent results, operation errors, and the
+ * cockpit message line's head and current incoming message (docs/plan/p3/13/spec.md, DC-07: the base page's G-03/G-05
+ * reading of the one queue, written at once on each change, never a second queue).
  * One store serves one owner, whose ownerId it keeps; every pending command and result carries that ownerId with its
  * runId and commandId. Only the session bridge, the command feedback and the owner's assembly receive the writer;
  * React receives the reader. Each transition is one atomic, frozen write. Core projections and events arrive deeply
@@ -13,6 +15,7 @@ import type { GameSessionError } from '../../app/session/session-errors.ts';
 import type { AcceptedCommandResult, UnacceptedCommandResult } from '../../core/contracts/domain-events.ts';
 import type { CommandType } from '../../core/contracts/tick-input.ts';
 import type { BaseServiceView, Projection } from '../../core/projections/projection.ts';
+import type { MessageIdentity } from '../../core/world/world-state.ts';
 
 /** Display retention for settled commands (as P1-06), not a game rule. */
 export const RECENT_RESULT_LIMIT = 10;
@@ -47,6 +50,34 @@ export interface UiActionError {
   readonly cause: unknown;
 }
 
+/** The message line's head: imported text (`original`) or a G-03 project summary (`project`). */
+export interface UiMessageHead {
+  /** The queue's serial of the item, so a new item with the same text is a new head. */
+  readonly serial: number;
+  readonly origin: 'original' | 'project';
+  readonly text: string;
+  /** The incoming message a project summary stands for; null for imported text. */
+  readonly message: MessageIdentity | null;
+  /** False when the uncovered feedback stands for a missing summary. */
+  readonly covered: boolean;
+}
+
+/** The message playing now, with its G-03 project summary. */
+export interface UiIncomingMessage {
+  readonly message: MessageIdentity;
+  readonly summary: string;
+  readonly covered: boolean;
+  /** Page 5 shows it (false for a message that plays during Warp). */
+  readonly shown: boolean;
+}
+
+/** One run's message line as the base page reads it; frozen. */
+export interface UiMessageLine {
+  readonly runId: number;
+  readonly head: UiMessageHead | null;
+  readonly incoming: UiIncomingMessage | null;
+}
+
 export interface GameUiState<Flow = unknown> {
   readonly ownerId: number;
   /** Null until the bridge has bound a session. */
@@ -61,12 +92,14 @@ export interface GameUiState<Flow = unknown> {
   readonly recentResults: readonly UiCommandResult[];
   readonly actionError: UiActionError | null;
   readonly sessionError: GameSessionError | null;
+  /** The current run's cockpit message line; null without a run's cockpit. */
+  readonly messages: UiMessageLine | null;
 }
 
 export type GameStoreReader<Flow = unknown> = Pick<StoreApi<GameUiState<Flow>>, 'getState' | 'getInitialState' | 'subscribe'>;
 
 /** One atomic transition; omitted fields keep their values. */
-export interface GameChange<Flow = unknown> extends Partial<Pick<GameUiState<Flow>, 'status' | 'projection' | 'flow' | 'actionError' | 'sessionError'>> {
+export interface GameChange<Flow = unknown> extends Partial<Pick<GameUiState<Flow>, 'status' | 'projection' | 'flow' | 'actionError' | 'sessionError' | 'messages'>> {
   /** Clears the run's pending commands and results before the rest of the change applies. */
   readonly clearRun?: boolean;
   /** Ignored if the same command is already pending. */
@@ -80,7 +113,7 @@ export interface GameStoreWriter<Flow = unknown> {
   readonly reader: GameStoreReader<Flow>;
   /**
    * Applies the whole change with at most one subscriber notification, and none when nothing changed. Returns the
-   * number of pending commands settled. A flow value must be frozen.
+   * number of pending commands settled. A flow value and a message line must be frozen.
    */
   commit(change: GameChange<Flow>): number;
 }
@@ -118,6 +151,7 @@ export function createGameStore<Flow = unknown>(ownerId: number): GameStoreWrite
   if (!Number.isSafeInteger(ownerId) || ownerId < 1) throw new RangeError('ownerId must be a positive safe integer');
   const initial: GameUiState<Flow> = Object.freeze({
     ownerId, status: null, projection: null, flow: null, pendingCommands: EMPTY, recentResults: EMPTY, actionError: null, sessionError: null,
+    messages: null,
   });
   const store = createStore<GameUiState<Flow>>()(() => initial);
   const reader: GameStoreReader<Flow> = Object.freeze({
@@ -128,10 +162,14 @@ export function createGameStore<Flow = unknown>(ownerId: number): GameStoreWrite
     reader,
     commit(change: GameChange<Flow>): number {
       const state = store.getState();
-      let { status, projection, flow, actionError, sessionError } = state;
+      let { status, projection, flow, actionError, sessionError, messages } = state;
       if (change.flow !== undefined && change.flow !== flow) {
         if (!Object.isFrozen(change.flow)) throw new TypeError('The mission flow value must be frozen');
         flow = change.flow;
+      }
+      if (change.messages !== undefined && change.messages !== messages) {
+        if (change.messages !== null && !Object.isFrozen(change.messages)) throw new TypeError('The message line must be frozen');
+        messages = change.messages;
       }
       if (change.status !== undefined && !sameStatus(change.status, status)) status = freezeStatus(change.status);
       if (change.projection !== undefined) projection = change.projection;
@@ -163,8 +201,9 @@ export function createGameStore<Flow = unknown>(ownerId: number): GameStoreWrite
       if (
         status !== state.status || projection !== state.projection || flow !== state.flow || actionError !== state.actionError
         || sessionError !== state.sessionError || pendingCommands !== state.pendingCommands || recentResults !== state.recentResults
+        || messages !== state.messages
       ) {
-        store.setState(Object.freeze({ ownerId, status, projection, flow, pendingCommands, recentResults, actionError, sessionError }), true);
+        store.setState(Object.freeze({ ownerId, status, projection, flow, pendingCommands, recentResults, actionError, sessionError, messages }), true);
       }
       return settled.length;
     },

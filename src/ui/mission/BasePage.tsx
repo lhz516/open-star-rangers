@@ -4,23 +4,56 @@
  * service rows in their one order with each item, its state in words and whether it is being serviced, the selection,
  * the base's completion marks, the readings, the base keys (wired, project controls, or awaiting a later task), and the
  * result of the last base command and a failed submission since the page opened. It binds no key and has no mouse rule entry: the input zone around it
- * submits the bound base commands through the command feedback, once per key press.
+ * submits the bound base commands through the command feedback, once per key press. It also shows the cockpit's message
+ * line head and the incoming message in full as the store bridges them (G-03, docs/plan/p3/13/spec.md DC-07), each
+ * labelled as imported or project text; reopening the page shows the current head, never replays the queue.
  */
 import { useMemo, useState } from 'react';
 import type { ResourceReading } from '../../core/projections/projection.ts';
 import { useGame } from '../game/use-game.ts';
 import type { GameStoreReader, GameUiState } from '../game/game-store.ts';
-import { baseActionError, baseFeedbackStart, basePageView, lastBaseCommand } from './base-page.ts';
+import {
+  baseActionError, baseFeedbackStart, baseMessagesView, basePageView, lastBaseCommand, type BaseMessageView,
+} from './base-page.ts';
 import { describeStructure } from './mission-copy.ts';
 import { GapNote } from './MissionParts.tsx';
-import { BASE_PAGE } from './slice-gaps-copy.ts';
+import { BASE_PAGE, MESSAGE_SUMMARIES } from './slice-gaps-copy.ts';
 
 const selectProjection = (state: GameUiState) => state.projection;
+const selectMessages = (state: GameUiState) => state.messages;
 const selectResults = (state: GameUiState) => state.recentResults;
 const selectActionError = (state: GameUiState) => state.actionError;
 
 const reading = (value: ResourceReading | null): string =>
   (value === null ? BASE_PAGE.readings.unavailable : `${value.current} / ${value.maximum}`);
+
+function BaseMessage({ label, testId, view }: { readonly label: string; readonly testId: string; readonly view: BaseMessageView | null }) {
+  return (
+    <div data-testid={testId} data-origin={view?.origin ?? ''} data-covered={view ? view.uncovered === null : ''}>
+      <dt>{label}</dt>
+      <dd>
+        {view === null ? BASE_PAGE.messages.none : <>{view.text} <small>({view.source})</small></>}
+        {view?.uncovered && <> <strong>{view.uncovered}</strong></>}
+      </dd>
+    </div>
+  );
+}
+
+/** The message line and the incoming message, the same items the cockpit shows (G-03). */
+function BaseMessages({ game }: { readonly game: GameStoreReader }) {
+  const messages = useGame(game, selectMessages);
+  const { line, incoming } = useMemo(() => baseMessagesView(messages), [messages]);
+  return (
+    <section className="base-messages" data-testid="base-messages" aria-labelledby="base-messages-heading">
+      <h4 id="base-messages-heading">{BASE_PAGE.messages.title} ({MESSAGE_SUMMARIES.gap})</h4>
+      <GapNote id={MESSAGE_SUMMARIES.gap} />
+      <dl>
+        <BaseMessage label={BASE_PAGE.messages.incoming} testId="base-incoming" view={incoming} />
+        <BaseMessage label={BASE_PAGE.messages.line} testId="base-message-line" view={line} />
+      </dl>
+    </section>
+  );
+}
 
 export function BasePage({ game }: { readonly game: GameStoreReader }) {
   const projection = useGame(game, selectProjection);
@@ -35,6 +68,7 @@ export function BasePage({ game }: { readonly game: GameStoreReader }) {
     <section className="base-page" aria-labelledby="base-page-heading" data-testid="base-page" data-cursor={view.cursor} data-base={view.baseEntityId ?? ''}>
       <h3 id="base-page-heading">{BASE_PAGE.title} ({BASE_PAGE.gap})</h3>
       <GapNote id={BASE_PAGE.gap} />
+      <BaseMessages game={game} />
       <table className="base-service" data-testid="base-service">
         <caption>{BASE_PAGE.noProgress} {BASE_PAGE.namesNote}</caption>
         <thead>

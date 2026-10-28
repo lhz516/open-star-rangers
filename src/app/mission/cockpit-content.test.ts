@@ -118,21 +118,3 @@ describe('cockpit content', () => {
     expect(() => contentOf(groups, with_({}, { uncoveredSummary: '' }))).toThrow(expect.objectContaining({ kind: 'invalid-input' }));
   });
 });
-
-describe('cockpit copy (interim, until P3-13/25)', () => {
-  it('gives the G-03 summaries that keep DC-07\'s limits, and the explicit uncovered feedback for every other message and label', () => {
-    const { incoming, summaries, labels, costUnavailable } = cockpitCopy();
-    // 20011 index 1: the base reports no threat, a short summary.
-    expect(incoming.summary({ table: 20011, face: 0, index: 1 })).toBe('Status reply: the base reports no threat.');
-    // 20011 index 0: the docking reply is longer than 58 bytes; unidentified messages have no summary.
-    expect(incoming.summary({ table: 20011, face: 0, index: 0 })).toBeNull();
-    expect(incoming.summary({ table: 20985, face: 0, index: 0 })).toBeNull();
-    expect(incoming.label({ table: 20011, face: 0, index: 1 })).toBeNull();
-    expect(incoming.uncoveredSummary).toBe('G-03');
-    expect(incoming.uncoveredLabel).toEqual(['G-03']);
-    expect(summaries.every((summary) => summary.length <= 58)).toBe(true);
-    expect(summaries).toContain('Status reply: the base reports no threat.');
-    expect(labels).toEqual([]);
-    expect(costUnavailable).toBe('N/A');
-  });
-});

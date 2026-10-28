@@ -8,7 +8,7 @@ import type { EndingGap, MessageIdentity, PlayerLoss, ResultReason } from '../..
 
 /**
  * The G items this build marks in its pages. G-02/10 has no placeholder: medals are not decided, so the result page
- * discloses it. G-03 has no page here: its message summaries are for the cockpit display P3-13 draws.
+ * discloses it. G-03's message summaries are drawn by the cockpit (P3-13) and shown on the base page.
  */
 export type SliceGapId =
   | 'G-01' | 'G-02/1' | 'G-02/2' | 'G-02/3' | 'G-02/4' | 'G-02/5' | 'G-02/6' | 'G-02/7' | 'G-02/8' | 'G-02/9' | 'G-02/10'
@@ -97,7 +97,8 @@ export const SLICE_GAPS: Readonly<Record<SliceGapId, SliceGapCopy>> = Object.fre
     'Communications portraits and animations missing',
     'The original shows each radio message as a speaking portrait animation with voice. This build keeps what those messages '
       + 'do in the rules (which message is chosen, when it shows and ends, and what follows it) and describes each one in project '
-      + 'words instead of the original picture, voice and text. The cockpit display that shows them arrives with P3-13.',
+      + 'words instead of the original picture, voice and text: the cockpit\'s left display shows a short project label where '
+      + 'the portrait would be, and the message line and the base page show the full project summary.',
   ),
   'G-04': gap(
     'Original briefing and wingman pages missing',
@@ -267,29 +268,41 @@ export type MessageSummaryKind =
   | 'craft-status-clear' | 'craft-status-threat' | 'craft-thanks'
   | 'friendly-under-attack' | 'friendly-under-attack-follow-up' | 'friendly-destroyed'
   | 'player-hit-friendly' | 'player-destroyed-friendly' | 'wingman-lost'
-  | 'wingman-low-hull' | 'wingman-kill' | 'wingman-kill-or-other' | 'wingman-enemy-appears' | 'wingman-enemy-on-tail'
-  | 'wingman-friendly-lost' | 'unidentified';
+  | 'wingman-low-hull' | 'wingman-kill' | 'wingman-enemy-appears' | 'wingman-enemy-on-tail' | 'wingman-friendly-lost'
+  | 'wingman-order-unable' | 'wingman-order-acknowledged' | 'wingman-status-high' | 'wingman-status-medium' | 'wingman-status-low'
+  | 'wingman-formation' | 'wingman-attack' | 'wingman-engage' | 'wingman-move' | 'wingman-move-unable';
+
+/** The second line of every page-5 label: the label is project text standing for the missing portrait (G-03). */
+const LABEL_MARK = 'G-03 PROJECT';
+const label = (subject: string): readonly string[] => Object.freeze([subject, LABEL_MARK]);
 
 /**
- * G-03: each radio message's project summary, by the rule that queues it, so the replies, the statuses and the reports
- * stay distinct without the original portraits, voice and text. The original has no refusal message: a docking request
- * that fails gets no reply, and its three cancellations have no feedback (docs/plan/p3/10/spec.md, D-01 item 2 ⑤), so
- * none is summarized. P3-13 shows these through the app's assembly; P3-08 identifies the wingman lines it adds.
+ * G-03: each radio message's project summary and page-5 label, by the rule that queues it, so the replies, the statuses
+ * and the reports stay distinct without the original portraits, voice and text. They describe the rule in project words;
+ * none is an original line. The original has no refusal message for docking: a docking request that fails gets no
+ * reply, and its three cancellations have no feedback (docs/plan/p3/10/spec.md, D-01 item 2 ⑤), so none is summarized.
+ * The wingman's command replies follow the line each consumed command asks for.
+ *
+ * The cockpit (P3-13) takes them through the app's assembly, which checks them before a run starts
+ * (docs/plan/p3/13/spec.md, D-01 定稿 DC-07): a summary is 1–58 bytes of 0x20–0x7E without `{`, each byte in fonts/0's
+ * character map, drawn in full on the message line and shown on the base page; a label is 1–2 lines of at most 16 bytes
+ * in fonts/1's map (drawn upper-cased) in page 5's 96 × 96 frame area. A message no summary covers shows `uncovered`.
+ *
  * Sources (Confirmed, code and data): ../../../docs/original/formats/executable.md, "RQ1. Base and friendly replies",
- * "RX1. Helpers" to "RX3" and the messages table after them.
+ * "RX1. Helpers" to "RX3", the messages table after them, and the wingman replies "WB3. Active consumer" to "WB5".
  */
 export const MESSAGE_SUMMARIES = Object.freeze({
   gap: 'G-03' satisfies SliceGapId,
   title: 'Radio message (project summary)',
   text: Object.freeze({
-    'docking-reply': 'The base answers your docking request: docking follows after a countdown if the docking checks still pass.',
+    'docking-reply': 'The base answers your docking request: countdown to dock.',
     'base-status-clear': 'Status reply: the base reports no threat.',
     'base-status-threat': 'Status reply: the base reports that it is threatened.',
     'base-enemy-near': 'The base reports enemy craft moving close to it.',
-    'base-thanks': 'The base thanks you: the enemies that threatened it are gone.',
+    'base-thanks': 'The base thanks you: the threat to it is gone.',
     'craft-status-clear': 'Status reply: the friendly craft reports no threat.',
-    'craft-status-threat': 'Status reply: the friendly craft reports that it is threatened.',
-    'craft-thanks': 'The friendly craft thanks you: the enemies that threatened it are gone.',
+    'craft-status-threat': 'Status reply: the friendly craft reports a threat.',
+    'craft-thanks': 'The friendly craft thanks you: the threat to it is gone.',
     'friendly-under-attack': 'A friendly reports that it is under attack.',
     'friendly-under-attack-follow-up': 'A further call about the friendly under attack.',
     'friendly-destroyed': 'A friendly has been destroyed.',
@@ -298,12 +311,56 @@ export const MESSAGE_SUMMARIES = Object.freeze({
     'wingman-lost': 'Your wingman has been lost.',
     'wingman-low-hull': 'Your wingman reports heavy damage.',
     'wingman-kill': 'Your wingman reports destroying an enemy.',
-    'wingman-kill-or-other': 'Your wingman reports destroying an enemy, or another wingman line this build does not identify yet.',
     'wingman-enemy-appears': 'Your wingman reports an enemy appearing nearby.',
     'wingman-enemy-on-tail': 'Your wingman warns of an enemy on your tail.',
     'wingman-friendly-lost': 'Your wingman reports a friendly lost nearby.',
-    unidentified: 'A message this build does not identify yet.',
+    'wingman-order-unable': 'Wingman reply: it cannot carry out that order.',
+    'wingman-order-acknowledged': 'Wingman reply: it acknowledges your order.',
+    'wingman-status-high': 'Wingman status reply: hull at 80% or more.',
+    'wingman-status-medium': 'Wingman status reply: hull from 50% to under 80%.',
+    'wingman-status-low': 'Wingman status reply: hull under 50%.',
+    'wingman-formation': 'Wingman reply: it rejoins formation with you.',
+    'wingman-attack': 'Wingman reply: it attacks your target.',
+    'wingman-engage': 'Wingman reply: it engages hostile craft.',
+    'wingman-move': 'Wingman reply: it heads for a base or your destination.',
+    'wingman-move-unable': 'Wingman reply: it cannot go to your map destination.',
   } satisfies Record<MessageSummaryKind, string>),
+  label: Object.freeze({
+    'docking-reply': label('DOCKING REPLY'),
+    'base-status-clear': label('BASE: NO THREAT'),
+    'base-status-threat': label('BASE THREATENED'),
+    'base-enemy-near': label('BASE: ENEMY NEAR'),
+    'base-thanks': label('BASE THANKS YOU'),
+    'craft-status-clear': label('CRAFT: NO THREAT'),
+    'craft-status-threat': label('CRAFT THREATENED'),
+    'craft-thanks': label('CRAFT THANKS YOU'),
+    'friendly-under-attack': label('ALLY UNDER FIRE'),
+    'friendly-under-attack-follow-up': label('ALLY CALLS AGAIN'),
+    'friendly-destroyed': label('ALLY DESTROYED'),
+    'player-hit-friendly': label('YOU HIT AN ALLY'),
+    'player-destroyed-friendly': label('YOU DOWNED ALLY'),
+    'wingman-lost': label('WINGMAN LOST'),
+    'wingman-low-hull': label('WINGMAN DAMAGED'),
+    'wingman-kill': label('WINGMAN KILL'),
+    'wingman-enemy-appears': label('ENEMY APPEARS'),
+    'wingman-enemy-on-tail': label('ENEMY ON TAIL'),
+    'wingman-friendly-lost': label('ALLY LOST NEAR'),
+    'wingman-order-unable': label('ORDER: UNABLE'),
+    'wingman-order-acknowledged': label('ORDER RECEIVED'),
+    'wingman-status-high': label('WINGMAN 80%+'),
+    'wingman-status-medium': label('WINGMAN 50-79%'),
+    'wingman-status-low': label('WINGMAN <50%'),
+    'wingman-formation': label('TO FORMATION'),
+    'wingman-attack': label('ATTACKING TARGET'),
+    'wingman-engage': label('ENGAGING'),
+    'wingman-move': label('MOVING OUT'),
+    'wingman-move-unable': label('CANNOT GO THERE'),
+  } satisfies Record<MessageSummaryKind, readonly string[]>),
+  /** Shown instead of a missing summary or label: the gap stays visible and no answer is invented. */
+  uncovered: Object.freeze({
+    summary: 'No project summary covers this message yet (G-03).',
+    label: label('NOT COVERED'),
+  }),
 });
 
 /** Whether `index` lies in [first, first + count). */
@@ -314,37 +371,72 @@ const NAMES_2001 = 20;
 const NAMES_2011 = 19;
 
 /**
- * The summary kind of a message: 20011 is a base speaking (RQ1, RX3, RX6), 20019 a friendly craft speaking (RQ1, RX2,
- * RX3), 20983 the direct list (RX2–RX3, the wingman-lost timer) whose named entries are a 2011 or 2001 position plus an
- * offset, and 20985 the wingman's lines by line type (RX1–RX3, RX5). 20985 indices 5 and 6 are also type 5's lines,
- * which P3-08 identifies.
+ * 20985 by index below the name offsets: the line types of `0x38d54` with its draws (RX1, WB5). Type 0 draws 0–2, the
+ * refusal; 3 draws 3–4, the acknowledgement of code 2 and of unknown codes; 7 draws 5–7, the kill report (`0x38bf8`,
+ * whose type-5 branch is dead code, so no caller asks for type 5: P3-13/25); 8 draws 8–9; 0xB–0xD are the status
+ * replies by hull; 0xE draws 0xE–0xF, the formation (active code 3, parked 3 and 4); 0x10 draws 0x10–0x11, attacking
+ * the player's target (code 1); 0x12 is codes 5 and 6 applied; 0x13 the low hull; 0x14 code 4; 0x15 code 6's failure
+ * (WB3, WB4).
  */
-export function messageSummaryKind({ table, index }: MessageIdentity): MessageSummaryKind {
+const WINGMAN_LINES: readonly MessageSummaryKind[] = Object.freeze([
+  'wingman-order-unable', 'wingman-order-unable', 'wingman-order-unable',
+  'wingman-order-acknowledged', 'wingman-order-acknowledged',
+  'wingman-kill', 'wingman-kill', 'wingman-kill',
+  'wingman-enemy-appears', 'wingman-enemy-appears',
+  'wingman-enemy-on-tail',
+  'wingman-status-high', 'wingman-status-medium', 'wingman-status-low',
+  'wingman-formation', 'wingman-formation',
+  'wingman-attack', 'wingman-attack',
+  'wingman-move',
+  'wingman-low-hull',
+  'wingman-engage',
+  'wingman-move-unable',
+]);
+
+/**
+ * The summary kind of a message, or null when no summary covers it: 20011 is a base speaking (RQ1, RX3, RX6), 20019 a
+ * friendly craft speaking (RQ1, RX2, RX3), 20983 the direct list (RX2–RX3, the wingman-lost timer) whose named entries
+ * are a 2011 or 2001 position plus an offset, and 20985 the wingman's lines (`WINGMAN_LINES`, then the friendly lost
+ * near the wingman at a 2011 position + 0x16 or a 2001 position + 0x29).
+ */
+export function messageSummaryKind({ table, index }: MessageIdentity): MessageSummaryKind | null {
   switch (table) {
     case 20011:
       return ([
         'docking-reply', 'base-status-clear', 'base-enemy-near', 'base-thanks', 'base-status-threat',
-      ] as const)[index] ?? 'unidentified';
+      ] as const)[index] ?? null;
     case 20019:
-      if (index <= 2) return (['craft-status-clear', 'craft-status-threat', 'craft-thanks'] as const)[index] ?? 'unidentified';
-      return within(index, 3, NAMES_2011) ? 'friendly-under-attack' : 'unidentified';
+      if (index <= 2) return (['craft-status-clear', 'craft-status-threat', 'craft-thanks'] as const)[index] ?? null;
+      return within(index, 3, NAMES_2011) ? 'friendly-under-attack' : null;
     case 20983:
-      if (index <= 3) return index >= 0 ? 'friendly-under-attack-follow-up' : 'unidentified';
+      if (index <= 3) return index >= 0 ? 'friendly-under-attack-follow-up' : null;
       if (index <= 6) return (['player-hit-friendly', 'player-destroyed-friendly', 'wingman-lost'] as const)[index - 4];
       if (within(index, 7, NAMES_2011) || within(index, 0x1a, NAMES_2001)) return 'friendly-under-attack';
-      return within(index, 0x2e, NAMES_2011) || within(index, 0x41, NAMES_2001) ? 'friendly-destroyed' : 'unidentified';
+      return within(index, 0x2e, NAMES_2011) || within(index, 0x41, NAMES_2001) ? 'friendly-destroyed' : null;
     case 20985:
-      if (index === 5 || index === 6) return 'wingman-kill-or-other';
-      if (index === 7) return 'wingman-kill';
-      if (index === 8 || index === 9) return 'wingman-enemy-appears';
-      if (index === 0xa) return 'wingman-enemy-on-tail';
-      if (index === 0x13) return 'wingman-low-hull';
-      return within(index, 0x16, NAMES_2011) || within(index, 0x29, NAMES_2001) ? 'wingman-friendly-lost' : 'unidentified';
+      if (index >= 0 && index < WINGMAN_LINES.length) return WINGMAN_LINES[index];
+      return within(index, 0x16, NAMES_2011) || within(index, 0x29, NAMES_2001) ? 'wingman-friendly-lost' : null;
   }
 }
 
-/** A message's project summary text (G-03). */
-export const messageSummary = (message: MessageIdentity): string => MESSAGE_SUMMARIES.text[messageSummaryKind(message)];
+/** A message's project summary text (G-03), or null when none covers it. */
+export function messageSummary(message: MessageIdentity): string | null {
+  const kind = messageSummaryKind(message);
+  return kind === null ? null : MESSAGE_SUMMARIES.text[kind];
+}
+
+/** A message's page-5 label lines (G-03), or null when none covers it. */
+export function messageLabel(message: MessageIdentity): readonly string[] | null {
+  const kind = messageSummaryKind(message);
+  return kind === null ? null : MESSAGE_SUMMARIES.label[kind];
+}
+
+/**
+ * The strategic map's project marker for a Warp cost that cannot be computed (`percent: null`, zero energy capacity;
+ * docs/plan/p3/02/spec.md MW-12, docs/plan/p3/13/spec.md DC-09 and Δ-06). A project hint, not original text: the original's
+ * division by zero gives no meaningful percentage there. 1–5 bytes within fonts/1's map, checked before a run starts.
+ */
+export const MAP_COST_UNAVAILABLE = 'N/A';
 
 /** How the G-05 page shows a base key: wired to a rule command, a project control, or awaiting a later task. */
 export type BaseKeyStatus = 'wired' | 'project' | 'later';
@@ -391,6 +483,19 @@ export const BASE_PAGE = Object.freeze({
     hull: 'Hull',
     missiles: 'Missiles (selected mount)',
     unavailable: 'Not available',
+  }),
+  /**
+   * The cockpit message line's head and the incoming message, the same items the cockpit shows (P3-13 DC-07): imported
+   * text is labelled as such, a G-03 summary as project text, and a missing summary names the message it stands for.
+   */
+  messages: Object.freeze({
+    title: 'Radio messages',
+    line: 'Message line',
+    incoming: 'Incoming message',
+    none: 'none',
+    origin: Object.freeze({ original: 'from your imported data', project: 'project summary, not the original line' }),
+    uncovered: ({ table, face, index }: MessageIdentity): string =>
+      `Not covered: table ${table}${face === null ? '' : `, face ${face}`}, message ${index}.`,
   }),
   lastCommand: 'Last base command',
   noCommand: 'none yet',

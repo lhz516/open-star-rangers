@@ -15,7 +15,8 @@ import { GraphicsDeviceError } from '../../render/scene/render-surface.ts';
 /** What this build is, wherever the mission is offered or shown. */
 export const MISSION_SKELETON =
   'This is the formal runtime skeleton, not yet a playable slice: Core runs the mission\'s world and the rules implemented '
-  + 'so far, the mission result included, and the flight view is in progress, but there is no cockpit, HUD or audio yet.';
+  + 'so far, the mission result included, and the flight view draws the cockpit, HUD and strategic map, but there are no sound '
+  + 'effects yet (P3-14).';
 
 const CATEGORY: Readonly<Record<MissionFailure['kind'], string>> = Object.freeze({ 'core-input': 'Core input', content: 'content contract' });
 
@@ -107,8 +108,11 @@ export function resumeBlockedText({ phase, environmentVisible }: GameSessionStat
   return 'Resume is unavailable while the page is hidden or being left.';
 }
 
-/** The game view's note until P3-13 draws the cockpit and HUD (docs/plan/p3/12/spec.md, 画面合成与 P3-13 接口). */
-export const FLIGHT_IN_PROGRESS = 'Flight rendering is connected; the cockpit and HUD are not implemented yet (P3-13).';
+/**
+ * The mission shell's in-progress note (not a G item) until P3-14 connects the sound effects. P3-13 drew the cockpit, HUD
+ * and map, so the note no longer covers the picture: the status bar shows it, outside the game view.
+ */
+export const FLIGHT_IN_PROGRESS = 'Sound effects are not implemented yet (P3-14).';
 
 const WITHOUT_PICTURE = 'The mission continues without the picture; you can pause it or exit through the mission menu.';
 

@@ -1,12 +1,12 @@
 /**
  * The flight area of the game view (docs/plan/p3/12/spec.md: 渲染器生命周期, 画面合成与 P3-13 接口): it holds the owner's
- * flight canvas while mounted, says why the picture is missing when the renderer is not drawing, and notes that the
- * cockpit and HUD are still to come. The canvas and its context belong to the owner, not to this component: unmounting
- * only takes the canvas out of the page.
+ * flight canvas, whose picture includes P3-13's cockpit, HUD and map, while mounted, and says why the picture is missing
+ * when the renderer is not drawing. Nothing covers the picture otherwise. The canvas and its context belong to the
+ * owner, not to this component: unmounting only takes the canvas out of the page.
  */
 import { useSyncExternalStore } from 'react';
 import type { FlightRenderer } from '../../render/flight/renderer/flight-renderer.ts';
-import { FLIGHT_IN_PROGRESS, flightNotice } from './mission-copy.ts';
+import { flightNotice } from './mission-copy.ts';
 
 export interface MissionFlightView {
   readonly renderer: Pick<FlightRenderer, 'getSnapshot' | 'subscribe'>;
@@ -18,7 +18,6 @@ export function FlightView({ flight }: { readonly flight: MissionFlightView | nu
   return (
     <div className="flight-view" data-testid="flight-view">
       {flight && <FlightPicture flight={flight} />}
-      <p className="flight-in-progress" data-testid="flight-in-progress">{FLIGHT_IN_PROGRESS}</p>
     </div>
   );
 }

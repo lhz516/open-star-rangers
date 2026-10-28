@@ -6,7 +6,9 @@
  * - frame statistics from the frame timing that wraps the owner's session host (frame-stats.ts, dev-frame-timing.ts);
  * - an entity and mission state view, read from a Core snapshot only when refreshed (entity-inspection.ts);
  * - the recording export: the run's Recording, taken synchronously outside the Session's notifications and saved as
- *   compact JSON through the owner's file save (recording-export.ts). A failed save keeps that copy for a retry.
+ *   compact JSON through the owner's file save (recording-export.ts). A failed save keeps that copy for a retry;
+ * - the current run's cockpit counts, read only when asked (`cockpitCounts`): message line items dropped at its bound and
+ *   radar noise past its 120 entries (docs/plan/p3/13/spec.md, DC-07 and DC-08).
  * It reads only through the public run handle and submits nothing itself: commands go through the command feedback.
  * A faulted run gives no new snapshot or export, while copies taken before stay valid; a stopped run still exports.
  * Changes are published at the UI's sampling interval, by the frame timing's own clock readings, and at once for status
@@ -20,6 +22,7 @@ import type { GameSessionRun, GameSessionStatus } from '../../app/session/game-s
 import { RollbackError } from '../../app/session/rollback-error.ts';
 import type { GameSessionPhase } from '../../app/session/session-errors.ts';
 import type { Recording } from '../../core/replay/recording.ts';
+import type { CockpitDiagnostics } from '../../render/cockpit/composition/cockpit-run.ts';
 import { attemptAll, runCleanup } from '../../render/scene/cleanup.ts';
 import { PROJECTION_SAMPLE_INTERVAL_MS } from '../game/game-session-bridge.ts';
 import { inspectSnapshot, type InspectionView } from './entity-inspection.ts';
@@ -71,10 +74,15 @@ export interface MissionDiagnosticsActions {
   retrySave(): void;
 }
 
+/** The cockpit's diagnostic counts the panel shows. */
+export type CockpitCounts = Pick<CockpitDiagnostics, 'messages' | 'messageDrops' | 'radarNoiseDropped'>;
+
 export interface MissionDiagnostics extends MissionDiagnosticsActions {
   /** The owner consumer, stage `ui`; one owner connects it, once. */
   readonly consumer: MissionOwnerConsumer;
   readonly reader: MissionDiagnosticsReader;
+  /** The current run's cockpit counts after its last processed tick; null without a run's cockpit. */
+  cockpitCounts(): CockpitCounts | null;
 }
 
 export interface MissionDiagnosticsOptions {
@@ -82,6 +90,8 @@ export interface MissionDiagnosticsOptions {
   readonly timing: Pick<FrameTiming, 'subscribe'>;
   /** Creates the owner's file save on connection; the release disposes it. */
   readonly fileSave: () => FileSave;
+  /** The current run's cockpit diagnostics; null or absent without one. */
+  readonly cockpit?: () => CockpitCounts | null;
 }
 
 /** Snapshots and exports need a run that has not faulted. */
@@ -121,6 +131,10 @@ class Diagnostics implements MissionDiagnostics {
     if (this.#state !== 'connected') return;
     this.#log.clear();
     this.#publish();
+  }
+
+  cockpitCounts(): CockpitCounts | null {
+    return this.#options.cockpit?.() ?? null;
   }
 
   refreshSnapshot(): void {
@@ -304,5 +318,6 @@ class Diagnostics implements MissionDiagnostics {
 export function createMissionDiagnostics(options: MissionDiagnosticsOptions): MissionDiagnostics {
   if (typeof options?.timing?.subscribe !== 'function') throw new TypeError('Mission diagnostics need a frame timing');
   if (typeof options.fileSave !== 'function') throw new TypeError('Mission diagnostics need a file save factory');
+  if (options.cockpit !== undefined && typeof options.cockpit !== 'function') throw new TypeError('The cockpit diagnostics must be a function');
   return new Diagnostics(options);
 }

@@ -28,6 +28,7 @@ describe('game store', () => {
     expect(ownerId).toBe(7);
     expect(reader.getState()).toEqual({
       ownerId: 7, status: null, projection: null, flow: null, pendingCommands: [], recentResults: [], actionError: null, sessionError: null,
+      messages: null,
     });
     expect(reader.getInitialState()).toBe(reader.getState());
     expect(Object.isFrozen(reader.getState())).toBe(true);
@@ -80,6 +81,21 @@ describe('game store', () => {
     expect(reader.getState()).toMatchObject({ flow, status: running });
     commit({ flow: null });
     expect(reader.getState().flow).toBeNull();
+  });
+
+  it('keeps the bridged message line only as a frozen value, writing only a new one, and leaves it across a run clear', () => {
+    const { reader, commit } = createGameStore(7);
+    const states = history(reader);
+    expect(() => commit({ messages: { runId: 1, head: null, incoming: null } })).toThrow(TypeError);
+    expect(states).toHaveLength(0);
+    const messages = Object.freeze({ runId: 1, head: null, incoming: null });
+    commit({ messages });
+    commit({ messages, clearRun: true });
+    expect(reader.getState().messages).toBe(messages);
+    expect(states).toHaveLength(1);
+    commit({ messages: null });
+    expect(reader.getState().messages).toBeNull();
+    expect(states).toHaveLength(2);
   });
 
   it('adds pending commands under its own owner once, and settles only matching owner, run and command keys', () => {
