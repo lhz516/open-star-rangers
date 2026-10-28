@@ -110,7 +110,7 @@ updated: 2026-10-28
 | [32-presentation-verdicts.md](./subtasks/32-presentation-verdicts.md) | 07, 26, 29, 31 | completed |
 | [33-documentation-handoff.md](./subtasks/33-documentation-handoff.md) | 32 | completed |
 | [35-ai-wingman-map-regression.md](./subtasks/35-ai-wingman-map-regression.md) | 27, 28 | completed |
-| [34-final-alignment.md](./subtasks/34-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 35 | pending |
+| [34-final-alignment.md](./subtasks/34-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 35 | in-progress |
 
 34 为最终验证，永远最后且不交付功能代码。发现缺口时新增更大 ID 的修复项、插在 34 之前并加入其依赖，不重用或重排既有 ID。
 
