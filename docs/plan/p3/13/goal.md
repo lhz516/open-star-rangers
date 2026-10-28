@@ -75,7 +75,7 @@ updated: 2026-10-28
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-layout-scheduling-research.md](./subtasks/01-layout-scheduling-research.md) | — | in-progress |
+| [01-layout-scheduling-research.md](./subtasks/01-layout-scheduling-research.md) | — | completed |
 | [02-gauges-radar-research.md](./subtasks/02-gauges-radar-research.md) | — | in-progress |
 | [03-left-display-research.md](./subtasks/03-left-display-research.md) | — | in-progress |
 | [04-target-overlay-research.md](./subtasks/04-target-overlay-research.md) | — | pending |
