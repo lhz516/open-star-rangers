@@ -97,7 +97,7 @@ updated: 2026-10-28
 | [21-runtime-replay-boundaries.md](./subtasks/21-runtime-replay-boundaries.md) | 19, 20 | pending |
 | [22-browser-audio-output.md](./subtasks/22-browser-audio-output.md) | 18, 19, 20 | pending |
 | [23-browser-lifecycle-resources.md](./subtasks/23-browser-lifecycle-resources.md) | 22 | pending |
-| [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | pending |
+| [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | in-progress |
 | [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | pending |
 | [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | pending |
 | [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23, 26 | pending |
