@@ -345,6 +345,7 @@ G-02/1 与 G-02/2 是本任务负责的两个 Smacker 过场实例（[P3-01/08](
 - **来源：** `#tick` 现有的 `this.#world.projection()` 结果原样放进同项，不再次提取、不复制；`ticks` > 0 时最后一项的 `projection` 就是帧后 `projection()` 返回的对象（与 `render` 和 `renderFrame().current` 的关系相同）。
 - **批次语义：** 与[帧后逐 tick 输出](#帧后逐-tick-输出p3-12-的修订)的故障矩阵相同：0 tick 帧为空数组；至多 `MAX_TICKS_PER_FRAME`（5）项；衔接截断与完成截断交到截断 tick 为止；录制容量停止只交被拒 tick 之前的成功前缀；step、projection 或 Render State 任一提取故障时 `frame()` 抛 `faulted`、本帧没有任何输出。项内三者（`tick`/`clock`、`render`、`projection`）总是同一次 step 的结果，不会出现只有其一的项。
 - **交付与次序：** 不变：全部模拟 → Event Bus → 帧消费者；会话帧 `GameSessionFrame.report` 原样带出，静止帧为 null。逐 tick 推进的消费者只读 `outputs`，不同时订阅同一事件，也不以 `projection()` 的帧末值代替某一中间 tick。
+- **多个逐 tick 消费者（P3-13 的 D-02）：** 驾驶舱表现模型与 P3-14 的音效消费者各自按 tick 升序读取同一批 `outputs`，二者之间没有次序依赖、互不推进或读取对方状态；应用装配分别登记，不依赖监听器注册的偶然次序来保证正确（[P3-13 D-02 定稿](../13/spec.md#d-02-定稿09)）。
 - **内存：** 每帧至多 5 份 projection 引用，Runtime 不保留帧报告之外的历史；消费者不长期保存 `outputs`，只保留自己派生的状态。
 - **验证：** 由 P3-13 的子任务 13 以真实 Runtime 与会话测试：每项的 `projection` 与 `render`、`tick`、`clock` 一致，最后一项与 `projection()` 为同一对象；0、1、5 tick、`capped`、两种截断、录制容量前缀与提取故障；与 Event Bus 的次序。P3-12 已有的输出夹具随之补字段。本 spec 的既有验收与历史证据不改写。
 
@@ -619,3 +620,5 @@ CLI 始终使用生产来源白名单，不能接受合成光盘作为原版。N
 **2026-10-28 修订（P3-13 的 D-01：帧后同 tick projection）：** 由 P3-13 的子任务 08 起草，只新增“[帧后同 tick projection（P3-13 的修订）](#帧后同-tick-projectionp3-13-的修订)”一节与本条记录，并改了 front matter 的日期：`TickOutput` 增加 `projection`，即 `#tick` 已取得的同一冻结对象，批次、故障矩阵、次序与内存边界沿用 P3-12 的修订。所选方案：保留 Runtime 已有的逐 tick 结果。被排除的方案：帧消费者以帧末 projection 代替中间 tick（同帧多 tick 时提前看到未来状态，P3-13 已撤销 Δ-02）；在帧后再次从世界提取或复制（多余的工作，且不同于读模型取得的对象）；新增 tick 中途回调（破坏“全部模拟后派发”的次序）。没有新增 S/AC 编号，本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写；实现与验证归 P3-13 的子任务 13。修订后未重跑 review-spec。
 
 **2026-10-28 P3-13 D-01 同步批准：** 用户于 2026-10-28 执行 P3-13 goal 时明确授权：“在执行goal的过程中，如果需要修改spec或其他Decision，我都批准你修改。用任何方式来unblock任何问题，完成这个goal。”协调者据此在 P3-13/08 复核并批准本 spec 中为 [P3-13 D-01 定稿](../13/spec.md#d-01-定稿08)所做的同步修订；只批准这些修订，其余已批准内容不变。
+
+**2026-10-28 P3-13 D-02 同步批准：** 在“帧后同 tick projection（P3-13 的修订）”中加入“多个逐 tick 消费者”一条：P3-13 的 D-02 定稿不建共享提示模型，驾驶舱表现与音效消费者各自读同一批输出。用户于 2026-10-28 执行 P3-13 goal 时明确授权：“在执行goal的过程中，如果需要修改spec或其他Decision，我都批准你修改。用任何方式来unblock任何问题，完成这个goal。”协调者据此在 P3-13/09 批准这一同步；其余内容不变。

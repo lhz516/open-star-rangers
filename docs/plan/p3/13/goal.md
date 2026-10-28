@@ -21,6 +21,7 @@ updated: 2026-10-28
 - [map-input.ts](../../../../src/ui/game-input/map-input.ts) 已有输入政策与 ready 握手，[use-mission-owner.ts](../../../../src/app/composition/use-mission-owner.ts) 的几何仍为 null；23 交付端口，24 接生产。25 扩展 [BasePage](../../../../src/ui/mission/BasePage.tsx) 及 G-03 文案/桥接，不新增台词导入。
 - **地图架构前提已满足：** [ADR-0019](../../../decisions/ADR-0019-strategic-map-render-pipeline.md)、总计划和 P3-09 已同步；spec 明确批准。08 的 D-01 与 09 的 D-02 **尚未定稿**，依赖它们的实现不得提前开始。
 - **P3-14 外部接口：** 分支 `p3-14-flight-sound-spec` 的 `5a662042` 是已核对的合同来源，不是本 checkout 已有实现。09 须取得其 D-02 与本 spec 一致的批准记录；21、24、26–29 需要 P3-14/14 的真实共享模型及 FA-01/必要 FA-02 已可在执行基线导入。由 P3-14 拥有模型，本任务不复制；缺少则阻塞对应项，不要求对方整个 goal 完成，也不自行切换或合并分支。
+  **2026-10-28 D-02 修订：** [D-02 定稿](./spec.md#d-02-定稿09)证明锁定/警告的声音与绘制之间没有共同状态，不建共享模型；21、24、26–29 不再需要 P3-14/14 的模块，只读同 tick projection。警告现读 main 的位置，P3-14 合入时按 DD-02 切换。
 - **版本与恢复：** 起点 rules 9、snapshot 8、replay 3、slice 6、converter `osr-import.graphics-5.logic-4.audio-2.models-4`。以执行基线和 08 的版本合同为准；恢复旧缓存只能重新导入，不自动清用户缓存。
 - **证据与环境：** 原版依据见 spec Q-01 至 Q-13、[hud](../../../original/formats/hud.md)、[cockpit](../../../original/formats/cockpit.md)、[B-001](../../../original/behavior/B-001-strategic-map.md)。优先复用现有截图/研究，目标零新增 DOSBox；必需缺口按[证据指南](../../../guides/original-evidence.md)最小补采，不自动豁免。原版字节、图像和逆向输出仅在 `local/`，公共测试只用合成内容。
 - 验证命令已有 `pnpm test -- <文件>`、`pnpm check`、`pnpm test:e2e`、`pnpm check:compliance`；工具脚本按[工程约定](../../../engineering/README.md)及[工具指南](../../../guides/tools.md)使用。新增测试路径在文件落地后才可运行；缺依赖再按工程指南恢复，不在本次生成中安装或执行。
@@ -56,7 +57,7 @@ updated: 2026-10-28
 | AC-11 | 18、25 | 27 F1/Warp/基地来电 |
 | AC-12 | 20 | 27 目标/干扰；31 |
 | AC-13 | 18、25 | 26 绘制前后事件；27–28 |
-| AC-14 | 09、19、21、24 | 26–27 实际共享模型双消费者 |
+| AC-14 | 09、19、21、24 | 26–27 真实驾驶舱表现模块（D-02 定稿） |
 | AC-15 | 21 | 27 叠加/被毁；31 |
 | AC-16 | 22 | 28 图元/语义；31 |
 | AC-17 | 23–24 | 28 输入序列和实际锁定 |
@@ -83,7 +84,7 @@ updated: 2026-10-28
 | [06-map-presentation-research.md](./subtasks/06-map-presentation-research.md) | — | completed |
 | [07-evidence-contract-baseline.md](./subtasks/07-evidence-contract-baseline.md) | 01, 02, 03, 04, 05, 06 | completed |
 | [08-shared-contract-gate.md](./subtasks/08-shared-contract-gate.md) | 07 | completed |
-| [09-shared-audio-contract-gate.md](./subtasks/09-shared-audio-contract-gate.md) | 08 | pending |
+| [09-shared-audio-contract-gate.md](./subtasks/09-shared-audio-contract-gate.md) | 08 | completed |
 | [10-instrument-content-payload.md](./subtasks/10-instrument-content-payload.md) | 08 | in-progress |
 | [11-graphics-import-wiring.md](./subtasks/11-graphics-import-wiring.md) | 10 | pending |
 | [12-core-hud-read-models.md](./subtasks/12-core-hud-read-models.md) | 08 | in-progress |

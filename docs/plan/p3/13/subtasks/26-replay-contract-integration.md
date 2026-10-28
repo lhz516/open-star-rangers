@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "13"
 subtask: "26"
-updated: 2026-10-25
+updated: 2026-10-28
 ---
 
 # 26 — 真实链、回放与帧分组一致性
@@ -16,7 +16,7 @@ updated: 2026-10-25
 
 ## 工作范围
 
-- 使用实际Core→Runtime→Session→驾驶舱/共享提示，比较同种子输入在1×5、5、2+0+3帧分组下的模型状态和随机抽取。
+- 使用实际Core→Runtime→Session→驾驶舱表现（含锁定与类型9视觉，D-02定稿），比较同种子输入在1×5、5、2+0+3帧分组下的模型状态和随机抽取。
 - 必须包含切页、损伤、目标离开、来电同tick开始结束及绘制前后事件，不用恒定projection代理。
 - 有无GPU层/声音读者时Core事件与周期哈希相同，P3-12表现流不被驾驶舱消耗。
 - 验证容量前缀、transition/completed截断、Core/读模型/消费者失败、跨run和版本拒绝。
@@ -28,7 +28,7 @@ updated: 2026-10-25
 ## 关键文件与契约
 
 - [game-runtime-outputs.test.ts](../../../../../src/app/runtime/game-runtime-outputs.test.ts)、[game-session-presentation.test.ts](../../../../../src/app/session/game-session-presentation.test.ts)。
-- 计划新增 `src/render/cockpit/cockpit-integration.test.ts`，与真实P3-14模型集成。
+- 计划新增 `src/render/cockpit/cockpit-integration.test.ts`，使用真实驾驶舱表现模块（D-02定稿不建P3-14共享模型）。
 
 ## 写入范围
 
@@ -42,7 +42,7 @@ updated: 2026-10-25
 
 - [ ] 动态输入的分帧一致性、Core/RNG不变性有可重复断言。
 - [ ] 一次性事件只消费一次，无中间projection丢失或未来状态倒填。
-- [ ] 使用真实共享模型；缺外部模块保持blocked而非mock通过。
+- [ ] 使用真实Core/Runtime/驾驶舱表现模块而非mock；锁定与警告视觉只依赖同tick projection（D-02修订）。
 
 ## 验证方法
 
