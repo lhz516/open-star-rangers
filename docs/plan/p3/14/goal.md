@@ -89,7 +89,7 @@ updated: 2026-10-28
 | [13-spatial-engine-parameters.md](./subtasks/13-spatial-engine-parameters.md) | 07, 08, 10 | completed |
 | [14-hud-audio-read-model.md](./subtasks/14-hud-audio-read-model.md) | 07, 08 | completed |
 | [15-event-sound-mapping.md](./subtasks/15-event-sound-mapping.md) | 07, 08, 09 | completed |
-| [16-run-audio-consumer.md](./subtasks/16-run-audio-consumer.md) | 11, 12, 13, 14, 15 | in-progress |
+| [16-run-audio-consumer.md](./subtasks/16-run-audio-consumer.md) | 11, 12, 13, 14, 15 | completed |
 | [17-owner-audio-lifecycle.md](./subtasks/17-owner-audio-lifecycle.md) | 16, 20 | pending |
 | [18-audio-ui-composition.md](./subtasks/18-audio-ui-composition.md) | 17 | pending |
 | [19-rule-event-integration.md](./subtasks/19-rule-event-integration.md) | 16 | pending |
