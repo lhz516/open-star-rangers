@@ -88,7 +88,7 @@ updated: 2026-10-28
 | [12-voice-allocation-ledger.md](./subtasks/12-voice-allocation-ledger.md) | 10 | completed |
 | [13-spatial-engine-parameters.md](./subtasks/13-spatial-engine-parameters.md) | 07, 08, 10 | completed |
 | [14-hud-audio-read-model.md](./subtasks/14-hud-audio-read-model.md) | 07, 08 | completed |
-| [15-event-sound-mapping.md](./subtasks/15-event-sound-mapping.md) | 07, 08, 09 | pending |
+| [15-event-sound-mapping.md](./subtasks/15-event-sound-mapping.md) | 07, 08, 09 | in-progress |
 | [16-run-audio-consumer.md](./subtasks/16-run-audio-consumer.md) | 11, 12, 13, 14, 15 | pending |
 | [17-owner-audio-lifecycle.md](./subtasks/17-owner-audio-lifecycle.md) | 16, 20 | pending |
 | [18-audio-ui-composition.md](./subtasks/18-audio-ui-composition.md) | 17 | pending |
@@ -120,6 +120,7 @@ updated: 2026-10-28
 - **2026-10-17 — 集成时交给 27 的文档提议：** 09、12 建议在 [app 分册](../../../engineering/modules/app.md)新增 flight-audio 一节（content.ts 的 `bindFlightSounds` 等 API、12 的声部账本）；12 建议在 audio A-03 的漂移边缘一条补注“从一致的计数出发，分配、回收、句柄停止与全部停止都到不了该边缘（高概率：代码规则推理与模拟）”；11 的三处暂停/恢复解释已写入 platform 分册，16/17 以此为准。11 首次集成因 12 的控制器替身缺 `pause`/`resume` 失败，扩展 11 的写入范围后重做通过。
 - **2026-10-24 — 合并含 P3-11 的 main：** 两边各把 `RULES_VERSION` 由 7 递增为 8，合并后为 9；快照格式取 P3-11 的 7，replay 格式仍为 3。P3-11 的退场开始改经 `retire`，活动实体各发 `object-retired`（FA-07 中原先阻塞的拆除一项）；P3-11 测试中的 `hit` 补上 FA-05 字段，若干事件次序断言加入 `object-retired`。记录见 [P3-02 审批的 2026-10-24 说明](../02/spec.md#审批)。P3-11 的 spec 现已在 main，07 仍等 P3-12 与 P3-13 的接口。
 - **2026-10-28 — 合并含 P3-12、P3-13 的 main；07、24 解除阻塞：** 合并提交 `a8c9008b`：`RULES_VERSION` 11、快照格式 9、replay 格式 3；`RenderEntity`、`CombatTarget` 并存两边字段，`recordMaximumSpeed` 只留一份；类型 9 指示条改读分区级 `communications.warnings`（FA-01）。07 的恢复条件已满足（P3-11、P3-12、P3-13 的已批准 spec 与实现都在 main 上）。24 的恢复条件已满足：用户本次执行指示“在执行 goal 的过程中，如果需要修改 spec 或其他 Decision，我都批准你修改。用任何方式来 unblock 任何问题，完成这个 goal”，授权运行 DOSBox-X 取证。同一授权覆盖 07 的 D-02 定稿及其引起的 spec/合同修订。
+- **2026-10-28 — 13、14 集成时的说明：** 13 对原版会触发 x87 异常、在有效 Core 读数中不可达的超大输入（例如超出 i32 的速率）抛出 `FlightSoundParameterError('out-of-range')`，不扩大 D1-06 的跳过范围；协调者确认此取舍。13 与 14 交给 27 的文档提议：app 分册的 flight-audio 一节列出 parameters.ts 的导出与 5 种错误、hud-cues.ts 的 `createHudCues(ledger)` 两段调用（`beforeDispatch`/`afterDispatch`）。
 
 ## 审批
 
