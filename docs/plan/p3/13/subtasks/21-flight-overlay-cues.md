@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "13"
 subtask: "21"
-updated: 2026-10-25
+updated: 2026-10-28
 ---
 
 # 21 — F1 叠加、被毁标签与共享指示灯
@@ -33,6 +33,7 @@ updated: 2026-10-25
 ## 写入范围
 
 - `src/render/cockpit/overlay/**`：叠加与共享提示绘制消费者、测试。
+- `docs/original/formats/hud.md`：仅 §4.6 的 `0x45420` 复位点与秒钟取整核对结论（08 增补）。
 
 ## 验收标准
 

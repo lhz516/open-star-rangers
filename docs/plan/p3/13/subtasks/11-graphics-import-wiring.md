@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "13"
 subtask: "11"
-updated: 2026-10-25
+updated: 2026-10-28
 ---
 
 # 11 — 图形导入与版本全链
@@ -41,6 +41,10 @@ updated: 2026-10-25
 - `tools/package-check.test.ts`：合成工具测试。
 - `docs/engineering/modules/content.md`：新角色与版本。
 - `docs/guides/local-import.md`：重新导入条件。
+- `src/original-data/conversion/production-hud-text.ts`：观察距离表的 EXE 区域读取（08 增补）。
+- `src/original-data/conversion/production-hud-text.test.ts`：合成测试（08 增补）。
+- `src/original-data/conversion/production-executable.ts`：EXE 区域规则（08 增补）。
+- `src/original-data/conversion/production-executable.test.ts`：合成测试（08 增补）。
 
 ## 验收标准
 

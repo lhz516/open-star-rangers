@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "13"
 subtask: "12"
-updated: 2026-10-25
+updated: 2026-10-28
 ---
 
 # 12 — Core 驾驶舱只读事实
@@ -34,6 +34,11 @@ updated: 2026-10-25
 - `src/core/projections/*.ts`：类型、生产者和测试。
 - `src/core/replay/*.ts`：仅 D-01 必需的版本/验证同步及不变性测试。
 - `docs/engineering/modules/core.md`：读模型 API 与交接。
+- `src/core/systems/displays.ts`、`src/core/systems/energy.ts`、`src/core/systems/damage.ts`、`src/core/systems/weapons.ts`、`src/core/systems/spawn.ts`、`src/core/systems/rescue.ts`：CK-01/CK-02 的写入次序与计数（08 增补）。
+- `src/core/systems/*.test.ts`：上述系统的测试（08 增补）。
+- `src/core/rules/displays.ts`、`src/core/rules/displays.test.ts`：CR-10 次序更正（08 增补）。
+- `src/core/world/player-state.ts`、`src/core/world/player-state.test.ts`、`src/core/world/map-rule-data.ts`、`src/core/world/map-rule-data.test.ts`：状态字段与地图规则数据（08 增补）。
+- `docs/original/formats/executable.md`、`docs/original/formats/hud.md`：仅记录 CK-02 写入分支与 `indicatorRates.row3` 初值的核对结论（08 增补）。
 
 ## 验收标准
 
