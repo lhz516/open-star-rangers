@@ -103,7 +103,7 @@ updated: 2026-10-28
 | [25-ui-bridge-gaps.md](./subtasks/25-ui-bridge-gaps.md) | 18, 24 | completed |
 | [26-replay-contract-integration.md](./subtasks/26-replay-contract-integration.md) | 25 | completed |
 | [27-browser-cockpit.md](./subtasks/27-browser-cockpit.md) | 25 | in-progress |
-| [28-browser-map.md](./subtasks/28-browser-map.md) | 25 | in-progress |
+| [28-browser-map.md](./subtasks/28-browser-map.md) | 25 | completed |
 | [29-browser-lifecycle.md](./subtasks/29-browser-lifecycle.md) | 27, 28 | pending |
 | [30-real-content-import.md](./subtasks/30-real-content-import.md) | 11 | completed |
 | [31-real-content-pictures.md](./subtasks/31-real-content-pictures.md) | 27, 28, 30 | pending |

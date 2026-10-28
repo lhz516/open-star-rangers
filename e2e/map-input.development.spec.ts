@@ -9,9 +9,11 @@ import type { MapInputGeometry, MapPosition } from '../src/render/map/map-input-
 // and Pointer Lock port in the isolated development entry, in Chrome (spec 战略地图输入; S-11; AC-12, and the browser
 // parts of AC-09, AC-13 and AC-16). What the entry makes synthetic is listed in its script: the map context, the owner's
 // input context, the geometry, and the Pointer Lock host's pending and refused answers. Bindings and policy are production.
-// It is not the real mission's map path. Pointer Lock is real Chrome Pointer Lock (it works headless on an http origin);
-// Playwright's Escape does not reach Chrome's native unlock, so the browser's own unlock is `document.exitPointerLock()`
-// from outside the input, observed through actual `pointerlockchange` events; subtask 30 checks the native Esc.
+// It is not the real mission's map path, and its project crosshair cursor stays only here: the production map draws the
+// original pointer in its own picture (P3-13; e2e/map-picture.*.spec.ts). Pointer Lock is real Chrome Pointer Lock (it
+// works headless on an http origin); Playwright's Escape does not reach Chrome's native unlock, so the browser's own
+// unlock is `document.exitPointerLock()` from outside the input, observed through actual `pointerlockchange` events;
+// subtask 30 checks the native Esc.
 
 // Trace DOM snapshots evaluate in the page as user gestures, which would give it a user activation before any input.
 test.use({ trace: { mode: 'retain-on-failure', snapshots: false } });
@@ -581,6 +583,55 @@ test.describe('map input entry at pixel ratio 1', () => {
     expect((await entry.state()).map.state).toBe('unlocked');
     expect(state.errors).toEqual([]);
     expect(await entry.close()).toEqual([]);
+  });
+
+  test('the right button: the zone suppresses its context menu only while the map qualifies; it never selects or moves the cursor (P3-13 Δ-09)', async ({ page }) => {
+    const entry = await MapEntry.load(page);
+    // Whether each context menu the page saw had its default prevented, as the window's bubbling listener sees it.
+    await entry.call(`window.osrContextMenus = []; window.addEventListener('contextmenu', event => { window.osrContextMenus.push(event.defaultPrevented); })`);
+    const menus = () => entry.call<boolean[]>('window.osrContextMenus');
+    const rightClick = async (x: number, y: number): Promise<void> => { await page.mouse.click(x, y, { button: 'right' }); };
+    // In flight the map takes nothing.
+    await entry.open('unsupported');
+    await entry.focusZone();
+    expect((await entry.state()).context).toBe('flight');
+    await rightClick(400, 300);
+    await expect.poll(menus).toEqual([false]);
+    await entry.setContext('map');
+    let state = await entry.waitForMap('unlocked');
+    const geometry = geometryOf(state);
+    const start = state.cursor!;
+    // The unlocked fallback on the main map, and beside it in the qualified zone.
+    const onMap = clientPoint(geometry, { right: 0.4, down: 0.6 });
+    await rightClick(Math.round(onMap.x), Math.round(onMap.y));
+    await rightClick(geometry.frame.left + geometry.frame.width * 0.875, 300);
+    await expect.poll(menus).toEqual([false, true, true]);
+    // Paused, the map is suspended and lets the menu through; resumed, it suppresses it again.
+    await entry.control('pause');
+    await entry.waitForMap('suspended');
+    await rightClick(Math.round(onMap.x), Math.round(onMap.y));
+    await expect.poll(menus).toEqual([false, true, true, false]);
+    await entry.control('resume');
+    await entry.waitForMap('unlocked');
+    await rightClick(Math.round(onMap.x), Math.round(onMap.y));
+    await expect.poll(menus).toEqual([false, true, true, false, true]);
+    // A right press held across frames selects nothing and leaves the cursor where the pointer put it.
+    await page.mouse.move(Math.round(onMap.x), Math.round(onMap.y));
+    await expect.poll(async () => (await entry.state()).cursor?.right).toBeCloseTo(positionAt(geometry, Math.round(onMap.x), Math.round(onMap.y)).right, 9);
+    const before = (await entry.state()).cursor;
+    expect(before).not.toEqual(start);
+    await page.mouse.down({ button: 'right' });
+    await entry.advance(QUIET);
+    await page.mouse.up({ button: 'right' });
+    state = await entry.state();
+    expect(selects(state)).toEqual([]);
+    expect(state.cursor).toEqual(before);
+    await expect.poll(menus).toEqual([false, true, true, false, true, true]);
+    expect(state.errors).toEqual([]);
+    expect(await entry.close()).toEqual([]);
+    // Released, the zone no longer takes the menu.
+    await rightClick(400, 300);
+    await expect.poll(menus).toEqual([false, true, true, false, true, true, false]);
   });
 
   test('keeps running while a lock request is pending, selecting nothing, then follows the answer', async ({ page }) => {

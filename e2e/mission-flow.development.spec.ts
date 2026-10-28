@@ -21,6 +21,7 @@ import {
   leaveGuards, missionEntry, missionFrame, reloadWithoutConfirmation, requestLeave, stopWatchingPositions, submitDevCommand,
   waitForFrame, watchPositions, type DevState,
 } from './support/mission-observations.ts';
+import { quietly, zoneLocked } from './support/map-picture.ts';
 import { nativeBrowser, NativeTarget, until } from './support/native-lifecycle.ts';
 import { ResourceBalance, settleTooling } from './support/resource-balance.ts';
 
@@ -572,8 +573,11 @@ test('exports a keyboard-driven recording that Node replays with identical event
 
 // P3-09 subtask 22 (docs/plan/p3/09/spec.md, AC-12): the strategic map and a Warp in the real mission, in development
 // builds. Core's facts come from the panel's refreshed state and event log, the session bridge's from the mission's UI
-// store (e2e/support/map-warp.ts); the destination is drafted in the panel's own command editor, since the production
-// map geometry is still null (P3-13). Nothing writes the world or a projection.
+// store (e2e/support/map-warp.ts); the destination is drafted in the panel's own command editor (real map selection in
+// the production build is mission-flow.production.spec.ts's, the map picture map-picture.*.spec.ts's). With the production
+// map geometry (P3-13) the map input is ready after the map's first picture and takes real Pointer Lock; the browser's
+// own unlock is `document.exitPointerLock()` evaluated without a user gesture, as Playwright cannot press Chrome's native
+// Escape. Nothing writes the world or a projection.
 
 /** The seeds of the Warp run and of the run after reopening. */
 const WARP_SEEDS = Object.freeze([0x0eed_0030, 0x0eed_0031]);
@@ -582,7 +586,6 @@ const WARP_SEEDS = Object.freeze([0x0eed_0030, 0x0eed_0031]);
  * select creates a marker; the Warp of about 37,000 units to it costs about 373 of the player's 100,000 energy.
  */
 const DESTINATION = Object.freeze({ operation: 'select', right: String(230.5 / 400), down: String(127.5 / 400) });
-const MAP_NOT_READY = 'Map input is not ready.';
 
 /** Waits until the bridge's results hold a new result of `type` after `afterId`, and resolves to it. */
 async function nextResult(page: Page, type: string, afterId: number) {
@@ -593,12 +596,13 @@ async function nextResult(page: Page, type: string, afterId: number) {
 const lastId = (view: BridgeView): number => view.results.at(-1)?.commandId ?? 0;
 
 test.describe('strategic map and Warp (P3-09 AC-12)', () => {
-  test('m, p, unlocked Esc and context filtering in the Core map; an editor destination; w starts a Warp the menu holds, which completes once; exit and reopen leave nothing', async ({ page, browser }, testInfo) => {
+  test('m, p, the lock, unlocked Esc and context filtering in the Core map; an editor destination; w starts a Warp the menu holds, which completes once; exit and reopen leave nothing', async ({ page, browser }, testInfo) => {
     await page.addInitScript(countPointerLockChanges);
     await importScenario(page, 'mission-startable', WARP_SEEDS);
     // Playwright's main-world script, which locator evaluations below create, registers its listeners before the baseline.
     await settleTooling(page);
     const balance = await ResourceBalance.start(page, testInfo, { audio: false });
+    const cdp = await page.context().newCDPSession(page);
     const zone = page.getByTestId('game-input-zone');
     const inputStatus = page.getByTestId('input-status');
 
@@ -607,32 +611,41 @@ test.describe('strategic map and Warp (P3-09 AC-12)', () => {
     expect(view).toMatchObject({ phase: 'running', runId: 1, context: 'flight', viewMode: FLIGHT_VIEW, map: { state: 'closed', destination: null, markerEntityId: null } });
     expect(view.energy, 'The synthetic player starts with energy').toBeGreaterThan(0);
 
-    // m in the input zone: Core's view mode 8 and its map-toggled event, the bridge's map context, and the input's
-    // not-ready map with the system pointer and no lock.
+    // m in the input zone: Core's view mode 8 and its map-toggled event, the bridge's map context, and the input, ready
+    // once the map's first picture is drawn (production geometry, P3-13), locked at once by m's own activation.
     await page.keyboard.press('m');
     expect(await nextResult(page, 'toggle-map', lastId(view))).toMatchObject({ outcome: 'accepted', reason: null });
     view = await waitForBridge(page, candidate => candidate.context === 'map', 'The bridge did not report the map');
     expect(view).toMatchObject({ viewMode: MAP_VIEW, map: { state: 'open', destination: null, warpRequest: 'no-destination' } });
-    await expect(inputStatus).toContainText(MAP_NOT_READY);
     expect(await waitForMapWarpLog(page, 1)).toEqual([expect.objectContaining({ type: 'map-toggled', fields: expect.objectContaining({ open: 'true', viewMode: '8', previousViewMode: '12' }) })]);
-    const player = await devState(page);
-    expect(player).toMatchObject({ viewMode: MAP_VIEW, previousViewMode: FLIGHT_VIEW });
-    await zone.click();
+    await expect.poll(() => zoneLocked(page)).toBe(true);
+    await expect(inputStatus).not.toContainText('Map input');
     await expect(zone).toBeFocused();
-    expect(await zone.evaluate(element => (element as HTMLElement).style.cursor)).not.toBe('none');
+    expect(await zone.evaluate(element => (element as HTMLElement).style.cursor)).toBe('none');
 
-    // p pauses and resumes in the map, which stays open.
+    // p pauses and resumes in the map, which stays open; the pause ends the lock.
     await page.keyboard.press('p');
     await expect(status(page)).toHaveAttribute('data-phase', 'paused');
     await expect(status(page)).toHaveAttribute('data-pause', 'user');
+    await expect.poll(() => zoneLocked(page)).toBe(false);
     const paused = await expectStableTick(page);
     expect(await bridgeView(page)).toMatchObject({ phase: 'paused', context: 'map', tick: paused });
-    await zone.click();
     await page.keyboard.press('p');
     await expect(status(page)).toHaveAttribute('data-phase', 'running');
     expect((await expectAdvancingTick(page)).from).toBeGreaterThanOrEqual(paused);
 
-    // Flight keys are filtered by the map context, and with no geometry the mouse submits nothing.
+    // The browser ends any lock (standing for Chrome's own Escape, which Playwright cannot press); the map waits for a
+    // click. Flight keys are filtered by the map context, the unlocked mouse moves nothing, and the first click only locks.
+    await quietly(cdp, 'document.exitPointerLock()');
+    await expect(inputStatus).toContainText('Click the map to lock the pointer.');
+    // The panel is usable once the pointer is free. Its click takes the focus: the map is suspended, and focused again
+    // with the click's activation it may ask for the lock at once, which the browser ends again.
+    const player = await devState(page);
+    expect(player).toMatchObject({ viewMode: MAP_VIEW, previousViewMode: FLIGHT_VIEW });
+    await zone.focus();
+    await expect.poll(async () => (await zoneLocked(page)) || (await inputStatus.innerText()).includes('Click the map')).toBe(true);
+    await quietly(cdp, 'document.exitPointerLock()');
+    await expect(inputStatus).toContainText('Click the map to lock the pointer.');
     const filtered = lastId(await bridgeView(page));
     for (const key of ['Equal', 'Space', 'KeyT', 'Digit1', 'Shift+Digit5', 'KeyE', 'Backslash']) await page.keyboard.press(key);
     await page.keyboard.down('BracketRight');
@@ -643,14 +656,21 @@ test.describe('strategic map and Warp (P3-09 AC-12)', () => {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.move(box.x + box.width / 3, box.y + box.height / 3, { steps: 5 });
     await page.mouse.click(box.x + box.width / 3, box.y + box.height / 3);
+    await expect.poll(() => zoneLocked(page)).toBe(true);
     await waitForFrame(page, frame => (frame.tick ?? 0) >= tick + 8);
     view = await bridgeView(page);
-    expect(lastId(view), 'A flight key or the mouse submitted a command in the map').toBe(filtered);
+    expect(view.results.filter(result => result.commandId > filtered), 'A flight key, the unlocked mouse or the locking click submitted a command in the map').toEqual([]);
     expect(view).toMatchObject({ context: 'map', map: { state: 'open', destination: null, markerEntityId: null } });
     await expect(page.getByTestId('dev-pending')).toHaveText('No pending commands.');
-    await expect(inputStatus).toContainText(MAP_NOT_READY);
+    await expect(inputStatus).not.toContainText('Map input');
 
-    // The unlocked Esc closes the map without opening the mission menu.
+    // A page-delivered Esc leaves the locked map open; after the browser's unlock, Esc closes it without the mission menu.
+    await page.keyboard.press('Escape');
+    await waitForFrame(page, frame => (frame.tick ?? 0) >= tick + 16);
+    expect(await bridgeView(page)).toMatchObject({ context: 'map' });
+    expect(lastId(await bridgeView(page))).toBe(filtered);
+    await quietly(cdp, 'document.exitPointerLock()');
+    await expect(inputStatus).toContainText('Click the map to lock the pointer.');
     await page.keyboard.press('Escape');
     expect(await nextResult(page, 'toggle-map', filtered)).toMatchObject({ outcome: 'accepted' });
     view = await waitForBridge(page, candidate => candidate.context === 'flight', 'Esc did not close the map');
@@ -664,6 +684,10 @@ test.describe('strategic map and Warp (P3-09 AC-12)', () => {
     // bridge reports the same destination, the marker and an accepted Warp gate.
     await page.keyboard.press('m');
     view = await waitForBridge(page, candidate => candidate.context === 'map', 'm did not reopen the map');
+    // Locked again by m's activation; the browser's unlock frees the mouse for the panel.
+    await expect.poll(() => zoneLocked(page)).toBe(true);
+    await quietly(cdp, 'document.exitPointerLock()');
+    await expect(inputStatus).toContainText('Click the map to lock the pointer.');
     const select = await submitEditorCommand(page, 'map-point', DESTINATION);
     expect(select).toMatchObject({ outcome: 'accepted', reason: null });
     const set = (await waitForMapWarpLog(page, 4)).filter(entry => entry.type === 'warp-destination-set');
@@ -681,9 +705,10 @@ test.describe('strategic map and Warp (P3-09 AC-12)', () => {
     expect(await devState(page)).toMatchObject({ viewMode: MAP_VIEW });
     expect(await page.evaluate(readDevEntity, marker)).toEqual({ kindBit: 25, name: 'map-marker' });
 
-    // Refocused by a click, which in the map selects nothing, w starts the Warp.
+    // Refocused by a click, which in the waiting map only locks, w starts the Warp.
     await zone.click();
     await expect(zone).toBeFocused();
+    await expect.poll(() => zoneLocked(page)).toBe(true);
     const beforeWarp = lastId(await bridgeView(page));
     await page.keyboard.press('w');
     expect(await nextResult(page, 'request-warp', beforeWarp)).toMatchObject({ outcome: 'accepted', reason: null });
@@ -764,7 +789,11 @@ test.describe('strategic map and Warp (P3-09 AC-12)', () => {
     await button(page, 'Return to main menu').click();
     await expect(missionEntry(page)).toBeFocused();
     await balance.check('after reopening');
-    expect(await pointerLockChanges(page)).toEqual({ changes: 0, locked: false });
+    // Every lock the map took ended: each change locked or unlocked the zone, and nothing holds it now.
+    const { changes, locked } = await pointerLockChanges(page);
+    expect(locked).toBe(false);
+    expect(changes! % 2).toBe(0);
+    expect(changes).toBeGreaterThanOrEqual(6);
     await balance.attach();
     await testInfo.attach('warp-run', {
       contentType: 'application/json',
