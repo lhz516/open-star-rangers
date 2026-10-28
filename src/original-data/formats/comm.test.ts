@@ -31,7 +31,13 @@ function edited(edit: (table: CommTable, view: DataView) => void): Tables {
 
 describe('COMM menu table parsing', () => {
   it('converts the five menus as stored, each list up to and including its last item', () => {
-    const menus = defaultCommMenus();
+    // The synthetic texts are drawable HUD text; these keep bytes 0x80 and 0xFF.
+    const plain = defaultCommMenus();
+    const menus = readCommMenus({
+      ...plain,
+      categories: plain.categories.map((item, index) => (index === 2 ? { ...item, text: `${item.text.slice(0, -1)}\xff` } : item)),
+      gatedTargetCommands: plain.gatedTargetCommands.map((item, index) => (index === 0 ? { ...item, text: `\x80${item.text.slice(1)}` } : item)),
+    });
     const parsed = parse(syntheticCommTables(menus));
     expect(parsed).toEqual(menus);
     expect(deepFrozen(parsed)).toBe(true);
@@ -40,7 +46,7 @@ describe('COMM menu table parsing', () => {
     expect(parsed.categories.map(item => item.kindMask)).toEqual([0x1, 0x8_0000, 0]);
     expect(parsed.otherTargetCommands).toHaveLength(1);
     // Bytes of 0x80 and above are kept, and an empty text is a text.
-    expect(parsed.categories[2].text).toBe(text(32));
+    expect(parsed.categories[2].text).toBe(`${text(31)}\xff`);
     expect([...parsed.categories[2].text].some(character => character.charCodeAt(0) === 0xff)).toBe(true);
     expect(parsed.gatedTargetCommands[0].text.charCodeAt(0)).toBe(0x80);
     expect(parsed.kind2TargetCommands.map(item => item.text)).toEqual([text(10), text(1), '']);

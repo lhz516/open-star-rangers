@@ -66,8 +66,10 @@ describe('map and Warp replay (P3-09 AC-11; MW-14)', { timeout: 30_000 }, () => 
   // one this run had before them (replay.test-support.ts).
   // P3-03 修订 4 (P3-13/11) raised the slice definition version to 7, which the synthetic identity in the snapshot carries;
   // the rules and draws are unchanged.
+  // P3-13/24 gave the synthetic package the shapes of the shipped HUD content and texts (drawable by the cockpit), which
+  // the synthetic identity in the snapshot carries; the rules and draws are unchanged.
   it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
-    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('bf36a0af037e3a2c');
+    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('b177a380e4e33cec');
   });
 
   // P3-12/32 (docs/plan/p3/02/spec.md, FS-12): the speed share at every tick's end, against the snapshot's player speed

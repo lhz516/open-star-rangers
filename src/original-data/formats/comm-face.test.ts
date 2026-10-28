@@ -34,7 +34,12 @@ const expectFailure = (layout: CommFaceLayout, code: SourceErrorCode, location: 
 
 describe('COMMFACE message parsing', () => {
   it('converts the face tables, the direct list and the name lists as stored', () => {
-    const content = defaultCommMessages();
+    // The synthetic names are drawable HUD text; these keep bytes 0x80 and 0xFF.
+    const plain = defaultCommMessages();
+    const content = readCommMessages({
+      ...plain,
+      names2001: plain.names2001.map((name, index) => (index === 0 ? `\x80${name.slice(1)}` : index === 2 ? `${name.slice(0, -1)}\xff` : name)),
+    });
     const parsed = parse(syntheticCommFace(content));
     expect(parsed).toEqual(content);
     expect(deepFrozen(parsed)).toBe(true);
@@ -43,7 +48,7 @@ describe('COMMFACE message parsing', () => {
     expect(parsed.faceTables.map(table => table.length)).toEqual([2, 1, 3]);
     expect(parsed.faceTables[0][0]).toEqual([message(3, 9, 2), absentMessage(), message(0, 1, 7, 0x7fff_ffff)]);
     expect(parsed.faceTables[1][0]).toEqual([absentMessage(), message(10, 1, 1)]);
-    expect(parsed.names2001[2]).toBe(text(32));
+    expect(parsed.names2001[2]).toBe(`${text(31)}\xff`);
     expect([...parsed.names2001[2]].map(character => character.charCodeAt(0))).toContain(0xff);
     expect(parsed.names2001[0].charCodeAt(0)).toBe(0x80);
   });

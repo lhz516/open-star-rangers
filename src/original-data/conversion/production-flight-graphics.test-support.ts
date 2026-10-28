@@ -38,9 +38,12 @@ const rawIndices = (width: number, height: number, seed: number, range = 256): S
 /** The hit-shimmer thresholds: every value is kept as stored, including those beyond any palette's use. */
 export const SYNTHETIC_HIT_SHIMMER = rawIndices(4, 2, 3);
 
-/** The target display background: indices below its 16-entry embedded palette, and that palette as stored BGR triples. */
+/**
+ * The target display background: 96 × 96 like TEX 11089 (the right display stretches exactly that size), indices below
+ * its 16-entry embedded palette, and that palette as stored BGR triples.
+ */
 export const SYNTHETIC_TARGET_DISPLAY = Object.freeze({
-  ...rawIndices(5, 4, 9, 16),
+  ...rawIndices(96, 96, 9, 16),
   bgr: Array.from({ length: 16 * 3 }, (_, component) => (component * 23 + 11) & 0xff),
 });
 
@@ -51,8 +54,8 @@ export const syntheticNebula = (index: number): SyntheticRawImage => rawIndices(
 export const syntheticExplosionFrame = (animation: number, frame: number): SyntheticFrame =>
   patternFrame(3 + (animation % 5), 3 + (animation % 3), animation * 31 + frame + 1);
 
-/** Made-up bytes of the view label of sub-mode 8, including 1, 0x7F and bytes 128–255. */
-export const SYNTHETIC_VIEW_LABEL = String.fromCharCode(0x5a, 1, 0x7f, 0x80, 0xa7, 0xff, 0x20, 0x2e, 0x5a);
+/** Made-up bytes of the view label of sub-mode 8, all in fonts/1's character map as the shipped label is (hud §4.1). */
+export const SYNTHETIC_VIEW_LABEL = String.fromCharCode(0x5a, 0x41, 0x7e, 0x5b, 0x40, 0x3f, 0x20, 0x2e, 0x5a);
 
 const rawEntry = (id: number, type: string, { width, height, indices }: SyntheticRawImage, bgr: readonly number[] = []): SyntheticEntry =>
   ({ id, type, data: rawImageBlock(width, height, indices, bgr) });

@@ -8,6 +8,10 @@
  *   shows to the package the owner is opening on (docs/plan/p3/11/spec.md, 结果页、重试与返回);
  * - a `media` consumer for the flight picture (P3-12): the owner's one WebGL 2 surface, created in a container element of
  *   its own that the mounted flight area holds (`bindFlightArea`), so remounting the area keeps the canvas and context;
+ *   with each run's cockpit, HUD and map (P3-13), drawn with the app's project copy (`cockpitCopy`). The map input's
+ *   production geometry measures the input zone and the canvas against the map picture's geometry of the bound content
+ *   (`createZoneGeometryPort`), and its cursor is the current run's map presentation credential, the map picture with
+ *   the original pointer the composition actually submitted; the project crosshair stays in the isolated test entry;
  * - in development builds only, the frame timing that wraps that host, the diagnostics and the recording options. Their
  *   modules load through a dynamic import behind the compile-time `import.meta.env.DEV`, so production builds contain
  *   none of them.
@@ -23,11 +27,10 @@ import { createGameStore, type GameStoreWriter } from '../../ui/game/game-store.
 import { GAME_INPUT_BINDINGS, KEYBOARD_LOCK_CODES } from '../../ui/game-input/bindings.ts';
 import { createInputConsumer, type GameInputConsumer } from '../../ui/game-input/input-consumer.ts';
 import { MAP_INPUT_POLICY } from '../../ui/game-input/map-input-policy.ts';
-import { createBrowserMapCursor } from '../../render/map/browser-map-cursor.ts';
-import type { MapCursorDrawer } from '../../render/map/map-cursor.ts';
-import type { MapInputGeometryPort } from '../../render/map/map-input-geometry.ts';
+import { createZoneGeometryPort } from '../../render/map/map-input-geometry.ts';
 import { FLIGHT_SURFACE, type FlightRenderer } from '../../render/flight/renderer/flight-renderer.ts';
 import { appProducer } from '../app-version.ts';
+import { cockpitCopy } from './cockpit-copy.ts';
 import type { MissionSlot } from './mission-slot.ts';
 import type { MissionFlowState } from '../mission/mission-flow.ts';
 import { createFlightConsumer, type FlightConsumer } from '../mission/flight-consumer.ts';
@@ -84,10 +87,13 @@ interface Assembly {
 function assemble({ mission: ports, createSurface, reportError }: AppPorts, holder: ResourceHolder): Assembly {
   let ui: Pick<MissionScreenParts, 'store' | 'feedback' | 'texts'> | null = null;
   let diagnostics: MissionDiagnostics | null = null;
-  let mapCursor: MapCursorDrawer | null = null;
   let flight: { readonly consumer: FlightConsumer; readonly container: HTMLElement } | null = null;
   const inputZone: { current: HTMLElement | null } = { current: null };
-  const mapGeometry: MapInputGeometryPort = Object.freeze({ read: () => null });
+  const mapGeometry = createZoneGeometryPort({
+    logical: () => flight?.consumer.mapGeometry() ?? null,
+    zone: () => inputZone.current,
+    shown: () => flight?.container.querySelector('canvas') ?? null,
+  });
   const input = createInputConsumer<HTMLElement>({
     keyboard: ports.createKeyboardSource,
     bindings: GAME_INPUT_BINDINGS,
@@ -98,7 +104,7 @@ function assemble({ mission: ports, createSurface, reportError }: AppPorts, hold
     map: {
       policy: MAP_INPUT_POLICY,
       geometry: mapGeometry,
-      cursor: () => mapCursor,
+      cursor: () => flight?.consumer.mapCursor() ?? null,
       movementScale: () => 1,
       userActivation: () => navigator.userActivation?.isActive ?? false,
     },
@@ -106,8 +112,6 @@ function assemble({ mission: ports, createSurface, reportError }: AppPorts, hold
   const bindInputZone = (zone: HTMLElement | null): void => {
     inputZone.current = zone;
     input.bindZone(zone);
-    mapCursor?.dispose();
-    mapCursor = zone ? createBrowserMapCursor(zone, mapGeometry, input.mapCursor) : null;
   };
   const uiConsumer: MissionOwnerConsumer = {
     stage: 'ui',
@@ -128,7 +132,15 @@ function assemble({ mission: ports, createSurface, reportError }: AppPorts, hold
       const base = { holder, seed: ports.seed, clock: ports.clock, timer: ports.timer, leaveGuard: ports.leaveGuard, reportError };
       const container = document.createElement('div');
       container.className = 'flight-canvas';
-      const consumer = createFlightConsumer({ holder, createSurface: () => createSurface(container, FLIGHT_SURFACE), seed: ports.presentationSeed, reportError });
+      const consumer = createFlightConsumer({
+        holder, createSurface: () => createSurface(container, FLIGHT_SURFACE), seed: ports.presentationSeed, reportError,
+        cockpit: {
+          copy: cockpitCopy(),
+          map: {
+            geometry: mapGeometry, rightButton: () => input.mapRightButton.read(), pointer: () => input.mapCursor.read(), revoked: () => { input.syncMap(); },
+          },
+        },
+      });
       flight = { consumer, container };
       if (development && ports.createFileSave) {
         const timing = development.createFrameTiming(host, ports.clock);

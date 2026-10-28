@@ -10,6 +10,7 @@ import { GraphicsDeviceError, GraphicsUnavailableError } from '../../render/scen
 import { TICK_MS } from '../runtime/game-runtime.test-support.ts';
 import type { GameSessionRun } from '../session/game-session.ts';
 import { RollbackError } from '../session/rollback-error.ts';
+import { cockpitCopy } from '../composition/cockpit-copy.ts';
 import { createFlightConsumer } from './flight-consumer.ts';
 import type { MissionOwnerContext } from './mission-owner.ts';
 import { finishedJob, type FakeJob } from '../resources/resource-holder.test-support.ts';
@@ -23,9 +24,10 @@ import {
 // sessions on a ControlledHost and a recording surface.
 
 /** A flight consumer on `holder` whose surfaces record; `unavailable` makes creating one throw it instead. */
-function flight(holder: ResourceHolder, { unavailable, seeds = [] }: FlightOptions = {}) {
+function flight(holder: ResourceHolder, { unavailable, seeds = [], cockpit = false }: FlightOptions = {}) {
   const surfaces: RecordingSurface[] = [];
   const seed = vi.fn(() => (seeds.length > 0 ? seeds.shift() : 0x1234_5678) as number);
+  const revoked = vi.fn();
   const consumer = createFlightConsumer({
     holder,
     createSurface: () => {
@@ -36,13 +38,16 @@ function flight(holder: ResourceHolder, { unavailable, seeds = [] }: FlightOptio
     },
     seed,
     reportError: () => undefined,
+    cockpit: cockpit ? { copy: cockpitCopy(), map: { geometry: { read: () => null }, rightButton: () => false, pointer: () => null, revoked } } : undefined,
   });
-  return { consumer, surfaces, seed };
+  return { consumer, surfaces, seed, revoked };
 }
 
 interface FlightOptions {
   readonly unavailable?: unknown;
   readonly seeds?: unknown[];
+  /** Wires each run's cockpit with the app's copy. */
+  readonly cockpit?: boolean;
 }
 
 /** An owner of a fresh slot on a holder of `source`, with a flight consumer and a session probe after it. */
@@ -256,5 +261,47 @@ describe('flight consumer', () => {
     owner.restart();
     toDeparture(owner);
     expect(owner.getSnapshot().flow).toMatchObject({ position: 'config', startFailure: { kind: 'assembly', stage: 'consumer', rolledBack: true } });
+  });
+
+  it('wires each run\'s cockpit at tick 0 with the package\'s checked HUD content, and withdraws it with the run (P3-13/24)', async () => {
+    const mission = await openFlight({ cockpit: true });
+    const { owner, consumer, renderer, revoked, host, surfaces } = mission;
+    expect([consumer.cockpit(), consumer.mapCursor(), consumer.mapGeometry()]).toEqual([null, null, null]);
+    toFlight(owner);
+    const first = consumer.cockpit()!;
+    expect(first.presentation.schedule().tick).toBe(0);
+    // The cockpit layer's picture joined the run's resources before its first frame; no render target.
+    expect(renderer.diagnostics().resources).toMatchObject({ renderTargets: 0, textures: expect.any(Number) });
+    // The synthetic package's frames advance the cockpit by every tick and draw its layer under the flash.
+    surfaces[0].resize();
+    host.deliver(0);
+    host.deliver(TICK_MS);
+    host.deliver(TICK_MS + 1_000);
+    expect(mission.session().status().phase).toBe('running');
+    expect(first.presentation.schedule().tick).toBe(tickOf(mission));
+    const drawn = surfaces[0].frames.at(-1)!.map(({ objects }) => objects[0]?.name).filter(Boolean);
+    expect(drawn.slice(-2)).toEqual(['cockpit-layer', 'flight-screen-flash']);
+    expect(first.presentation.ownerId).toBe(owner.ownerId);
+    expect(consumer.mapGeometry()).toEqual(first.mapGeometry);
+    // Nothing is shown yet, so the map input has no credential.
+    expect(consumer.mapCursor()!.draw()).toBe(false);
+    owner.restart();
+    expect([consumer.cockpit(), consumer.mapCursor()]).toEqual([null, null]);
+    expect(first.presentation.status()).toBe('disposed');
+    toFlight(owner);
+    expect(consumer.cockpit()).not.toBe(first);
+    expect(consumer.cockpit()!.presentation.runId).toBe(2);
+    expect(revoked).not.toHaveBeenCalled();
+  });
+
+  it('refuses a start before any GPU allocation when the package\'s HUD content cannot be drawn (P3-13/24)', async () => {
+    const mission = await openFlight({ cockpit: true }, await nextSchemaJob('cockpit-hud-map', 'data/hud/instruments'));
+    toDeparture(mission.owner);
+    expect(mission.owner.getSnapshot()).toMatchObject({
+      flow: { position: 'config', startFailure: { kind: 'assembly', stage: 'consumer', rolledBack: true, cause: { name: 'ContentContractError', code: 'unsupported-payload-schema' } } },
+      session: { phase: 'idle' },
+    });
+    expect(mission.renderer.diagnostics()).toMatchObject({ runId: null, resources: null });
+    expect([mission.consumer.cockpit(), mission.consumer.mapCursor(), mission.consumer.mapGeometry()]).toEqual([null, null, null]);
   });
 });

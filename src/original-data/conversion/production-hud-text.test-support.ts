@@ -5,8 +5,9 @@ import type { RegionWrite } from './production-graphics.test-support.ts';
 import { hudTextGraphic, PRODUCTION_HUD_TEXT_REGIONS, type HudTextRegionTable } from './production-hud-text.ts';
 
 // Code-generated HUD texts that fill the production regions exactly; never original text. A text is filler bytes,
-// mixing 0x80–0xFF with letters and a function of the key's schema position, followed by the key's listed conversions,
-// so every text fits its key's format and each region's bytes differ from the others'.
+// lower- and upper-case letters as a function of the key's schema position, followed by the key's listed conversions,
+// so every text fits its key's format, each region's bytes differ from the others' and, as in the shipped texts, every
+// byte lies in both HUD fonts' character maps (hud §4.1).
 
 /** A made-up text of exactly `bytes` bytes for `key`: filler, then the key's conversions, if any. */
 export function syntheticRegionText(key: HudTextKey, bytes: number): string {
@@ -14,7 +15,7 @@ export function syntheticRegionText(key: HudTextKey, bytes: number): string {
   if (conversions.length > bytes) throw new Error('the region is shorter than the key\'s conversions');
   const seed = HUD_TEXT_KEYS.indexOf(key);
   const filler = Array.from({ length: bytes - conversions.length }, (_, index) =>
-    String.fromCharCode((seed + index) % 2 === 0 ? 0x80 + ((seed * 13 + index * 7) % 0x80) : 0x41 + ((seed * 5 + index) % 26)));
+    String.fromCharCode((seed + index) % 2 === 0 ? 0x61 + ((seed * 13 + index * 7) % 26) : 0x41 + ((seed * 5 + index) % 26)));
   return filler.join('') + conversions;
 }
 

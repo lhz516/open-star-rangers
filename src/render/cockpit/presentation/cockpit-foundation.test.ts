@@ -68,7 +68,7 @@ describe('cockpit limits', () => {
     expect(COCKPIT_LIMITS).toMatchObject({
       ticksPerAdvance: 5, surface: { width: 640, height: 480 }, statusPicture: { width: 96, height: 100 }, imagePixels: 2 ** 20,
       messages: 64, messageBytes: 128, messageTextBytes: 8192, summaryBytes: 58, warpTrail: 94, radarEntries: 120, leftPages: 7,
-      diagBytes: 79, zoomComparisons: 10_000, gpuTexels: 2 ** 19, renderTargets: 1,
+      diagBytes: 79, zoomComparisons: 10_000, gpuTexels: 2 ** 19, renderTargets: 0,
     });
     expect(Object.isFrozen(COCKPIT_LIMITS)).toBe(true);
   });

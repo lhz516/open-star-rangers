@@ -121,8 +121,10 @@ describe('combat replay (P3-07 AC-13, CR-14)', () => {
   // one this run had before them (replay.test-support.ts).
   // P3-03 修订 4 (P3-13/11) raised the slice definition version to 7, which the synthetic identity in the snapshot carries;
   // the rules and draws are unchanged.
+  // P3-13/24 gave the synthetic package the shapes of the shipped HUD content and texts (drawable by the cockpit), which
+  // the synthetic identity in the snapshot carries; the rules and draws are unchanged.
   it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
-    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('56c22f944206d99b');
+    expect(gameplayDigest(INPUT, RECORDING.record.ticks)).toBe('d520db010af2d2cb');
   });
 
   it('reproduces every event and the snapshot at every checkpoint after a JSON round trip', () => {

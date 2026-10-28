@@ -8,8 +8,12 @@ import { encodeRuleDataPayload, RULE_DATA_SCHEMA_VERSIONS, type RuleDataPayload,
 
 export const MARKER = 'PRIVATE-rd-3b9f';
 
-/** A text of exactly `length` bytes: 0x80, MARKER, 0xFF and padding, cut to the length. */
-export const text = (length = 24): string => `\x80${MARKER}\xff${'t'.repeat(length)}`.slice(0, length);
+/**
+ * A text of exactly `length` bytes: A, MARKER, Z and padding, cut to the length. Like the shipped texts, every byte lies
+ * in the HUD fonts' character maps, so the cockpit can draw the names, menus and messages made from it (hud §4.1); tests
+ * of byte strings beyond them give their own.
+ */
+export const text = (length = 24): string => `A${MARKER}Z${'t'.repeat(length)}`.slice(0, length);
 
 /** The smallest positive f32 denormal; JSON carries it bit for bit. */
 export const F32_DENORMAL = 2 ** -149;

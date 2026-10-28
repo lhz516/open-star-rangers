@@ -34,9 +34,12 @@ export const COCKPIT_LIMITS = Object.freeze({
   diagBytes: 79,
   /** Comparisons per map zoom-window icon placement. */
   zoomComparisons: 10_000,
-  /** GPU plan: texels and render targets (the right display's, with its own depth). */
+  /**
+   * GPU plan: texels and render targets. The right display draws on a CPU device (D-01 revision, 20), so the cockpit
+   * allocates no render target and no depth attachment.
+   */
   gpuTexels: 2 ** 19,
-  renderTargets: 1,
+  renderTargets: 0,
 });
 
 /** Before decoding `images`: `presentation-capacity` when their indexed pixels would exceed `imagePixels`. */

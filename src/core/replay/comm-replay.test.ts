@@ -213,8 +213,10 @@ describe('communications replay (P3-10 AC-12, CB-16)', { timeout: 60_000 }, () =
   // of that input is the one the code before FS-12 gives (main at e6684c84, with P3-11's rules).
   // P3-03 修订 4 (P3-13/11) raised the slice definition version to 7, which the synthetic identity in the snapshot carries;
   // the rules and draws are unchanged.
+  // P3-13/24 gave the synthetic package the shapes of the shipped HUD content and texts (drawable by the cockpit), which
+  // the synthetic identity in the snapshot carries; the rules and draws are unchanged.
   it('keeps the gameplay of the run from before P3-12\'s presentation facts', () => {
-    expect(gameplayDigest(DOCKING_INPUT, RECORDING.record.ticks)).toBe('4b00850ff1f53eb7');
+    expect(gameplayDigest(DOCKING_INPUT, RECORDING.record.ticks)).toBe('841cc6cd41088357');
   });
 
   it('runs the docking chain twice in one world: wait, reply, countdown, docking, base keys and launch', () => {

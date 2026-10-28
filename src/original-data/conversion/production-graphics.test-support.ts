@@ -123,10 +123,13 @@ const COCKPIT_HUD_MAP_IMAGES: readonly SyntheticImage[] = [
   ...UNIT_MARKERS, ...ZOOM_ICONS, ...INTERFERENCE_FRAMES,
 ];
 
-/** Made-up status display texts in the DIAG structure: line breaks, conversions and one startup message. */
+/**
+ * Made-up status display texts in the DIAG structure: line breaks, one startup message and the conversions DC-08 allows
+ * (formats 0 and 1 a `%d` and a `%%`, 2 a `%s`, 3 a `%d`), as the shipped texts have.
+ */
 export const SYNTHETIC_STATUS_MESSAGES: SyntheticDiagFields = {
   timings: [2, 31, 3, 47],
-  statusFormats: ['S1\n%d%%', 'S2\n%d', 'S3\n%s', 'S4 %u'],
+  statusFormats: ['S1\n%d%%', 'S2\n%d%%', 'S3\n%s', 'S4 %d'],
   ratings: [['r-four', 30], ['r-three', 20], ['r-two', 12], ['r-one', 4], ['r-zero', 0]],
   subsystemNames: Array.from({ length: 15 }, (_, index) => `part ${index}`),
   stateWords: ['ok?', 'hurt', 'gone'],
@@ -145,8 +148,8 @@ const COLOUR_TABLE = regionOf('image/hud/display-interference/frame-0');
 const FORMAT_REGION = regionOf('data/hud/status-display/messages');
 const DISTANCE_REGION = executableRegion(TARGET_VIEW_DISTANCES as ExecutableRegionLocator);
 
-/** A made-up lower-line format filling the production format region, its NUL last, as a byte string. */
-export const SYNTHETIC_SUBSYSTEM_FORMAT = String.fromCharCode(...Array.from({ length: FORMAT_REGION.length - 1 }, (_, index) => [0x7b, 0x25, 0x73, 0x7d][index % 4]));
+/** A made-up lower-line format filling the production format region, its NUL last: two `%s`, as the shipped one has. */
+export const SYNTHETIC_SUBSYSTEM_FORMAT = String.fromCharCode(...Array.from({ length: FORMAT_REGION.length - 1 }, (_, index) => [0x25, 0x73, 0x3a, 0x25, 0x73][index % 5]));
 
 /** Made-up target view distances, exact f32 values: the synthetic cockpit instruments' table. */
 const SYNTHETIC_VIEW_DISTANCES: readonly number[] = Object.freeze(syntheticCockpitInstruments().targetViewDistances);

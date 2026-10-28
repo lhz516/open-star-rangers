@@ -35,7 +35,7 @@ export function syntheticCockpitInstruments(): MutableCockpitInstruments {
           record(2, [44, 400, 80, 470], 0, 23, [-5]),
           record(3, [560, 400, 596, 470], 0, 24, [0]),
           record(5, [260, 330, 380, 470], 3),
-          record(7, [500, 340, 599, 439], 11),
+          record(7, [491, 346, 586, 442], 11),
           record(8, [100, 300, 540, 315]),
           record(6, [120, 340, 219, 439]),
           record(9, [230, 450, 410, 465], 0, 0, [230, 300, 340, 410]),
