@@ -110,13 +110,18 @@ updated: 2026-10-28
 | [32-presentation-verdicts.md](./subtasks/32-presentation-verdicts.md) | 07, 26, 29, 31 | completed |
 | [33-documentation-handoff.md](./subtasks/33-documentation-handoff.md) | 32 | completed |
 | [35-ai-wingman-map-regression.md](./subtasks/35-ai-wingman-map-regression.md) | 27, 28 | completed |
-| [34-final-alignment.md](./subtasks/34-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 35 | in-progress |
+| [34-final-alignment.md](./subtasks/34-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 35 | completed |
 
 34 为最终验证，永远最后且不交付功能代码。发现缺口时新增更大 ID 的修复项、插在 34 之前并加入其依赖，不重用或重排既有 ID。
 
 允许的并行机会（不是固定批次或执行授权）：01–06 的独立私有研究可并行；08 之后 10/12/13 可并行，09 是协调者批准关卡；14/15 后各仪表子目录可并行；26/27/28 可独立验证，30 可在导入完成后提前核对。实际 wave 由 `task-state` 按当前 tracker 与写入范围计算。
 
 ## 执行记录
+
+- **2026-10-28 — 并行执行（协调者 + 至多 3 个 worker）：** 用户以 `/execute-goal` 启动并授权“在执行goal的过程中，如果需要修改spec或其他Decision，我都批准你修改。用任何方式来unblock任何问题，完成这个goal。”01–33 与 35 均在各自 `exec/p3-13-NN` worktree 完成后逐个集成（提交带 `Worker-Commit`），34 在协调检出完成；所有 worker 分支与 worktree 已移除。
+- **2026-10-28 — 依授权由协调者批准的决定：** 08 的 D-01 定稿及六份上游 spec 同步；09 的 D-02 定稿（不建共享提示模型）；实施期更正（右显示屏改为 CPU 私有设备、自动驾驶“关”提示复位点、GPU 计划）；原版补采的执行期决定及其补充（M 项与非 M 缺口记为经批准的证据缺口，本 goal 新增 DOSBox-X 启动 0 次）；尾随警告攻击者遍历交 P3-14 的 D1-03。各决定的原文在 [spec 审批](./spec.md#审批)。
+- **2026-10-28 — 计划修正：** 按 worker 的范围请求扩大 11、12、21、23、24、25、27、33 的写入范围（各子任务“写入范围”中标注）；新增修复项 [35](./subtasks/35-ai-wingman-map-regression.md)（ai-wingman 用例按新的地图输入契约更新），34 追加依赖。
+- **剩余外部动作：** 用户可选的原版补采会话（`local/research/p3-13/comparison-plan/missing-evidence.md`）；P3-14 合入后的警告位置切换与 AC-14/AC-21 端到端复验；见 [34 的完成证据](./subtasks/34-final-alignment.md#完成证据)。
 
 ## 审批
 
