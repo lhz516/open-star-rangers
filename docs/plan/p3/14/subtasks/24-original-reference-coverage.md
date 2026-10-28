@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "14"
 subtask: "24"
-updated: 2026-10-15
+updated: 2026-10-28
 ---
 
 # 24 — 复用与补齐原版音频参考
@@ -35,6 +35,9 @@ updated: 2026-10-15
 - `local/research/p3-14/24-references/**`：私有参考、测量配方和日志。
 - `docs/original/formats/audio.md`：新的参考事实与置信度。
 - `docs/original/unknowns.md`：受影响的音效未知项。
+- `tools/baseline/**`：配方的可选键 `emulator.audioCapture: "multitrack"`（只改启动行，计入环境改动与指纹）及其单元测试（协调者 2026-10-28 扩展）。
+- `docs/guides/runtime-measurement.md`：该键与录音一节（同上）。
+- `docs/original/formats/hud.md`：仅 §4.8 中类型 9 可达性推断的一句，改为链接 audio 的运行时结论（同上）。
 
 ## 验收标准
 
