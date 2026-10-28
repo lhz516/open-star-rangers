@@ -77,7 +77,7 @@ updated: 2026-10-28
 |---|---|---|
 | [01-layout-scheduling-research.md](./subtasks/01-layout-scheduling-research.md) | — | completed |
 | [02-gauges-radar-research.md](./subtasks/02-gauges-radar-research.md) | — | completed |
-| [03-left-display-research.md](./subtasks/03-left-display-research.md) | — | in-progress |
+| [03-left-display-research.md](./subtasks/03-left-display-research.md) | — | completed |
 | [04-target-overlay-research.md](./subtasks/04-target-overlay-research.md) | — | in-progress |
 | [05-messages-text-research.md](./subtasks/05-messages-text-research.md) | — | pending |
 | [06-map-presentation-research.md](./subtasks/06-map-presentation-research.md) | — | pending |
