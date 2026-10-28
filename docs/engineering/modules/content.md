@@ -263,6 +263,7 @@ related: [ADR-0015]
 
 - [instruments-payload.ts](../../../src/content/hud/instruments-payload.ts) 导出 `COCKPIT_INSTRUMENTS_ROLE`、`COCKPIT_INSTRUMENTS_SCHEMA_VERSION`（1）、`COCKPIT_INSTRUMENTS_LIMITS`（`payloadBytes` 8,192、`recordsPerSlot` 32、`params` 4）、格式规则 `COCKPIT_INSTRUMENTS_FORMAT`（三个槽的身份与类型集合、20 个观察距离），以及 `readCockpitInstruments`、`checkCockpitInstruments(instruments, { front, mapFrame, mapGeometry })`、`encodeCockpitInstrumentsPayload(content, reserve?)` 与 `decodeCockpitInstrumentsPayload(bytes, descriptor)`。字段与约束只记在 DC-02。
 - 图形转换从读取地图几何的同一次 CCKD 10103 读取中按布局号 0、6、8 读出三个槽，元素的图像取映射到同槽 `groups/<槽>/elements/<i>` 的已声明图像，并读取 EXE 的观察距离区域；集合中同时有两个布局与地图几何时，转换最后以 `checkCockpitInstruments` 核对三者（[图形转换](./original-data.md#图形转换)）。来源不符合读取器或核对时为 `source` 层的 `unsupported-payload`。
+- **消费者：** 应用的 `cockpitContentOf`（[app 说明](./app.md#飞行画面)）在每个任务所有者的第一次运行开始时（失败则下次开始重试）以 `decodeCockpitInstrumentsPayload` 解码，并以 `checkCockpitInstruments` 与两个布局、地图几何交叉核对，连同同组的 HUD 文字、视角标签、DIAG、字体、调色板与图像交给驾驶舱表现（[render 说明](./render.md#驾驶舱hud-与地图p3-13)）。驾驶舱按记录次序、重绘间隔与参数调度各仪表，观察距离表供右显示屏。
 - 合成内容由 [instruments.test-support.ts](../../../src/content/hud/instruments.test-support.ts) 生成；合成包 `SYNTHETIC_ASSETS` 中的 `data/synthetic-instruments` 携带其规范编码（每次读取都是新字节），`syntheticPayloadBytes(id)` 给出任一合成 Asset 的 payload 字节。
 
 针对性检查为 `pnpm exec vitest run src/content/hud`。

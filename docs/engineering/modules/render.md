@@ -10,7 +10,7 @@ related: [ADR-0009, ADR-0015]
 
 本文件是[源码结构指南](../source-structure.md)的模块分册，记录 `src/render/` 中已交付代码的当前 API 与契约要点。目录树、职责边界与 helper 归属以指南为准，行为契约以各任务 spec 为准；修改本模块代码的任务同步更新本文件。
 
-`render/` 目前有 P1-07 的共用设施（契约见 [P1-07 spec](../../plan/p1/07/spec.md)）：DOM-free 的 4:3 视口布局、绘制端口与释放 helper，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂），工程要点见[渲染表面与视口](../README.md#渲染表面与视口)；P2-11 的 `render/viewer/` 资源查看渲染（见[资源查看渲染](#资源查看渲染)）；P3-05 地图输入所需的纯 CSS 像素几何（[map-input-geometry.ts](../../../src/render/map/map-input-geometry.ts)）与自绘地图十字光标（[map-cursor.ts](../../../src/render/map/map-cursor.ts)）；以及 P3-12 的 `render/flight/` 飞行渲染（见[飞行渲染](#飞行渲染p3-12)）。任务画面的飞行画布已接入，绘制世界视口内的三维世界、星云、星点、速度尘埃、爆炸精灵与 Warp 隧道，屏幕闪光作用于整幅 4:3 画面；P3-13 的驾驶舱、HUD、视角标签与地图画面在 `render/cockpit/` 中（见[驾驶舱、HUD 与地图](#驾驶舱hud-与地图p3-13)），由同一运行接线加入同一画面；任务壳的在制提示由 P3-13/25 移除（[在制标注](../slice-gaps.md#在制标注非-g-项)）。地图几何与光标供输入层使用，不实现玩法；生产几何来自同一地图几何内容，项目十字光标只留给隔离的测试入口。
+`render/` 目前有 P1-07 的共用设施（契约见 [P1-07 spec](../../plan/p1/07/spec.md)）：DOM-free 的 4:3 视口布局、绘制端口与释放 helper，以及 WebGL 表面（DOM-free 生命周期加 `browser-*` 浏览器工厂），工程要点见[渲染表面与视口](../README.md#渲染表面与视口)；P2-11 的 `render/viewer/` 资源查看渲染（见[资源查看渲染](#资源查看渲染)）；P3-05 地图输入所需的纯 CSS 像素几何（[map-input-geometry.ts](../../../src/render/map/map-input-geometry.ts)，P3-13/23 加入生产几何端口）、自绘地图十字光标（[map-cursor.ts](../../../src/render/map/map-cursor.ts)）与 P3-13/23 的地图就绪凭证端口（[map-presentation-port.ts](../../../src/render/map/map-presentation-port.ts)）；以及 P3-12 的 `render/flight/` 飞行渲染（见[飞行渲染](#飞行渲染p3-12)）。任务画面的飞行画布已接入，绘制世界视口内的三维世界、星云、星点、速度尘埃、爆炸精灵与 Warp 隧道，屏幕闪光作用于整幅 4:3 画面；P3-13 的驾驶舱、HUD、视角标签与地图画面在 `render/cockpit/` 中（见[驾驶舱、HUD 与地图](#驾驶舱hud-与地图p3-13)），由同一运行接线加入同一画面；任务壳的在制提示由 P3-13/25 移除（[在制标注](../slice-gaps.md#在制标注非-g-项)）。地图几何、光标与就绪凭证供输入层使用，不实现玩法；生产几何来自同一地图几何内容，项目十字光标只留给隔离的测试入口。
 
 ## 资源查看渲染
 
@@ -59,22 +59,102 @@ related: [ADR-0009, ADR-0015]
 
 ## 驾驶舱、HUD 与地图（P3-13）
 
-[P3-13](../../plan/p3/13/spec.md) 的驾驶舱表现在 [render/cockpit/](../../../src/render/cockpit/) 中：纯模块（无 DOM、GPU、app 与宿主时间，`osr/cockpit-imports`）按 [D-01 定稿](../../plan/p3/13/spec.md#d-01-定稿08)的 DC-04/DC-05 逐 tick 推进并画入两张 640 × 480 索引面；只有 `composition/` 用 Three.js，把它们合成为同一运行合成中的驾驶舱层。各项的行为与原版依据以 spec 与各子任务的完成证据为准。
+[P3-13](../../plan/p3/13/spec.md) 的驾驶舱表现在 [render/cockpit/](../../../src/render/cockpit/) 中：纯模块（无 DOM、GPU、app 与宿主时间，lint 规则 `osr/cockpit-imports`，见[工程约定](../README.md#lint-规则eslintconfigjs)）按 [D-01 定稿](../../plan/p3/13/spec.md#d-01-定稿08)的 DC-04/DC-05 逐 tick 推进并画入两张 640 × 480 索引面；只有 `composition/` 用 Three.js，把它们合成为同一运行合成中的驾驶舱层。地图输入的生产几何与就绪凭证在 [render/map/](../../../src/render/map/)（[地图就绪与输入几何](#地图就绪与输入几何p3-1323)）。各项的行为与原版依据以 spec、[hud §4](../../original/formats/hud.md#4-instrument-overlay-and-map-drawing-p3-13) 与各子任务的完成证据为准，本节只记录 API 与装配。
 
-### 模块
+### 驾驶舱目录
 
-- **表现基础（[presentation/](../../../src/render/cockpit/presentation/)）：** `createCockpitPresentation({ ownerId, runId, content, modules, initial, seed })`；`advance({ ownerId, runId, ticks })` 先整批校验（`invalid-input`、模型不变）再逐 tick 走 ①–④，处理中的故障锁存 `failed`；`status()`、`layout()`（视角、槽、调色板 `flight`/`map`、S 的不透明行与 B 的世界行）、`surfaces()`（B 带覆盖、S）、`schedule()`、幂等 `dispose()`（逐个释放模块）。`CockpitModule` 的钩子与次序见 [cockpit-contract.ts](../../../src/render/cockpit/presentation/cockpit-contract.ts)；登记次序即全局回调次序。`COCKPIT_LIMITS` 为 DC-08 全表（GPU：纹素 ≤ 2¹⁹、渲染目标 0）。
-- **光栅与文字（[raster/](../../../src/render/cockpit/raster/)）：** 索引面、`blit`、原版图元、`resolveRows`（按调色板原样解析，未覆盖像素透明）、HUD 字体与格式化。
-- **仪表模块：** 消息行 `createMessageLine({ font, flightMessages, copy })`（类型 8，另有 `snapshot()`/`subscribe()` 供基地页）；左显示屏 `createLeftDisplay({ content, interference, pages, initial })`（类型 6；页 2–5 由 `communicationPageDrawers(createCommunicationPages(…))`、页 6 由 `createWarpPage(…).drawWarpPage` 注入）；类型 9 `createIndicatorStrip`；Warp 灯 `createWarpLamp`（类型 12）；角落仪表 `createCornerGauges`（类型 0–3）；雷达 `createRadar`（类型 5，`cachedDirection` 与诊断 `noiseDropped`）；框架 `createCockpitFrame`（唯一的元素绘制者）；右显示屏 `createTargetDisplay`（类型 7，CPU 上 100 × 100 私有设备，`budget`）；F1 叠加与视角标签 `createFlightOverlay`；地图 `createMapPicture`（类型 10，`drawn()` 为就绪凭证，`labels()` 为距离标签开关）。左右显示屏共用一个 `createDisplayInterference(frames)`。
+| 目录 | 内容（子任务） | 主要入口 |
+|---|---|---|
+| [presentation/](../../../src/render/cockpit/presentation/) | 表现基础：契约、每 tick 次序、两张索引面、调度、驾驶舱随机流与限值（14） | `createCockpitPresentation`、`CockpitModule`、`cockpitRandom`、`COCKPIT_LIMITS`、`clockExceeds` |
+| [raster/](../../../src/render/cockpit/raster/) | 索引面与原版图元、HUD 字体与文字、格式化（15） | `createIndexedSurface`、`blit`、`resolveRows`、`hudFont`、`drawText`、`formatText` |
+| [messages/](../../../src/render/cockpit/messages/) | 类型 8 消息行与 G-03 文案核对（18） | `createMessageLine` |
+| [communications/](../../../src/render/cockpit/communications/) | 左显示屏页 2–4 的菜单与页 5 的 G-03 标注（18） | `createCommunicationPages` |
+| [left-display/](../../../src/render/cockpit/left-display/) | 类型 6 左显示屏：页表、状态页（DIAG）、能量页与内容核对（17） | `createLeftDisplay`、`communicationPageDrawers`、`prepareLeftDisplayContent` |
+| [interference/](../../../src/render/cockpit/interference/) | 左右显示屏共用的 SNIP 干扰画面（17） | `createDisplayInterference` |
+| [warp-display/](../../../src/render/cockpit/warp-display/) | 页 6 的 Warp 读数与轨迹、类型 12 Warp 灯（19） | `createWarpPage`、`createWarpLamp` |
+| [gauges/](../../../src/render/cockpit/gauges/) | 类型 0–3 角落仪表（16） | `createCornerGauges` |
+| [radar/](../../../src/render/cockpit/radar/) | 类型 5 雷达（16） | `createRadar` |
+| [frame/](../../../src/render/cockpit/frame/) | 布局元素（框架）的唯一绘制者（16） | `createCockpitFrame` |
+| [target-display/](../../../src/render/cockpit/target-display/) | 类型 7 右显示屏：CPU 上 100 × 100 的私有设备与剪影光栅（20） | `createTargetDisplay` |
+| [overlay/](../../../src/render/cockpit/overlay/) | F1 叠加、被毁视角标签与类型 9 指示条（21） | `createFlightOverlay`、`createIndicatorStrip` |
+| [map-picture/](../../../src/render/cockpit/map-picture/) | 类型 10 战略地图画面、放大窗图标错开与地图画面几何（22） | `createMapPicture`、`mapPictureGeometry` |
+| [composition/](../../../src/render/cockpit/composition/) | 每运行的模块登记与驾驶舱层（GPU 适配，24） | `createCockpitRun`、`createCockpitLayer`、`COCKPIT_GPU_PLAN` |
+
+纯模块只以相对路径引用自身、`src/core`、`src/content` 与 `src/render/flight/presentation`；GPU 适配目录（`composition/` 与任一 `<模块>/gpu/`，目前只有前者）可以用 Three.js 与 render 层。没有模块读 Render State 之外的世界、提交命令或写 store。
+
+### 表现基础
+
+[presentation/](../../../src/render/cockpit/presentation/) 实现 DC-04、DC-05 与 DC-08 的框架；类型在 [cockpit-contract.ts](../../../src/render/cockpit/presentation/cockpit-contract.ts)。
+
+- **输入：** `CockpitTick { output, camera, mapRightButton }`：`output` 与 P3-04 的 `TickOutput` 结构兼容（含同 tick 的 `projection`，不导入 app），`camera` 是 P3-12 表现模块在该 tick 的步末相机，`mapRightButton` 是该批读到的右键电平；`CockpitAdvance { ownerId, runId, ticks }`；`CockpitInitial { render, projection, camera }` 为 tick 0。
+- **创建：** `createCockpitPresentation({ ownerId, runId, content, modules, initial, seed })`：`content` 为 `data/hud/instruments`，`modules` 为 `CockpitModule` 列表，`seed` 为运行的宿主表现种子。创建时核对 owner/run、tick 0、四个读取分区已就绪、类型覆盖与元素绘制者，分配 B（带覆盖位）与 S，做飞行初始化的选组与激活；不推进、不绘制、不抽取。
+- **模块接口：** `CockpitModule` 的钩子都可选：`instruments`（按类型的 `InstrumentHandler { activate?, prePass?, draw }`，各槽每个类型在全部模块中恰有一个处理器）、`beforeDraw`（①，每个事件）、`prepare`（②）、`eraseOverlay`、`drawOverlay`、`global`（每帧全局回调）、`paintElement`（至多一个模块提供）、`afterDraw`（④，每个事件）与 `dispose`。**登记次序即全局回调次序。** 只有 ③ 的上下文 `CockpitDrawContext` 带 `random`、后备面 `back` 与送屏 `publish(rect)`/`publishRow(y, x0, x1)`；其他阶段抽取或送屏为 `invariant-violated`。
+- **每 tick 次序：** ① 按事件次序，`view-switched` 先选组（B、S 填 0、全量重绘，槽改变时按记录次序 `activate`），再交各模块；② 各模块 `prepare`；③ 一次逻辑显示（Warp 与地图先把 B 填 0 → F1 与被毁视角擦叠加 → 各记录预遍 → 画叠加 → 全部 `global` → 遍 0 元素 → 按源次序到期的记录 → 遍 1 元素 → 帧末 B→S）；④ 各模块 `afterDraw`。基地视角只运行到 `global`，`none`（如 0x13）不调用 ③。到期按 u32 `clock − last > interval` 严格比较，模块的自有时钟复用 `clockExceeds`。
+- **查询：** `status()`（不抛错）、`layout()`（`CockpitLayout { viewMode, view, slot, palette, screenRows, worldRows }`，视角为 `flight`、`warp`、`map`、`external`、`base`、`none`）、`surfaces()`（`{ back, screen }` 实时只读）、`schedule()`（tick、时钟、视角、全量重绘、各记录上次绘制时刻、`randomDraws`）。
+- **推进与失败：** `advance(batch)` 先整批核对（owner/run、≤ 5 项、tick 连续、各项 tick/时钟/视角一致、事件属本 tick、视角只经 `view-switched` 改变），失败为 `invalid-input`，模型不变、不抽取；之后逐 tick 处理，处理中的错误锁存 `failed`，之后除 `status`/`dispose` 外都为 `invalid-state`。空批次不改变任何东西。`dispose()` 幂等，逐个释放模块并汇总错误。
+- **随机与限值：** [cockpit-random.ts](../../../src/render/cockpit/presentation/cockpit-random.ts) 的 `cockpitRandom(seed)` 由宿主种子以 FNV-1a 派生驾驶舱流（`cockpitPresentationSeed`），不碰 Core 与 P3-12 的流。[cockpit-limits.ts](../../../src/render/cockpit/presentation/cockpit-limits.ts) 的 `COCKPIT_LIMITS` 为 DC-08 全表（消息行 64 项、雷达 120 项、Warp 轨迹 94、索引像素 2²⁰、GPU 纹素 2¹⁹、渲染目标 0 等），`checkImagePixels` 在解码前核对，错误类型复用 P3-12 的 `PresentationError`。[cockpit-layout.ts](../../../src/render/cockpit/presentation/cockpit-layout.ts) 给出 `layoutOf`、`frameEndRows`、`copyRect` 与 `COCKPIT_BAND_TOP`（316）。
+
+### 光栅与文字
+
+[raster/](../../../src/render/cockpit/raster/) 是纯 TypeScript 的二维图元，语义按 [hud §4.1](../../original/formats/hud.md#4-instrument-overlay-and-map-drawing-p3-13)：
+
+- [indexed-surface.ts](../../../src/render/cockpit/raster/indexed-surface.ts)：`createIndexedSurface(w, h, coverage?)`（≤ 640 × 480，可选 1 位覆盖掩码）、`plot`、`fillRect`、`clearRect`（填 0 并取消覆盖）、`outlineRect`、`drawLine`、`drawCircle`、`fillDisc`、`blit(surface, source, x, y, 'opaque' | 'key' | 'mask', from?)`、`resolveRows`（按导入的 8 位调色板原样解析，未覆盖像素透明）与 `toInt16`。屏幕外像素安全舍弃；只有原版以 16 位传入且决定循环长度的参数越界才是调用方 `RangeError`。
+- [glyph-text.ts](../../../src/render/cockpit/raster/glyph-text.ts)：`hudFont(payload, advance, upperCase)`（步进与 `cellWidth` 分开）、`drawText`（字形前 `height` 行、8 列，映射外为 `unmapped-character` 且不画）、`splitLines` 与 `wholeGlyphRange`。
+- [text-format.ts](../../../src/render/cockpit/raster/text-format.ts)：`formatText(format, args, maxBytes)` 只接受 `%d`、`%.0f`（平分取偶）、`%s` 与 `%%`，其他转换、实参与长度错误为 `TextFormatError`，由调用方转为内容契约错误；`textFormatConversions` 供开始前核对。
+
+### 仪表模块与登记次序
+
+[cockpit-run.ts](../../../src/render/cockpit/composition/cockpit-run.ts) 的 `createCockpitRun` 每运行按下列次序登记全部模块，前四项即原版全局回调 8、6、9、12 的次序：
+
+1. **消息行（类型 8）**：`createMessageLine({ font, flightMessages, copy })`；另有 `snapshot()`（队首、当前来电、队列长度与 `messageDrops`）与 `subscribe()`，供基地页的桥接（[UI 模块说明](./ui.md#游戏-store桥接与命令反馈)）。
+2. **左显示屏（类型 6）**：`createLeftDisplay({ content, interference, pages, initial })`，页 0、1 自有，页 2–5 由 `communicationPageDrawers(createCommunicationPages({ font, background, hudText, commMenus, names, copy }))`、页 6 由 `createWarpPage({ font, background, hudText }).drawWarpPage` 注入；`state()`。
+3. **类型 9 指示条**：`createIndicatorStrip({ font, hudText })`，读同 tick 的两项警告标志（现为 `communications.player.warnings`，见[交接](#交接p3-13)），自有 0x15 闪烁、不抽随机；`state()`。
+4. **Warp 灯（类型 12）**：`createWarpLamp({ font, hudText })`；`state()`。
+5. **角落仪表（类型 0–3）**：`createCornerGauges({ font, labels })`；`timers()`。
+6. **雷达（类型 5）**：`createRadar()`；`state()`（含 DC-08 的 `noiseDropped`）与 `cachedDirection(entityId)`（DC-12，供叠加的偏心指针）。
+7. **框架**：`createCockpitFrame({ content, layouts, images })`，唯一的 `paintElement` 提供者，覆盖 slot 0 与 slot 2 的布局元素。
+8. **右显示屏（类型 7）**：`createTargetDisplay({ font, background, palettes, hudText, interference, models, names })`，在 CPU 上的 100 × 100 私有设备中渲染剪影（D-01 修订，没有 GPU 资源）；`budget`、`state()`、`device()`。
+9. **F1 叠加与被毁视角标签**：`createFlightOverlay({ font, hudText, viewLabels, craftInfo, names, radar, backPlane })`，`backPlane` 为 P3-12 的 PV4；`state()`。
+10. **地图（类型 10）**：`createMapPicture({ font, unitMarkers, zoomIcons, hudText, names, costUnavailable, pointer })`，每运行一个（救援保留）；`drawn()` 为就绪凭证，`labels()` 为距离标签开关；自身 GPU 计划为零（`MAP_PICTURE_GPU_PLAN`）。
+
+左右显示屏共用一个 `createDisplayInterference(frames)`（DC-10 的共用“上次帧”）。
 
 ### 运行装配（P3-13/24）
 
-- **内容与文案：** `CockpitContent`（[cockpit-run.ts](../../../src/render/cockpit/composition/cockpit-run.ts)）是一个资源包已核对的 HUD 内容，带包的代际与内容身份，由应用的 `cockpitContentOf` 给出（[app 说明](./app.md#飞行画面)）；`CockpitCopy { incoming, costUnavailable }` 是应用注入的项目文案。
-- **`createCockpitRun({ ownerId, runId, content, copy, initial, seed, models, backPlane, pointer })`：** 按 8、6、9、12 的全局回调次序登记消息行、左显示屏、类型 9、Warp 灯，再登记角落仪表、雷达、框架、右显示屏、F1 叠加与地图，建驾驶舱表现；不分配 GPU。返回 `{ presentation, messageLine, mapPicture, mapGeometry, diagnostics() }`；`diagnostics()` 为开发摘要（tick、视角、左显示屏页、消息队列长度与 `messageDrops`、雷达的 `radarNoiseDropped`、各记录上次绘制时刻、抽取数）。
+- **内容与文案：** `CockpitContent`（[cockpit-run.ts](../../../src/render/cockpit/composition/cockpit-run.ts)）是一个资源包已核对的 HUD 内容，带包的代际与内容身份，由应用的 `cockpitContentOf` 给出（[app 说明](./app.md#飞行画面)）；`CockpitCopy { incoming, costUnavailable }` 是应用注入的项目文案（G-03 摘要与标注、`MAP_COST_UNAVAILABLE`），render 不导入 UI。
+- **`createCockpitRun({ ownerId, runId, content, copy, initial, seed, models, backPlane, pointer })`：** 按[上节](#仪表模块与登记次序)的次序登记模块并建驾驶舱表现；不分配 GPU。返回 `{ presentation, messageLine, mapPicture, mapGeometry, diagnostics() }`；`diagnostics()` 为开发摘要 `CockpitDiagnostics`（tick、视角、左显示屏页、消息队列长度与 `messageDrops`、`radarNoiseDropped`、各记录上次绘制时刻、抽取数），开发面板经 `MissionDiagnostics.cockpitCounts()` 读取其中三项（[UI 模块说明](./ui.md#开发诊断)）。
 - **驾驶舱层：** [cockpit-layer.ts](../../../src/render/cockpit/composition/cockpit-layer.ts) 的 `createCockpitLayer({ cache, presentation, palettes })` 是 `cockpit` 槽的层：按当前布局把 S 的不透明行与 B 世界行中的被覆盖像素以该布局的调色板解析成一张 640 × 480 RGBA 纹理，每个逻辑像素按逻辑缩放最近邻放大；不测试也不写深度，所以世界深度（含 Warp 保留的深度）不变，屏幕闪光仍只由 P3-12 的屏幕阶段对整幅游戏图像作用一次。`changed()` 标记表面已推进，下次绘制才重新解析上传；没有 tick 的帧、重画与恢复的上下文显示同一画面。基地、0x13 与已释放的表现不画。`COCKPIT_GPU_PLAN` 为纹素 307,200、顶点/索引 0（三角形由顶点序号生成）、渲染目标 0。
-- **接线（`wireFlightRun` 的 `cockpit`）：** `FlightRunCockpit { content, copy, projection, map }`，`projection` 为运行的 tick 0 projection，`map` 为 `{ geometry, rightButton, pointer, revoked }`。内容须是运行的包代际与内容身份；驾驶舱在 `beginRun` 之前以 tick 0 的 Render State、projection、P3-12 相机与同一宿主种子创建，任何模块拒绝的内容或文案、未就绪的分区与另一包的内容都在 GPU 分配之前拒绝开始；`beginRun` 核对 `addGpuPlans(content.plan, COCKPIT_GPU_PLAN)`；层随 pass 之后加入。每帧先让 P3-12 的表现模块与各 pass 逐 tick 走完本帧全部 tick，再以同样的 tick（各带自己的 `TickOutput` 与步末相机，右键电平每批读一次）推进驾驶舱（DC-04；不建共享提示模型，D-02 DD-05），然后绘制一次。返回 `cockpit: { run, layer, mapPort }`。
-- **地图就绪：** 每运行一个 `createMapPresentationPort`。渲染器实际提交了本帧（成功绘制数增加）后以 `mapPicture.drawn()` 调 `submitted`；未提交（无布局、上下文丢失、设备不可用或失败）或绘制抛错时 `revoke`；渲染器离开 `ready` 时立即 `revoke`。所以输入只在画面实际显示后才就绪，而地图首帧从不等待输入（无死锁）；运行结束释放端口，旧运行迟到的提交不再授予。
-- **测试支持：** [cockpit-run.test-support.ts](../../../src/render/cockpit/composition/cockpit-run.test-support.ts) 的 `syntheticCockpitContent()` 等给出每个真实模块都接受的合成内容。检查：`pnpm exec vitest run src/render/cockpit src/render/flight/renderer src/app/mission`。
+- **接线（`wireFlightRun` 的 `cockpit`）：** `FlightRunCockpit { content, copy, projection, map }`，`projection` 为运行的 tick 0 projection，`map` 为 `FlightRunMap { geometry, rightButton, pointer, revoked }`。内容须是运行的包代际与内容身份；驾驶舱在 `beginRun` 之前以 tick 0 的 Render State、projection、P3-12 相机与同一宿主种子创建，任何模块拒绝的内容或文案、未就绪的分区与另一包的内容都在 GPU 分配之前拒绝开始；`beginRun` 核对 `addGpuPlans(content.plan, COCKPIT_GPU_PLAN)`；层随 pass 之后加入。每帧先让 P3-12 的表现模块与各 pass 逐 tick 走完本帧全部 tick，再以同样的 tick（各带自己的 `TickOutput` 与步末相机，右键电平每批读一次）推进驾驶舱（DC-04；不建共享提示模型，D-02 DD-05），然后绘制一次；没有 tick 的帧不推进、不读右键。返回 `cockpit: { run, layer, mapPort }`（`FlightRunCockpitWiring`）；每项取得都交给 `run.ownCleanup`，随运行释放。
+
+### 地图就绪与输入几何（P3-13/23）
+
+- **就绪凭证：** [map-presentation-port.ts](../../../src/render/map/map-presentation-port.ts) 的 `createMapPresentationPort({ geometry, revoked? })` 每运行一个。`cursor` 是地图输入的生产 `MapInputOptions.cursor()`：`draw()` 不绘制、不提交、不推进，只核对最近一次 `submitted(drawn())` 的凭证与当前几何的屏幕/主地图相同；`revoke()` 立即撤销并在确有凭证时调用 `revoked`（接 `GameInputConsumer.syncMap`）；`dispose()` 后迟到的提交被忽略。运行接线在渲染器实际提交了本帧（成功绘制数增加）后以 `mapPicture.drawn()` 调 `submitted`；未提交（无布局、上下文丢失、设备不可用或失败）或绘制抛错时 `revoke`；渲染器离开 `ready` 时立即 `revoke`。所以输入只在画面实际显示后才就绪，而地图首帧从不等待输入（无死锁）。
+- **生产几何：** [map-input-geometry.ts](../../../src/render/map/map-input-geometry.ts) 的 `createZoneGeometryPort({ logical, zone, shown })` 每次读取测量输入区（Pointer Lock 目标）与显示画面元素的盒，以 `zoneMapGeometry` 与 `mapPictureGeometry`（同一 `data/hud/map-geometry`，含端点记录的右/下边界为末列/末行 + 1）给出 `MapInputGeometry`；另有 `sameMapInputGeometry`、`sameLogicalGeometry`。项目十字光标（[map-cursor.ts](../../../src/render/map/map-cursor.ts)）只留给隔离入口。输入侧的契约见[键位文档](../keyboard-input.md#地图鼠标与光标)。
+
+### 驾驶舱的测试支持与检查
+
+- **表现基础：** [cockpit.test-support.ts](../../../src/render/cockpit/presentation/cockpit.test-support.ts) 的 `cockpitContent`、`syntheticProjection`、`syntheticRender`、`syntheticCamera`、`syntheticInitial`、`cockpitTick(s)`、`cockpitBatch`、`viewSwitched`、`syntheticEvent`、`supportModule`（补齐未测类型并记录钩子调用）、`createTestPresentation` 与 `isolatedDrawContext`（单独调用一个处理器）。
+- **各模块：** [messages.test-support.ts](../../../src/render/cockpit/messages/messages.test-support.ts)（合成字体、读字形、G-03 文案）、[left-display.test-support.ts](../../../src/render/cockpit/left-display/left-display.test-support.ts)、[target-display.test-support.ts](../../../src/render/cockpit/target-display/target-display.test-support.ts)、[overlay.test-support.ts](../../../src/render/cockpit/overlay/overlay.test-support.ts)、[map-picture.test-support.ts](../../../src/render/cockpit/map-picture/map-picture.test-support.ts) 各自给出合成内容与输入。
+- **运行装配：** [cockpit-run.test-support.ts](../../../src/render/cockpit/composition/cockpit-run.test-support.ts) 的 `syntheticCockpitContent()`、`syntheticCockpitCopy()`、`syntheticModels()` 给出每个真实模块都接受的合成内容。
+- **真实链（26）：** [cockpit-integration.test-support.ts](../../../src/render/cockpit/cockpit-integration.test-support.ts) 的合成场景经正式 Core→Runtime→Session 运行 200 tick，`play(frameSizes)` 按给定的帧分组交付，`wire()` 照 `wireFlightRun` 的次序（无渲染器）先逐 tick 推进 P3-12 的真实表现模块、再推进 `createCockpitRun` 的全部真实模块，`oneTickAtATime()` 为逐 tick 参照；[cockpit-integration.test.ts](../../../src/render/cockpit/cockpit-integration.test.ts) 以它核对 1×5、5、2+0+3 分组一致（AC-03）、有无驾驶舱时 Core 事件与世界 RNG 相同（AC-04）、DC-04 的拒绝批次与截断。该文件以顶层 `vi.mock` 包装 Core 的创建入口，在 Vitest 的 isolated 项目中运行。资源回滚与暖态计数见 [cockpit-lifecycle.test.ts](../../../src/render/cockpit/composition/cockpit-lifecycle.test.ts)。
+- **检查：** Node：`pnpm exec vitest run src/render/cockpit src/render/map src/render/flight/renderer src/app/mission`；边界：`pnpm exec vitest run tools/engineering-boundaries.test.ts -t cockpit`。浏览器回归（`cockpit.*`、`map-picture.*`、`cockpit-lifecycle`）见[工程约定](../README.md#本地浏览器-runner)。
+
+### 交接（P3-13）
+
+P3-13 的实现、对照与判定记录在各子任务的完成证据中，判定汇总见 [32 的完成证据](../../plan/p3/13/subtasks/32-presentation-verdicts.md#完成证据)。
+
+- **P3-14（飞行音效）：**
+  - **没有共享提示模型（[D-02 定稿](../../plan/p3/13/spec.md#d-02-定稿09)）：** 锁定音、9 型警告音与相应绘制之间没有共同状态。驾驶舱与音效消费者各自按 tick 升序消费同一批 `outputs`，只读每项同 tick 的 `projection`：`flight.combat.player.lock.progress`（含 −1/0 哨兵）、玩家目标、视角与子模式、两项已采样的警告标志；双方互不导入、不代为推进、不读对方状态，之间没有次序依赖，由应用分别登记（DD-05）。本任务不导出“叠加已调用”之类的派生事实，也不保留脉冲流（DD-04）；声音侧的状态与文件位置由 P3-14 决定。驾驶舱的锁定与警告只读同 tick projection 已由 26 以真实模块核对（[26 的完成证据](../../plan/p3/13/subtasks/26-replay-contract-integration.md#完成证据)）。
+  - **警告位置的切换：** 当前读取 main 的 `communications.player.warnings { attackerOnTail, missileIncoming }`（[indicator-strip.ts](../../../src/render/cockpit/overlay/indicator-strip.ts)）。P3-14 合入 FA-01 时，在同一次合并中改读分区级 `communications.warnings`，删除旧读取，不留别名、不双读；没有玩家时警告保留 Core 的已采样值，不由消费者填 false。
+  - **可达性冲突：** 07/32 依 hud §4.8 的绘制规则与截图中两段指示条的擦除态推断，两项 9 型警告在所选任务第一关中都出现过（高概率，代码与截图推断；[32 的完成证据](../../plan/p3/13/subtasks/32-presentation-verdicts.md#完成证据)的 I9 与 Q-13）。这与 P3-14 分支上 A-07 的“所选任务中不可达（高概率）”及其 D1-11 的前提冲突，须由 P3-14 复核；本任务不据 D1-11 豁免类型 9 的对照。
+  - **尾随警告的攻击者遍历：** main 的 Core `checkTail` 不遍历攻击者，`attackerOnTail` 恒为假（[Core 交接](./core.md#交接)中 P3-08 一条的“来自 P3-10”），所以类型 9 的机体标签与僚机的尾随来电目前不会出现。该规则更正属 P3-14 已批准的 D1-03（FA-01，P3-14/08），已在其分支提交 `3cd624f8` 中实现，本任务不重复实现。合入后须端到端复验 AC-14 的机体标签与 AC-21 的“规则副作用已交还且解决”（spec [与 P3-14 的关系](../../plan/p3/13/spec.md#与-p3-14-的关系)，依用户 2026-10-28 的授权列为跨任务剩余动作）。
+  - **同名字段与版本：** P3-02 CK-03 的 `MotionPlayer.recordMaximumSpeed` 与 FA-03 同名同义，合并时只保留一份定义。P3-13/12 已相对其集成基线把 `RULES_VERSION` 递增为 10、快照格式递增为 9（replay 格式仍为 3，[Core 的快照与 replay](./core.md#快照录制replay-与比较)）；P3-14 合入时按“相对实际集成基线各递增一次”重新核对（CK-05）。
+  - **装配位置：** 驾驶舱在 `wireFlightRun` 中登记；音效消费者另行登记、读同一 `outputs`，不经驾驶舱或其层。P3-12 一侧的表现模块接口见下文 P3-12 的[交接](#交接)。
+- **P3-15（联合验收）：**
+  - **已验证（本任务范围内）：** 合成内容的 Node 与浏览器回归——各仪表与地图元素的像素（16–22）、真实链的分帧一致与 Core 不变（26）、合成包的驾驶舱与地图画面（27、28，含生产输入、Pointer Lock、右键与 Δ-09）、单画布与资源平衡、深度、上下文丢失与恢复、预算与故障（29）；31 以真实内容走通 F1、选目标、通讯、地图选点、Warp、停靠与离港，32 对有可比原版样本的元素判为一致（静态区域 0 差异与元素对照）。逐元素的分列判定只在 32 的完成证据中。
+  - **外部前提：** P3-14 合入（警告位置切换、尾随攻击者遍历、音效与 `FLIGHT_IN_PROGRESS` 的移除，见[在制标注](../slice-gaps.md#在制标注非-g-项)）；用户补采会话（下一条）。
+  - **经批准的证据缺口：** 依 spec 的[执行期决定及其补充](../../plan/p3/13/spec.md#原版证据途径与-dosbox-x-的使用)，M-1、M-2、M-3、M-4、M-7、M-8 的原版外观，以及非 M 的地图友方圆盘之并与主图单位标记、类型 9 在截图 `114`–`117` 的 1 像素残差、右显示屏设备重建后的首批像素（U-034）与真实内容中被毁视角的槽 7 消息行与标签，都记为经批准的证据缺口：不是通过、不是豁免，AC-12/14/15/16 中“须为一致”的子句在外观一栏仍未满足；M-5、M-6 按缺证表的“否则”列（保留外观等价高概率、节奏为运算级）。恢复方式为用户按私有 `local/research/p3-13/comparison-plan/missing-evidence.md` 的配方在一次基准会话中补采，再由新的验证项按冻结判据复核，不改写 32 的记录。
+  - **联合复验范围：** 真实内容中的被毁视角（槽 7 消息行与视角标签，AC-23）；P3-14 合入后类型 9 机体标签与僚机尾随来电的端到端（AC-14、AC-21）；真实任务中从基地打开地图、停靠中与地图中被毁等跨任务路径的驾驶舱与地图画面；包含驾驶舱的完整闭环 replay（有无驾驶舱的事件流与周期哈希相同，26 的做法）与浏览器复验。节奏只到运算级（2 单位/tick，U-021），真实秒/帧结论须在 U-021 冻结后另测。
 
 ## 飞行渲染（P3-12）
 
@@ -202,11 +282,12 @@ related: [ADR-0009, ADR-0015]
 - **P3-13（驾驶舱、HUD 与地图画面）：** 已由 P3-13/24 接入（[运行装配](#运行装配p3-1324)）；以下为当时的接口约定。
   - **接入层：** 在同一画面、同一 WebGL 上下文中以 `FlightRunRender.addLayer` 登记 `slot: 'cockpit'` 的层（可以多个，按加入次序），只按逻辑坐标绘制（`frame.logicalCamera`、`frame.logical`），不自建画布或循环；层画入游戏图像，所以屏幕闪光同样作用于它。运行的 `FlightRunRender` 现在只在 `wireFlightRun` 的返回值中（[flight-consumer.ts](../../../src/app/mission/flight-consumer.ts) 的 `attachRun` 没有保留它）；P3-13 在同一接线中取得它，并把自己的 GPU 计划并入运行开始时由 `beginRun` 核对的计划（`addGpuPlans`），使预算在任何分配之前核对；资源从 `render.resources` 取得，随运行释放。
   - **视角信息：** 每帧的 `CompositionFrame` 给出 `viewMode`、`subMode`、`view`、当前 Render State（`render.current`）与最新 projection（总计划 §5：HUD 逐帧读取，不经 store）；世界视口（`world.viewport`，F1 与 Warp 为行 0–315）以外的区域目前为黑。驾驶舱槽在每个视角都被调用，6、8、0x13 只有它；视角标签、地图与基地画面由 P3-13 按视角决定。一次性提示可用 `view-switched`（FS-11）。
-  - **在制提示：** 驾驶舱与 HUD 接入后，移除任务壳的 `flight-in-progress` 提示，并更新 [mission-copy.ts](../../../src/ui/mission/mission-copy.ts) 的 `FLIGHT_IN_PROGRESS` 与 `MISSION_SKELETON`（[在制标注](../slice-gaps.md#在制标注非-g-项)）。
+  - **在制提示（已由 P3-13/25 完成）：** 驾驶舱与 HUD 接入后，覆盖飞行区域的驾驶舱在制提示已移除，[mission-copy.ts](../../../src/ui/mission/mission-copy.ts) 的 `MISSION_SKELETON` 不再说没有驾驶舱与 HUD，`FLIGHT_IN_PROGRESS` 只剩 P3-14 的音效，显示在画面之外的状态栏（[在制标注](../slice-gaps.md#在制标注非-g-项)）。
 - **P3-14（飞行音效）：**
   - **`PresentationTick` 与激活流：** 读同一运行的同一表现模块实例（`wireFlightRun` 返回的 `presentation`，目前同样未经 flight consumer 暴露，P3-14 在该接线中取得）。`subscribe` 每个 tick 通知一次 `PresentationTick { ownerId, runId, tick, clock, beforeStep, afterStep, activations }`；`wireFlightRun` 逐 tick 推进，所以通知在该 tick 的 pass 推进之前、本帧绘制之前到达。`activations` 先列 Core 爆炸（`origin.eventIndex` 为其 `explosion-started` 在该 tick 事件中的下标），再列表现层爆炸；每次激活只通知一次，迟订阅者从 `explosions()` 恢复、不重播；静止帧没有通知；重试是新实例。爆炸音效取所选 EXPL 项（`selection`）的声音，不另行抽取。
   - **相机：** 听者用 `afterStep`（未插值、tick 结束时，所有支持的视角都有；6、8、0x13 为座机位姿）；`viewport` 是含端点的逻辑像素矩形，不输出投影坐标；退化的被毁相机可给出零行。
+  - **与驾驶舱的关系：** P3-13 的 D-02 定稿不建共享提示模型，锁定与警告的声音另读同 tick projection，见 P3-13 的[交接](#交接p3-13)。
   - **09 记录的接口差异（交其 D-02）：** 见 [09 的完成证据](../../plan/p3/12/subtasks/09-d01-contract-gate.md#完成证据)的对齐表：同 tick 的表现层激活排在 Core 之后（FS-10 决定 8，已批准）；运动块速度、`shot-fired` 与 `hit` 的行与速度不在 D-01 中，须 P3-14 按 P3-02 扩展规则另加；“移除”以 `display: 'released'` 还是离表为准、`explosion-created`、`view-switched` 与 `warp-wall-contact` 的处理分类、爆炸存活期内是否重放，由 P3-14 决定。
 - **P3-15（联合验收）：**
-  - **被毁视角的真实流程：** P3-11 尚未接入被毁进入；被毁相机只以合成状态验证（14 的 Node 测试，25 的隔离入口 `flight-scenes` 的 destruction view 用例），真实的死亡、被毁视角、救援转换与 F1 门禁在 P3-11 接入后由 P3-15 在真实规则输出下验证，不计为 P3-12 已走通。
+  - **被毁视角的真实流程：** P3-12 交付时 P3-11 尚未接入被毁进入，所以被毁相机只以合成状态验证（14 的 Node 测试，25 的隔离入口 `flight-scenes` 的 destruction view 用例），不计为 P3-12 已走通。P3-11 现已接入；真实的死亡、被毁视角、救援转换与 F1 门禁仍由 P3-15 在真实规则输出下验证（P3-13 的真实内容运行也未到达被毁视角，见 P3-13 的[交接](#交接p3-13)）。
   - **对照证据的位置：** 原版事实与置信度在 executable 的 [Flight scene rendering (P3-12)](../../original/formats/executable.md#flight-scene-rendering-p3-12) 与 [unknowns](../../original/unknowns.md)；冻结的对照方案在被忽略的 `local/research/p3-12/comparison-plan/`（`plan.md` 与星点、速度尘埃附录 `addendum-q14.md`，指纹见 [08](../../plan/p3/12/subtasks/08-original-records-comparison-plan.md#完成证据)、[30](../../plan/p3/12/subtasks/30-stars-speed-dust-research.md#完成证据) 的完成证据）；真实内容配对（[26](../../plan/p3/12/subtasks/26-real-content-comparison.md)）与表现判定（[27](../../plan/p3/12/subtasks/27-presentation-verdicts.md)）在本文写成时尚未完成，按计划分别输出到被忽略的 `local/research/p3-12/real-content/` 与 `local/research/p3-12/verdicts/`，完成后由各自的完成证据记录结构、计数与判定，P3-15 以那里为准；浏览器的合成读回与上述未自动验证的项见 [25 的完成证据](../../plan/p3/12/subtasks/25-browser-regression.md#完成证据)。

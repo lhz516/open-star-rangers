@@ -90,7 +90,7 @@ export const HUD_TEXT_FORMATS = Object.freeze({
   mapMarkerName: VERBATIM,
 
   // Strategic map, instrument type 10 (`0x49f8c`).
-  /** `0x171d18`: every map frame, at the top left of the main map. */
+  /** `0x171d18`: every map frame, at the zoom window's origin + (4, 4). */
   mapCornerLabel: VERBATIM,
   /** `0x171d10`: beside the marker and the cursor, the value computed through the Warp cost routine `0x30d2c`. */
   mapWarpCostReadout: format('%d', '%%'),
