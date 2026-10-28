@@ -106,7 +106,7 @@ updated: 2026-10-28
 | [28-browser-map.md](./subtasks/28-browser-map.md) | 25 | completed |
 | [29-browser-lifecycle.md](./subtasks/29-browser-lifecycle.md) | 27, 28 | completed |
 | [30-real-content-import.md](./subtasks/30-real-content-import.md) | 11 | completed |
-| [31-real-content-pictures.md](./subtasks/31-real-content-pictures.md) | 27, 28, 30 | in-progress |
+| [31-real-content-pictures.md](./subtasks/31-real-content-pictures.md) | 27, 28, 30 | completed |
 | [32-presentation-verdicts.md](./subtasks/32-presentation-verdicts.md) | 07, 26, 29, 31 | pending |
 | [33-documentation-handoff.md](./subtasks/33-documentation-handoff.md) | 32 | pending |
 | [35-ai-wingman-map-regression.md](./subtasks/35-ai-wingman-map-regression.md) | 27, 28 | completed |
