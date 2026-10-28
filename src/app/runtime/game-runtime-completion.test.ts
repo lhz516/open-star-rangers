@@ -59,6 +59,7 @@ describe('the completion cut of a real run', () => {
       outputs: expect.objectContaining({ length: ticks }) as unknown,
     });
     expect(Object.isFrozen(report) && Object.isFrozen(report.completion)).toBe(true);
+    expect(report.outputs.at(-1)?.projection).toBe(runtime.projection());
     // The completion tick is delivered in full, `mission-completed` last; its read model is the final one.
     expect(log.at(-1)).toBe(`mission-completed@${SUCCESS_COMPLETION_TICK}`);
     expect(runtime.projection()).toMatchObject({

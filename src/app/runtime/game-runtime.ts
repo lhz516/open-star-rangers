@@ -24,9 +24,9 @@
  * lifecycle clean-up stay available. A tick with both `transition` and `mission-completed` breaks Core's contract and
  * faults the Runtime.
  *
- * Per-tick outputs (docs/plan/p3/04/spec.md, 帧后逐 tick 输出（P3-12 的修订）): the frame report carries each
- * successful tick's Render State and events, the same objects the read model and the Event Bus receive, so a consumer
- * can advance tick by tick after the frame without a second dispatch. A frame that throws reports nothing, and the
+ * Per-tick outputs (docs/plan/p3/04/spec.md, 帧后逐 tick 输出（P3-12 的修订）; 帧后同 tick projection（P3-13 的修订）): the
+ * frame report carries each successful tick's Render State, projection and events, the same objects the read model and
+ * the Event Bus receive, so a consumer can advance tick by tick after the frame without a second dispatch. A frame that throws reports nothing, and the
  * Runtime keeps no outputs beyond the report it returns.
  */
 import type { DomainEvent, MissionCompletedEvent, TransitionEvent } from '../../core/contracts/domain-events.ts';
@@ -84,13 +84,14 @@ export interface FrameCompletion {
 /** One event of a tick as the Event Bus dispatched it: the same frozen event and its delivery `commandId`. */
 export type TickEvent = PendingDelivery;
 
-/** One successful tick: its Render State (the object the read model took), and its events in emission order. */
+/** One successful tick: its Render State and projection (the objects the read model took), and its events in emission order. */
 export interface TickOutput {
-  /** === render.tick */
+  /** === render.tick === projection.clock.tick */
   readonly tick: number;
-  /** === render.clock */
+  /** === render.clock === projection.clock.clock */
   readonly clock: number;
   readonly render: RenderState;
+  readonly projection: Projection;
   readonly events: readonly TickEvent[];
 }
 
@@ -111,7 +112,8 @@ export interface FrameReport {
   readonly completion: FrameCompletion | null;
   /**
    * Each successful tick in ascending order, `ticks` items: empty for a 0-tick frame, up to the cut tick in a cut frame,
-   * the prefix before the refused tick in a stopped frame. The last item's render is renderFrame().current.
+   * the prefix before the refused tick in a stopped frame. The last item's render is renderFrame().current and its
+   * projection is projection().
    */
   readonly outputs: readonly TickOutput[];
 }
@@ -431,7 +433,7 @@ class Runtime implements GameRuntime {
       this.#projection = projection;
       this.#previous = this.#current;
       this.#current = render;
-      outputs.push(Object.freeze({ tick: render.tick, clock: render.clock, render, events: tickEvents }));
+      outputs.push(Object.freeze({ tick: render.tick, clock: render.clock, render, projection, events: tickEvents }));
     } catch (cause) {
       throw this.#failRun(cause, undelivered);
     }

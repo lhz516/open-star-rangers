@@ -206,7 +206,7 @@ describe('session notification boundary', () => {
 });
 
 describe('per-tick frame outputs', () => {
-  it('hand frame consumers each tick\'s outputs after the domain delivery, as the same objects, once', () => {
+  it('hand frame consumers each tick\'s outputs, its own projection included, after the domain delivery, as the same objects, once', () => {
     const { host, session, run } = started(), log: string[] = [], seen: DomainEvent[] = [], frames: GameSessionFrame[] = [];
     run.onAny((event) => { seen.push(event); log.push('event'); });
     run.onFrame((frame) => { frames.push(frame); log.push(`frame:${frame.report?.outputs.length ?? null}`); });
@@ -215,9 +215,11 @@ describe('per-tick frame outputs', () => {
     host.deliver(3 * TICK_MS);
     expect(log.at(-1)).toBe('frame:3');
     expect(log.slice(0, -1).every((entry) => entry === 'event')).toBe(true);
-    const { report, render } = frames[1];
+    const { report, render, projection } = frames[1];
     if (!report) throw new Error('expected a report');
     expect(report.outputs.map((output) => output.tick)).toEqual([1, 2, 3]);
+    expect(report.outputs.map((output) => output.projection.clock.tick)).toEqual([1, 2, 3]);
+    expect(report.outputs.at(-1)?.projection).toBe(projection);
     expect(report.outputs.at(-1)?.render).toBe(render.current);
     expect(report.outputs.at(-2)?.render).toBe(render.previous);
     const events = report.outputs.flatMap((output) => output.events.map((item) => item.event));

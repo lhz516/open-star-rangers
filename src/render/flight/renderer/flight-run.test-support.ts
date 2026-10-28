@@ -1,16 +1,17 @@
-import type { FrameReport } from '../../../app/runtime/game-runtime.ts';
+import type { FrameReport, TickOutput } from '../../../app/runtime/game-runtime.ts';
 import type { GameSessionFrame } from '../../../app/session/game-session.ts';
 import type { SessionCleanup } from '../../../app/session/session-host.ts';
 import type { SceneSettings } from '../../../content/flight/flight-data-content.ts';
 import { readSceneSettings } from '../../../content/flight/flight-data-readers.ts';
 import { syntheticSceneSettings } from '../../../content/flight/flight-data.test-support.ts';
 import type { ImagePayload } from '../../../content/graphics/image-payload.ts';
+import type { Projection } from '../../../core/projections/projection.ts';
 import type { RenderState } from '../../../core/projections/render-state.ts';
 import { attemptAll } from '../../scene/cleanup.ts';
 import { DATA, grey } from '../lighting/lighting.test-support.ts';
 import { objectContent } from '../objects/objects.test-support.ts';
 import type { PresentationTickInput } from '../presentation/presentation-contract.ts';
-import { presentationContent, renderState } from '../presentation/presentation.test-support.ts';
+import { CLOCK_STEP, presentationContent, renderState } from '../presentation/presentation.test-support.ts';
 import { thresholdsImage } from '../shimmer/shimmer.test-support.ts';
 import type { FlightRunHandle } from './flight-run.ts';
 import { prepareFlightContent, type FlightRunContent, type PreparedFlightContent } from './flight-passes.ts';
@@ -54,12 +55,23 @@ export function flightRunContent(): FlightRunContent {
 
 export const preparedContent = (): PreparedFlightContent => prepareFlightContent(flightRunContent());
 
+/**
+ * A stand-in for the projection of `render`'s tick (docs/plan/p3/04/spec.md, 帧后同 tick projection): only its clock,
+ * which agrees with `render`; the flight run and its passes read no projection field.
+ */
+export const projectionOf = ({ tick, clock }: RenderState): Projection =>
+  Object.freeze({ clock: Object.freeze({ tick, clock, clockUnitsPerTick: CLOCK_STEP }) }) as unknown as Projection;
+
+/** The Runtime's `TickOutput` for `input`: the same tick, Render State and events, with that tick's own projection. */
+export const tickOutput = (input: PresentationTickInput): TickOutput =>
+  Object.freeze({ ...input, projection: projectionOf(input.render) }) as TickOutput;
+
 /** A run handle the test drives: its cleanups run newest first at `end`, and `deliver` notifies its frame listeners. */
 export function fakeRun(runId = 1, initial: RenderState = renderState(0)) {
   const cleanups: SessionCleanup[] = [];
   const listeners = new Set<(frame: GameSessionFrame) => undefined>();
   const log: string[] = [];
-  const state = { refuse: undefined as unknown, previous: initial, current: initial };
+  const state = { refuse: undefined as unknown, previous: initial, current: initial, projection: projectionOf(initial) };
   const run: FlightRunHandle = {
     runId,
     renderFrame: () => ({ previous: state.current, current: state.current, alpha: 0 }),
@@ -73,16 +85,21 @@ export function fakeRun(runId = 1, initial: RenderState = renderState(0)) {
       return cleanup;
     },
   };
-  /** A frame of `outputs`, null for a still frame, drawn at `alpha` between the last two Render States. */
+  /**
+   * A frame of `outputs` as the Runtime reports them (each with its tick's projection), null for a still frame, drawn at
+   * `alpha` between the last two Render States; the frame's projection is the last tick's.
+   */
   const deliver = (outputs: readonly PresentationTickInput[] | null, alpha = 0) => {
-    const last = outputs?.at(-1)?.render;
+    const ticks = outputs && Object.freeze(outputs.map(tickOutput));
+    const last = ticks?.at(-1);
     if (last) {
-      state.previous = outputs!.length > 1 ? outputs!.at(-2)!.render : state.current;
-      state.current = last;
+      state.previous = ticks!.length > 1 ? ticks!.at(-2)!.render : state.current;
+      state.current = last.render;
+      state.projection = last.projection;
     }
-    const report = outputs && ({ outputs } as unknown as FrameReport);
+    const report = ticks && ({ outputs: ticks } as unknown as FrameReport);
     const render = { previous: last ? state.previous : state.current, current: state.current, alpha: last ? alpha : 0 };
-    const frame = { runId, phase: 'running', render, projection: null, report } as unknown as GameSessionFrame;
+    const frame = { runId, phase: 'running', render, projection: state.projection, report } as unknown as GameSessionFrame;
     for (const listener of [...listeners]) listener(frame);
   };
   const end = () => attemptAll([...cleanups].reverse());

@@ -213,14 +213,17 @@ describe('GameRuntime failure frames', () => {
     expect(runtime.frame(2 * TICK_MS)).toEqual({ ticks: 1, capped: false, stop: null, cut: null, transitions: [], completion: null, outputs: [expect.objectContaining({ tick: 2 })] });
   });
 
-  it('reports each tick\'s Render State as the read model extracted it, intermediate ticks included', () => {
+  it.each([['renderState', 'render'], ['projection', 'projection']] as const)('reports each tick\'s %s as the read model extracted it, once, intermediate ticks included', (method, field) => {
     const { runtime } = prepared(0, null);
     let extracted: unknown;
-    injection.arm('renderState', 3, (real) => (extracted = real()));
+    injection.arm(method, 3, (real) => (extracted = real()));
     const report = runtime.frame(5 * TICK_MS);
     expect(report.outputs.map((output) => output.tick)).toEqual([1, 2, 3, 4, 5]);
     expect(extracted).toBeDefined();
-    expect(report.outputs[2].render).toBe(extracted);
+    expect(report.outputs[2][field]).toBe(extracted);
+    // One extraction per successful step; reading the report or the read model extracts nothing more.
+    expect(runtime.projection()).toBe(report.outputs[4].projection);
+    expect(injection.calls(method)).toBe(5);
   });
 
   it('a recording refusal stops after delivering the earlier ticks: the refused tick changes nothing and the recording exports', () => {
@@ -233,6 +236,8 @@ describe('GameRuntime failure frames', () => {
     const report = runtime.frame(5 * TICK_MS);
     expect(report).toEqual({ ticks: 2, capped: false, stop: 'recording-capacity', cut: null, transitions: [], completion: null, outputs: [expect.objectContaining({ tick: 1 }), expect.objectContaining({ tick: 2 })] });
     expectSameDeliveries(report, deliveries);
+    expect(report.outputs.map((output) => output.projection.clock.tick)).toEqual([1, 2]);
+    expect(report.outputs[1].projection).toBe(runtime.projection());
     expect(new Set(delivered.map((event) => event.tick))).toEqual(new Set([1, 2]));
     expect(delivered.filter((event) => event.type === 'command-result')).toHaveLength(128);
     expect(refused).toMatchObject({ kind: 'recording-capacity', cause });

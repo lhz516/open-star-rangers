@@ -92,6 +92,8 @@ describe('the transition cut', () => {
     expect(deliveries.some(({ commandId }) => commandId === 1)).toBe(true);
     expect(report.outputs[2].events.at(-1)?.event).toMatchObject({ type: 'transition', gap: 'G-02/3', tick: 3 });
     expect(report.outputs[2].render).toBe(runtime.renderFrame().current);
+    expect(report.outputs[2].projection).toBe(runtime.projection());
+    expect(report.outputs.map((output) => output.projection.clock.tick)).toEqual([1, 2, 3]);
     runtime.releaseTransitionBarrier();
     runtime.resetClock();
     expect(runtime.frame(100 * TICK_MS).outputs).toEqual([]);
