@@ -42,6 +42,7 @@ updated: 2026-10-28
 - `docs/engineering/slice-gaps.md`：G-03/G-05与在制标注。
 - `docs/engineering/modules/ui.md`：新读者/错误说明。
 - `src/app/composition/cockpit-copy.ts`：24 留下的临时文案注入点，替换为 25 的正式文案（协调者增补）。
+- `src/app/mission/cockpit-content.test.ts`：仅删除临时文案的断言块（25 的范围请求，协调者批准）。
 - `src/ui/dev/*.ts`、`src/ui/dev/*.tsx`：仅在开发面板显示驾驶舱诊断计数（`messageDrops`、`radarNoiseDropped`，协调者增补）。
 
 ## 验收标准
