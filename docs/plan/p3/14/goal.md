@@ -98,7 +98,7 @@ updated: 2026-10-28
 | [22-browser-audio-output.md](./subtasks/22-browser-audio-output.md) | 18, 19, 20 | completed |
 | [23-browser-lifecycle-resources.md](./subtasks/23-browser-lifecycle-resources.md) | 22 | completed |
 | [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | completed |
-| [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | in-progress |
+| [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | completed |
 | [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | pending |
 | [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23, 26 | pending |
 | [29-full-e2e-remediation.md](./subtasks/29-full-e2e-remediation.md) | 23 | completed |
