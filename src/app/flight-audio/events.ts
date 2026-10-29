@@ -217,7 +217,8 @@ const READINGS: { readonly [Type in DomainEventType]: Reading<Type> } = {
   // Only a command's page change posts 10485; a direct page write does not (A-10).
   'left-page-changed': ({ commandIndex }) => (commandIndex === null ? silent('condition') : byId(EVENT_SOUNDS.keyCommand)),
   'map-toggled': noSound,
-  // Once per event, also at an unchanged point (MW-05).
+  // Once per event, also at an unchanged point (MW-05) and for each select a held button repeats (P3-05: every 8 clock
+  // units, the original's read spacing, so every read has its event; A-10).
   'warp-destination-set': played(EVENT_SOUNDS.mapDestination),
   'warp-started': played(EVENT_SOUNDS.warpStart),
   'warp-completed': ({ arrival }) => (arrival?.hostileNear ? byId(EVENT_SOUNDS.warpArrival) : silent('condition')),

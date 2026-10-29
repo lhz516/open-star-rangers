@@ -92,7 +92,7 @@ updated: 2026-10-28
 | [16-run-audio-consumer.md](./subtasks/16-run-audio-consumer.md) | 11, 12, 13, 14, 15 | completed |
 | [17-owner-audio-lifecycle.md](./subtasks/17-owner-audio-lifecycle.md) | 16, 20 | pending |
 | [18-audio-ui-composition.md](./subtasks/18-audio-ui-composition.md) | 17 | pending |
-| [19-rule-event-integration.md](./subtasks/19-rule-event-integration.md) | 16 | in-progress |
+| [19-rule-event-integration.md](./subtasks/19-rule-event-integration.md) | 16 | completed |
 | [20-presentation-integration.md](./subtasks/20-presentation-integration.md) | 16 | in-progress |
 | [21-runtime-replay-boundaries.md](./subtasks/21-runtime-replay-boundaries.md) | 19, 20 | pending |
 | [22-browser-audio-output.md](./subtasks/22-browser-audio-output.md) | 18, 19, 20 | pending |
