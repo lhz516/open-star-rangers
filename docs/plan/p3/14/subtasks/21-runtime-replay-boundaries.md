@@ -36,6 +36,7 @@ updated: 2026-10-15
 - `src/app/flight-audio/replay.test.ts`：多音频状态一致性。
 - `tools/engineering-boundaries.test.ts`：新模块正反边界测试。
 - `eslint.config.js`：如现有规则未覆盖，按相同模式增加限定边界。
+- `docs/engineering/README.md`：仅在“lint 规则”列表中加入 flight-audio 边界规则的一条（协调者 2026-10-28 扩展）。
 
 ## 验收标准
 
