@@ -2,7 +2,7 @@
 type: format
 status: draft
 phase: P0
-updated: 2026-10-28
+updated: 2026-10-29
 related: [U-004, U-016, U-021, U-027]
 ---
 
@@ -248,6 +248,7 @@ P3-14/01–04 traced, read-only and static, how flight sounds are triggered, all
   3. below the cap: count + 1, and the lowest-index inactive voice is used;
   4. at the cap: without preemption give up (−9, nothing changes); with preemption end the **lowest-index voice whose class slot matches**, without testing whether it is active, and reuse it (count unchanged).
 - Preemption is by voice index, not by age. **Edge (Confirmed, code; frequency Unconfirmed):** the class slot +0x1C is never cleared and is 0 (class 1) in never-used voices, so step 4 can take an inactive voice with a stale slot; then nothing is cut, the class runs one voice over its cap and its count later under-runs. Stop-all and re-initialisation reset the counts. A voice that ended naturally stays counted until step 1 or `0x53b54` reaps it.
+  - **Reachability of the edge (Likely: reasoning from these code rules plus simulation, P3-14/12):** from counts that match the held records, allocation (lowest inactive voice), preemption (lowest voice whose slot matches), the reap, a handle stop and stop-all never reach it: whenever a class is at its cap, its lowest matching-slot voice is held. A drift therefore needs some other path to unmatched counts (P3-14/12 named the mode switch's re-initialisation as a candidate; no such path was traced). A 40-seed × 300-step model comparison and 20,000 offline random sequences never drifted.
 - **Start `0x53bf0`:** (re)initialises the Miles sample, sets rate (SND header), volume 127, pan 64, loop count, type and address, starts it, marks it active and unpaused and stores the handle when asked; it returns −7 without a driver and −4 when allocation fails.
 
 | Caller | Sound | Class (cap) | Preempt | Handle kept |

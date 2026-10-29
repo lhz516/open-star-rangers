@@ -100,7 +100,7 @@ updated: 2026-10-28
 | [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | completed |
 | [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | completed |
 | [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | blocked |
-| [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23 | in-progress |
+| [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23 | blocked |
 | [29-full-e2e-remediation.md](./subtasks/29-full-e2e-remediation.md) | 23 | completed |
 | [30-start-gain-remediation.md](./subtasks/30-start-gain-remediation.md) | 22 | completed |
 | [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29, 30 | pending |
@@ -136,6 +136,11 @@ updated: 2026-10-28
   Affected acceptance: AC-15；26 的三项验收；28。
   Resume when: 用户在试听页完成判定并给出导出的 JSON（或对具体项明确批准差异处置）；协调者据此记录 26 的完成证据，不一致项另开修复子任务。
 - **2026-10-29 — 27 的依赖调整：** 依用户 2026-10-28 的授权，把 27 的依赖由 21、23、26 改为 21、23，使工程文档与交接不必等人耳判定；27 的 V-06 交接中感知一栏标为“待 26”，由 26 完成后补齐，28 仍依赖 26。
+- **2026-10-29 — Subtask 27 blocked:** 文档与 V-06 交接已写完并集成（感知一栏待 26），验收第 3 项要求在 30 之后的代码上重跑有头的真实隐藏用例，但屏幕处于锁定状态（`CGSSessionScreenIsLocked`，空闲约 4.8 小时），有头窗口一开始就是隐藏的，无法运行。
+  Evidence: `native-lifecycle.spec.ts:101`（development-headed）、`audio-playback.spec.ts:86`、`mission-flow.development.spec.ts:847` 失败于窗口初始隐藏，与 30 的基线失败相同；其余 41 个开发/生产用例通过，`pnpm check` 与 `pnpm check:compliance` 通过。
+  Affected acceptance: 27 的第 3 项（AC-12、AC-16 的有头复验），28。
+  Resume when: 屏幕解锁后在协调者检出中运行 `pnpm test:e2e --project=development-headed e2e/native-lifecycle.spec.ts` 与 `pnpm test:e2e --project=development e2e/audio-playback.spec.ts e2e/mission-flow.development.spec.ts`，全部通过后补 27 的完成证据并标记完成。
+- **STATUS 提议（27）：** 下次更新 P3-14 摘要时写明实现与工程文档已完成，V-06 感知待 26 的人耳判定。
 
 ## 审批
 

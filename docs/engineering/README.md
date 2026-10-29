@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P1
-updated: 2026-10-28
+updated: 2026-10-29
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -206,6 +206,11 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
   - **地图：** [map-picture.development.spec.ts](../../e2e/map-picture.development.spec.ts) 与 [map-picture.production.spec.ts](../../e2e/map-picture.production.spec.ts) 核对地图画面（地图调色板、元素与无项目十字光标）、首帧先画后就绪、右键标签与 16 tick 节奏、首次锁定不选点、`m` 与两次 Escape、像素比 2、失焦/解锁/暂停清右键（Δ-09）、E = 0 的项目标记、信息窗越界、旧转换器版本不恢复与几何不符的拒绝。[map-picture.ts](../../e2e/support/map-picture.ts) 在 Node 中以 `cockpitContentOf` 解码同一合成包，用真实地图模块绘制浏览器读到的 Core 确认 `map` 分区作为期望，另有不经地图模块的独立元素检查与负对照。
   - **生命周期：** [cockpit-lifecycle.spec.ts](../../e2e/cockpit-lifecycle.spec.ts)（开发 7 例、生产 2 例）核对单画布、单上下文与单循环（StrictMode、重开与返回）、各运行的资源归还与暖态计数、上下文丢失与布局丢失时撤销就绪凭证与锁定并在恢复后先画后锁、消息不补播、消息队列满与驾驶舱绘制故障、带黑边的屏幕闪光、模块拒绝的内容与释放失败的锁存。[cockpit-lifecycle.ts](../../e2e/support/cockpit-lifecycle.ts) 在页面脚本前安装只读的 WebGL 2 调用记录器：包装 `WebGL2RenderingContext.prototype` 并原样转发，以画布清除切分合成帧，逐帧记录游戏图像上的深度清除、驾驶舱层的绘制及其是否测试/写深度、framebuffer 与深度格式的分配、各上下文与 `pointerlockchange` 时刻，并可一次性注入驾驶舱纹理释放或驾驶舱绘制的故障。其 Warp 深度一例与 28 的回退用例一样不经网络审计（审计不允许测试入口的 `pointerLock` 查询参数）。
   - **聚焦运行：** `pnpm build && pnpm exec playwright test e2e/cockpit.development.spec.ts e2e/cockpit.production.spec.ts e2e/map-picture.development.spec.ts e2e/map-picture.production.spec.ts e2e/cockpit-lifecycle.spec.ts`，或不带 `--` 的 `pnpm test:e2e <文件>`。不要写成 `pnpm test:e2e -- <文件>`：pnpm 把 `--` 原样交给 Playwright，结果运行全部用例（[27 的完成证据](../plan/p3/13/subtasks/27-browser-cockpit.md#完成证据)）。
+- **P3-14 飞行音效回归（[22](../plan/p3/14/subtasks/22-browser-audio-output.md#完成证据)、[23](../plan/p3/14/subtasks/23-browser-lifecycle-resources.md#完成证据)、[30](../plan/p3/14/subtasks/30-start-gain-remediation.md#完成证据)）：** API 见 [app 模块说明的飞行音效](./modules/app.md#飞行音效)。全部用合成包与上述音频探针，期望从合成夹具按 audio 的 SND 布局独立解码，不经被测转换器；判定只用上下文状态、时钟、源与连接记录和最终输出的拟合，不以 `start()` 调用代替可听证据。
+  - **输出与启用：** [flight-audio.spec.ts](../../e2e/flight-audio.spec.ts)（开发经测试入口导入 `mission-startable`，生产经隔离合成缓存恢复，都在网络审计下）在可信点击开始后核对左右声道按 A-09 的整数音量/声像拟合、引擎变调与静音、导弹一次性的逐帧输出与自然结束、`p` 与任务菜单的暂停保留进度、初始参数在连接之前写入，以及生产没有开发面板；[flight-audio.development.spec.ts](../../e2e/flight-audio.development.spec.ts) 以自建 Chrome（`--autoplay-policy=document-user-activation-required`，原始 CDP，不给激活）核对锁定时无声继续、菜单中启用不继续游戏、键盘 Tab 到“Enable sound”，以及 `audio=unavailable`。
+  - **生命周期与资源：** [native-lifecycle.spec.ts](../../e2e/native-lifecycle.spec.ts)（development-headed）核对原生隐藏停止全部发声、可见后不自动恢复；[joint-resources.spec.ts](../../e2e/joint-resources.spec.ts)、[fast-refresh.spec.ts](../../e2e/fast-refresh.spec.ts) 与 [joint-pipeline.development.spec.ts](../../e2e/joint-pipeline.development.spec.ts) 核对每次 Start 恰好新建一个上下文、返回、结果页、重开与 HMR 后上下文已确认关闭且 `audio` 组监听归零（[资源平衡](#资源平衡)）。
+  - **未在浏览器中覆盖：** `repeat` 的到达音 10181 在 `mission-startable` 中不可达，由查看器的真实 `repeat` 输出（version-4-viewer）与 Node 规则链覆盖；录制容量停止、故障与关闭失败只由 Node 覆盖。
+  - **聚焦运行：** `pnpm test:e2e --project=development --project=production e2e/flight-audio.spec.ts e2e/flight-audio.development.spec.ts e2e/joint-resources.spec.ts e2e/fast-refresh.spec.ts e2e/joint-pipeline.development.spec.ts`；原生隐藏为 `pnpm test:e2e --project=development-headed e2e/native-lifecycle.spec.ts`。
 - 聚焦运行：`pnpm test:e2e bootstrap.spec.ts --project=development --project=production`。Vitest 仍只发现 src/tools 的 `.test.ts`，不发现 E2E `.spec.ts`；[配置回归](../../tools/e2e-configuration.test.ts)验证类型/lint发现与项目设置（单 worker、零 retry、两个服务器都不复用、经 `/src` 导入的用例只属 development），并对 `--list` 中每个 `*.development.spec.ts`、`*.production.spec.ts` 断言其项目集合恰为对应的单一项目。断言失败、启动失败、端口占用与缺浏览器的非零退出是 Playwright 自身行为，不另设合成配置回归。
 - 原生后台已固化在 [native-lifecycle](../../e2e/native-lifecycle.spec.ts)，可用 `pnpm test:e2e --project=development-headed` 独立运行：自管 headed 浏览器、CDP自建context/两tab、移除下文3项disable-background默认参数，取得真实hidden；不可用时保留原始原因并非零，不能合成事件或skip。受管page的hasFocus仍不是原生窗口证据。
   - **P3-04 起的用例：** 经测试入口 `worker=mission-startable` 导入（合成光盘经 CDP `DOM.setFileInputFiles` 选入，真实模块 Worker 导入并保存），之后的操作都是 [native-lifecycle.ts](../../e2e/support/native-lifecycle.ts) 的 `NativeTarget.press`：按可访问名称找到按钮，等它的位置连续两帧不变且为命中目标后再发可信 CDP 点击（另有 `setInputFiles` 方法与等待条件的 `until` 函数）。用例覆盖出发保持中的隐藏（占位等待、计时器撤销、tick 0；返回可见后跳过进入 `paused`/`hidden`）、飞行中的隐藏（自动暂停、无 rAF、无计时器、tick 稳定；返回可见后仍暂停），以及显式 Resume 后不补跑：页面内记录可信点击、该点击请求的首帧时间戳与之后每次显示的 tick，每个显示的 tick 都不超过 ⌊(显示时刻 − 首帧)/31.25⌋ + 1。逐项结果见 [P3-04/11](../plan/p3/04/subtasks/11-e2e-lifecycle-resources.md#完成证据)。
@@ -239,7 +244,9 @@ counts的checked含义：worktree/index/untracked/build为完整文件数，depe
     - 把每个接到已记录 `destination` 的连接另外分接到一个 `AnalyserNode`，该节点经增益为 0 的节点接到 `destination`，因此不改变输出；
     - 运行中的上下文用峰值判断有无声音，不以调用 `start()` 或没有异常作为可听证据；
     - 已挂起或已关闭的上下文不再渲染，分析节点保留最后一帧（实测关闭后峰值仍为 0.5）。此时的无输出证据是上下文状态，加上探针记录的“仍接到 `destination` 的应用节点数”为 0（包装 `connect`/`disconnect`）。
-    - **声音源（P3-03/20）：** `sources()`（Node 侧为 `audioSources(page)`）给出每个启动的 `AudioBufferSourceNode` 的缓冲采样、循环设置（`loop`、`loopStart`、`loopEnd`），以及每次 `start`/`stop` 调用时的上下文时间与参数；记录在启动时复制，用 WeakMap 找到停止，不保留节点或缓冲，也不注册监听，因此资源平衡不受影响。试听用例按 payload 文档布局独立解码期望的采样，不调用被测的 `readSoundPayload`。
+    - **声音源（P3-03/20）：** `sources()`（Node 侧为 `audioSources(page)`）给出每个启动的 `AudioBufferSourceNode` 的缓冲采样、循环设置（`loop`、`loopStart`、`loopEnd`），以及每次 `start`/`stop` 调用时的上下文时间与参数；记录在启动时复制，用 WeakMap 找到停止，不强持节点或缓冲，也不注册监听，因此资源平衡不受影响。试听用例按 payload 文档布局独立解码期望的采样，不调用被测的 `readSoundPayload`。
+    - **分声道输出与逐发声参数（P3-14/22、30）：** 每个上下文另有一路分接：显式 2 声道、`speakers` 上混的增益节点 → 声道分离 → 左右各一个 4096 帧的 `AnalyserNode` → 增益 0 → `destination`，与应用接到 `destination` 的每个连接并联，不改变输出。探针记录应用节点的连接，在 `start()` 时取源之后的 GainNode（音量、第一与第二声道）与 `playbackRate` 的当时值（`initial`；固定发声没有增益），并列出连接之后才经 `.value` 写入的初始参数（`setAfterConnection`，Chrome 在这种情况下可能读到旧值；为此 `AudioParam.prototype.value` 的 setter 被原样转发并记录写入次序）；源以 `WeakRef` 跟踪到应用 `disconnect()`（`end` 记上下文时间），参数节点同样只弱引用。`capture()` 在同一任务中读出最新上下文两声道的最近窗口、活动声部的当前参数与已启动源数。探针仍不注册监听，也不包装 `setValueAtTime` 等自动化方法。`withAudioTargets` 另有 `path` 与 `audit` 选项（网络审计在导航前接入自建浏览器的标签页）。
+    - **静音的判定：** 挂起或关闭后的分析器保留旧窗口，所以无声只以上下文状态、时钟停止、仍连接的源与 `routed()` 为证据，不读分析器峰值。
     - **轨迹：** `beginTrace` 在页面内每 5 ms 采样上下文时间与输出峰值，`finishTrace(until)` 在上下文时间越过 `until` 后才结束（不按挂钟，避免上下文启动慢时截短），`audibleRuns` 把轨迹分成听到的段。`repeat` 声音的遍数按听到的段计数。
     - **循环点插值：** Chrome 对重采样的循环缓冲在循环点做线性插值，结束前最后几帧会向下一遍首帧插值，在预定停止处多出一小段（实测约 40 ms）。用来计遍数的合成声音因此每遍首尾都须静音。
   - **页面隐藏：** 用 `nativeBrowser([自动播放开关])` 启动 headed 浏览器，在 CDP 自建的 context 中开两个标签页，用 `Target.activateTarget` 切换，得到原生 hidden，并记录原生 `visibilitychange` 日志。机器负载均值约 20–30 时，该用例偶发在恢复可见 300 ms 后仍读到挂起前的分析峰值而失败（同一基线提交上 8 次中 5 次），负载回落后通过；按环境时序处理，在低负载下复跑确认，不靠重试变绿。
@@ -297,6 +304,7 @@ P2-12 S-06 的实际请求审计：[e2e-network-policy.ts](../../tools/e2e-netwo
   - **开发：** 只放行同源、无请求体的 `GET`/`HEAD`，并逐条列出入口文档、测试入口、Vite 客户端与预构建依赖、仓库中存在的 `src/` 模块，以及各自允许的资源类型与 Vite 查询键，没有“任意同源 GET”。唯一允许的 WebSocket 是协商 `vite-hmr` 的同源 HMR 连接，它的发送帧只能是 Vite 客户端的 `ping` 或 `vite:invalidate`。测试入口的查询键与取值由 `TEST_ENTRY_QUERY` 列出（`worker`、`cache`、`capacity`、`audio`、`hold`、`seeds`）。
   - **金丝雀：** 在 URL（含 fragment）、请求头、Cookie、请求体、WebSocket 发送帧、cookie 值，以及弹窗、导航、Service Worker 与被 CSP 阻止的 URL 中查找，按原文、百分号或表单解码，以及 Base64（三种字节对齐，标准与 URL 安全字母表）匹配。
 - **使用要点：**
+  - Chrome 156 在页面首次出声后约 20–300 ms 也会探测 `/favicon.ico`（不只在首次载入时；P3-14/29 以最小静态页复现）。探测没有结果就被导航取消时，它按 favicon 规则是违规，所以开始飞行音效后立即重载或离开的用例须先等审计中多出一个已落定的探测（[mission-flow.development.spec.ts](../../e2e/mission-flow.development.spec.ts) 的 `settleAudibleProbe`，至多等 2 s，不要求一定出现），审计规则本身不放宽。
   - 用例在 Worker 刚启动时就结束它（例如立即取消），须先 `await audit.ready()`；否则 Worker 可能在被观测前结束，成为未覆盖目标。
   - 页面路由（`page.route`）在网络层之前应答。被它应答的 Worker 脚本不会触发上述暂停，Worker 启动时发出的请求可能先于审计会话；只要脚本没有被拒，这个 Worker 就是未覆盖目标。控制样本要覆盖这样的 Worker，改用 `audit.serve`。产品用例用页面路由替换 Worker 脚本时（生产预览的 404 与 HTML 回退，脚本被拒，Worker 从未运行），以 `audit.declare` 声明该请求，并设 `expect: 404` 或 `expect: 200`。
   - F-11 的缺失入口由开发服务器的 SPA 回退以 200 HTML 应答，用例声明这次 GET 并预期 200。
@@ -329,7 +337,7 @@ P2-12 S-06 的实际请求审计：[e2e-network-policy.ts](../../tools/e2e-netwo
   - `listeners[]` 另有 `element`（`'react'` 表示 React DOM 在该元素上登记的非委托监听，否则为 null）与 `detached`（目标已离开文档）；
   - [audio-playback.ts](../../e2e/support/audio-playback.ts) 的 `records()` 给出每个 AudioContext 的状态与每次 `close()` 的结局（`pending`、`resolved`、`rejected`）。Chrome 在调用 `close()` 时就同步把 `state` 设为 `closed`，所以只有已 resolve 的 `close()` 才算已关闭。
   - **单次计时器（P3-04）：** 探针包装 `setTimeout`/`clearTimeout`，`this`、延迟、参数与返回的原生句柄都不变，只记录调用栈属于应用（`/src/` 或 `/assets/`）且处理器为函数的计时器（测试自己的计时器不记录）。快照的 `timers` 给出未触发也未清除的 `pending`（ID 与延迟）、`scheduled`，以及已触发与已清除的 ID；`restore()` 还原原函数。`clearInterval` 不包装，应用不用它清除 timeout。
-  - **监听分组：** `keyboard` 组为 window 的 focus/blur、第二个生命周期登记者，以及任务画面（`[data-testid="mission-screen"]`）内元素上的应用监听（输入区 keydown/keyup/focusin/focusout，React DOM 的元素监听在元素进入文档前登记，不会落入）；`pointer-lock` 组为 P3-05 输入消费者的 `pointerlockchange`、`pointerlockerror`、`mousemove`、`mousedown`、`mouseup`；会话宿主的 visibilitychange/pagehide/pageshow 为 `session` 组；任务所有者的离页保护（`beforeunload`）属 `other` 组，而 Vite 客户端自己登记的 `beforeunload` 属 `vite` 组，计数离页保护时排除它。P1 的 `synthetic-view` 分组随合成画面删除。
+  - **监听分组：** `keyboard` 组为 window 的 focus/blur、第二个生命周期登记者，以及任务画面（`[data-testid="mission-screen"]`）内元素上的应用监听（输入区 keydown/keyup/focusin/focusout，React DOM 的元素监听在元素进入文档前登记，不会落入）；`pointer-lock` 组为 P3-05 输入消费者的 `pointerlockchange`、`pointerlockerror`、`mousemove`、`mousedown`、`mouseup`；会话宿主的 visibilitychange/pagehide/pageshow 为 `session` 组；P3-14 起任务所有者的飞行声音控制器（`media` 阶段，在关闭屏障的续延中创建）登记的同三类监听为 `audio` 组：探针按任务所有者的固定次序（会话宿主 → `input` 阶段的键盘源 → 音频控制器）给每个新登记取三组中第一个尚无活动回调的组，没有任务所有者时（如查看器）只按登记次序编号（P3-14/23）；任务所有者的离页保护（`beforeunload`）属 `other` 组，而 Vite 客户端自己登记的 `beforeunload` 属 `vite` 组，计数离页保护时排除它。P1 的 `synthetic-view` 分组随合成画面删除。
 - **用法：**
   - `ResourceBalance.start(page, testInfo, { packages })` 在已稳定的菜单上取基线；`check(label)` 断言没有差异，`measure` 只报告；
   - 提交后用 `expectPackages([expectedPackage(key, groups)])` 更新期望的缓存包；

@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-17
+updated: 2026-10-29
 related: [ADR-0015]
 ---
 
@@ -21,7 +21,7 @@ related: [ADR-0015]
 
 ## 音频播放
 
-[platform/audio/](../../../src/platform/audio/) 由 [P2-08](../../plan/p2/08/goal.md) 交付 Web Audio 播放端口，供 P2-11 试听与后续 Runtime 事件消费者调用：
+[platform/audio/](../../../src/platform/audio/) 由 [P2-08](../../plan/p2/08/goal.md) 交付 Web Audio 播放端口，供 P2-11 试听与 P3-14 的飞行音效消费者（[app 模块说明的飞行音效](./app.md#飞行音效)）调用：
 
 - **DOM-free 控制器：** [audio-controller.ts](../../../src/platform/audio/audio-controller.ts) 的 `createAudioController({ audio, lifecycle, reportError })`。
   - **注入：**
@@ -61,7 +61,7 @@ related: [ADR-0015]
   - **重复播放的精度（残余风险）：** 排程用主线程读到的 `currentTime`，开始准时时恰为各遍；若宿主晚于该时间才开始，最后一遍可能被截短。Chrome 中 `currentTime` 是下一个未渲染量子的起点，P3-03/27 逐帧计数 24 次 8 遍播放都恰为 8 遍；Firefox 与 WebKit 未实测。
 - **浏览器工厂：** [browser-audio-controller.ts](../../../src/platform/audio/browser-audio-controller.ts) 的 `createBrowserAudioController({ reportError })` 提供真实能力：
   - **上下文：** `new AudioContext()`；构造器缺失或抛错时，控制器为 `unavailable`。
-  - **发声：** 每次发声一个 `AudioBufferSourceNode`；`currentTime` 与 `start`/`stop` 的 `when` 原样透传。固定发声直接接到 `destination`；带参数的发声为“源 → 音量增益 → 两个声道增益 → `ChannelMerger(2)` → 输出”（立体声源先经 `ChannelSplitter`，使其第一声道只进第一个声道增益），初值在 `start()` 前写入 `.value`，更新用 `setValueAtTime(…, when)`，`disconnect()` 断开全部参数节点；不用 `StereoPannerNode`（等功率曲线与 A-09 不同）。
+  - **发声：** 每次发声一个 `AudioBufferSourceNode`；`currentTime` 与 `start`/`stop` 的 `when` 原样透传。固定发声直接接到 `destination`；带参数的发声为“源 → 音量增益 → 两个声道增益 → `ChannelMerger(2)` → 输出”（立体声源先经 `ChannelSplitter`，使其第一声道只进第一个声道增益），初值在任何 `connect()` 与 `start()` 之前写入 `.value`（P3-14/30：节点接到输出后，Chrome 渲染线程对内在值的读改写可能与主线程的写入竞争，使 getter 读到旧值；未连接的节点不被拉取，所以初值与读数都与时序无关），更新用 `setValueAtTime(…, when)`，`disconnect()` 断开全部参数节点；不用 `StereoPannerNode`（等功率曲线与 A-09 不同）。
   - **缓冲：** `new AudioBuffer(...)` 加 `getChannelData().set()`，不需要上下文。
   - **生命周期：** `document.visibilityState` 与 `document` 的 `visibilitychange`、`window` 的 `pagehide`/`pageshow`。
   - **范围：** 无导入副作用，没有测试注入口；只由应用程序检查，不进入 Node 程序。Chrome 中的验证见[工程约定](../README.md#本地浏览器-runner)。

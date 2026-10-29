@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-28
+updated: 2026-10-29
 related: [ADR-0004, ADR-0006, ADR-0015, B-001, B-003, B-004, B-005, B-006, B-007, B-008, B-009, B-011, U-008, U-009, U-010, U-011, U-021, U-022, U-026, U-030]
 ---
 
@@ -1145,9 +1145,9 @@ P3-02 只交付共同契约与接入位置；P3-06 交付飞行运动、操纵�
   - **来自 P3-11，给 P3-12**（[ME-14](../../plan/p3/02/spec.md#me-14-projection-与-render-state)、ME-19）：被毁视角 0x11/子模式 8 的进入是 `player-loss-started`（`loss: 'destroyed'`；`viewSwitched` 表示是否切换），结束是救援（`player-rescued`，视角 0xC）或退场（`teardown-started`，视角 0x13）；`projection.player` 给出视角与子模式。相机跟随的玩家逃生舱（`followedEntity`）目前只在快照中，P3-12 需要时按[扩展规则](#扩展规则)提出读模型。救援放置使玩家的放置序号加 1，渲染器不跨此插值；被毁源在移除前照常列出；退场的视角 0x13 没有可呈现的世界，下一 tick 起 Render State 没有实体。
   - **来自 P3-11，给 P3-13**（ME-13、ME-19，Q-09）：消息行的两个消息键来自 `flight-message`（`missionComplete`、`beacon`，文字是 `data/flight-messages` 的同名字段），常量见 executable 的 [Completion and beacon messages](../../original/formats/executable.md#completion-and-beacon-messages-p3-1103)（颜色 0x0C、模式 1、未画出时的过期时间 0x280 / 0x3C0，不是显示时长）；每次 `radio-flushed` 与信标消息之前，原版先丢弃消息行的队首（`0x4e9b0`）。被毁视角的名称标签（TABL 10399 第 8 项）随视角绘制。僚机损失消息是 `radio-queued`（表 20983 第 6 项），G-03 的摘要已有（`messageSummary`）。终局占位与结果页是 React 页面，不属于 P3-13。
   - **来自 P3-12，给 P3-13**（P3-12 的 S-12、S-14）：上列给 P3-12 的交接已由 P3-12 实现（[render 模块说明](./render.md#飞行渲染p3-12)）；驾驶舱与 HUD 的合成层接口、视角信息与在制提示的移除见其[交接](./render.md#交接)。
-- **P3-14：** 音效由领域事件与 projection 触发；原版派发器每遍清空的表现项不是 Core 阶段。P3-06 的速度辅助与匹配事件可作为音效触发源（若原版有对应音效）。
+- **P3-14：** 音效由领域事件与 projection 触发；原版派发器每遍清空的表现项不是 Core 阶段。P3-06 的速度辅助与匹配事件可作为音效触发源（若原版有对应音效）。P3-14 已按下列交接实现（[app 模块说明的飞行音效](./app.md#飞行音效)）：音效只读 `TickOutput` 的事件、同 tick projection 与 Render State，不调用 Core、不提交命令，有无声音时 Core 的事件、检查点与录制相同（P3-14/21）。
   - **来自 P3-12**（FS-07、FS-11）：表现模块的 `PresentationTick`、激活流与听者相机，以及 P3-12/09 记录的接口差异（交 P3-14 的 D-02），见 [render 模块说明的交接](./render.md#交接)。
-  - **来自 P3-13**（D-02 定稿）：不建共享提示模型，锁定音与 9 型警告音另读每个 `TickOutput` 的同 tick projection；警告位置随 FA-01 切换为 `communications.warnings`（不留别名）、两项 9 型警告可达性与 P3-14 A-07/D1-11 的冲突、尾随攻击者遍历（D1-03）合入后的复验、`recordMaximumSpeed` 与 FA-03 只保留一份定义、`RULES_VERSION` 10 与快照格式 9 按实际集成基线重新核对，见 [render 模块说明的 P3-13 交接](./render.md#交接p3-13)。
+  - **来自 P3-13**（D-02 定稿）：不建共享提示模型，锁定音与 9 型警告音另读每个 `TickOutput` 的同 tick projection；警告位置随 FA-01 切换为 `communications.warnings`（不留别名）、尾随攻击者遍历（D1-03）合入后的复验、`recordMaximumSpeed` 与 FA-03 只保留一份定义、`RULES_VERSION` 10 与快照格式 9 按实际集成基线重新核对，见 [render 模块说明的 P3-13 交接](./render.md#交接p3-13)。两项 9 型警告的可达性冲突已由 P3-14/24 的运行时检查回答：所选任务中不可达（高概率，有运行时支持），D1-11 成立（同处）。
   - **来自 P3-07**（CR-06、CR-11）：爆炸音效取自 P3-12 的同一选择（所选 EXPL 项的声音），不另行抽取；`weapon-selected`（SND 11381，`changed` 表示挂点改变，冲突 32）、`shot-fired`（按 `family` 与武器记录选择）、`hit`（`shieldWasEmpty` 即原版受击项 +0x0C，选择受击音槽 3 或 4）、`energy-allocation-changed` 与 `left-page-changed`（消息 0x100000 的 SND 10485）、`target-changed`（消息 2 的表现项，T1，高概率为音效）。R-10 中归表现层的原版观察见 B-009（同上）。
   - **来自 P3-09**（MW-05、MW-16 的 P3-14 一行）：点击音效 10463 对每个 `warp-destination-set`（坐标不变也发出）；开始音效 10401 与音频状态切换对 `warp-started`；到达音效 10181 只在 `warp-completed` 的 `arrival.hostileNear` 为真时；完成时恢复音频状态。地图开关本身没有原版音效。
   - **来自 P3-08**（CR-22、X2、X6）：SND 10055 对每个 `transponder-deployed`（只有 `b` 的活动创建，僚机投放的停放 Xpon 没有）；AI 的开火音效由 `shot-fired` 驱动（`trigger` 为 `{ type: 'ai', channel }` 或 `automatic`）；僚机回复的语音与无线电呈现经 P3-10 的 `radio-queued`，P3-08 不另发音效事件。
@@ -1158,6 +1158,7 @@ P3-02 只交付共同契约与接入位置；P3-06 交付飞行运动、操纵�
   - **来自 P3-11**（ME-19，Q-08）：`player-loss-started`、`player-rescued`、`result-latched` 与完成处原版停止音乐与采样（`0x55fe8`、`0x53978`），救援后重启任务音乐；结局片段的歌曲随 G-02/5 至 G-02/9 的媒体。Core 只提供事件，不发音效事件。
 - **P3-15：** 消费 P3-09 的契约做联合复验，不重新定义规则（P3-09 spec 的[包含](../../plan/p3/09/spec.md#包含)与[验证策略](../../plan/p3/09/spec.md#验证策略)）：真实任务的完整地图路径与输入层/Core 联合复验，包括地图上下文、同 tick 门禁、指针合成与清键（[键盘输入指南](../keyboard-input.md#对照差异与下游责任)）；随 P3-10 的真实基地路径（从基地打开地图、停靠与离港）；随 P3-11 的被毁或救援取代地图与放弃 Warp；完整闭环的 replay 与浏览器验证中的地图与 Warp。P3-09 的 Node 测试以合成前态覆盖这些边界，不代替联合验收。
   - **来自 P3-13**（P3-13 spec 的 AC-23、AC-24）：已验证项、外部前提、经批准的证据缺口（恢复方式为用户按私有缺证表补采）与联合复验范围（真实内容中的被毁视角、P3-14 合入后的类型 9 机体标签与尾随来电、跨任务路径中的驾驶舱与地图画面、含驾驶舱的完整闭环 replay），见 [render 模块说明的 P3-13 交接](./render.md#交接p3-13)。
+  - **来自 P3-14**（P3-14 spec 的 AC-15、AC-16）：V-06 的交接目录（离散结论已取得，感知结论待 P3-14/26）、经批准的证据缺口，以及因 FA-01、FA-05、FA-07 等共享契约变化需重验的历史项，见 [app 模块说明的 P3-14 交接](./app.md#交接p3-14)。
   - **来自 P3-12**（P3-12 spec 的 AC-20）：被毁视角相机只以合成状态验证，真实的被毁进入、救援转换与 F1 门禁在 P3-11 接入后由 P3-15 验证；原版对照证据的位置见 [render 模块说明的交接](./render.md#交接)。
   - **来自 P3-08**（P3-08 spec 的[与其他任务的接口](../../plan/p3/08/spec.md#与其他任务的接口)）：P3-08 以 Node 与开发构建的合成内容验证了 AI 的生产路径（23 的标准录制与 replay、24 的浏览器回归 [ai-wingman.development.spec.ts](../../../e2e/ai-wingman.development.spec.ts)、25 的私有真实内容运行），以下联合验收留给 P3-15：生产通讯菜单 → `deliver-command` → 僚机消费与回复的浏览器闭环（P3-08/20 的联合录制只在 Node 中以正常 `TickInput` 的菜单命令进行）；实机键盘的 `b`（`KeyB`）与系统快捷键拦截（24 的合成键不能证明，P3-05 的实机责任）；随 P3-10 的停靠中的僚机（随玩家停靠、停靠分支、离港）与随 P3-11 的救援、僚机损失和拆除中的 AI 状态；包含 AI、`b` 与 Warp 离场的完整运行的 replay 与浏览器复验。
   - **来自 P3-10：** 联合复验项：与 P3-08 衔接的僚机命令消费与回复（尾随警告的攻击者遍历已由 P3-14/08 接入，可一并复验）；与 P3-09 衔接的基地中的地图、地图打开时的自动离港与统一的命令视角；P3-11 接入后的救援、清空原因与停靠中被毁；P3-13 的正式通讯与基地画面；P3-10 对照中的未运行对照与限定结论（停靠等待中对象失效的取消、活动僚机在距离外时的停靠、其余通讯反应分支、受攻击的状态查询的来电时间链与 RQ2）；以及 U-021 冻结后在冻结配置下重测 R-17 至 R-19。

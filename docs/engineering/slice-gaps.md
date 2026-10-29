@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-28
+updated: 2026-10-29
 related: [B-003, B-004, B-005, B-006]
 ---
 
@@ -49,6 +49,8 @@ related: [B-003, B-004, B-005, B-006]
 P3-13 已把驾驶舱、HUD、视角标签与战略地图画入同一飞行画布（[P3-13 spec：缺省与标注](../plan/p3/13/spec.md#缺省与标注)），所以 P3-12 时覆盖在飞行区域底部的驾驶舱在制提示已移除，构建状态说明 `MISSION_SKELETON` 也不再说没有驾驶舱与 HUD。
 
 P3-14 的音效在制提示已由 P3-14/18 移除：音效消费者接入正式任务装配后，[mission-copy.ts](../../src/ui/mission/mission-copy.ts) 的 `FLIGHT_IN_PROGRESS`（状态栏的 `flight-in-progress`）删除，`MISSION_SKELETON` 改为写明飞行播放音效；状态栏在原处显示声音状态与“启用声音”按钮（[AudioStatus.tsx](../../src/ui/mission/AudioStatus.tsx)，[P3-14 spec：声音状态与开发诊断](../plan/p3/14/spec.md#声音状态与开发诊断)），它是项目状态，不是 G 项，也不是在制提示。现在没有非 G 项的在制标注；音乐的缺省仍是 G-01。
+
+音效不补齐其他缺省项：来电（`incoming-started`）的帧音效与语音、无线电项的音乐回调按 P3-14 的 D1-09 归切片外，不播放（事件读取的 `out-of-slice`，见 [app 模块说明的飞行音效](./modules/app.md#飞行音效)；G-03、G-01 不变）；基地按键的 10167、10169 由 Core 事件触发，不改变 G-05 基地页面是项目替代这一点。状态栏的 “Sound: on.” 只表示飞行音效已启用、可以播放，不表示上述缺省项已补齐。
 
 战略地图在 `percent: null`（E = 0）时显示的 `MAP_COST_UNAVAILABLE`（`N/A`）是项目提示，不是 G 项：原版在这里触发 x87 异常，其结果不是有效百分比，项目以集中定义的短标记代替（[P3-13 DC-09](../plan/p3/13/spec.md#dc-09-地图呈现与输入)，已批准差异 Δ-06）。
 
