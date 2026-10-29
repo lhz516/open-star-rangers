@@ -88,6 +88,28 @@ export async function captureOutput(target: Pick<NativeTarget, 'evaluate'>, samp
   return capture;
 }
 
+/**
+ * Page function (subtask 23): the page's audio contexts in creation order as `state:close outcomes`, the newest one's
+ * clock (null before any), the sources started, the indices of those still connected, and the application nodes still
+ * connected to a destination (each sounding voice's last node). Silence is judged by these, never by an analyser, which
+ * keeps its last frame once a context stops rendering.
+ */
+export function audioReading() {
+  const sources = window.osrAudioProbe.sources();
+  return {
+    contexts: window.osrAudioProbe.records().map(({ state, closes }) => `${state}:${closes.join(',')}`),
+    time: window.osrAudioProbe.capture(false)?.time ?? null,
+    started: sources.length,
+    live: sources.flatMap(({ end }, index) => (end === null ? [index] : [])),
+    routed: window.osrAudioProbe.routed(),
+  };
+}
+
+export type AudioReading = ReturnType<typeof audioReading>;
+
+/** `count` contexts as `audioReading` shows them once each was closed with its `close()` resolved. */
+export const closedContexts = (count: number): string[] => Array<string>(count).fill('closed:resolved');
+
 /** The probe's analyser window per output channel. */
 const WINDOW_FRAMES = 4096;
 

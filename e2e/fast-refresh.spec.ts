@@ -3,6 +3,7 @@ import { variantLabel } from '../src/ui/viewer/viewer-copy.ts';
 import { scenarioFiles } from '../src/workers/import-scenarios.test-support.ts';
 import { button, filePayloads, importFiles, openTestEntry, sliceFiles, smallFile } from './support/app-entry.ts';
 import { installAudioProbe } from './support/audio-playback.ts';
+import { audioReading, closedContexts } from './support/flight-audio.ts';
 import { tabTo } from './support/keyboard-input.ts';
 import { expect, test } from './support/browser-test.ts';
 import { connectedCanvases, documentMark, jobOwners, markDocument, viewerOwner, withEdits } from './support/fast-refresh.ts';
@@ -12,8 +13,8 @@ import {
 import { ResourceBalance, settleTooling } from './support/resource-balance.ts';
 import { entryButton, firstEntry, openViewer, viewerDiagnostics, type ViewerDiagnostics } from './support/viewer-observations.ts';
 
-// P2-11 subtask 13 (AC-16) and P3-04 subtask 11 (AC-09, AC-14): StrictMode, Fast Refresh and round trips of the
-// production App on the development test entry. The Fast Refresh cases edit a module of the dev server's own source,
+// P2-11 subtask 13 (AC-16), P3-04 subtask 11 (AC-09, AC-14) and P3-14 subtask 23 (AC-10, AC-12): StrictMode, Fast
+// Refresh and round trips of the production App on the development test entry. The Fast Refresh cases edit a module of the dev server's own source,
 // one distinct comment per edit, and always restore it. A replacement counts only with a new owner number and identity
 // in the same document: a full reload, a re-render that keeps the owner, or an emptied screen does not.
 
@@ -169,11 +170,15 @@ async function fly(page: Page): Promise<void> {
   await expectAdvancingTick(page, 300);
 }
 
-/** The mission's resources the probes show over one window: lifecycle listeners, leave guards, timers and frames. */
+/**
+ * The mission's resources the probes show over one window: lifecycle listeners (the owner's flight sound controller's
+ * among them, P3-14), leave guards, timers and frames.
+ */
 async function missionResources(page: Page) {
   const snapshot = await frameWindow(page);
   return {
     session: snapshot.listeners.filter(entry => entry.active && entry.group === 'session').map(({ addedAt }) => addedAt),
+    audio: snapshot.listeners.filter(entry => entry.active && entry.group === 'audio').map(({ addedAt }) => addedAt),
     ...inputCapabilities(snapshot),
     leaveGuards: snapshot.listeners.filter(entry => entry.active && entry.type === 'beforeunload' && entry.group === 'other').length,
     timers: snapshot.timers,
@@ -188,12 +193,25 @@ function inputCapabilities(snapshot: Awaited<ReturnType<typeof frameWindow>>) {
 
 type InputCapabilities = ReturnType<typeof inputCapabilities>;
 
-/** No mission resource is left: no session listener, leave guard, pending timer or game frame. */
+/** No mission resource is left: no session or audio listener, leave guard, pending timer or game frame. */
 function expectReleased(resources: Awaited<ReturnType<typeof missionResources>>, what: string): void {
   expect({
     ...resources, timers: resources.timers.pending, keyboard: resources.keyboard, fullscreen: resources.fullscreen, pointerLock: resources.pointerLock,
-  }, what).toEqual({ session: [], keyboard: [], fullscreen: [], pointerLock: [], leaveGuards: 0, timers: [], frames: 0 });
+  }, what).toEqual({ session: [], audio: [], keyboard: [], fullscreen: [], pointerLock: [], leaveGuards: 0, timers: [], frames: 0 });
 }
+
+/** The page's audio contexts, connected sources and voice graphs (P3-14), without the clock or the start count. */
+const audioState = async (page: Page) => {
+  const { contexts, live, routed } = await page.evaluate(audioReading);
+  return { contexts, live, routed };
+};
+
+/** `count` contexts, every one closed with its `close()` resolved; no source or voice graph connected. */
+const allClosed = (count: number) => ({ contexts: closedContexts(count), live: [], routed: 0 });
+
+/** The owner's audio controller's lifecycle listeners, which it registers once its close barrier lets it be created. */
+const ownerAudio = async (page: Page) => (await page.evaluate(() => window.osrProbe.snapshot().listeners))
+  .filter(entry => entry.active && entry.group === 'audio');
 
 /** The owner's keyboard, Fullscreen and Pointer Lock listeners are connected exactly once before any run. */
 function expectInputCapabilities(capabilities: InputCapabilities, zoneBound: boolean, what: string): void {
@@ -203,10 +221,11 @@ function expectInputCapabilities(capabilities: InputCapabilities, zoneBound: boo
 }
 
 test('a Fast Refresh of the mission owner hook and of the mission screen replaces the owner, clearing its timer and keeping the package and the confirmed wingman (AC-09, AC-14)', async ({ page }, testInfo) => {
+  await page.addInitScript(installAudioProbe);
   await importMission(page);
   // `chooseWingman` checks its radio through Playwright's main-world script, whose own listeners come first.
   await settleTooling(page);
-  const balance = await ResourceBalance.start(page, testInfo, { audio: false });
+  const balance = await ResourceBalance.start(page, testInfo);
   let { owner } = await enterMission(page);
   await endPlaceholder(page, 'G-02/1', 'button');
   await chooseWingman(page, 3);
@@ -214,6 +233,13 @@ test('a Fast Refresh of the mission owner hook and of the mission screen replace
   let flying = await missionResources(page);
   expectInputCapabilities(flying, true, 'the running input zone listeners');
   expect(flying).toMatchObject({ leaveGuards: 1, timers: { pending: [] }, frames: 1 });
+  // The trusted Start unlocked the owner's one audio context (P3-14 S-08): its sound is playing.
+  expect(flying.audio, 'the owner\'s audio controller listeners').toHaveLength(3);
+  let contexts = 1;
+  const sounding = await audioState(page);
+  expect(sounding.contexts).toEqual(['running:']);
+  expect(sounding.live.length, 'the run\'s sounding voices').toBeGreaterThan(0);
+  expect(sounding.routed, 'their graphs').toBeGreaterThan(0);
   const mark = await markDocument(page);
   /** After a refresh: a new owner, one more than the last, at the introduction of the same document. */
   const newOwner = async (what: string) => {
@@ -237,6 +263,12 @@ test('a Fast Refresh of the mission owner hook and of the mission screen replace
       expect(probe.frames.pending, `${file} edited: no game frame`).toBe(0);
       expect(probe.timers.pending, `${file} edited: the new introduction's timer`).toHaveLength(1);
       introduction = probe.timers.pending[0].id;
+      // The old owner's context is closed and its voices released; the new owner's controller exists only after that
+      // close, with no context of its own until a trusted activation, so no old callback can sound in its runs.
+      await expect.poll(() => audioState(page), { message: `${file} edited: the old owner's audio` }).toEqual(allClosed(contexts));
+      let controller: Awaited<ReturnType<typeof ownerAudio>> = [];
+      await expect.poll(async () => (controller = await ownerAudio(page)).length, { message: `${file} edited: the new owner's audio controller` }).toBe(3);
+      expect(Math.min(...controller.map(({ addedAt }) => addedAt)), `${file} edited: the new owner's controller`).toBeGreaterThan(Math.max(...flying.audio));
     });
     // Restoring the file refreshes the owner while its introduction timer is pending: the timer is cleared, not left to
     // fire, and the next owner holds only its own.
@@ -249,25 +281,33 @@ test('a Fast Refresh of the mission owner hook and of the mission screen replace
     expect(resources.timers.pending[0].id).not.toBe(introduction);
     expect(resources, `${file} restored: no leave guard or game frame`).toMatchObject({ leaveGuards: 0, frames: 0 });
     expect(resources.session).toHaveLength(3);
+    // Replaced at its introduction, an owner without a context closes none, and the next creates none before a Start.
+    await expect.poll(async () => (await ownerAudio(page)).length, { message: `${file} restored: the next owner's audio controller` }).toBe(3);
+    expect(await audioState(page), `${file} restored: no new context`).toEqual(allClosed(contexts));
     // The package is still held, so the new owner can continue, and the start page preselects the confirmed wingman.
     await endPlaceholder(page, 'G-02/1', 'button');
     expect(await checkedWingman(page), `${file}: the confirmed wingman`).toBe(3);
     await fly(page);
     flying = await missionResources(page);
+    // One new context for the new owner's Start; the ended ones stay closed.
+    contexts++;
+    expect((await audioState(page)).contexts, `${file}: the new owner's context`).toEqual([...allClosed(contexts - 1).contexts, 'running:']);
   }
   await tabTo(page, button(page, 'Mission menu'));
   await page.keyboard.press('Enter');
   await tabTo(page, button(page, 'Return to main menu'));
   await page.keyboard.press('Space');
   await expect(missionEntry(page)).toBeFocused();
+  await expect.poll(() => audioState(page), { message: 'every owner\'s context closed' }).toEqual(allClosed(contexts));
   await balance.check('after the Fast Refreshes');
   await balance.attach();
 });
 
 test('a Fast Refresh of the app shell releases the running mission first, drops the package and returns to the menu (AC-09)', async ({ page }, testInfo) => {
+  await page.addInitScript(installAudioProbe);
   await importMission(page);
   await settleTooling(page);
-  const balance = await ResourceBalance.start(page, testInfo, { audio: false });
+  const balance = await ResourceBalance.start(page, testInfo);
   const { owner } = await enterMission(page);
   await endPlaceholder(page, 'G-02/1', 'button');
   await fly(page);
@@ -280,6 +320,8 @@ test('a Fast Refresh of the app shell releases the running mission first, drops 
     await expect(missionEntry(page)).toHaveAttribute('data-eligibility', 'no-package');
     expect(await documentMark(page), `${what}: the same document`).toBe(mark);
     expectReleased(await missionResources(page), `${what}: the mission's resources`);
+    // The running owner's one context is closed too (P3-14).
+    await expect.poll(() => audioState(page), { message: `${what}: the mission's audio` }).toEqual(allClosed(1));
   };
   await withEdits('src/app/composition/use-resource-holder.ts', async edit => {
     await edit(1);

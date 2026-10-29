@@ -96,7 +96,7 @@ updated: 2026-10-28
 | [20-presentation-integration.md](./subtasks/20-presentation-integration.md) | 16 | completed |
 | [21-runtime-replay-boundaries.md](./subtasks/21-runtime-replay-boundaries.md) | 19, 20 | completed |
 | [22-browser-audio-output.md](./subtasks/22-browser-audio-output.md) | 18, 19, 20 | completed |
-| [23-browser-lifecycle-resources.md](./subtasks/23-browser-lifecycle-resources.md) | 22 | in-progress |
+| [23-browser-lifecycle-resources.md](./subtasks/23-browser-lifecycle-resources.md) | 22 | completed |
 | [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | in-progress |
 | [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | pending |
 | [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | pending |
