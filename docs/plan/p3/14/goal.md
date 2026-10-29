@@ -99,8 +99,8 @@ updated: 2026-10-28
 | [23-browser-lifecycle-resources.md](./subtasks/23-browser-lifecycle-resources.md) | 22 | completed |
 | [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | completed |
 | [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | completed |
-| [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | in-progress |
-| [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23, 26 | pending |
+| [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | blocked |
+| [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23 | in-progress |
 | [29-full-e2e-remediation.md](./subtasks/29-full-e2e-remediation.md) | 23 | completed |
 | [30-start-gain-remediation.md](./subtasks/30-start-gain-remediation.md) | 22 | completed |
 | [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29, 30 | pending |
@@ -131,6 +131,11 @@ updated: 2026-10-28
 - **2026-10-29 — 25 的两个问题与新增补救子任务 30：** Q1：8 个可达关系缺少原版录音（基地开火与受击、二型敌机受击与引擎、EXPL 10215/10217/10219、非玩家导弹发射、救援 5×11381），依用户授权由 25 自行补跑 DOSBox-X；真实尝试后仍不可达的项改按“采样同一性 + 离散结论”验收，并在此记录。Q2：一次真实运行中 1/3,373 个发声开始时音量增益为 1，新增补救子任务 30 排查 `browser-audio-controller.ts` 的初始参数时序，插在最终对齐之前，28 依赖它。
 - **2026-10-29 — 30 的结论：** 25 观察到的开始增益为 1 是探针在 Chrome `value` getter 竞争下的误读（渲染线程对已连接节点的固有值读改写），实际可闻增益正确（与同参数孪生发声的拟合比约 1.0）。加固：初始参数改在任何 `connect()` 之前写入，并有浏览器回归。platform 分册“初值在 `start()` 前写入”一句的措辞提议交 27。
 - **2026-10-29 — 25 的补跑与 (b) 验收：** 依用户授权补跑 DOSBox-X：base-01 → 10035；k2-01 → 10319（声部读数）与 10037；g3-01 → 救援 11381（NCC 0.98）。真实尝试后仍取不到原版录音的 6 个关系：10155（原版基地未开火）、10665（k2-01 中玩家炮弹未命中二型敌机）、EXPL 10215/10217（可识别的原版爆炸都是 10213）、10219（候选与原版都未出现）、非玩家导弹发射（僚机在所有原版运行中都未发射）。协调者依用户 2026-10-28 的授权（“用任何方式来 unblock 任何问题，完成这个 goal”）对这 6 项按“采样同一性 + 离散结论”验收，不作人耳对照，记为经批准的证据缺口（不是一致）。另记：g2-01 与 base-01 的运行报告标记 `integrity-failed/original-changed`，所列改动全是 25 自己在私有目录 `local/research/p3-14/25-candidate/` 下的文件（运行中写入的控制台日志与编辑的脚本），`local/StarRang` 未变；g2-01 不计入，base-01 只作试听参考；之后的 k2-01、g3-01 把日志放在运行目录外，都完整。按运行时测量指南，此事须报告给用户。
+- **2026-10-29 — Subtask 26 blocked:** 需要开发者本人对 25 准备的原版参考与候选作听觉判断，agent 不能代替（spec“对照方法与判据”）；向用户提问时用户不在。
+  Evidence: 试听页 `local/research/p3-14/25-candidate/kit/index.html`（32 项，27 项有原版片段，可导出判定 JSON）已就绪；10177 到爆炸的间隔（原版约 180–280 ms，候选 37–80 ms）是需特别判断的量化差异。
+  Affected acceptance: AC-15；26 的三项验收；28。
+  Resume when: 用户在试听页完成判定并给出导出的 JSON（或对具体项明确批准差异处置）；协调者据此记录 26 的完成证据，不一致项另开修复子任务。
+- **2026-10-29 — 27 的依赖调整：** 依用户 2026-10-28 的授权，把 27 的依赖由 21、23、26 改为 21、23，使工程文档与交接不必等人耳判定；27 的 V-06 交接中感知一栏标为“待 26”，由 26 完成后补齐，28 仍依赖 26。
 
 ## 审批
 
