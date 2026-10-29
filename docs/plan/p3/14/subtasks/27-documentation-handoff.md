@@ -41,6 +41,8 @@ updated: 2026-10-28
 - `docs/engineering/keyboard-input.md`：激活与焦点说明。
 - `docs/engineering/slice-gaps.md`：受影响说明，不扩张 G-05。
 - `docs/guides/local-import.md`：声音状态与操作。
+- `docs/engineering/README.md`：22、23、29 提议的探针、监听分组与网络审计说明（协调者 2026-10-29 扩展）。
+- `docs/original/formats/audio.md`：仅 12 提议的 A-03 漂移边缘补注（同上）。
 
 ## 验收标准
 
