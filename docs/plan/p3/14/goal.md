@@ -102,7 +102,8 @@ updated: 2026-10-28
 | [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | pending |
 | [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23, 26 | pending |
 | [29-full-e2e-remediation.md](./subtasks/29-full-e2e-remediation.md) | 23 | completed |
-| [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29  | pending |
+| [30-start-gain-remediation.md](./subtasks/30-start-gain-remediation.md) | 22 | in-progress |
+| [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29, 30 | pending |
 
 最后一行是仅验证的最终对齐。后续修复分配新 ID，放在该行之前并加入其依赖，不重编号或用最终验证实现新功能。
 
@@ -127,6 +128,7 @@ updated: 2026-10-28
 - **2026-10-28 — 新增补救子任务 29：** 23 的完整 e2e 有 3 项失败（`browser-replay.spec.ts:47`、`flight-render.development.spec.ts:63`、`mission-flow.development.spec.ts:353`），在 23 的基线上同样失败；其中至少第一项由 08 的 `object-retired` 引入。29 查明来源并修正 P3-14 引入的项，插在最终对齐之前，28 依赖它。
 - **2026-10-28 — 29 的结论：** `browser-replay.spec.ts:47`（`object-retired`）与 `mission-flow.development.spec.ts:353`（Chrome 156 在页面首次出声后探测 `/favicon.ico`，与紧随的重载竞争）由 P3-14 引入，已修正且未改审计规则；`flight-render.development.spec.ts:63`（缩放 0.7578125 时 12 像素差，位于 P3-13 驾驶舱叠加边缘）在 main `0180ada9` 上同样失败，是既有问题，可能源于本机 Chrome 由 155 自动升级到 156（高概率），归 P3-13 后续或 P3-15，不在本任务修改。29 对 README 网络审计一节的提议交 27。
 - **2026-10-28 — 24 的结论：** 必需的原版参考 R-01、R-02、R-03a/b、R-06、R-07、R-09、R-10、R-13、R-16 都已取得（完整运行 a-03、f-01、h-01、c-04、b-03、e-01/02/03、g-01；取消或失败的运行不计入）。R-07 改用僚机的引擎作离中声源（100 毫秒窗口），作为记录在案的方法偏差。结论：10179 实际约 12.3–12.4 kHz，P2 的音高张力按公式解决；三次击杀中爆炸都抢占了 10177；10181 恰好 8 遍；被毁视角中玩家引擎仍可闻（据此把 D2-16 由暂定改为定稿）。类型 9 两个标志在所有完整运行中都为 0，不支持 P3-13 的截图推断，A-07“不可达”仍为高概率，有运行时支持；render.md 交接中“可达性冲突”的改写交 27。可选项 R-04/05/08/11/12/14/15/17/18 未运行（R-08 只在要求响度一致时需要，D1-12 已决定不要求）。
+- **2026-10-29 — 25 的两个问题与新增补救子任务 30：** Q1：8 个可达关系缺少原版录音（基地开火与受击、二型敌机受击与引擎、EXPL 10215/10217/10219、非玩家导弹发射、救援 5×11381），依用户授权由 25 自行补跑 DOSBox-X；真实尝试后仍不可达的项改按“采样同一性 + 离散结论”验收，并在此记录。Q2：一次真实运行中 1/3,373 个发声开始时音量增益为 1，新增补救子任务 30 排查 `browser-audio-controller.ts` 的初始参数时序，插在最终对齐之前，28 依赖它。
 
 ## 审批
 
