@@ -2,6 +2,7 @@ import { chromium, type Browser, type CDPSession, type Page } from '@playwright/
 import type { AudioController } from '../../src/platform/audio/audio-controller.ts';
 import type * as SoundPayloadModule from '../../src/content/sound-payload.ts';
 import type * as BrowserAudioModule from '../../src/platform/audio/browser-audio-controller.ts';
+import type { Audit } from './audited-test.ts';
 import { installBrowserProbes } from './browser-probes.ts';
 import { installedBrowser } from './environment.ts';
 import { nativeBrowser, NativeTarget, until } from './native-lifecycle.ts';
@@ -31,6 +32,39 @@ export interface AudioSourceRecord {
   readonly start: { readonly at: number; readonly when: number | null };
   /** Each `stop()` call likewise, in call order. */
   readonly stops: readonly { readonly at: number; readonly when: number | null }[];
+  /**
+   * The parameters in effect as `start()` was called: the source's `playbackRate` and the gains of the GainNodes the
+   * application connected after it, breadth first (a parameterised voice's volume, then its first and second output
+   * channel gains; none for a fixed voice).
+   */
+  readonly initial: { readonly playbackRate: number; readonly gains: readonly number[] };
+  /** The context time when the application disconnected the source, which ends the voice; null while connected. */
+  readonly end: number | null;
+}
+
+/** A started source the application has not disconnected yet, with its parameter values now. */
+export interface AudioVoiceReading {
+  /** Its position in `sources()`. */
+  readonly index: number;
+  readonly loop: boolean;
+  readonly playbackRate: number;
+  /** The current values of the gains `AudioSourceRecord.initial` lists. */
+  readonly gains: readonly number[];
+}
+
+/**
+ * The newest context's final output as the destination receives it, one channel each: the last `left.length` frames
+ * the context rendered (the application's connections to the destination, mono ones up-mixed as the destination does),
+ * with the live voices and the number of sources started, read in the same task.
+ */
+export interface AudioOutputCapture {
+  readonly state: string;
+  readonly sampleRate: number;
+  readonly time: number;
+  readonly started: number;
+  readonly left: readonly number[];
+  readonly right: readonly number[];
+  readonly voices: readonly AudioVoiceReading[];
 }
 
 /** The newest context's time and the largest absolute sample its destination tap saw, sampled in the page. */
@@ -60,6 +94,8 @@ interface AudioProbe {
   started(): number;
   /** Every AudioBufferSourceNode started, in start order. */
   sources(): AudioSourceRecord[];
+  /** The newest context's output channels (empty without `samples`) and live voices now; null before any context. */
+  capture(samples?: boolean): AudioOutputCapture | null;
   /**
    * Starts sampling the newest context's time and `peak()` every few milliseconds in the page, so that no round trip
    * widens the gaps, replacing any earlier trace. Registers no listener.
@@ -92,16 +128,42 @@ export function installAudioProbe(): void {
   const originalDisconnect = AudioNode.prototype.disconnect;
   const connectNode = originalConnect as (this: AudioNode, destination: AudioNode) => AudioNode;
   const originalClose = OriginalContext.prototype.close;
+  const link = originalConnect as (this: AudioNode, destination: AudioNode, output?: number) => AudioNode;
   const contexts: {
     context: AudioContext; analyser: AnalyserNode; data: Float32Array<ArrayBuffer>; closes: ('pending' | 'resolved' | 'rejected')[];
+    /** A stereo input up-mixing as the destination does, split into one analyser per output channel. */
+    stereo: GainNode; channels: [AnalyserNode, AnalyserNode];
   }[] = [];
+  /** The probe's own nodes, which no graph walk follows. */
+  const own = new WeakSet<AudioNode>();
+  /** What each application node was connected to, in connection order. */
+  const targets = new WeakMap<AudioNode, AudioNode[]>();
   const buffers: AudioBuffer[] = [];
   const routed = new Set<AudioNode>();
   let started = 0;
   type Scheduled = { at: number; when: number | null };
-  // Records copy what they report when the source starts, so no node or buffer is kept; stops find theirs by node.
-  const sources: AudioSourceRecord[] = [];
+  type SourceRecord = Omit<AudioSourceRecord, 'end'> & { end: number | null };
+  // Records copy what they report when the source starts, so no buffer is kept; stops find theirs by node, and the
+  // live voices hold their nodes only weakly.
+  const sources: SourceRecord[] = [];
   const stopsOf = new WeakMap<AudioScheduledSourceNode, Scheduled[]>();
+  const recordOf = new WeakMap<AudioNode, SourceRecord>();
+  const live = new Map<SourceRecord, { index: number; node: WeakRef<AudioBufferSourceNode>; gains: WeakRef<GainNode>[] }>();
+  /** The GainNodes after `source` in the application's graph, breadth first. */
+  const gainsAfter = (source: AudioNode): GainNode[] => {
+    const seen = new Set<AudioNode>([source]);
+    const queue = [source];
+    const gains: GainNode[] = [];
+    while (queue.length > 0) {
+      for (const next of targets.get(queue.shift()!) ?? []) {
+        if (seen.has(next) || own.has(next)) continue;
+        seen.add(next);
+        queue.push(next);
+        if (next instanceof GainNode) gains.push(next);
+      }
+    }
+    return gains;
+  };
   const scheduled = (node: AudioScheduledSourceNode, when: unknown): Scheduled => ({ at: node.context.currentTime, when: typeof when === 'number' ? when : null });
   // AudioBufferSourceNode has its own start (with offset and duration), so each prototype that owns one is wrapped.
   for (const prototype of [AudioScheduledSourceNode.prototype, AudioBufferSourceNode.prototype]) {
@@ -114,11 +176,16 @@ export function installAudioProbe(): void {
           const { buffer, loop, loopStart, loopEnd } = this;
           const stops: Scheduled[] = [];
           stopsOf.set(this, stops);
-          sources.push({
+          const gains = gainsAfter(this);
+          const record: SourceRecord = {
             sampleRate: buffer?.sampleRate ?? 0, length: buffer?.length ?? 0,
             channels: buffer ? Array.from({ length: buffer.numberOfChannels }, (_, channel) => [...buffer.getChannelData(channel)]) : [],
             loop, loopStart, loopEnd, start: scheduled(this, args[0]), stops,
-          });
+            initial: { playbackRate: this.playbackRate.value, gains: gains.map(({ gain }) => gain.value) }, end: null,
+          };
+          sources.push(record);
+          recordOf.set(this, record);
+          live.set(record, { index: sources.length - 1, node: new WeakRef(this), gains: gains.map(node => new WeakRef(node)) });
         }
       };
     }
@@ -139,7 +206,21 @@ export function installAudioProbe(): void {
       mute.gain.value = 0;
       connectNode.call(analyser, mute);
       connectNode.call(mute, context.destination);
-      contexts.push({ context, analyser, data: new Float32Array(analyser.fftSize), closes: [] });
+      const stereo = context.createGain();
+      stereo.channelCount = 2;
+      stereo.channelCountMode = 'explicit';
+      stereo.channelInterpretation = 'speakers';
+      const splitter = context.createChannelSplitter(2);
+      connectNode.call(stereo, splitter);
+      const channels = [0, 1].map(output => {
+        const channel = context.createAnalyser();
+        channel.fftSize = 4096;
+        link.call(splitter, channel, output);
+        connectNode.call(channel, mute);
+        return channel;
+      }) as [AnalyserNode, AnalyserNode];
+      for (const node of [analyser, mute, stereo, splitter, ...channels]) own.add(node);
+      contexts.push({ context, analyser, data: new Float32Array(analyser.fftSize), closes: [], stereo, channels });
       return context;
     },
   });
@@ -163,9 +244,15 @@ export function installAudioProbe(): void {
   });
   AudioNode.prototype.connect = function (this: AudioNode, ...args: unknown[]): unknown {
     const result: unknown = (originalConnect as (...values: unknown[]) => unknown).apply(this, args);
+    if (args[0] instanceof AudioNode && !own.has(this)) {
+      const list = targets.get(this) ?? [];
+      list.push(args[0]);
+      targets.set(this, list);
+    }
     const tap = contexts.find(({ context }) => args[0] === context.destination);
     if (tap) {
       connectNode.call(this, tap.analyser);
+      connectNode.call(this, tap.stereo);
       routed.add(this);
     }
     return result;
@@ -173,6 +260,8 @@ export function installAudioProbe(): void {
   AudioNode.prototype.disconnect = function (this: AudioNode, ...args: unknown[]): void {
     (originalDisconnect as (...values: unknown[]) => void).apply(this, args);
     if (args.length === 0 || contexts.some(({ context }) => args[0] === context.destination)) routed.delete(this);
+    const record = args.length === 0 ? recordOf.get(this) : undefined;
+    if (record && live.delete(record)) record.end = this.context.currentTime;
   } as typeof AudioNode.prototype.disconnect;
   let trace: { samples: AudioTraceSample[]; active: boolean } | null = null;
   const time = (): number => contexts.at(-1)?.context.currentTime ?? 0;
@@ -194,6 +283,23 @@ export function installAudioProbe(): void {
     routed: () => routed.size,
     started: () => started,
     sources: () => sources,
+    capture: (samples = true) => {
+      const newest = contexts.at(-1);
+      if (!newest) return null;
+      const read = (analyser: AnalyserNode) => {
+        if (!samples) return [];
+        const data = new Float32Array(analyser.fftSize);
+        analyser.getFloatTimeDomainData(data);
+        return [...data];
+      };
+      const voices: AudioVoiceReading[] = [];
+      for (const { index, node, gains } of live.values()) {
+        const source = node.deref();
+        if (source) voices.push({ index, loop: source.loop, playbackRate: source.playbackRate.value, gains: gains.map(gain => gain.deref()?.gain.value ?? Number.NaN) });
+      }
+      const { context, channels: [left, right] } = newest;
+      return { state: context.state, sampleRate: context.sampleRate, time: context.currentTime, started, left: read(left), right: read(right), voices };
+    },
     beginTrace: () => {
       if (trace) trace.active = false;
       const run = { samples: [] as AudioTraceSample[], active: true };
@@ -318,14 +424,15 @@ interface AudioTargets {
 
 /**
  * Launches an owned Chrome with the activation-requiring autoplay policy (headed for real page hiding), creates an
- * owned CDP context and tabs, loads the development origin with the probes, and disposes everything afterwards.
+ * owned CDP context and tabs, loads `path` (the root by default) of the development origin with the probes, and
+ * disposes everything afterwards. With `audit`, the network audit observes the tabs from before the navigation.
  * The load also waits for the application's first render, so its own root listeners precede each test's listener
  * baseline: its development-only top-level `await import()`s (P3-04 subtask 09) let its evaluation finish after
  * `document.readyState` reaches `complete`.
  */
 export async function withAudioTargets(
   baseURL: string,
-  options: { readonly headed?: boolean; readonly withoutAudioContext?: boolean },
+  options: { readonly headed?: boolean; readonly withoutAudioContext?: boolean; readonly path?: string; readonly audit?: Pick<Audit, 'attachTarget' | 'close'> },
   run: (targets: AudioTargets) => Promise<void>,
 ): Promise<void> {
   const browser = options.headed
@@ -334,23 +441,31 @@ export async function withAudioTargets(
   let root: CDPSession | undefined;
   let contextId: string | undefined;
   let app: NativeTarget | undefined;
+  const audited: string[] = [];
   try {
     root = await browser.newBrowserCDPSession();
     contextId = (await root.send('Target.createBrowserContext')).browserContextId;
     const appId = (await root.send('Target.createTarget', { url: 'about:blank', browserContextId: contextId })).targetId;
     const alternateId = options.headed ? (await root.send('Target.createTarget', { url: 'about:blank', browserContextId: contextId })).targetId : null;
+    for (const targetId of [appId, alternateId]) {
+      if (targetId === null || !options.audit) continue;
+      await options.audit.attachTarget(browser, targetId);
+      audited.push(targetId);
+    }
     const session = await root.send('Target.attachToTarget', { targetId: appId, flatten: false });
     app = new NativeTarget(root, session.sessionId);
     for (const domain of ['Page', 'Runtime', 'Network', 'Log']) await app.command(`${domain}.enable`);
     const scripts = [installBrowserProbes, installAudioProbe, ...(options.withoutAudioContext ? [removeAudioContext] : [])];
     await app.command('Page.addScriptToEvaluateOnNewDocument', { source: scripts.map(script => `(${script.toString()})();`).join('') });
-    await app.command('Page.navigate', { url: baseURL });
+    await app.command('Page.navigate', { url: new URL(options.path ?? '/', baseURL).href });
     await root.send('Target.activateTarget', { targetId: appId });
     const target = app;
     await until(() => target.evaluate(() => document.readyState === 'complete' && 'osrAudioProbe' in window
       && document.querySelector('#root > *') !== null), ready => ready, 'Application load');
     await run({ browser, root, app, appId, alternateId });
+    while (audited.length > 0) await options.audit!.close(audited.shift()!);
   } finally {
+    for (const targetId of audited) await options.audit!.close(targetId).catch(() => undefined);
     app?.dispose();
     try {
       if (root && contextId) await root.send('Target.disposeBrowserContext', { browserContextId: contextId });
