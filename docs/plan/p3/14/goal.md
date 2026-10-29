@@ -98,7 +98,7 @@ updated: 2026-10-28
 | [22-browser-audio-output.md](./subtasks/22-browser-audio-output.md) | 18, 19, 20 | completed |
 | [23-browser-lifecycle-resources.md](./subtasks/23-browser-lifecycle-resources.md) | 22 | completed |
 | [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | completed |
-| [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | pending |
+| [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | in-progress |
 | [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | pending |
 | [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23, 26 | pending |
 | [29-full-e2e-remediation.md](./subtasks/29-full-e2e-remediation.md) | 23 | completed |
@@ -126,6 +126,7 @@ updated: 2026-10-28
 - **2026-10-28 — 22 的结论与转交：** 锁定时一次性请求确有尝试并记为 `failed (audio-locked)`，18 观察的“0 条”未复现；`repeat`（10181）在合成 mission-startable 中不可达，协调者接受以查看器的真实 repeat 输出与 Node 规则链测试覆盖，不新增合成场景。22 发现两条既有的 e2e 失败：`fast-refresh.spec.ts:205`（键盘组监听 12 ≠ 9，多出的是飞行音效的 pagehide/pageshow）与 `joint-pipeline.development.spec.ts:545`（任务后上下文 2 ≠ 1），都由 18 的接线引入，交 23 查明并处理（扩展了 23 的写入范围）。22 对 README“只读探针”一节的文档提议交 27。
 - **2026-10-28 — 新增补救子任务 29：** 23 的完整 e2e 有 3 项失败（`browser-replay.spec.ts:47`、`flight-render.development.spec.ts:63`、`mission-flow.development.spec.ts:353`），在 23 的基线上同样失败；其中至少第一项由 08 的 `object-retired` 引入。29 查明来源并修正 P3-14 引入的项，插在最终对齐之前，28 依赖它。
 - **2026-10-28 — 29 的结论：** `browser-replay.spec.ts:47`（`object-retired`）与 `mission-flow.development.spec.ts:353`（Chrome 156 在页面首次出声后探测 `/favicon.ico`，与紧随的重载竞争）由 P3-14 引入，已修正且未改审计规则；`flight-render.development.spec.ts:63`（缩放 0.7578125 时 12 像素差，位于 P3-13 驾驶舱叠加边缘）在 main `0180ada9` 上同样失败，是既有问题，可能源于本机 Chrome 由 155 自动升级到 156（高概率），归 P3-13 后续或 P3-15，不在本任务修改。29 对 README 网络审计一节的提议交 27。
+- **2026-10-28 — 24 的结论：** 必需的原版参考 R-01、R-02、R-03a/b、R-06、R-07、R-09、R-10、R-13、R-16 都已取得（完整运行 a-03、f-01、h-01、c-04、b-03、e-01/02/03、g-01；取消或失败的运行不计入）。R-07 改用僚机的引擎作离中声源（100 毫秒窗口），作为记录在案的方法偏差。结论：10179 实际约 12.3–12.4 kHz，P2 的音高张力按公式解决；三次击杀中爆炸都抢占了 10177；10181 恰好 8 遍；被毁视角中玩家引擎仍可闻（据此把 D2-16 由暂定改为定稿）。类型 9 两个标志在所有完整运行中都为 0，不支持 P3-13 的截图推断，A-07“不可达”仍为高概率，有运行时支持；render.md 交接中“可达性冲突”的改写交 27。可选项 R-04/05/08/11/12/14/15/17/18 未运行（R-08 只在要求响度一致时需要，D1-12 已决定不要求）。
 
 ## 审批
 
