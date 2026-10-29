@@ -96,7 +96,7 @@ updated: 2026-10-28
 | [20-presentation-integration.md](./subtasks/20-presentation-integration.md) | 16 | completed |
 | [21-runtime-replay-boundaries.md](./subtasks/21-runtime-replay-boundaries.md) | 19, 20 | completed |
 | [22-browser-audio-output.md](./subtasks/22-browser-audio-output.md) | 18, 19, 20 | completed |
-| [23-browser-lifecycle-resources.md](./subtasks/23-browser-lifecycle-resources.md) | 22 | pending |
+| [23-browser-lifecycle-resources.md](./subtasks/23-browser-lifecycle-resources.md) | 22 | in-progress |
 | [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | in-progress |
 | [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | pending |
 | [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | pending |
@@ -122,6 +122,7 @@ updated: 2026-10-28
 - **2026-10-28 — 合并含 P3-12、P3-13 的 main；07、24 解除阻塞：** 合并提交 `a8c9008b`：`RULES_VERSION` 11、快照格式 9、replay 格式 3；`RenderEntity`、`CombatTarget` 并存两边字段，`recordMaximumSpeed` 只留一份；类型 9 指示条改读分区级 `communications.warnings`（FA-01）。07 的恢复条件已满足（P3-11、P3-12、P3-13 的已批准 spec 与实现都在 main 上）。24 的恢复条件已满足：用户本次执行指示“在执行 goal 的过程中，如果需要修改 spec 或其他 Decision，我都批准你修改。用任何方式来 unblock 任何问题，完成这个 goal”，授权运行 DOSBox-X 取证。同一授权覆盖 07 的 D-02 定稿及其引起的 spec/合同修订。
 - **2026-10-28 — 13、14 集成时的说明：** 13 对原版会触发 x87 异常、在有效 Core 读数中不可达的超大输入（例如超出 i32 的速率）抛出 `FlightSoundParameterError('out-of-range')`，不扩大 D1-06 的跳过范围；协调者确认此取舍。13 与 14 交给 27 的文档提议：app 分册的 flight-audio 一节列出 parameters.ts 的导出与 5 种错误、hud-cues.ts 的 `createHudCues(ledger)` 两段调用（`beforeDispatch`/`afterDispatch`）。
 - **2026-10-28 — 17 的四项解释，协调者确认：** (1) 会话处于 `transition`（衔接保持）时可信激活也调用 `controller.resume()`，因为保持不关闭门禁；(2) 没有媒体连接报告声音时快照的 `sound` 为 `unavailable`；(3) `MissionOwnerContext.soundChanged` 可选，所有者总会提供；(4) 声音内容无法绑定时 `sound` 为 `failed` 并报告，不接运行音频，游戏无声继续（内容合同错误仍经报告通道可见，不记成“原版没有声音”）。21 新增 `osr/flight-audio-imports` 边界规则：flight-audio 的非测试代码同步执行，只有 `owner*.ts` 可用 async。`tools/engineering-boundaries.test.ts` 的“cockpit boundaries”在多会话并行的高负载下偶发 5 秒超时，单独运行与重跑都通过，是既有问题，未改动。
+- **2026-10-28 — 22 的结论与转交：** 锁定时一次性请求确有尝试并记为 `failed (audio-locked)`，18 观察的“0 条”未复现；`repeat`（10181）在合成 mission-startable 中不可达，协调者接受以查看器的真实 repeat 输出与 Node 规则链测试覆盖，不新增合成场景。22 发现两条既有的 e2e 失败：`fast-refresh.spec.ts:205`（键盘组监听 12 ≠ 9，多出的是飞行音效的 pagehide/pageshow）与 `joint-pipeline.development.spec.ts:545`（任务后上下文 2 ≠ 1），都由 18 的接线引入，交 23 查明并处理（扩展了 23 的写入范围）。22 对 README“只读探针”一节的文档提议交 27。
 
 ## 审批
 

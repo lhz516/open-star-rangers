@@ -38,6 +38,8 @@ updated: 2026-10-15
 - `e2e/support/resource-balance.ts`：音频资源计数。
 - `e2e/support/browser-probes.ts`：清理/节点探针。
 - `e2e/support/flight-audio.ts`：22 新建支持的生命周期读取。
+- `e2e/joint-pipeline.development.spec.ts`：飞行音效接入后上下文计数的回归（协调者 2026-10-28 扩展）。
+- `src/app/flight-audio/owner.ts`、`src/app/flight-audio/owner.test.ts`、`src/platform/audio/**`：仅当上述两条回归查明为真实的资源或监听泄漏时的修复与测试（同上）。
 
 ## 验收标准
 
