@@ -37,6 +37,7 @@ updated: 2026-10-28
 - `src/app/flight-audio/consumer.test.ts`、`src/app/flight-audio/consumer.test-support.ts`：以真实表现模块与消费者的联合测试用例（不改 16 的生产代码）。
 - `docs/plan/p3/02/spec.md`：仅 FS-07 之后指向 DW-02 的交接注记与批准记录。
 - `src/render/flight/sprites/explosion-sprites.test.ts`、`src/render/flight/sprites/sprite-rules.test.ts`：仅为 DW-02 的必需字段补夹具（协调者 2026-10-28 扩展）。
+- `src/app/flight-audio/rule-integration.test-support.ts`：仅改用真实表现模块（`sessionPresentation` 移除后的导入，集成 19 后协调者 2026-10-28 扩展）。
 
 ## 验收标准
 
