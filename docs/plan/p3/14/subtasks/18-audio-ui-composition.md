@@ -41,6 +41,10 @@ updated: 2026-10-28
 - `src/app/app.css`：必要的状态与可见焦点样式。
 - `docs/engineering/modules/ui.md`：状态与 DEV 边界说明。
 - `docs/engineering/keyboard-input.md`：声音控件与现有焦点/控制交接。
+- `e2e/base-interaction.development.spec.ts`、`e2e/flight-render.development.spec.ts`、`e2e/cockpit-lifecycle.spec.ts`：仅把 `FLIGHT_IN_PROGRESS` 的断言改为状态栏的声音状态（协调者 2026-10-28 扩展）。
+- `docs/engineering/slice-gaps.md`：在制标注移除的记录（同上）。
+- `docs/engineering/README.md`：测试 ID 列表与开发诊断中的声音日志（同上）。
+- `docs/engineering/modules/render.md`：仅外部前提中 `FLIGHT_IN_PROGRESS` 移除的一行状态（同上）。
 
 ## 验收标准
 
