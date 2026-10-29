@@ -62,7 +62,9 @@ test('the browser replays a formal Core record like Node and rejects records of 
   const reference = replayRecord(record, content);
   expect(compareReplayResults(recording.result, reference)).toEqual({ match: true });
   expect(reference.finalTick).toBe(TICKS);
-  expect(new Set(reference.events.map(({ type }) => type))).toEqual(new Set(['command-result', 'object-instantiated', 'speed-assist-toggled', 'target-changed']));
+  // P3-14's `object-retired` (FA-07): objects outside the active area enter the area switch.
+  expect(new Set(reference.events.map(({ type }) => type)))
+    .toEqual(new Set(['command-result', 'object-instantiated', 'object-retired', 'speed-assist-toggled', 'target-changed']));
   const flipped = (hash: string): string => `${hash[0] === '0' ? '1' : '0'}${hash.slice(1)}`;
   const changed = {
     ...reference,

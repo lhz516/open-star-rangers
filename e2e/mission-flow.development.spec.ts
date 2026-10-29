@@ -14,7 +14,7 @@ import {
   readLog, stopWatchingResume, stopWatchingStore, submitEditorCommand, waitForBridge, waitForMapWarpLog, watchResume, watchStore,
   expectCompletionPublished, type BridgeView,
 } from './support/map-warp.ts';
-import { expect, test } from './support/audited-test.ts';
+import { expect, test, type Audit } from './support/audited-test.ts';
 import { exportedTickInputs, openKeyboardMenu, startKeyboardFlight, tabTo, waitForTickAfter } from './support/keyboard-input.ts';
 import {
   checkedWingman, chooseWingman, devState, endPlaceholder, enterMission, expectAdvancingTick, expectGaps, expectStableTick, holdKey,
@@ -350,7 +350,7 @@ const downloadResources = (page: Page) => page.evaluate(() => ({
   links: document.querySelectorAll('a[download]').length,
 }));
 
-test('the native leave confirmation shows only while a run exists; dismissing it keeps the run, whose downloaded recording replays in Node', async ({ page, browser }, testInfo) => {
+test('the native leave confirmation shows only while a run exists; dismissing it keeps the run, whose downloaded recording replays in Node', async ({ page, browser, audit }, testInfo) => {
   await page.addInitScript(installObjectUrlProbe);
   await importScenario(page, 'mission-startable', [LEAVE_SEED]);
   // The reloads below restore this save, so it must have finished first.
@@ -440,14 +440,30 @@ test('the native leave confirmation shows only while a run exists; dismissing it
   // Accepting the confirmation leaves: the reload goes on, and the run is gone with the document.
   await enterMission(page);
   await endPlaceholder(page, 'G-02/1', 'Enter');
+  const probes = await answeredFaviconProbes(audit);
   await button(page, 'Start').click();
   await endPlaceholder(page, 'G-02/2', 'Space');
   await waitForFrame(page, candidate => (candidate.tick ?? 0) > 0);
+  await settleAudibleProbe(audit, probes);
   expect(await requestLeave(page, 'reload', 'accept')).toBe('beforeunload');
   await expect(page.getByTestId('original-data-status')).toContainText('not yet verified');
   expect(await missionFrame(page)).toBeNull();
   expect(await leaveGuards(page)).toBe(0);
 });
+
+/** The favicon probes the network audit has seen settled so far. */
+const answeredFaviconProbes = async (audit: Audit) => (await audit.report()).allowed.filter(({ rule }) => rule === 'favicon probe').length;
+
+/**
+ * Chrome probes `/favicon.ico` when a page first becomes audible, as it does a moment after a run's flight sound starts
+ * (P3-14). A reload in that moment can end the probe without any outcome the audit could judge, so a reload right after a
+ * start first waits, at most 2 s, until the audit holds a settled probe more than `before`.
+ */
+async function settleAudibleProbe(audit: Audit, before: number): Promise<void> {
+  for (const end = Date.now() + 2_000; Date.now() < end; await new Promise(resolve => setTimeout(resolve, 50))) {
+    if (await answeredFaviconProbes(audit) > before) return;
+  }
+}
 
 test('exports a keyboard-driven recording that Node replays with identical events and checkpoints', async ({ page, browser }, testInfo) => {
   await openKeyboardMenu(page, 'development', { seeds: String(KEYBOARD_REPLAY_SEED) });
