@@ -99,7 +99,7 @@ updated: 2026-10-28
 | [23-browser-lifecycle-resources.md](./subtasks/23-browser-lifecycle-resources.md) | 22 | completed |
 | [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | completed |
 | [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | completed |
-| [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | pending |
+| [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | in-progress |
 | [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23, 26 | pending |
 | [29-full-e2e-remediation.md](./subtasks/29-full-e2e-remediation.md) | 23 | completed |
 | [30-start-gain-remediation.md](./subtasks/30-start-gain-remediation.md) | 22 | completed |
