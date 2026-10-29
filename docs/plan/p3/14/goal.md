@@ -101,7 +101,8 @@ updated: 2026-10-28
 | [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | pending |
 | [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | pending |
 | [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23, 26 | pending |
-| [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27 | pending |
+| [29-full-e2e-remediation.md](./subtasks/29-full-e2e-remediation.md) | 23 | in-progress |
+| [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29  | pending |
 
 最后一行是仅验证的最终对齐。后续修复分配新 ID，放在该行之前并加入其依赖，不重编号或用最终验证实现新功能。
 
@@ -123,6 +124,7 @@ updated: 2026-10-28
 - **2026-10-28 — 13、14 集成时的说明：** 13 对原版会触发 x87 异常、在有效 Core 读数中不可达的超大输入（例如超出 i32 的速率）抛出 `FlightSoundParameterError('out-of-range')`，不扩大 D1-06 的跳过范围；协调者确认此取舍。13 与 14 交给 27 的文档提议：app 分册的 flight-audio 一节列出 parameters.ts 的导出与 5 种错误、hud-cues.ts 的 `createHudCues(ledger)` 两段调用（`beforeDispatch`/`afterDispatch`）。
 - **2026-10-28 — 17 的四项解释，协调者确认：** (1) 会话处于 `transition`（衔接保持）时可信激活也调用 `controller.resume()`，因为保持不关闭门禁；(2) 没有媒体连接报告声音时快照的 `sound` 为 `unavailable`；(3) `MissionOwnerContext.soundChanged` 可选，所有者总会提供；(4) 声音内容无法绑定时 `sound` 为 `failed` 并报告，不接运行音频，游戏无声继续（内容合同错误仍经报告通道可见，不记成“原版没有声音”）。21 新增 `osr/flight-audio-imports` 边界规则：flight-audio 的非测试代码同步执行，只有 `owner*.ts` 可用 async。`tools/engineering-boundaries.test.ts` 的“cockpit boundaries”在多会话并行的高负载下偶发 5 秒超时，单独运行与重跑都通过，是既有问题，未改动。
 - **2026-10-28 — 22 的结论与转交：** 锁定时一次性请求确有尝试并记为 `failed (audio-locked)`，18 观察的“0 条”未复现；`repeat`（10181）在合成 mission-startable 中不可达，协调者接受以查看器的真实 repeat 输出与 Node 规则链测试覆盖，不新增合成场景。22 发现两条既有的 e2e 失败：`fast-refresh.spec.ts:205`（键盘组监听 12 ≠ 9，多出的是飞行音效的 pagehide/pageshow）与 `joint-pipeline.development.spec.ts:545`（任务后上下文 2 ≠ 1），都由 18 的接线引入，交 23 查明并处理（扩展了 23 的写入范围）。22 对 README“只读探针”一节的文档提议交 27。
+- **2026-10-28 — 新增补救子任务 29：** 23 的完整 e2e 有 3 项失败（`browser-replay.spec.ts:47`、`flight-render.development.spec.ts:63`、`mission-flow.development.spec.ts:353`），在 23 的基线上同样失败；其中至少第一项由 08 的 `object-retired` 引入。29 查明来源并修正 P3-14 引入的项，插在最终对齐之前，28 依赖它。
 
 ## 审批
 
