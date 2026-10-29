@@ -2,20 +2,26 @@ import { describe, expect, it } from 'vitest';
 import { CORE_LIMITS } from '../../core/contracts/limits.ts';
 import type { DomainEvent } from '../../core/contracts/domain-events.ts';
 import {
-  EXPLOSION_KIND_BIT, FRAGMENT_KIND_BIT, MARKER_KIND_BIT, MISSILE_KIND_BIT, PROJECTILE_KIND_BIT,
+  EXPLOSION_KIND_BIT, FRAGMENT_KIND_BIT, MARKER_KIND_BIT, MISSILE_KIND_BIT, PROJECTILE_KIND_BIT, type Matrix3,
 } from '../../core/world/entity-table.ts';
 import { FakeParameterVoice } from '../../platform/audio/audio-controller.test-support.ts';
 import { PRESENTATION_LIMITS } from '../../render/flight/presentation/presentation-budget.ts';
+import type { CameraPose, ExplosionKey, PresentationTick } from '../../render/flight/presentation/presentation-contract.ts';
 import type { Command } from '../../core/contracts/tick-input.ts';
 import { MAX_TICKS_PER_FRAME } from '../runtime/game-runtime.ts';
 import { TICK_MS } from '../runtime/game-runtime.test-support.ts';
 import { current, sessionSetup } from '../session/game-session.test-support.ts';
-import { attachRunAudio, FlightSoundConsumerError, type FlightSoundConsumerFailure, type FlightSoundDecision } from './consumer.ts';
+import { cockpitState, type CockpitState } from '../../render/cockpit/cockpit-integration.test-support.ts';
 import {
-  at, audioRig, brief, combatRunSpec, CONTENT, events, explosion, sessionPresentation, FakePresentation, FakeRun, harness, KINDS, OWNER, presentationTick, RUN, tickOutput,
-  type EntitySpec, type InputOrder, type TickInput,
+  attachRunAudio, FlightSoundConsumerError, type AudioPresentation, type FlightSoundConsumerFailure, type FlightSoundDecision,
+} from './consumer.ts';
+import {
+  at, audioRig, brief, cockpitFor, COCKPIT_MAP_GEOMETRY, combatRunSpec, CONTENT, events, explosion, FakePresentation, FakeRun, harness, KINDS, OWNER,
+  presentationTick, realHarness, realPresentation, RUN, tickOutput, type EntitySpec, type InputOrder, type TickInput, type TickSpec,
 } from './consumer.test-support.ts';
+import { explosionSound } from './content.ts';
 import { SOUNDS } from './content.test-support.ts';
+import { audioListener, entityReading, nonPlayerParameters } from './parameters.ts';
 import { EVENT_SOUNDS } from './events.ts';
 
 // The run's flight sound consumer (P3-14 subtask 16; spec S-04, S-05, S-06, S-08, AC-03, AC-04, AC-05, AC-10; D-02 DW-03,
@@ -522,7 +528,168 @@ function blast1(tick: number, list: readonly DomainEvent[] = []): TickInput {
   return { tick, entities: [enemy(2), coreExplosion(10)], events: list, presentation: { explosions: [explosion('core:10')] } };
 }
 
-describe('formal Session runs (AC-03, AC-13)', () => {
+/** The tick each presentation explosion (not Core's) leaves the list: the one after it was last listed. */
+function leavingTicks(ticks: readonly PresentationTick[]): Map<string, number> {
+  const left = new Map<string, number>();
+  for (const { tick, explosions } of ticks) for (const { key } of explosions) if (!key.startsWith('core:')) left.set(key, tick + 1);
+  return left;
+}
+
+/**
+ * DW-07 on a whole run: nothing is heard of a presentation explosion after the tick it leaves the list, its removal
+ * stop is in that tick and no other, and a voice it last started that nothing cut (a preemption or a stop of every
+ * voice) is stopped then. Returns how many voices the removals stopped.
+ */
+function expectRemovals(decisions: readonly FlightSoundDecision[], ticks: readonly PresentationTick[]): number {
+  const left = leavingTicks(ticks);
+  let stopped = 0;
+  for (const [key, leaving] of left) {
+    const own = decisions.filter(({ source }) => source?.namespace === 'effect' && source.id === key);
+    for (const { tick, result, code } of own) {
+      expect(tick, key).toBeLessThanOrEqual(leaving);
+      expect(result === 'stopped' && code === 'removal', `${key} at ${tick}`).toBe(tick === leaving);
+    }
+    const start = own.filter(({ result }) => result === 'started').at(-1);
+    if (start === undefined || ticks.at(-1)!.tick < leaving) continue;
+    const cut = decisions.some((decision) => decision.tick >= start.tick && decision !== start && decisions.indexOf(decision) > decisions.indexOf(start)
+      && ((decision.preempted?.namespace === 'effect' && decision.preempted.id === key) || (decision.result === 'stopped' && decision.code === 'stop-all')));
+    if (!cut) {
+      expect(own.at(-1), key).toMatchObject({ tick: leaving, result: 'stopped', code: 'removal' });
+      stopped++;
+    }
+  }
+  return stopped;
+}
+
+describe('P3-12\'s real module on a hand-driven run (DW-01, DW-05, DW-07, DW-08, DW-11)', () => {
+  const CENTRE = at(0, 0, 0);
+  /**
+   * Enemy 3 died in tick 1's collisions 1,000 ahead: its explosion 10 is pending in tick 1, activates in tick 2 and
+   * drifts 1 unit a tick along z; the presentation effects add its extras, which leave about 48 ticks after activating.
+   */
+  const blast = (tick: number, spec: Partial<TickSpec> = {}): TickSpec => {
+    const list: DomainEvent[] = [];
+    if (tick === 1) list.push(events.explosionCreated(1, 10, { position: at(0, 0, 1000), velocity: at(0, 0, 32) }));
+    if (tick === 2) list.push(events.explosionStarted(2, 10, { position: at(0, 0, 1000) }));
+    const boom: EntitySpec = { id: 10, kindBit: EXPLOSION_KIND_BIT, position: at(0, 0, 999 + tick), speed: 32, display: tick === 1 ? 'pending' : 'shown' };
+    return { tick, activeAreaCentre: CENTRE, entities: [player, boom], events: list, ...spec };
+  };
+  const ticks = (from: number, to: number, spec: (tick: number) => TickSpec = blast) => Array.from({ length: to - from + 1 }, (_, at) => spec(from + at));
+  const play = (h: ReturnType<typeof realHarness>, grouping: readonly number[], spec: (tick: number) => TickSpec = blast) => {
+    let tick = 0;
+    for (const count of grouping) {
+      h.frame(ticks(tick + 1, tick + count, spec));
+      tick += count;
+    }
+    return h.decisions;
+  };
+  const selectionOf = (h: ReturnType<typeof realHarness>, key: string) =>
+    h.flight.ticks.flatMap(({ activations }) => activations).find((activation) => activation.key === key as ExplosionKey)!.selection;
+
+  it('pairs the same decisions in either order and under 1×5, 5 and 2+0+3 frames, each explosion sounding its one selection', () => {
+    const groupings = [Array.from({ length: 60 }, () => 1), Array.from({ length: 12 }, () => 5), Array.from({ length: 12 }, () => [2, 0, 3]).flat()];
+    const reference = realHarness();
+    play(reference, groupings[0]);
+    for (const order of ['outputs-first', 'presentation-first'] as const) {
+      for (const grouping of groupings) {
+        const h = realHarness({ order });
+        expect(play(h, grouping)).toEqual(reference.decisions);
+        expect(h.flight.ticks).toEqual(reference.flight.ticks);
+      }
+    }
+    const keys = reference.flight.ticks.flatMap(({ activations }) => activations.map(({ key }) => key));
+    expect(keys.filter((key) => key.startsWith('extra:')).length).toBeGreaterThan(0);
+    expect(new Set(keys).size).toBe(keys.length);
+    for (const decision of reference.decisions) {
+      const { source } = decision;
+      const key = source?.namespace === 'effect' ? source.id : source?.namespace === 'entity' && source.id === 10 ? 'core:10' : null;
+      if (key !== null && decision.result !== 'stopped') expect(decision.sound).toBe(explosionSound(CONTENT, selectionOf(reference, key)));
+    }
+    expect(expectRemovals(reference.decisions, reference.flight.ticks)).toBeGreaterThan(0);
+    expect(reference.controller.getSnapshot().voices).toBeGreaterThan(0);
+  });
+
+  it('does nothing on a still frame or a frame without ticks: no presentation step, no replay, no update', () => {
+    const h = realHarness();
+    play(h, [1, 1, 1]);
+    const count = h.decisions.length;
+    const notified = h.flight.ticks.length;
+    const camera = h.flight.presentation.camera();
+    expect(h.frame(null)).toEqual([]);
+    expect(h.frame([])).toEqual([]);
+    expect(h.flight.ticks).toHaveLength(notified);
+    expect(h.flight.presentation.camera()).toBe(camera);
+    h.frame([blast(4)]);
+    expect(h.flight.ticks.map(({ tick }) => tick)).toEqual([1, 2, 3, 4]);
+    expect(h.decisions.slice(count).every(({ tick }) => tick === 4)).toBe(true);
+  });
+
+  it('listens from the tick-end camera in Warp, not the camera before the step (DW-05, D2-04)', () => {
+    const h = realHarness();
+    const tunnel = at(500, 0, 0);
+    const heard = h.frame([{ tick: 1, viewMode: 1, entities: [{ ...player, position: tunnel }, enemy(2, { position: at(500, 0, 1000) })] }]);
+    expect(h.flight.ticks[0]).toMatchObject({ beforeStep: { position: at(0, 0, 0) }, afterStep: { position: tunnel, viewMode: 1 } });
+    expect(heard.find(({ source }) => source?.namespace === 'entity' && source.id === 2)).toMatchObject({ result: 'started', parameters: AHEAD_1000 });
+  });
+
+  it('listens from the destruction camera in view 0x11, sub-mode 8', () => {
+    const h = realHarness();
+    h.frame([{ tick: 1, entities: [player] }]);
+    const pose = { position: at(0, 0, 0), rows: [1, 0, 0, 0, 1, 0, 0, 0, 1] as unknown as Matrix3 };
+    const spec: TickSpec = {
+      tick: 2, viewMode: 0x11, subMode: 8, followedEntityId: 4, events: [events.viewSwitched(2, 0x11, 8, 'object-update', pose)],
+      entities: [player, enemy(2, { position: at(0, 0, 1000) }), { id: 4, kindBit: KINDS.enemy, position: at(600, 0, 600) }],
+    };
+    const heard = h.frame([spec]);
+    const { afterStep, beforeStep } = h.flight.ticks[1];
+    const output = tickOutput(spec);
+    const reading = entityReading(output.render.entities.find(({ id }) => id === 2)!);
+    const from = (camera: CameraPose) => nonPlayerParameters(audioListener(camera, output.projection.flight.motion), reading);
+    expect(from(afterStep)).not.toEqual(from(beforeStep));
+    expect(heard.find(({ source }) => source?.namespace === 'entity' && source.id === 2)).toMatchObject({ result: 'started', parameters: from(afterStep) });
+  });
+
+  it('after the page hid and came back, selects nothing again and replays the live explosions without preempting (D2-06, D2-17)', () => {
+    const h = realHarness();
+    play(h, Array.from({ length: 10 }, () => 1));
+    const live = new Set<string>(h.flight.ticks.at(-1)!.explosions.map(({ key }) => key));
+    expect(live.size).toBeGreaterThan(1);
+    h.rig.lifecycle.hide();
+    expect(h.controller.getSnapshot().voices).toBe(0);
+    // The session holds the run while hidden: its frames have no tick.
+    h.frame(null);
+    h.frame([]);
+    h.rig.lifecycle.show();
+    h.rig.audio.context.setState('running');
+    const count = h.decisions.length;
+    for (let tick = 11; tick <= 30; tick++) h.frame([blast(tick)]);
+    const keys = h.flight.ticks.flatMap(({ activations }) => activations.map(({ key }) => key));
+    expect(new Set(keys).size).toBe(keys.length);
+    // Each live explosion tries again from its selection, never preempting: with class 2 taken by an explosion that
+    // activated since, the tries are refused.
+    const replays = h.decisions.slice(count).filter(({ source }) => (source?.namespace === 'effect' && live.has(source.id)) || (source?.namespace === 'entity' && source.id === 10));
+    expect(replays.length).toBeGreaterThan(0);
+    for (const replay of replays) {
+      expect(replay).toMatchObject({ result: expect.stringMatching(/^(started|refused)$/), preempted: null });
+      expect(replay.tick).toBeGreaterThan(11);
+      const key = replay.source?.namespace === 'effect' ? replay.source.id : 'core:10';
+      expect(replay.sound).toBe(explosionSound(CONTENT, selectionOf(h, key)));
+    }
+  });
+
+  it('starts a retry afresh: a new run, module and consumer on the same controller inherit nothing', () => {
+    const first = realHarness();
+    play(first, Array.from({ length: 12 }, () => 1));
+    first.run.end();
+    expect(first.controller.getSnapshot().voices).toBe(0);
+    const retry = realHarness({ controller: first.controller, runId: RUN + 1 });
+    play(retry, Array.from({ length: 12 }, () => 1));
+    expect(retry.decisions.map(({ runId, ...decision }) => ({ ...decision, runId: runId - 1 }))).toEqual(first.decisions);
+    expect(retry.flight.ticks.map((tick) => ({ ...tick, runId: tick.runId - 1 }))).toEqual(first.flight.ticks);
+  });
+});
+
+describe('formal Session runs with P3-12\'s real presentation module (AC-03, AC-05, AC-07, AC-13, AC-14)', () => {
   /** Commands submitted at the first frame with ticks that starts at the key's tick, a multiple of 5 in every grouping. */
   const SCRIPT: Readonly<Record<number, readonly Command[]>> = {
     5: [{ type: 'fire', channel: 'primary' }],
@@ -533,14 +700,26 @@ describe('formal Session runs (AC-03, AC-13)', () => {
   };
   const TICKS = 120;
   const GROUPINGS: Readonly<Record<string, readonly number[]>> = {
-    'one tick a frame': Array.from({ length: TICKS }, () => 1),
-    'five ticks a frame': Array.from({ length: TICKS / 5 }, () => 5),
+    '1×5': Array.from({ length: TICKS }, () => 1),
+    '5': Array.from({ length: TICKS / 5 }, () => 5),
+    '2+0+3': Array.from({ length: TICKS / 5 }, () => [2, 0, 3]).flat(),
     'zero to five ticks a frame': Array.from({ length: TICKS / 10 }, () => [0, 2, 0, 3, 5, 0, 0]).flat(),
   };
 
-  function play(grouping: readonly number[], audio: InputOrder | null) {
+  interface PlayOptions {
+    /** Which frame consumer the run calls first; null wires no sound. */
+    readonly audio?: InputOrder | null;
+    readonly locked?: boolean;
+    /** Also wires P3-13's cockpit after the presentation module, as wireFlightRun does. */
+    readonly cockpit?: boolean;
+    /** Wires the sound only between frames once this tick is processed (a late consumer). */
+    readonly attachAt?: number;
+  }
+
+  function play(grouping: readonly number[], { audio = 'outputs-first', locked = false, cockpit: withCockpit = false, attachAt = 0 }: PlayOptions = {}) {
     const { session, host, errors } = sessionSetup();
-    session.control({ type: 'start', spec: combatRunSpec() });
+    const spec = combatRunSpec({ mapGeometry: COCKPIT_MAP_GEOMETRY });
+    session.control({ type: 'start', spec });
     const run = current(session);
     const delivered: DomainEvent[] = [];
     run.onAny((event) => { delivered.push(event); });
@@ -554,20 +733,31 @@ describe('formal Session runs (AC-03, AC-13)', () => {
         if (playerShown === null && (entity?.display === 'shown' || entity?.display === 'hidden')) playerShown = tick;
       }
     });
-    if (audio) {
-      const { controller } = audioRig();
-      const { port, connect } = sessionPresentation(run, OWNER);
-      if (audio === 'presentation-first') connect();
+    const flight = realPresentation(run, run.renderFrame().current);
+    const cockpit = withCockpit ? cockpitFor(run, spec, flight.presentation.camera()) : null;
+    const cockpitStates: CockpitState[] = [];
+    const connect = () => flight.connect((ticks) => {
+      if (cockpit && ticks.length > 0) cockpit.presentation.advance({ ownerId: OWNER, runId: run.runId, ticks: ticks.map(tick => ({ ...tick, mapRightButton: false })) });
+    });
+    const { controller } = audioRig({ locked });
+    // The real module is the consumer's port as it is.
+    const port: AudioPresentation = flight.presentation;
+    let attached = false;
+    const attach = () => {
+      attached = true;
       attachRunAudio(run, { ownerId: OWNER, content: CONTENT, controller, presentation: port, record: (decision) => { decisions.push(decision); } });
-      if (audio === 'outputs-first') connect();
       run.onFrame(() => { voices = Math.max(voices, controller.getSnapshot().voices); });
-    }
+    };
+    if (audio !== 'outputs-first' || attachAt > 0) connect();
+    if (audio !== null && attachAt === 0) attach();
+    if (audio === 'outputs-first' && attachAt === 0) connect();
     const requests = host.callbacks.length;
     let now = 0;
     let tick = 0;
     const submitted = new Set<number>();
     host.deliver(now);
     for (const ticks of grouping) {
+      if (audio !== null && !attached && tick >= attachAt) attach();
       if (ticks > 0 && SCRIPT[tick] && !submitted.has(tick)) {
         submitted.add(tick);
         for (const command of SCRIPT[tick]) run.submitCommand(command);
@@ -575,23 +765,33 @@ describe('formal Session runs (AC-03, AC-13)', () => {
       now += ticks * TICK_MS;
       host.deliver(now);
       tick += ticks;
+      if (cockpit && ticks > 0 && tick % 5 === 0) cockpitStates.push(cockpitState(cockpit));
     }
     expect(errors).toEqual([]);
     expect(session.status().phase).toBe('running');
-    return { delivered, decisions, voices, playerShown, frameRequests: host.callbacks.length - requests };
+    return { delivered, decisions, voices, playerShown, frameRequests: host.callbacks.length - requests, presentation: flight.ticks, cockpit: cockpitStates };
   }
 
-  const reference = play(GROUPINGS['one tick a frame'], 'outputs-first');
+  const reference = play(GROUPINGS['1×5']);
+  const silent = play(GROUPINGS['1×5'], { audio: null });
+  /** Each activation's one selection, by key. */
+  const selections = new Map(reference.presentation.flatMap(({ activations }) => activations).map(({ key, selection }) => [key as string, selection]));
+  /** The explosion key of a decision's voice: an effect's, or a Core explosion's slot 0. */
+  const explosionKey = ({ source }: FlightSoundDecision): string | null => {
+    if (source?.namespace === 'effect') return source.id;
+    return source?.namespace === 'entity' && source.slot === 0 && selections.has(`core:${source.id}`) ? `core:${source.id}` : null;
+  };
 
-  it('makes the same decisions under every grouping and input order, and leaves Core and the frame loop alone', () => {
-    const silent = play(GROUPINGS['one tick a frame'], null);
+  it('makes the same decisions under every grouping and input order, and leaves Core, the presentation and the frame loop alone', () => {
     expect(reference.delivered).toEqual(silent.delivered);
     expect(reference.frameRequests).toBe(silent.frameRequests);
-    for (const grouping of Object.values(GROUPINGS)) {
+    expect(reference.presentation).toEqual(silent.presentation);
+    for (const [name, grouping] of Object.entries(GROUPINGS)) {
       for (const order of ['outputs-first', 'presentation-first'] as const) {
-        const result = play(grouping, order);
-        expect(result.decisions).toEqual(reference.decisions);
+        const result = play(grouping, { audio: order });
+        expect(result.decisions, `${name}, ${order}`).toEqual(reference.decisions);
         expect(result.delivered).toEqual(silent.delivered);
+        expect(result.presentation).toEqual(silent.presentation);
       }
     }
   });
@@ -618,5 +818,67 @@ describe('formal Session runs (AC-03, AC-13)', () => {
     expect(playerShown).not.toBeNull();
     expect(decisions.some(({ source, result }) => source?.namespace === 'effect' && result === 'started')).toBe(true);
     expect(decisions.some(({ voiceClass, sound, result }) => voiceClass === 2 && result === 'started' && (sound === SOUNDS.boomA || sound === SOUNDS.boomB))).toBe(true);
+  });
+
+  it('activates each explosion once and sounds it from that one selection, as the animation reads it (S-05, AC-05, AC-14)', () => {
+    const activations = reference.presentation.flatMap(({ activations: list }) => list);
+    expect(new Set(activations.map(({ key }) => key)).size).toBe(activations.length);
+    expect(activations.some(({ key }) => key.startsWith('core:'))).toBe(true);
+    expect(activations.some(({ key }) => key.startsWith('extra:'))).toBe(true);
+    // The animation reads the listed explosions: each keeps its activation's selection while it lives.
+    for (const { explosions } of reference.presentation) {
+      for (const { key, selection } of explosions) expect(selection).toEqual(selections.get(key));
+    }
+    // Each explosion voice is the EXPL record of that selection (list − 1, the original item index), first heard in
+    // its activation tick.
+    const heard = reference.decisions.filter(decision => explosionKey(decision) !== null);
+    expect(heard.length).toBeGreaterThan(0);
+    for (const decision of heard) {
+      if (decision.result !== 'stopped') expect(decision.sound).toBe(explosionSound(CONTENT, selections.get(explosionKey(decision)!)!));
+    }
+    for (const { key, tick } of activations) {
+      const first = heard.find(decision => explosionKey(decision) === key);
+      if (first) expect(first.tick, key).toBe(tick);
+    }
+    expect(new Set(heard.map(explosionKey)).size).toBeGreaterThan(1);
+  });
+
+  it('stops a presentation explosion\'s voice in the tick it leaves the list, and hears nothing of it after (DW-07)', () => {
+    const left = leavingTicks(reference.presentation);
+    expect(left.size).toBeGreaterThan(0);
+    expectRemovals(reference.decisions, reference.presentation);
+  });
+
+  it('never selects again when the controller refuses or fails its voices', () => {
+    const locked = play(GROUPINGS['1×5'], { locked: true });
+    expect(locked.decisions.some(({ result, code }) => result === 'failed' && code === 'audio-locked')).toBe(true);
+    expect(locked.presentation).toEqual(silent.presentation);
+  });
+
+  it('lets the cockpit and the sounds each read the same tick outputs, neither stepping the other (AC-07)', () => {
+    const both = play(GROUPINGS['2+0+3'], { cockpit: true, audio: 'presentation-first' });
+    const cockpitOnly = play(GROUPINGS['2+0+3'], { cockpit: true, audio: null });
+    expect(both.decisions).toEqual(reference.decisions);
+    expect(both.cockpit).toHaveLength(TICKS / 5);
+    expect(both.cockpit).toEqual(cockpitOnly.cockpit);
+    expect(both.presentation).toEqual(silent.presentation);
+    expect(both.delivered).toEqual(silent.delivered);
+  });
+
+  it('gives a late consumer only the ticks after it, replaying no earlier activation', () => {
+    const late = play(GROUPINGS['5'], { attachAt: 50 });
+    expect(late.decisions.length).toBeGreaterThan(0);
+    expect(late.decisions.every(({ tick }) => tick > 50)).toBe(true);
+    expect(late.presentation).toEqual(silent.presentation);
+    // No voice of an explosion that had already ended is heard; the voices it does give are from their selections.
+    const ended = new Set(selections.keys());
+    for (const { explosions } of silent.presentation.filter(({ tick }) => tick === 50)) for (const { key } of explosions) ended.delete(key);
+    for (const { key, tick } of silent.presentation.flatMap(({ activations }) => activations)) if (tick > 50) ended.delete(key);
+    for (const decision of late.decisions) {
+      const key = explosionKey(decision);
+      if (key === null) continue;
+      expect(ended.has(key), key).toBe(false);
+      if (decision.result !== 'stopped') expect(decision.sound).toBe(explosionSound(CONTENT, selections.get(key)!));
+    }
   });
 });

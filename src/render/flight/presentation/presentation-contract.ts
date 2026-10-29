@@ -1,8 +1,8 @@
 /**
  * The read-only interface of the flight presentation module (docs/plan/p3/02/spec.md, FS-07; docs/plan/p3/12/spec.md,
- * 表现层契约 and 表现层效果与会话级选择者): what the renderer and P3-14 read, the per-tick input it consumes, and the two
- * seams through which the presentation effects and the destruction-view camera join one run's module. None of it enters
- * Core, a snapshot or a replay.
+ * 表现层契约 and 表现层效果与会话级选择者; docs/plan/p3/14/spec.md, DW-02): what the renderer and P3-14 read, the per-tick
+ * input it consumes, and the two seams through which the presentation effects and the destruction-view camera join one
+ * run's module. None of it enters Core, a snapshot or a replay.
  */
 import type { DomainEvent, Vec3 } from '../../../core/contracts/domain-events.ts';
 import type { RenderState } from '../../../core/projections/render-state.ts';
@@ -75,10 +75,23 @@ export interface PresentationTick {
   readonly afterStep: PresentationCamera;
   /** Core explosions in `explosion-started` order, then presentation explosions in production order. */
   readonly activations: readonly ExplosionActivation[];
+  /** The explosions activated and not ended at the tick's end: what `explosions()` gives right after the tick (DW-02). */
+  readonly explosions: readonly PresentationExplosion[];
 }
 
-/** One activated explosion that has not ended. */
-export interface PresentationExplosion {
+/** An explosion's mode-1 movement block (DW-02), which its drift never changes. */
+export interface ExplosionMotion {
+  /** The block's third row (R2). */
+  readonly forward: Vec3;
+  /** The block's +0x08, f32 runtime units per second. */
+  readonly speed: number;
+}
+
+/**
+ * One activated explosion that has not ended. Its motion (DW-02) is a Core explosion's in the tick's Render State, an
+ * extra's Core explosion's at its construction, and a fragment explosion's R2′ and s of its drift F(R2′ × s).
+ */
+export interface PresentationExplosion extends ExplosionMotion {
   readonly key: ExplosionKey;
   readonly origin: ExplosionOrigin;
   readonly sourceKindBit: number | null;
@@ -129,16 +142,15 @@ export interface PresentationObjectSlot {
 
 /**
  * A presentation explosion to activate on a slot reserved for it (X3; X5, X7): an extra explosion of an activated Core
- * explosion, `large` or `other` as its source; or the `other` explosion of an expiring flagged fragment.
+ * explosion, `large` or `other` as its source; or the `other` explosion of an expiring flagged fragment. `motion` is
+ * its movement block (DW-02).
  */
-export type PresentationActivationRequest =
+export type PresentationActivationRequest = { readonly position: Vec3; readonly motion: ExplosionMotion; readonly slot: PresentationObjectSlot } & (
   | {
     readonly origin: { readonly type: 'extra'; readonly parentExplosionKey: CoreExplosionKey; readonly ordinal: 0 | 1 | 2 | 3 | 4 };
     readonly variant: 'large' | 'other';
-    readonly position: Vec3;
-    readonly slot: PresentationObjectSlot;
   }
-  | { readonly origin: { readonly type: 'fragment'; readonly fragmentKey: FragmentKey }; readonly variant: 'other'; readonly position: Vec3; readonly slot: PresentationObjectSlot };
+  | { readonly origin: { readonly type: 'fragment'; readonly fragmentKey: FragmentKey }; readonly variant: 'other' });
 
 /** The per-tick context of the presentation effects (P3-12/13), after the tick's Core activations. */
 export interface PresentationEffectsStep extends PresentationStep {

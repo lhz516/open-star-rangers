@@ -35,9 +35,11 @@ export interface EntityOptions {
   readonly position?: Vec3;
   readonly orientation?: Matrix3;
   readonly explosion?: ExplosionVariant;
+  /** The movement block's speed, runtime units/s. */
+  readonly speed?: number;
 }
 
-export function renderEntity(id: number, { position = vec(0), orientation = IDENTITY, explosion }: EntityOptions = {}): RenderEntity {
+export function renderEntity(id: number, { position = vec(0), orientation = IDENTITY, explosion, speed = 0 }: EntityOptions = {}): RenderEntity {
   return Object.freeze({
     id: id as EntityId,
     kindBit: explosion === undefined ? 1 : 22,
@@ -51,7 +53,7 @@ export function renderEntity(id: number, { position = vec(0), orientation = IDEN
     sourceKindBit: explosion === undefined ? null : 3,
     display: 'shown',
     state: 'active',
-    speed: 0,
+    speed,
   });
 }
 

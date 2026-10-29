@@ -135,7 +135,7 @@ const activation = (key: ExplosionKey, tick: number, origin: ExplosionActivation
 
 function presentationTick(tick: number, viewMode: number, activations: readonly ExplosionActivation[] = []): PresentationTick {
   const camera = { tick, position: vec(0), rows: IDENTITY, viewMode, subMode: 0, viewport: F1_VIEWPORT };
-  return { ownerId: 1, runId: 1, tick, clock: 2 * tick, beforeStep: camera, afterStep: camera, activations };
+  return { ownerId: 1, runId: 1, tick, clock: 2 * tick, beforeStep: camera, afterStep: camera, activations, explosions: [] };
 }
 
 /** Steps `frames` over `views` (tick → view mode), returning the frame of `key` after each tick. */

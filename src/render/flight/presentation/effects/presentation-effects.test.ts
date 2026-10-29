@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { RAND_SCALE } from '../../../../core/rules/original-random.ts';
 import type { Vec3 } from '../../../../core/contracts/domain-events.ts';
 import type { RenderEntity } from '../../../../core/projections/render-state.ts';
+import type { Matrix3 } from '../../../../core/world/entity-table.ts';
 import type { PresentationError } from '../presentation-budget.ts';
 import type { PresentationExplosion } from '../presentation-contract.ts';
 import {
@@ -15,6 +16,8 @@ const T = Math.fround(RAND_SCALE * 30 - 15);
 const EXPLOSION = 10;
 /** The Core explosion drifts 1 unit per tick along z (32 units/s, 2 clock units per tick). */
 const DRIFT = vec(0, 0, 32);
+/** Its movement block's speed: DRIFT along the identity rows' R2. */
+const SPEED = 32;
 const keys = (explosions: readonly PresentationExplosion[]) => explosions.map(({ key }) => key);
 
 /**
@@ -25,7 +28,7 @@ function destroyed(at: Vec3 = vec(0, 0, 100), options: CreatedOptions = {}) {
   const run = new EffectsRun();
   const { sourceKindBit = 7 } = options;
   const core = (tick: number): RenderEntity[] => (tick <= 51
-    ? [explosionEntity(EXPLOSION, { position: vec(at.x, at.y, at.z + tick - 1), sourceKindBit, display: tick === 1 ? 'pending' : tick === 51 ? 'released' : 'shown' })]
+    ? [explosionEntity(EXPLOSION, { position: vec(at.x, at.y, at.z + tick - 1), sourceKindBit, speed: SPEED, display: tick === 1 ? 'pending' : tick === 51 ? 'released' : 'shown' })]
     : []);
   run.step(core(1), [explosionCreated(1, EXPLOSION, { position: at, velocity: DRIFT, ...options })]);
   const started = run.step(core(2), [explosionStarted(2, EXPLOSION, at, { sourceKindBit })]);
@@ -49,6 +52,26 @@ describe('extra explosions', () => {
     expect(run.presentation.explosions()[1].position).toEqual(vec(T, T, 98 + 49));
     to(52);
     expect(run.presentation.explosions()).toEqual([]);
+  });
+
+  it('gives them the Core explosion\'s movement block at its construction, which their drift follows (DW-02)', () => {
+    // R2 (0.6, 0, 0.8) at 40 units/s: the drift F(R2 × 40) is (24, 0, 32), 0.75 and 1 unit per tick.
+    const rows = Object.freeze([0.8, 0, -0.6, 0, 1, 0, 0.6, 0, 0.8]) as unknown as Matrix3;
+    const at = vec(0, 0, 100);
+    const run = new EffectsRun();
+    run.step([explosionEntity(EXPLOSION, { position: at, orientation: rows, speed: 40, display: 'pending' })], [explosionCreated(1, EXPLOSION, { position: at, velocity: vec(24, 0, 32) })]);
+    // Later Render States give the Core explosion another block: only its own entry follows them.
+    const core = [explosionEntity(EXPLOSION, { position: at, speed: 7 })];
+    run.step(core, [explosionStarted(2, EXPLOSION, at)]);
+    run.step(core);
+    const [, extra] = run.presentation.explosions();
+    expect(extra).toMatchObject({ key: 'extra:1', forward: vec(0.6, 0, 0.8), speed: 40 });
+    expect(run.presentation.explosions()[0]).toMatchObject({ key: 'core:10', forward: vec(0, 0, 1), speed: 7 });
+    run.step(core);
+    const moved = run.presentation.explosions()[1];
+    expect(moved).toMatchObject({ forward: extra.forward, speed: extra.speed });
+    expect(moved.position.x - extra.position.x).toBeCloseTo(0.75, 5);
+    expect(moved.position.z - extra.position.z).toBeCloseTo(1, 5);
   });
 
   it('activates 2⌊r/2⌋ + 2 clock units after the main explosion for every delay r (B-009: 6 to 24 at uneven steps)', () => {
@@ -172,6 +195,15 @@ describe('event 0x10 and the discriminator-1/2 fragments', () => {
       position: before?.position,
     });
     expect(run.effects.fragments().find(({ key }) => key === 'fragment:12')).toMatchObject({ display: 'shown', explosionKey: 'fragment-explosion:1' });
+    // Its block (DW-02) is R2′, the fragment's velocity direction, and the Core explosion's speed s: its drift per tick
+    // (1/32 s) is F(R2′ × s) / 32, R2′ itself up to the f32 positions.
+    const [{ forward, speed, position }] = run.presentation.explosions();
+    expect(speed).toBe(SPEED);
+    expect(Math.hypot(forward.x, forward.y, forward.z)).toBeCloseTo(1, 6);
+    run.step();
+    const [drifted] = run.presentation.explosions();
+    expect(drifted).toMatchObject({ forward, speed });
+    for (const axis of ['x', 'y', 'z'] as const) expect(drifted.position[axis] - position[axis]).toBeCloseTo(forward[axis], 3);
     // 12 frames end 56 clock units after activation (tick 297): the fragment is released then, and leaves at 298.
     to(296);
     expect(run.effects.fragments().find(({ key }) => key === 'fragment:12')?.display).toBe('shown');

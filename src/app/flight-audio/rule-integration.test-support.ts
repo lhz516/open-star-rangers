@@ -10,14 +10,14 @@ import { current, sessionSetup } from '../session/game-session.test-support.ts';
 import type { GameSessionError } from '../session/session-errors.ts';
 import { bindFlightSounds, type FlightSoundContent } from './content.ts';
 import { MODELS, soundPackage } from './content.test-support.ts';
-import { attachRunAudio, type FlightSoundDecision } from './consumer.ts';
-import { audioRig, OWNER, sessionPresentation } from './consumer.test-support.ts';
+import { attachRunAudio, type AudioPresentation, type FlightSoundDecision } from './consumer.ts';
+import { audioRig, OWNER, realPresentation } from './consumer.test-support.ts';
 
 // Formal rule chains for the flight sound consumer (P3-14 subtask 19): a GameSession of a synthetic world (code-generated
 // content and inputs, never original data) driven one tick a frame by a command script, its holds completed as the
 // mission page would, the run's sound wired as the owner wires it, and the session's completion ending it. Nothing
 // replaces a rule: every event comes from Core's own step, every decision from the consumer over a real controller.
-// Only the presentation module is the subtask-16 stand-in (consumer.test-support.ts), which the rule events do not read.
+// The presentation module is P3-12's real one, wired as wireFlightRun wires it (consumer.test-support.ts, subtask 20).
 
 /**
  * The synthetic models of the sound package by the world's craft type: the player's for the friendly craft, enemy A's
@@ -123,12 +123,14 @@ export function playRules(spec: GameRunSpec, script: RuleScript, { until, ticksP
     return undefined;
   });
   const { controller } = audioRig();
-  const { port, connect } = sessionPresentation(run, OWNER);
+  const { presentation: port, connect } = realPresentation(run, run.renderFrame().current);
   connect();
   let subscribed = 0;
-  const presentation = {
-    ...port,
-    subscribe: (listener: Parameters<typeof port.subscribe>[0]) => {
+  const presentation: AudioPresentation = {
+    ownerId: port.ownerId,
+    runId: port.runId,
+    camera: () => port.camera(),
+    subscribe: (listener) => {
       const cancel = port.subscribe(listener);
       subscribed++;
       return () => {
