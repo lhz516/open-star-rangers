@@ -172,8 +172,8 @@ test.describe('development build', () => {
     expect(await cockpitCounts(page), 'queued once').toMatchObject({ messages: 1, messageDrops: 0 });
     const afterLoss = await glRecord(page);
     expectCockpitPass(afterLoss.frames, 'restored F1');
-    // No sound consumer exists in this build (P3-14), so there is no sound to replay.
-    await expect(page.getByTestId('mission-screen')).toContainText('Sound effects are not implemented yet (P3-14).');
+    // The flight sound's status shows in the status bar (P3-14 S-09); its replay is P3-14's browser checks'.
+    await expect(page.getByTestId('mission-status').getByTestId('mission-sound')).toHaveText(/^Sound: /);
     await resume(page);
 
     // The map, ready after its first picture and locked by `m`'s activation.

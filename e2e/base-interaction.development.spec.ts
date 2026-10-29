@@ -1,7 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { CDPSession, Page } from '@playwright/test';
-import { FLIGHT_IN_PROGRESS } from '../src/ui/mission/mission-copy.ts';
 import { SLICE_GAPS, type SliceGapId } from '../src/ui/mission/slice-gaps-copy.ts';
 import { scenarioEntryProfile, scenarioFiles } from '../src/workers/import-scenarios.test-support.ts';
 import { DOCKING_BASE_KIND_MASK, DOCKING_COMMAND_CODES, MARKER } from '../src/workers/synthetic-import.test-support.ts';
@@ -157,10 +156,10 @@ async function launch(page: Page, end: PlaceholderEnd): Promise<void> {
   await page.keyboard.press('l');
   await throughHold(page, 'G-02/4', 'departed', end);
   await expect(page.getByTestId('base-page')).toHaveCount(0);
-  // Back in flight: the flight view shows, and the in-progress note is the status bar's, outside the game view.
+  // Back in flight: the flight view shows, and the sound status is the status bar's, outside the game view (P3-14 S-09).
   await expect(page.getByTestId('mission-view').getByTestId('flight-view')).toBeVisible();
-  await expect(page.getByTestId('mission-status').getByTestId('flight-in-progress')).toHaveText(FLIGHT_IN_PROGRESS);
-  await expect(page.getByTestId('mission-view').getByTestId('flight-in-progress')).toHaveCount(0);
+  await expect(page.getByTestId('mission-status').getByTestId('mission-sound')).toHaveAttribute('role', 'status');
+  await expect(page.getByTestId('mission-view').getByTestId('mission-sound')).toHaveCount(0);
   expect(resultsOf(await loggedEvents(page), 'launch'), 'L submitted once').toHaveLength(1);
 }
 

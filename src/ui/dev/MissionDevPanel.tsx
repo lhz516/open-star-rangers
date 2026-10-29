@@ -1,6 +1,6 @@
 /**
  * Development diagnostics panel of the mission screen (docs/plan/p3/04/spec.md: 开发诊断): entity and mission state,
- * the event log, frame timing, the flight renderer's state, draws and GPU counts (docs/plan/p3/12/spec.md, 渲染器生命周期),
+ * the event log, the flight sound decisions (docs/plan/p3/14/spec.md, 声音状态与开发诊断), frame timing, the flight renderer's state, draws and GPU counts (docs/plan/p3/12/spec.md, 渲染器生命周期),
  * the cockpit's message and radar drop counts (docs/plan/p3/13/spec.md, DC-07 and DC-08),
  * a command editor with the command feedback, and the recording export. It reads the
  * owner's diagnostics and game store through per-section selectors, acts only through the diagnostics actions and the
@@ -16,13 +16,14 @@ import { describeError } from '../game/describe-error.ts';
 import { selectPhase, selectRunId, type GameStoreReader, type GameUiState, type UiCommandResult } from '../game/game-store.ts';
 import { useGame } from '../game/use-game.ts';
 import { COMMAND_FORMS, commandDraft, editDraft, readDraft, type CommandDraft } from './command-draft.ts';
+import { describeSoundDecision } from './audio-log.ts';
 import type { InspectionView } from './entity-inspection.ts';
 import {
   selectCanRead, selectCanRetry, type CockpitCounts, type MissionDiagnostics, type MissionDiagnosticsState, type RecordingSaveStatus,
 } from './mission-diagnostics.ts';
 
 export interface MissionDevPanelProps {
-  readonly diagnostics: Pick<MissionDiagnostics, 'reader' | 'clearLog' | 'refreshSnapshot' | 'exportRecording' | 'retrySave' | 'cockpitCounts'>;
+  readonly diagnostics: Pick<MissionDiagnostics, 'reader' | 'clearLog' | 'clearSoundLog' | 'refreshSnapshot' | 'exportRecording' | 'retrySave' | 'cockpitCounts'>;
   readonly game: GameStoreReader;
   /** The owner's command feedback `submit`: returns the commandId, or null after writing the action error. */
   readonly submitCommand: (command: Command) => number | null;
@@ -137,6 +138,27 @@ function EventLogSection({ diagnostics }: { readonly diagnostics: Diagnostics })
               tick {entry.tick} · {entry.type}{entry.commandId === null ? '' : ` · command #${entry.commandId}`}
               {entry.fields.map(([name, value]) => ` · ${name}=${String(value)}`).join('')}
             </li>
+          ))}
+        </ol>
+      )}
+    </Section>
+  );
+}
+
+function SoundLogSection({ diagnostics }: { readonly diagnostics: Diagnostics }) {
+  const { entries, total, truncated } = useDiagnostics(diagnostics, (state) => state.sounds);
+  return (
+    <Section title="Sound log">
+      <div style={rowStyle}>
+        <button type="button" disabled={total === 0} onClick={() => { diagnostics.clearSoundLog(); }}>Clear sound log</button>
+        <span data-testid="dev-sound-log-count">
+          {entries.length} of {total} sound decisions{truncated ? '; older decisions were dropped' : ''}
+        </span>
+      </div>
+      {entries.length > 0 && (
+        <ol data-testid="dev-sound-log" style={scrollStyle}>
+          {entries.map((entry) => (
+            <li key={entry.sequence} data-result={entry.result} data-sound={entry.sound ?? undefined}>{describeSoundDecision(entry)}</li>
           ))}
         </ol>
       )}
@@ -383,6 +405,7 @@ export function MissionDevPanel({ diagnostics, game, submitCommand, flight = nul
       <p role="note">Development build only: reads the run through its public handle and submits commands through its normal queue.</p>
       <InspectionSection diagnostics={diagnostics} />
       <EventLogSection diagnostics={diagnostics} />
+      <SoundLogSection diagnostics={diagnostics} />
       <FrameSection diagnostics={diagnostics} />
       {flight && <FlightSection flight={flight} />}
       <CockpitSection diagnostics={diagnostics} />

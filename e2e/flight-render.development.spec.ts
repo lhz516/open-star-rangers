@@ -1,6 +1,5 @@
 import type { Page } from '@playwright/test';
 import { scenarioFiles } from '../src/workers/import-scenarios.test-support.ts';
-import { FLIGHT_IN_PROGRESS } from '../src/ui/mission/mission-copy.ts';
 import { button, filePayloads, importFiles } from './support/app-entry.ts';
 import { expect, test } from './support/audited-test.ts';
 import { imageMismatches, mapFramePixels } from './support/cockpit.ts';
@@ -68,7 +67,7 @@ test('the F1 picture is the start nebula, stars and dust in black borders; pause
   const paused = await expectStableTick(page);
   const first = await flightPicture(page);
   const background = expectF1Background(first);
-  await expect(page.getByTestId('flight-in-progress')).toHaveText(FLIGHT_IN_PROGRESS);
+  await expect(page.getByTestId('mission-status').getByTestId('mission-sound')).toHaveText(/^Sound: /);
   await expect(page.getByTestId('flight-area').locator('canvas')).toHaveAttribute('aria-label', 'Flight view');
 
   // Paused, nothing draws: the draw count and last tick hold across real frames (AC-04).

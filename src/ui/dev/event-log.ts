@@ -24,14 +24,8 @@ export interface EventLogEntry {
   readonly fields: readonly (readonly [name: string, value: EventFieldValue])[];
 }
 
-export interface EventLogView {
-  /** Oldest first, at most EVENT_LOG_LIMIT. */
-  readonly entries: readonly EventLogEntry[];
-  /** Events logged since the last clear, dropped ones included. */
-  readonly total: number;
-  /** Older entries were dropped. */
-  readonly truncated: boolean;
-}
+/** At most EVENT_LOG_LIMIT entries. */
+export type EventLogView = RingLogView<EventLogEntry>;
 
 type Fields = (readonly [string, EventFieldValue])[];
 
@@ -271,23 +265,37 @@ export function summarizeEvent(event: DomainEvent, { commandId }: EventDelivery,
   return Object.freeze({ sequence, tick: event.tick, type: event.type, commandId, fields });
 }
 
-const EMPTY_VIEW: EventLogView = Object.freeze({ entries: Object.freeze([]), total: 0, truncated: false });
+/** The latest entries of a development log, oldest first, with how many were logged since the last clear. */
+export interface RingLogView<T> {
+  /** Oldest first, at most the log's limit. */
+  readonly entries: readonly T[];
+  /** Entries logged since the last clear, dropped ones included. */
+  readonly total: number;
+  /** Older entries were dropped. */
+  readonly truncated: boolean;
+}
 
-/** A ring of EVENT_LOG_LIMIT entries; `view()` returns the same frozen object until the log changes. */
-export class EventLog {
-  readonly #ring: EventLogEntry[] = [];
+/** A ring of the latest `limit` entries; `view()` returns the same frozen object until the log changes. */
+export class RingLog<T> {
+  readonly #limit: number;
+  readonly #ring: T[] = [];
   /** The ring index of the oldest entry once the ring is full. */
   #oldest = 0;
   #total = 0;
-  #view: EventLogView | null = EMPTY_VIEW;
+  #view: RingLogView<T> | null = null;
 
-  append(event: DomainEvent, delivery: EventDelivery): void {
-    const entry = summarizeEvent(event, delivery, ++this.#total);
-    if (this.#ring.length < EVENT_LOG_LIMIT) {
+  constructor(limit: number) {
+    this.#limit = limit;
+  }
+
+  /** Adds the entry `make` builds from its sequence: 1 for the first since the last clear. */
+  append(make: (sequence: number) => T): void {
+    const entry = make(++this.#total);
+    if (this.#ring.length < this.#limit) {
       this.#ring.push(entry);
     } else {
       this.#ring[this.#oldest] = entry;
-      this.#oldest = (this.#oldest + 1) % EVENT_LOG_LIMIT;
+      this.#oldest = (this.#oldest + 1) % this.#limit;
     }
     this.#view = null;
   }
@@ -296,15 +304,32 @@ export class EventLog {
     this.#ring.length = 0;
     this.#oldest = 0;
     this.#total = 0;
-    this.#view = EMPTY_VIEW;
+    this.#view = null;
   }
 
-  view(): EventLogView {
+  view(): RingLogView<T> {
     this.#view ??= Object.freeze({
       entries: Object.freeze([...this.#ring.slice(this.#oldest), ...this.#ring.slice(0, this.#oldest)]),
       total: this.#total,
-      truncated: this.#total > EVENT_LOG_LIMIT,
+      truncated: this.#total > this.#limit,
     });
     return this.#view;
+  }
+}
+
+/** The event log's ring of EVENT_LOG_LIMIT summaries. */
+export class EventLog {
+  readonly #log = new RingLog<EventLogEntry>(EVENT_LOG_LIMIT);
+
+  append(event: DomainEvent, delivery: EventDelivery): void {
+    this.#log.append(sequence => summarizeEvent(event, delivery, sequence));
+  }
+
+  clear(): void {
+    this.#log.clear();
+  }
+
+  view(): EventLogView {
+    return this.#log.view();
   }
 }

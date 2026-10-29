@@ -6,7 +6,7 @@ import { COMMAND_TYPES, type Command } from '../../core/contracts/tick-input.ts'
 import type { DomainEvent } from '../../core/contracts/domain-events.ts';
 import { RECENT_RESULT_LIMIT } from '../game/game-store.ts';
 import { commandDraft, editDraft, readDraft } from './command-draft.ts';
-import { openDiagnostics, type OpenDiagnostics } from './dev-diagnostics.test-support.ts';
+import { openDiagnostics, soundDecision, type OpenDiagnostics } from './dev-diagnostics.test-support.ts';
 import { createMissionDiagnostics, selectCanRead, selectCanRetry, type MissionDiagnosticsState } from './mission-diagnostics.ts';
 
 /**
@@ -352,6 +352,44 @@ describe('mission diagnostics', () => {
     expect(setup.state()).toMatchObject({ recording: { last: { status: 'none' } }, inspection: { view: null } });
     toFlight(setup.owner);
     expect(setup.state()).toMatchObject({ runId: 2, phase: 'running', log: { total: 0 }, frames: { samples: 0 } });
+  });
+
+  it('logs only this owner\'s sound decisions of the run its logs belong to, each at once, until the next run clears them', async () => {
+    const setup = await openDiagnostics();
+    const { ownerId } = setup.owner;
+    const states = publications(setup);
+    setup.diagnostics.recordSound(soundDecision(0, { ownerId, runId: 1 }));
+    expect(setup.state().sounds.total).toBe(0);
+    toFlight(setup.owner);
+    const published = states.length;
+    setup.diagnostics.recordSound(soundDecision(3, { ownerId, runId: 1 }));
+    expect(states.length).toBe(published + 1);
+    expect(setup.state().sounds.entries).toEqual([{ ...soundDecision(3, { ownerId, runId: 1 }), sequence: 1 }]);
+    // Another owner's or run's decision never enters this log.
+    setup.diagnostics.recordSound(soundDecision(4, { ownerId: ownerId + 1, runId: 1 }));
+    setup.diagnostics.recordSound(soundDecision(4, { ownerId, runId: 2 }));
+    expect(setup.state().sounds.total).toBe(1);
+    // Each log clears on its own.
+    const next = frames(setup);
+    next();
+    submit(setup, { type: 'cockpit-front' });
+    next(1, 200);
+    setup.diagnostics.clearLog();
+    expect(setup.state().sounds.total).toBe(1);
+    // The run's end keeps its log, and its last decisions, such as the stop of every voice as it exits, still enter it.
+    setup.owner.restart();
+    setup.diagnostics.recordSound(soundDecision(5, { ownerId, runId: 1, sound: null, source: null, voiceClass: null, result: 'stopped', code: 'stop-all' }));
+    expect(setup.state().sounds.entries.map(({ tick }) => tick)).toEqual([3, 5]);
+    toFlight(setup.owner);
+    expect(setup.state().sounds).toEqual({ entries: [], total: 0, truncated: false });
+    setup.diagnostics.recordSound(soundDecision(6, { ownerId, runId: 1 }));
+    setup.diagnostics.recordSound(soundDecision(7, { ownerId, runId: 2 }));
+    expect(setup.state().sounds.entries.map(({ runId, tick }) => [runId, tick])).toEqual([[2, 7]]);
+    setup.diagnostics.clearSoundLog();
+    expect(setup.state().sounds.total).toBe(0);
+    setup.slot.release();
+    setup.diagnostics.recordSound(soundDecision(8, { ownerId, runId: 2 }));
+    expect(setup.state().sounds.total).toBe(0);
   });
 
   it('keeps Core\'s recording identical with and without the diagnostics', async () => {

@@ -48,9 +48,9 @@ updated: 2026-10-28
 
 ## 验收标准
 
-- [ ] 状态忠实反映能力和播放门禁；同步可信激活不延后，按钮不旁路暂停。
-- [ ] p/菜单/输入区的既有语义与焦点保持；文案和日志纯模块测试覆盖边界。
-- [ ] DEV 500 项截断与运行身份正确；生产没有日志或原版敏感输出。
+- [x] 状态忠实反映能力和播放门禁；同步可信激活不延后，按钮不旁路暂停。
+- [x] p/菜单/输入区的既有语义与焦点保持；文案和日志纯模块测试覆盖边界。
+- [x] DEV 500 项截断与运行身份正确；生产没有日志或原版敏感输出。
 
 ## 验证方法
 
@@ -58,3 +58,13 @@ updated: 2026-10-28
 - 对本项接线与组件调用 [simplify](../../../../../.agents/skills/simplify/SKILL.md)，不扩充设置界面。
 
 ## 完成证据
+
+- **接线（2026-10-28）：** [use-mission-owner.ts](../../../../../src/app/composition/use-mission-owner.ts) 在两个消费者列表中都把 `createFlightAudioConsumer({ holder, audio: audio.capability, lifecycle: audio.lifecycle, presentation: () => flight?.consumer.presentation() ?? null, reportError, record })` 放在飞行消费者之后（DW-01、DW-13）；开发装配的 `record` 是诊断的 `recordSound`，生产不传。开始、Continue、继续与 `p` 的激活沿用 17 在所有者中的钩子，未改动；`ports.ts` 只同步 `audio` 的说明，`MissionScreen.tsx` 与 `browser-ports.ts` 无需改动（声音状态经所有者快照 `sound` 到达页面）。
+- **状态与按钮：** [audio-copy.ts](../../../../../src/ui/mission/audio-copy.ts) 为七种 `MissionSoundStatus` 各给一句英文（只有 `available` 为 “Sound: on.”；不可用与失败说明任务无声继续），`enableSoundOffered` 只在所有者接受 `enableSound` 的阶段（保持、running、paused、stopped）且声音待启用时提供按钮，浏览器挂起只在未暂停时提供；[AudioStatus.tsx](../../../../../src/ui/mission/AudioStatus.tsx) 以 `role="status"` 的 `mission-sound`（`data-sound`）与按钮 `mission-enable-sound` 显示，在点击处理内同步调用 `owner.enableSound()`（不控制会话、不关闭菜单）。外壳状态栏取代已移除的 `FLIGHT_IN_PROGRESS`，任务菜单显示状态与按钮，开始页只显示状态。
+- **焦点：** `enableSoundFocus` 在所有者通知中（早于 React 卸载按钮）决定：用户已移走焦点或页面隐藏时不动；按钮仍在（策略拒绝或待定）时留在按钮上；变为可用且满足 P3-05 条件（飞行、running、可见、窗口有焦点，与 `shellFocusTarget` 共用新的 `zoneFocusable`）时到输入区；否则到本页第一个可用的动作按钮（没有时为标题），不让焦点落到文档。
+- **DEV 日志：** [audio-log.ts](../../../../../src/ui/dev/audio-log.ts) 的 `SoundLog` 以 P3-04 的 500 项窗口（与事件日志共用新提取的 `RingLog`）保留 `FlightSoundDecision` 加序号；`describeSoundDecision` 写出 ownerId、runId、tick、时钟、触发序号、Asset、来源键、类别、结果与原因码、初始参数与被切断的声部，无 PCM、名称或坐标。[mission-diagnostics.ts](../../../../../src/ui/dev/mission-diagnostics.ts) 的 `recordSound` 只收本所有者、日志所属运行（运行结束后仍为它，直到下一运行开始）的决定，新运行清空，`clearSoundLog` 独立；面板加 Sound log 区块。
+- **测试：** `audio-copy.test.ts`（文案、按钮的状态×阶段全表、焦点的五种结果）、`audio-log.test.ts`（500/502 截断与序号、冻结视图、各字段描述）、`mission-diagnostics.test.ts` 新用例（所有者与运行身份、运行结束后的 stop-all 仍入日志、下一运行清空、独立清空、释放后忽略）；`mission-copy.test.ts` 更新 `MISSION_SKELETON`。`pnpm exec vitest run src/ui` 31 文件 496 项通过。
+- **浏览器冒烟（macOS 本机 Chrome，开发服务器 127.0.0.1:5154，合成 `mission-startable`，临时用例已删除）：** Playwright 页面中 Start 的可信点击后外壳为 `available`、无按钮、焦点在输入区；Pause 后 `paused`，菜单 `paused`，Continue 后 `available`（5 次中 1 次首读为 `paused`，未能复现，见下）；`audio=unavailable` 为 “unavailable … continues without sound”；开发面板列出决定（如 `started · volume=127 rate=19000`、`silent (empty-slot)`、`failed (audio-unavailable)`）。另以独立 Chrome（`--autoplay-policy=document-user-activation-required`，原始 CDP 目标，导入与开始全用无激活的脚本点击，`hasBeenActive` 为 false）：运行中为 `needs-activation`、显示 “Enable sound”；可信点击后 `available`，按钮消失，焦点到输入区，日志开始记录。菜单中锁定时点击 “Enable sound”：状态仍 `needs-activation`、按钮与焦点保持、菜单不关、游戏不继续；Continue 后 `available`。修改后的三个 e2e（base-interaction、flight-render、cockpit-lifecycle 的开发项目）12 项通过、2 项按项目跳过。生产构建的 `dist/` 中没有 `dev-sound-log`、“sound decisions” 或 “Clear sound log”。
+- **观察（交协调者，不在本项范围）：** (1) 暂停门禁关闭且上下文已锁定时，控制器的 `unlock()` 直接返回，所以菜单或暂停中的 “Enable sound” 不改变状态（Continue 仍会解锁）；(2) 锁定期间日志为 0 条，即锁定时没有记录被阻止的播放；(3) 上述一次未复现的 Continue 后 `paused` 首读。
+- **审查：** rubber-duck 指出两项并已修正：`enableSound` 以脱离接收者的方式调用（会抛错；改为 `owner.enableSound?.()`，并以上面的锁定冒烟证实）；失败与菜单时焦点落到标题而非可操作控件、隐藏时仍会移动焦点（改为本页第一个可用动作，隐藏时不动）。simplify：提取 `RingLog` 供事件与声音日志共用、提取 `zoneFocusable` 共用 P3-05 条件；未采纳逐决定发布改为采样（暂停与停止时没有帧，会使决定滞留）、合并 `#logRunId`（`#runId` 在运行结束时须清空以停止快照与导出）、按页面传入回退焦点等。
+- **文档影响：** 更新 [ui.md](../../../../engineering/modules/ui.md)（声音状态、诊断 API、声音日志、构建说明）、[keyboard-input.md](../../../../engineering/keyboard-input.md)（按钮与焦点交接）、[README.md](../../../../engineering/README.md)（测试 ID、开发诊断、装配）、[slice-gaps.md](../../../../engineering/slice-gaps.md)（在制提示已移除）与 [render.md](../../../../engineering/modules/render.md) 的一行外部前提；STATUS 与 tasks.md 无需变化。

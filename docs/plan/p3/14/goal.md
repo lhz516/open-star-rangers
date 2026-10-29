@@ -91,7 +91,7 @@ updated: 2026-10-28
 | [15-event-sound-mapping.md](./subtasks/15-event-sound-mapping.md) | 07, 08, 09 | completed |
 | [16-run-audio-consumer.md](./subtasks/16-run-audio-consumer.md) | 11, 12, 13, 14, 15 | completed |
 | [17-owner-audio-lifecycle.md](./subtasks/17-owner-audio-lifecycle.md) | 16, 20 | completed |
-| [18-audio-ui-composition.md](./subtasks/18-audio-ui-composition.md) | 17 | in-progress |
+| [18-audio-ui-composition.md](./subtasks/18-audio-ui-composition.md) | 17 | completed |
 | [19-rule-event-integration.md](./subtasks/19-rule-event-integration.md) | 16 | completed |
 | [20-presentation-integration.md](./subtasks/20-presentation-integration.md) | 16 | completed |
 | [21-runtime-replay-boundaries.md](./subtasks/21-runtime-replay-boundaries.md) | 19, 20 | completed |

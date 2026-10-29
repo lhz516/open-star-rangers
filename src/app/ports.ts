@@ -48,7 +48,10 @@ export interface AppPorts {
   /** Creates the import Worker port of each job. */
   readonly createImportPort: ImportWorkerPortFactory;
   readonly cache: ResourceCachePort;
-  /** The viewer's audio: the capability its controller uses and the page lifecycle it follows. */
+  /**
+   * The audio of the viewer and of each mission owner's flight sound (P3-14): the capability their controllers use and
+   * the page lifecycle they follow. Each creates at most one context and closes it on release.
+   */
   readonly audio: { readonly capability: AudioCapability; readonly lifecycle: PageLifecycleHost };
   /**
    * Creates a WebGL 2 surface in a container with its user's options: the viewer's, and each mission owner's flight

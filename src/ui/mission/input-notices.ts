@@ -45,8 +45,12 @@ export interface ShellFocusFacts {
 export function shellFocusTarget({ entry, zone, running, visible, windowFocused, focusElsewhere }: ShellFocusFacts): 'zone' | 'heading' | 'none' {
   if (entry === null || !zone) return 'heading';
   if (focusElsewhere) return 'none';
-  return running && visible && windowFocused ? 'zone' : 'heading';
+  return zoneFocusable({ running, visible, windowFocused }) ? 'zone' : 'heading';
 }
+
+/** Whether focus may move into the input zone now: the run is running, the page visible and the window focused. */
+export const zoneFocusable = ({ running, visible, windowFocused }: Pick<ShellFocusFacts, 'running' | 'visible' | 'windowFocused'>): boolean =>
+  running && visible && windowFocused;
 
 /** The "click the game view" hint: the run is running or paused and the input zone does not have focus. */
 export const focusHintShown = (phase: GameSessionPhase, zoneFocused: boolean): boolean =>

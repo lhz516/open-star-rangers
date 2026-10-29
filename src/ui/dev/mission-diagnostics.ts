@@ -8,13 +8,17 @@
  * - the recording export: the run's Recording, taken synchronously outside the Session's notifications and saved as
  *   compact JSON through the owner's file save (recording-export.ts). A failed save keeps that copy for a retry;
  * - the current run's cockpit counts, read only when asked (`cockpitCounts`): message line items dropped at its bound and
- *   radar noise past its 120 entries (docs/plan/p3/13/spec.md, DC-07 and DC-08).
+ *   radar noise past its 120 entries (docs/plan/p3/13/spec.md, DC-07 and DC-08);
+ * - the sound log of the run's flight sound decisions (audio-log.ts; docs/plan/p3/14/spec.md, 声音状态与开发诊断), which
+ *   the app's flight sound consumer hands to `recordSound`; only this owner's decisions for the run the logs belong to
+ *   are kept, each published at once, so a decision of an earlier run or owner never enters a later run's log.
  * It reads only through the public run handle and submits nothing itself: commands go through the command feedback.
  * A faulted run gives no new snapshot or export, while copies taken before stay valid; a stopped run still exports.
  * Changes are published at the UI's sampling interval, by the frame timing's own clock readings, and at once for status
  * changes, stops, timing failures and user actions. The run's recording, its Core state and its RNG never see it.
  */
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type { FlightSoundDecision } from '../../app/flight-audio/consumer.ts';
 import type { FrameTiming, FrameTimingNotice } from '../../app/mission/dev-frame-timing.ts';
 import type { MissionConsumerConnection, MissionOwnerConsumer, MissionOwnerContext, MissionRunContext } from '../../app/mission/mission-owner.ts';
 import type { FileSave } from '../../app/mission/mission-ports.ts';
@@ -25,6 +29,7 @@ import type { Recording } from '../../core/replay/recording.ts';
 import type { CockpitDiagnostics } from '../../render/cockpit/composition/cockpit-run.ts';
 import { attemptAll, runCleanup } from '../../render/scene/cleanup.ts';
 import { PROJECTION_SAMPLE_INTERVAL_MS } from '../game/game-session-bridge.ts';
+import { SoundLog, type SoundLogView } from './audio-log.ts';
 import { inspectSnapshot, type InspectionView } from './entity-inspection.ts';
 import { EventLog, type EventLogView } from './event-log.ts';
 import { FrameStats, type FrameStatsView } from './frame-stats.ts';
@@ -56,6 +61,7 @@ export interface MissionDiagnosticsState {
   readonly runId: number | null;
   readonly phase: GameSessionPhase | null;
   readonly log: EventLogView;
+  readonly sounds: SoundLogView;
   readonly frames: FrameStatsView;
   readonly inspection: InspectionState;
   readonly recording: RecordingExportState;
@@ -66,6 +72,7 @@ export type MissionDiagnosticsReader = Pick<StoreApi<MissionDiagnosticsState>, '
 /** User actions, for event handlers rather than Session notifications; each is ignored where it does not apply. */
 export interface MissionDiagnosticsActions {
   clearLog(): void;
+  clearSoundLog(): void;
   /** Reads one snapshot of the current run; ignored without a run and once it faulted. */
   refreshSnapshot(): void;
   /** Takes the recording so far and saves it; ignored without a run and once it faulted. */
@@ -83,6 +90,8 @@ export interface MissionDiagnostics extends MissionDiagnosticsActions {
   readonly reader: MissionDiagnosticsReader;
   /** The current run's cockpit counts after its last processed tick; null without a run's cockpit. */
   cockpitCounts(): CockpitCounts | null;
+  /** The flight sound consumer's `record`: logs a decision of this owner's run whose logs show. */
+  recordSound(decision: FlightSoundDecision): void;
 }
 
 export interface MissionDiagnosticsOptions {
@@ -111,8 +120,11 @@ class Diagnostics implements MissionDiagnostics {
   #fileSave: FileSave | null = null;
   #cleanups: (() => unknown)[] = [];
   #runId: number | null = null;
+  /** The run the logs belong to: the current one, or the last until the next begins. */
+  #logRunId: number | null = null;
   #phase: GameSessionPhase | null = null;
   readonly #log = new EventLog();
+  readonly #sounds = new SoundLog();
   readonly #frames = new FrameStats();
   #inspection: InspectionState = NO_INSPECTION;
   #recording: RecordingExportState = NO_EXPORT;
@@ -130,6 +142,18 @@ class Diagnostics implements MissionDiagnostics {
   clearLog(): void {
     if (this.#state !== 'connected') return;
     this.#log.clear();
+    this.#publish();
+  }
+
+  clearSoundLog(): void {
+    if (this.#state !== 'connected') return;
+    this.#sounds.clear();
+    this.#publish();
+  }
+
+  recordSound(decision: FlightSoundDecision): void {
+    if (this.#state !== 'connected' || decision.ownerId !== this.#context?.ownerId || decision.runId !== this.#logRunId) return;
+    this.#sounds.append(decision);
     this.#publish();
   }
 
@@ -240,7 +264,9 @@ class Diagnostics implements MissionDiagnostics {
   #enter(runId: number): void {
     if (this.#runId === runId) return;
     this.#runId = runId;
+    this.#logRunId = runId;
     this.#log.clear();
+    this.#sounds.clear();
     this.#frames.clear();
     this.#inspection = NO_INSPECTION;
     this.#recording = NO_EXPORT;
@@ -296,6 +322,7 @@ class Diagnostics implements MissionDiagnostics {
       runId: this.#runId,
       phase: this.#phase,
       log: this.#log.view(),
+      sounds: this.#sounds.view(),
       frames: this.#frames.view(),
       inspection: this.#inspection,
       recording: this.#recording,

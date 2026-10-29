@@ -13,9 +13,14 @@
  *   production geometry measures the input zone and the canvas against the map picture's geometry of the bound content
  *   (`createZoneGeometryPort`), and its cursor is the current run's map presentation credential, the map picture with
  *   the original pointer the composition actually submitted; the project crosshair stays in the isolated test entry;
+ * - right after it, the flight sound's `media` consumer (P3-14, `createFlightAudioConsumer`): the owner's one audio
+ *   controller over the app's audio capability and page lifecycle, whose runs read the flight consumer's presentation
+ *   module of the same run (D2-01), so it comes after the flight consumer in both lists; the owner's trusted actions
+ *   unlock it and its status reaches the shell through the owner snapshot's `sound`;
  * - a `ui` consumer after it that bridges each run's cockpit message line into the UI store (`bridgeMessageLine`), so
  *   the base page reads the same head and incoming message as the cockpit (P3-13 DC-07), withdrawn as the run ends;
- * - in development builds only, the frame timing that wraps that host, the diagnostics and the recording options. Their
+ * - in development builds only, the frame timing that wraps that host, the diagnostics, whose sound log takes the flight
+ *   sound consumer's decisions, and the recording options. Their
  *   modules load through a dynamic import behind the compile-time `import.meta.env.DEV`, so production builds contain
  *   none of them.
  * Once open, the owner's flow is written into the store on every snapshot. The effect closes the slot on unmount, a
@@ -33,9 +38,11 @@ import { MAP_INPUT_POLICY } from '../../ui/game-input/map-input-policy.ts';
 import { createZoneGeometryPort } from '../../render/map/map-input-geometry.ts';
 import { FLIGHT_SURFACE, type FlightRenderer } from '../../render/flight/renderer/flight-renderer.ts';
 import { appProducer } from '../app-version.ts';
+import { createFlightAudioConsumer } from '../flight-audio/owner.ts';
 import { cockpitCopy } from './cockpit-copy.ts';
 import type { MissionSlot } from './mission-slot.ts';
 import type { MissionFlowState } from '../mission/mission-flow.ts';
+import type { FlightSoundDecision } from '../flight-audio/consumer.ts';
 import { createFlightConsumer, type FlightConsumer } from '../mission/flight-consumer.ts';
 import {
   developmentRecording, type MissionOwner, type MissionOwnerConsumer, type MissionOwnerSetup,
@@ -87,7 +94,7 @@ interface Assembly {
   parts(owner: MissionOwner): MissionScreenParts;
 }
 
-function assemble({ mission: ports, createSurface, reportError }: AppPorts, holder: ResourceHolder): Assembly {
+function assemble({ mission: ports, audio, createSurface, reportError }: AppPorts, holder: ResourceHolder): Assembly {
   let ui: Pick<MissionScreenParts, 'store' | 'feedback' | 'texts'> | null = null;
   let diagnostics: MissionDiagnostics | null = null;
   let flight: { readonly consumer: FlightConsumer; readonly container: HTMLElement } | null = null;
@@ -156,19 +163,26 @@ function assemble({ mission: ports, createSurface, reportError }: AppPorts, hold
         },
       });
       flight = { consumer, container };
+      const sound = (record?: (decision: FlightSoundDecision) => void) => createFlightAudioConsumer({
+        holder, audio: audio.capability, lifecycle: audio.lifecycle, presentation: () => flight?.consumer.presentation() ?? null, reportError, record,
+      });
       if (development && ports.createFileSave) {
         const timing = development.createFrameTiming(host, ports.clock);
-        diagnostics = development.createMissionDiagnostics({
+        const devDiagnostics = development.createMissionDiagnostics({
           timing, fileSave: ports.createFileSave, cockpit: () => flight?.consumer.cockpit()?.diagnostics() ?? null,
         });
+        diagnostics = devDiagnostics;
         return {
           ...base,
           host: timing.host,
           recording: developmentRecording(appProducer(import.meta.env.MODE)),
-          consumers: [input, uiConsumer, timing.consumer, diagnostics.consumer, consumer, messagesConsumer],
+          consumers: [
+            input, uiConsumer, timing.consumer, devDiagnostics.consumer, consumer,
+            sound(decision => { devDiagnostics.recordSound(decision); }), messagesConsumer,
+          ],
         };
       }
-      return { ...base, host, recording: null, consumers: [input, uiConsumer, consumer, messagesConsumer] };
+      return { ...base, host, recording: null, consumers: [input, uiConsumer, consumer, sound(), messagesConsumer] };
     },
     parts(owner) {
       const renderer = flight?.consumer.renderer();

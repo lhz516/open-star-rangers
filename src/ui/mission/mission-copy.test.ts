@@ -5,7 +5,7 @@ import { CoreFaultError, CoreInputError } from '../../core/errors.ts';
 import { FIVE_WINGMAN_NAMES } from '../../original-data/formats/formats.test-support.ts';
 import { MISSION_SCENARIOS } from '../../workers/import-scenarios.test-support.ts';
 import {
-  describeStructure, eligibilityReason, FLIGHT_IN_PROGRESS, flightNotice, MISSION_SKELETON, pauseText, resumeBlockedText, startFailureText, startRetryable, wingmanLabel,
+  describeStructure, eligibilityReason, flightNotice, MISSION_SKELETON, pauseText, resumeBlockedText, startFailureText, startRetryable, wingmanLabel,
 } from './mission-copy.ts';
 import { MISSION_OBJECTIVES, SLICE_GAPS } from './slice-gaps-copy.ts';
 import type { GameSessionStatus } from '../../app/session/game-session.ts';
@@ -134,13 +134,11 @@ describe('slice gap copy (G IDs)', () => {
     expect(MISSION_SKELETON).toMatch(/formal runtime skeleton, not yet a playable slice/);
     expect(MISSION_SKELETON).toMatch(/mission result included/);
     expect(MISSION_SKELETON).not.toMatch(/game controls/);
-    expect(MISSION_SKELETON).toMatch(/flight view draws the cockpit, HUD and strategic map, but there are no sound effects yet \(P3-14\)/);
-    expect(MISSION_SKELETON).not.toMatch(/no cockpit|in progress/);
+    expect(MISSION_SKELETON).toMatch(/flight view draws the cockpit, HUD and strategic map, and the flight plays its sound effects/);
+    expect(MISSION_SKELETON).not.toMatch(/no cockpit|no sound|in progress|P3-14/);
   });
 
-  it('says why the flight picture is missing and whether the run goes on, and keeps only the P3-14 sound note in progress', () => {
-    expect(FLIGHT_IN_PROGRESS).toBe('Sound effects are not implemented yet (P3-14).');
-    expect(FLIGHT_IN_PROGRESS).not.toMatch(/cockpit|HUD|P3-13/);
+  it('says why the flight picture is missing and whether the run goes on', () => {
     expect(flightNotice({ state: 'ready', error: null })).toBeNull();
     expect(flightNotice({ state: 'disposed', error: null })).toBeNull();
     expect(flightNotice({ state: 'context-lost', error: null })).toEqual({ alert: false, text: expect.stringMatching(/context was lost.*continues/), detail: null });
