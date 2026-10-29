@@ -474,7 +474,7 @@ interface PresentationTick {
 | `energy-allocation-changed` | 按 ID | 10485 |
 | `left-page-changed` | 按 ID（条件） | `commandIndex` 非 null 时 10485；直接写页（null）不发声（P3-02 CB 的约定、A-10） |
 | `map-toggled` | 不发声 | 视角变化由 projection 反映 |
-| `warp-destination-set` | 按 ID | 10463，每个事件一次（P3-09 的契约）；A-10 的按住重复读取是否都有事件由 19 核对，音效不补发 |
+| `warp-destination-set` | 按 ID | 10463，每个事件一次（P3-09 的契约）；A-10 的按住重复读取都有事件（已确认，代码与契约：P3-05 每 8 单位重复按住的选取，P3-09 每次发出一个事件；见 [19 的完成证据](./subtasks/19-rule-event-integration.md#完成证据)），音效不补发 |
 | `warp-started` | 按 ID | 10401（`sound/warp`）；被拒绝的请求没有此事件 |
 | `warp-completed` | 按 ID（条件） | `arrival` 非 null 且 `arrival.hostileNear` 时 10181（`repeat` 8 遍）；放弃的 Warp 不播 |
 | `command-delivered` | 不发声 | 通讯命令的 10485 随其 `left-page-changed` |
