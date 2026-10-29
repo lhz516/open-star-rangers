@@ -94,7 +94,7 @@ updated: 2026-10-28
 | [18-audio-ui-composition.md](./subtasks/18-audio-ui-composition.md) | 17 | pending |
 | [19-rule-event-integration.md](./subtasks/19-rule-event-integration.md) | 16 | completed |
 | [20-presentation-integration.md](./subtasks/20-presentation-integration.md) | 16 | completed |
-| [21-runtime-replay-boundaries.md](./subtasks/21-runtime-replay-boundaries.md) | 19, 20 | in-progress |
+| [21-runtime-replay-boundaries.md](./subtasks/21-runtime-replay-boundaries.md) | 19, 20 | completed |
 | [22-browser-audio-output.md](./subtasks/22-browser-audio-output.md) | 18, 19, 20 | pending |
 | [23-browser-lifecycle-resources.md](./subtasks/23-browser-lifecycle-resources.md) | 22 | pending |
 | [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | in-progress |
