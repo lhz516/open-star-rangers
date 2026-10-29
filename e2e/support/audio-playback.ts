@@ -38,6 +38,12 @@ export interface AudioSourceRecord {
    * channel gains; none for a fixed voice).
    */
   readonly initial: { readonly playbackRate: number; readonly gains: readonly number[] };
+  /**
+   * Which of those parameters (`playbackRate`, `gain 0`, …) the application last set through `value` after it had
+   * connected the parameter's node onward. Chrome's render thread can then store a stale value over the set, so `initial`
+   * may read the old one until the automation event applies a quantum later.
+   */
+  readonly setAfterConnection: readonly string[];
   /** The context time when the application disconnected the source, which ends the voice; null while connected. */
   readonly end: number | null;
 }
@@ -141,6 +147,20 @@ export function installAudioProbe(): void {
   const buffers: AudioBuffer[] = [];
   const routed = new Set<AudioNode>();
   let started = 0;
+  // Order of the application's `value` sets and onward connections, by a shared counter.
+  let step = 0;
+  const lastSet = new WeakMap<AudioParam, number>();
+  const firstConnection = new WeakMap<AudioNode, number>();
+  const valueProperty = Object.getOwnPropertyDescriptor(AudioParam.prototype, 'value')!;
+  Object.defineProperty(AudioParam.prototype, 'value', {
+    ...valueProperty,
+    set(value: number) {
+      valueProperty.set!.call(this, value);
+      lastSet.set(this as AudioParam, ++step);
+    },
+  });
+  const setAfterConnection = (node: AudioNode, param: AudioParam): boolean =>
+    (lastSet.get(param) ?? 0) > (firstConnection.get(node) ?? Number.POSITIVE_INFINITY);
   type Scheduled = { at: number; when: number | null };
   type SourceRecord = Omit<AudioSourceRecord, 'end'> & { end: number | null };
   // Records copy what they report when the source starts, so no buffer is kept; stops find theirs by node, and the
@@ -181,7 +201,10 @@ export function installAudioProbe(): void {
             sampleRate: buffer?.sampleRate ?? 0, length: buffer?.length ?? 0,
             channels: buffer ? Array.from({ length: buffer.numberOfChannels }, (_, channel) => [...buffer.getChannelData(channel)]) : [],
             loop, loopStart, loopEnd, start: scheduled(this, args[0]), stops,
-            initial: { playbackRate: this.playbackRate.value, gains: gains.map(({ gain }) => gain.value) }, end: null,
+            initial: { playbackRate: this.playbackRate.value, gains: gains.map(({ gain }) => gain.value) },
+            setAfterConnection: [['playbackRate', this, this.playbackRate] as const, ...gains.map((node, index) => [`gain ${index}`, node, node.gain] as const)]
+              .filter(([, node, param]) => setAfterConnection(node, param)).map(([name]) => name),
+            end: null,
           };
           sources.push(record);
           recordOf.set(this, record);
@@ -245,6 +268,7 @@ export function installAudioProbe(): void {
   AudioNode.prototype.connect = function (this: AudioNode, ...args: unknown[]): unknown {
     const result: unknown = (originalConnect as (...values: unknown[]) => unknown).apply(this, args);
     if (args[0] instanceof AudioNode && !own.has(this)) {
+      if (!firstConnection.has(this)) firstConnection.set(this, ++step);
       const list = targets.get(this) ?? [];
       list.push(args[0]);
       targets.set(this, list);

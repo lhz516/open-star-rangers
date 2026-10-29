@@ -9,8 +9,9 @@ import {
 
 /**
  * A parameterised voice's nodes: source → volume gain → one gain per output channel → merger → output, set to `initial`
- * before the source can start. A mono source feeds both channel gains; a stereo one is split so that its first channel
- * gets the first gain and its second the second. Not a StereoPannerNode, whose equal-power law differs from A-09's.
+ * before any of them is connected, so before the source can start. A mono source feeds both channel gains; a stereo one
+ * is split so that its first channel gets the first gain and its second the second. Not a StereoPannerNode, whose
+ * equal-power law differs from A-09's.
  * Its `disconnect` covers the source too, and a failure part way disconnects every node so far before it is rethrown.
  */
 function parameterGraph(context: AudioContext, source: AudioBufferSourceNode, initial: VoiceNodeParameters) {
@@ -21,6 +22,13 @@ function parameterGraph(context: AudioContext, source: AudioBufferSourceNode, in
     const left = made(context.createGain());
     const right = made(context.createGain());
     const merger = made(context.createChannelMerger(2));
+    // Before any connection: once connected, the render thread may compute a parameter from its old value and store
+    // that back over a later main-thread `value` set (the automation event still applies a quantum later), so the
+    // `value` getter at start() could read the default.
+    volume.gain.value = initial.gain;
+    left.gain.value = initial.left;
+    right.gain.value = initial.right;
+    source.playbackRate.value = initial.playbackRate;
     source.connect(volume);
     if (source.buffer!.numberOfChannels > 1) {
       const splitter = made(context.createChannelSplitter(2));
@@ -34,10 +42,6 @@ function parameterGraph(context: AudioContext, source: AudioBufferSourceNode, in
     left.connect(merger, 0, 0);
     right.connect(merger, 0, 1);
     merger.connect(context.destination);
-    volume.gain.value = initial.gain;
-    left.gain.value = initial.left;
-    right.gain.value = initial.right;
-    source.playbackRate.value = initial.playbackRate;
     return {
       set({ gain, left: first, right: second, playbackRate }: VoiceNodeParameters, when: number): void {
         volume.gain.setValueAtTime(gain, when);

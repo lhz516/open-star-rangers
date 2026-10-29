@@ -202,6 +202,11 @@ test('the engines, one-shots and parameter changes reach both output channels; a
   await expect(missionEntry(page)).toBeVisible();
   await expect.poll(async () => (await page.evaluate(() => window.osrAudioProbe.contexts())).at(-1)).toBe('closed');
   expect(await page.evaluate(() => window.osrAudioProbe.routed())).toBe(0);
+  // Every parameterised voice of both runs, the off-centre wingman's included, got its initial values before its nodes
+  // were connected, so no render quantum could overwrite them before start() (subtask 30).
+  const allSources = await audioSources(page);
+  expect(allSources.filter(({ initial }) => initial.gains.some(gain => gain !== 1)).length).toBeGreaterThan(0);
+  expect(allSources.flatMap(({ setAfterConnection }, index) => setAfterConnection.map(parameter => `${index} ${parameter}`))).toEqual([]);
   const summary = (fit: { left: { residual: number; measured: number }; right: { residual: number; measured: number } }) => ({
     left: { residual: fit.left.residual, rms: fit.left.measured }, right: { residual: fit.right.residual, rms: fit.right.measured },
   });

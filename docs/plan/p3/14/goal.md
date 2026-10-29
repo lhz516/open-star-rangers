@@ -102,7 +102,7 @@ updated: 2026-10-28
 | [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | pending |
 | [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23, 26 | pending |
 | [29-full-e2e-remediation.md](./subtasks/29-full-e2e-remediation.md) | 23 | completed |
-| [30-start-gain-remediation.md](./subtasks/30-start-gain-remediation.md) | 22 | in-progress |
+| [30-start-gain-remediation.md](./subtasks/30-start-gain-remediation.md) | 22 | completed |
 | [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29, 30 | pending |
 
 最后一行是仅验证的最终对齐。后续修复分配新 ID，放在该行之前并加入其依赖，不重编号或用最终验证实现新功能。
