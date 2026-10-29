@@ -86,8 +86,8 @@ describe('the input control port', () => {
     const consumers = [new TestConsumer('input', 'A', []), new TestConsumer('ui', 'C', []), new TestConsumer('media', 'E', [])];
     const setup = await openInput({ consumers });
     const [input, ui, media] = consumers.map((consumer) => consumer.contexts[0]!);
-    expect(Object.keys(input!).sort()).toEqual(['control', 'ownerId', 'previousClosed', 'session']);
-    for (const context of [ui, media]) expect(Object.keys(context!).sort()).toEqual(['ownerId', 'previousClosed', 'session']);
+    expect(Object.keys(input!).sort()).toEqual(['control', 'ownerId', 'previousClosed', 'session', 'soundChanged']);
+    for (const context of [ui, media]) expect(Object.keys(context!).sort()).toEqual(['ownerId', 'previousClosed', 'session', 'soundChanged']);
     const { control } = input as MissionInputContext;
     expect(control).toBe(setup.input.control());
     expect(Object.isFrozen(control)).toBe(true);
@@ -194,6 +194,38 @@ describe('the input control port', () => {
     expect(outcomes(port)).toEqual(['clearInput: returned', 'togglePause: returned', 'openMenu: returned']);
     port.clearInput('pointer-lock-exit');
     expect(owner.getSnapshot()).toBe(ended);
+  });
+});
+
+describe('sound activation (P3-14/17)', () => {
+  it('activates media connections from p\'s resume and Continue only, never from a pause, the menu or a refused resume', async () => {
+    const causes: { readonly cause: string; readonly phase: string }[] = [];
+    let session: (() => string) | null = null;
+    const media: MissionOwnerConsumer = {
+      stage: 'media',
+      connect: (context) => {
+        session = () => context.session.status().phase;
+        return { release: () => undefined, onActivation: (cause) => { causes.push({ cause, phase: session!() }); } };
+      },
+    };
+    const { owner, host, input } = await openInput({ consumers: [media] });
+    toFlight(owner);
+    causes.length = 0;
+    input.port().togglePause();
+    expect(causes).toEqual([]);
+    // After the session control, in the same call stack.
+    input.port().togglePause();
+    expect(causes).toEqual([{ cause: 'resume', phase: 'running' }]);
+    input.port().openMenu();
+    input.port().togglePause();
+    expect(owner.getSnapshot().flow.position).toBe('menu');
+    expect(causes).toHaveLength(1);
+    owner.continueFromMenu();
+    expect(causes.at(-1)).toEqual({ cause: 'continue', phase: 'running' });
+    host.emit({ type: 'visibility', visibility: 'hidden' });
+    input.port().togglePause();
+    expect(owner.getSnapshot()).toMatchObject({ actionError: { operation: 'resume' }, session: { phase: 'paused' } });
+    expect(causes).toHaveLength(2);
   });
 });
 

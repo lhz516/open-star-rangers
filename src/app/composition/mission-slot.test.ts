@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { missionHolder, missionJob, ownerSetup, testPorts, testSlot, toFlight } from '../mission/mission.test-support.ts';
+import { FakeAudio, FakeLifecycle } from '../../platform/audio/audio-controller.test-support.ts';
+import { GraphicsUnavailableError } from '../../render/scene/render-surface.ts';
+import { createFlightAudioConsumer } from '../flight-audio/owner.ts';
+import { createFlightConsumer } from '../mission/flight-consumer.ts';
+import { missionHolder, missionJob, ownerSetup, testPorts, testSlot, toDeparture, toFlight } from '../mission/mission.test-support.ts';
 import { MissionUnavailableError, type MissionOwner } from '../mission/mission-owner.ts';
-import { testHolder } from '../resources/resource-holder.test-support.ts';
+import { flush, testHolder } from '../resources/resource-holder.test-support.ts';
+import type { ResourceHolder } from '../resources/resource-holder.ts';
 import { teardownMissionAndHolder } from './mission-slot.ts';
 
 // P3-04 S-05 (docs/plan/p3/04/spec.md, 应用流程): one mission slot per app instance, its ownerIds, its latch, and the
@@ -66,6 +71,43 @@ describe('mission slot', () => {
     expect(owner.getSnapshot().released).toBe(true);
     expect(reportError).toHaveBeenCalledWith(failure);
     expect(slot.cleanupFailure()).toBeNull();
+  });
+});
+
+describe('owner audio isolation (P3-14/17)', () => {
+  /** The flight picture without WebGL 2 and the flight sound over a fake audio of its own: one owner's consumers. */
+  function withSound(holder: ResourceHolder) {
+    const audio = new FakeAudio();
+    const flight = createFlightConsumer({ holder, createSurface: () => { throw new GraphicsUnavailableError({ cause: null }); }, seed: () => 1, reportError: () => undefined });
+    const sound = createFlightAudioConsumer({ holder, audio, lifecycle: new FakeLifecycle(), presentation: () => flight.presentation(), reportError: () => undefined });
+    return { audio, consumers: [flight, sound] };
+  }
+
+  it('creates no owner\'s audio before every earlier owner\'s context is confirmed closed, across owners in between', async () => {
+    const { holder } = await missionHolder();
+    const { slot, onCleanupFailure } = testSlot();
+    const first = withSound(holder);
+    const owner = slot.open(() => ownerSetup(holder, testPorts(), { consumers: first.consumers }))!;
+    await flush();
+    toDeparture(owner);
+    expect(first.audio.contexts).toHaveLength(1);
+    let confirm!: () => void;
+    first.audio.context.close = () => new Promise<void>((resolve) => { confirm = resolve; });
+    const second = withSound(holder);
+    const between = slot.open(() => ownerSetup(holder, testPorts(), { consumers: second.consumers }))!;
+    await flush();
+    expect(between.getSnapshot().sound).toBe('waiting-close');
+    // The owner in between closes nothing, but the next still waits for the first.
+    const third = withSound(holder);
+    const next = slot.open(() => ownerSetup(holder, testPorts(), { consumers: third.consumers }))!;
+    await flush();
+    expect(next.getSnapshot().sound).toBe('waiting-close');
+    expect(second.audio.buffers.length + third.audio.buffers.length).toBe(0);
+    confirm();
+    await flush();
+    expect(next.getSnapshot().sound).toBe('needs-activation');
+    expect({ second: second.audio.buffers.length, third: third.audio.buffers.length > 0 }).toEqual({ second: 0, third: true });
+    expect(onCleanupFailure).not.toHaveBeenCalled();
   });
 });
 

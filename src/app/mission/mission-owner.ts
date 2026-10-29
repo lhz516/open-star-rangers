@@ -26,6 +26,9 @@
  *   bind one run: they clear the run's input, toggle its pause and open the mission menu through the owner's own
  *   actions, and are refused once the owner is released or the run is no longer the session's. The toggle and the menu
  *   are intents, refused too inside another intent or a callback of the session.
+ * - **Sound (P3-04 spec, 任务音频接线（P3-14 的修订）):** after its own session control, each trusted action (a start
+ *   that created the world, Continue, a resume, `p`'s resume and `enableSound`) activates the `media` connections in the
+ *   same call stack; the snapshot shows the sound status the first `media` connection that reports one gives.
  */
 import type { AssetId } from '../../content/asset-id.ts';
 import { contentIdentityKey, type ContentIdentity } from '../../content/content-identity.ts';
@@ -64,6 +67,28 @@ export type MissionOwnerStage = 'input' | 'ui' | 'media';
 const STAGES: readonly MissionOwnerStage[] = ['input', 'ui', 'media'];
 const CLEAR_INPUT_REASONS: readonly ClearInputReason[] = ['focus-loss', 'pointer-lock-exit'];
 
+/** The trusted user action an activation follows (P3-04 spec, 任务音频接线（P3-14 的修订）). */
+export type MissionActivationCause = 'start' | 'continue' | 'resume' | 'enable-sound';
+
+/** The mission's sound as the shell's status bar shows it (P3-04 spec, 任务音频接线（P3-14 的修订）; P3-14 S-09). */
+export type MissionSoundStatus =
+  /** An earlier owner's close is not confirmed yet. */
+  | 'waiting-close'
+  /** The controller is idle or locked: the shell offers to enable sound. */
+  | 'needs-activation'
+  | 'available'
+  /** The task pause gate is closed. */
+  | 'paused'
+  /** Hidden, or suspended or interrupted by the browser. */
+  | 'host-suspended'
+  /** The host has no usable Web Audio, or no consumer plays sound: the game goes on silently. */
+  | 'unavailable'
+  /** The controller, its loading, an activation or a close failed. */
+  | 'failed';
+
+/** Session phases in which `enableSound` applies: the holds, a flight running or paused, and a stopped run. */
+const SOUND_PHASES: ReadonlySet<GameSessionStatus['phase']> = new Set(['transition', 'running', 'paused', 'stopped']);
+
 /** What owner-level consumers see of the session: no control, frame or Core access beyond the public run handle. */
 export type MissionSessionView = Pick<GameSession, 'status' | 'currentRun' | 'onStatus'>;
 
@@ -75,6 +100,11 @@ export interface MissionOwnerContext {
    * when a close failed, which latched the slot. A consumer that recreates such a resource waits for it.
    */
   readonly previousClosed: Promise<boolean>;
+  /**
+   * Publishes the owner's snapshot again: a `media` connection calls it after what its `sound()` returns changed. The
+   * owner always gives it; contexts made by hand for other consumers' tests may not.
+   */
+  readonly soundChanged?: () => void;
 }
 
 /**
@@ -131,6 +161,14 @@ export interface MissionConsumerConnection {
   attachRun?(run: GameSessionRun, context: MissionRunContext): void;
   /** Receives the session's asynchronous errors; it must not control the session. */
   onSessionError?(error: GameSessionError): void;
+  /**
+   * At the `media` stage: called synchronously inside a trusted user action, after the owner's own session control, so
+   * the consumer may unlock and resume audio there. Throwing is reported and shows the sound as failed; the action's
+   * result stands.
+   */
+  onActivation?(cause: MissionActivationCause): void;
+  /** At the `media` stage: the sound status the snapshot shows; the first connection that has one gives it. */
+  sound?(): MissionSoundStatus;
 }
 
 /**
@@ -259,6 +297,8 @@ export interface MissionOwnerSnapshot {
   readonly actionError: { readonly operation: MissionOperation; readonly cause: unknown } | null;
   /** The owner's first cleanup failure: only leaving the screen remains. */
   readonly cleanupFailure: { readonly cause: unknown } | null;
+  /** The mission's sound: `unavailable` when no `media` connection reports one. */
+  readonly sound: MissionSoundStatus;
 }
 
 /** What one release left: its synchronous failures, and when its asynchronous closes are confirmed. */
@@ -290,6 +330,12 @@ export interface MissionOwner {
   openMenu(): void;
   /** Resumes, and closes the menu only when that succeeded. */
   continueFromMenu(): void;
+  /**
+   * A trusted click on the shell's enable-sound control: only activates the `media` connections, in the holds, a
+   * running or paused flight (the menu included) and a stopped run. It controls no session, closes no menu, resumes no
+   * paused game and keeps the last action error.
+   */
+  enableSound(): void;
   /** Exits the run and, once every cleanup succeeded, begins again at G-02/1 with the selection kept. */
   restart(): void;
   /** For the mission slot: releases everything in order, once; repeated calls return the first result. */
@@ -391,6 +437,9 @@ class Owner implements MissionOwner {
   /** Above zero while the session runs a frame or lifecycle callback of its host, or the port's `clear-input`. */
   #inSession = 0;
   #released: MissionOwnerRelease | null = null;
+  /** The first `media` connection's sound status, if any; an activation or a status that threw shows `failed`. */
+  #sound: (() => MissionSoundStatus) | null = null;
+  #soundFailed = false;
   #snapshot!: MissionOwnerSnapshot;
   /** The port `input` consumers connect with; each run's port checks its owner and run before every call. */
   readonly #inputControl: MissionInputControl = Object.freeze({
@@ -462,12 +511,17 @@ class Owner implements MissionOwner {
           onStatus: (listener: (status: GameSessionStatus) => undefined) => session.onStatus(listener),
         }),
         previousClosed: link.previousClosed,
+        soundChanged: () => {
+          // An intent publishes once at its end.
+          if (!this.#acting) this.#publish();
+        },
       });
       const inputContext: MissionInputContext = Object.freeze({ ...context, control: this.#inputControl });
       for (const consumer of consumers) {
         const connection = consumer.stage === 'input' ? consumer.connect(inputContext) : consumer.connect(context);
         if (typeof connection?.release !== 'function') throw new TypeError('A mission consumer connection needs release()');
         this.#connections.push({ stage: consumer.stage, connection });
+        if (consumer.stage === 'media' && !this.#sound && typeof connection.sound === 'function') this.#sound = () => connection.sound!();
       }
     } catch (cause) {
       // The slot latches the RollbackError, which keeps the cause with every release failure.
@@ -511,7 +565,8 @@ class Owner implements MissionOwner {
   }
 
   resume(): void {
-    if (this.#ready('flight')) this.#act(() => { this.#control('resume', { type: 'resume' }); });
+    if (!this.#ready('flight')) return;
+    this.#act(() => { if (this.#control('resume', { type: 'resume' })) this.#activate('resume'); });
   }
 
   openMenu(): void {
@@ -525,8 +580,15 @@ class Owner implements MissionOwner {
   continueFromMenu(): void {
     if (!this.#ready('menu')) return;
     this.#act(() => {
-      if (this.#control('continue', { type: 'resume' }) && this.#session.status().phase === 'running') this.#next({ type: 'menu-closed' });
+      if (!this.#control('continue', { type: 'resume' }) || this.#session.status().phase !== 'running') return;
+      this.#next({ type: 'menu-closed' });
+      this.#activate('continue');
     });
+  }
+
+  enableSound(): void {
+    if (this.#released || this.#acting || this.#inSession > 0 || !SOUND_PHASES.has(this.#session.status().phase)) return;
+    this.#act(() => { this.#activate('enable-sound'); }, false);
   }
 
   restart(): void {
@@ -614,10 +676,13 @@ class Owner implements MissionOwner {
     return !this.#released && !this.#acting && this.#inSession === 0 && positions.includes(this.#flow.position);
   }
 
-  /** Applies one intent: no other intent applies meanwhile, and the snapshot is published once after it. */
-  #act(action: () => void): void {
+  /**
+   * Applies one intent: no other intent applies meanwhile, and the snapshot is published once after it. Unless
+   * `clearsError` is false, the intent clears the last action error first.
+   */
+  #act(action: () => void, clearsError = true): void {
     this.#acting = true;
-    this.#actionError = null;
+    if (clearsError) this.#actionError = null;
     try {
       action();
     } finally {
@@ -703,6 +768,20 @@ class Owner implements MissionOwner {
     this.#link.confirm(Object.freeze({ identity: this.#identityKey, wingman }));
     this.#next({ type: 'started', runId: run.runId });
     this.#beginPlaceholder({ gap: 'G-02/2', variant });
+    this.#activate('start');
+  }
+
+  /** The `media` connections' activation for a trusted action, after its session control and in its call stack. */
+  #activate(cause: MissionActivationCause): void {
+    for (const { stage, connection } of this.#connections) {
+      if (stage !== 'media' || typeof connection.onActivation !== 'function') continue;
+      try {
+        connection.onActivation(cause);
+      } catch (error) {
+        this.#soundFailed = true;
+        this.#report(error);
+      }
+    }
   }
 
   #failStart(failure: MissionStartFailure): void {
@@ -1010,6 +1089,18 @@ class Owner implements MissionOwner {
     }
   }
 
+  #soundStatus(): MissionSoundStatus {
+    if (this.#soundFailed) return 'failed';
+    if (!this.#sound) return 'unavailable';
+    try {
+      return this.#sound();
+    } catch (error) {
+      this.#soundFailed = true;
+      this.#report(error);
+      return 'failed';
+    }
+  }
+
   #build(): MissionOwnerSnapshot {
     const timing = this.#timing;
     const shown = timing && {
@@ -1028,6 +1119,7 @@ class Owner implements MissionOwner {
       session: this.#session.status(),
       actionError: this.#actionError,
       cleanupFailure: this.#cleanupFailure,
+      sound: this.#soundStatus(),
     });
   }
 
