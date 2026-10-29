@@ -36,6 +36,7 @@ GAME_SETTING_TEXT = {"STARTUP_PRACTICE": lambda flag: "TRUE" if flag else "FALSE
                      "CURR_LEVEL": lambda levels: " ".join(map(str, levels))}
 EMULATOR_KEYS = {"cycles": "cpu", "core": "cpu", "cputype": "cpu", "machine": "dosbox", "memsize": "dosbox"}
 FORBIDDEN_KEYS = ("mapperfile", "logfile")
+_GAME_LAUNCH = ("srangers", "srangers.bat")  # the baseline autoexec's launch of the game's batch (SRANGERS.BAT)
 
 
 def sha256_file(path, check=None):
@@ -383,7 +384,9 @@ def private_config(text, install, private_install, captures, cd_dir, emulator, d
     installation are redirected; exactly one read-only CD-ROM mount from the CD directory is kept (its media is
     bound to the manifest by verify_media), or, with `disc`, replaced by a read-only CD-ROM mount of that private disc
     directory on the same drive (its files are copied from that media, disc.py); `emulator` settings (only cycles)
-    replace their single baseline line. Any other mount or output-path setting is refused."""
+    replace their single baseline line, and `audioCapture` replaces the autoexec's single game launch by the same
+    commands with the executable run under DOSBox-X's DX-CAPTURE /M, whose files go to `captures`. Any other mount or
+    output-path setting is refused."""
     lines = text.splitlines()
     section = None
     changes = {"captures": 0, "mount-c": 0, "cycles": 0}
@@ -423,10 +426,19 @@ def private_config(text, install, private_install, captures, cd_dir, emulator, d
                         line = f"mount {mount[2]} {_quote(disc)} -t cdrom"
                 else:
                     raise BaselineError("private-copy-invalid", "config")
+            elif "audioCapture" in emulator and line.strip().lower() in _GAME_LAUNCH:
+                # The batch only enters MAIN and runs the executable; DX-CAPTURE must wrap the executable itself, or
+                # it stops capturing as soon as the batch has started it.
+                changes["audio-capture"] = changes.get("audio-capture", 0) + 1
+                indent = line[:len(line) - len(line.lstrip())]
+                output.extend((f"{indent}cd main", f"{indent}dx-capture /M srangers.exe"))
+                line = f"{indent}cd .."
         output.append(line)
     if changes["captures"] != 1 or changes["mount-c"] != 1 or len(media) != 1 or media[0].parent != real_cd:
         raise BaselineError("private-copy-invalid", "config")
     if "cycles" in emulator and changes["cycles"] != 1:
+        raise BaselineError("private-copy-invalid", "config")
+    if "audioCapture" in emulator and changes.get("audio-capture") != 1:
         raise BaselineError("private-copy-invalid", "config")
     result = "\n".join(output) + "\n"
     return result, {"changedLines": sum(changes.values()), "changes": {k: v for k, v in changes.items() if v},

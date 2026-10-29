@@ -84,6 +84,7 @@ DATA_WINDOW_SIZES = (16, 512)
 MAX_OBJECT_NUMBER = 255
 MAX_IDENTITY_KEYS = 16
 CYCLES_RANGE = (1000, 2_000_000)  # fixed DOSBox-X cycles a recipe may request for its private configuration
+AUDIO_CAPTURE_MODES = ("multitrack",)  # DOSBox-X DX-CAPTURE /M: one 48 kHz track per mixer channel (SB, FM, CD audio)
 MAX_DISC_OMIT = 4  # manifest files a private disc copy may leave out
 LEVEL_RANGE = (0, 100)  # each raw difficulty of CURR_LEVEL (practice, campaign), the range the game's parser keeps
 
@@ -640,11 +641,19 @@ def _disc(value):
 
 
 def _emulator(value):
-    """Settings the private emulator configuration may change from the baseline: only fixed cycles."""
-    _object(value, "emulator", (), ("cycles",))
+    """Settings the private emulator configuration may change from the baseline: fixed cycles, and an audio capture of
+    the game's run ("multitrack": DOSBox-X's DX-CAPTURE /M around the game executable, P3-14/24)."""
+    _object(value, "emulator", (), ("cycles", "audioCapture"))
+    settings = {}
     if "cycles" in value:
-        return {"cycles": _int(value["cycles"], "emulator.cycles", *CYCLES_RANGE, "recipe-value-invalid")}
-    return {}
+        settings["cycles"] = _int(value["cycles"], "emulator.cycles", *CYCLES_RANGE, "recipe-value-invalid")
+    if "audioCapture" in value:
+        if type(value["audioCapture"]) is not str:
+            raise BaselineError("recipe-type-invalid", "emulator.audioCapture")
+        if value["audioCapture"] not in AUDIO_CAPTURE_MODES:
+            raise BaselineError("recipe-value-invalid", "emulator.audioCapture")
+        settings["audioCapture"] = value["audioCapture"]
+    return settings
 
 
 def _game_settings(value):
