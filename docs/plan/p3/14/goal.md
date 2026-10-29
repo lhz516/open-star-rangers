@@ -125,6 +125,7 @@ updated: 2026-10-28
 - **2026-10-28 — 17 的四项解释，协调者确认：** (1) 会话处于 `transition`（衔接保持）时可信激活也调用 `controller.resume()`，因为保持不关闭门禁；(2) 没有媒体连接报告声音时快照的 `sound` 为 `unavailable`；(3) `MissionOwnerContext.soundChanged` 可选，所有者总会提供；(4) 声音内容无法绑定时 `sound` 为 `failed` 并报告，不接运行音频，游戏无声继续（内容合同错误仍经报告通道可见，不记成“原版没有声音”）。21 新增 `osr/flight-audio-imports` 边界规则：flight-audio 的非测试代码同步执行，只有 `owner*.ts` 可用 async。`tools/engineering-boundaries.test.ts` 的“cockpit boundaries”在多会话并行的高负载下偶发 5 秒超时，单独运行与重跑都通过，是既有问题，未改动。
 - **2026-10-28 — 22 的结论与转交：** 锁定时一次性请求确有尝试并记为 `failed (audio-locked)`，18 观察的“0 条”未复现；`repeat`（10181）在合成 mission-startable 中不可达，协调者接受以查看器的真实 repeat 输出与 Node 规则链测试覆盖，不新增合成场景。22 发现两条既有的 e2e 失败：`fast-refresh.spec.ts:205`（键盘组监听 12 ≠ 9，多出的是飞行音效的 pagehide/pageshow）与 `joint-pipeline.development.spec.ts:545`（任务后上下文 2 ≠ 1），都由 18 的接线引入，交 23 查明并处理（扩展了 23 的写入范围）。22 对 README“只读探针”一节的文档提议交 27。
 - **2026-10-28 — 新增补救子任务 29：** 23 的完整 e2e 有 3 项失败（`browser-replay.spec.ts:47`、`flight-render.development.spec.ts:63`、`mission-flow.development.spec.ts:353`），在 23 的基线上同样失败；其中至少第一项由 08 的 `object-retired` 引入。29 查明来源并修正 P3-14 引入的项，插在最终对齐之前，28 依赖它。
+- **2026-10-28 — 29 的结论：** `browser-replay.spec.ts:47`（`object-retired`）与 `mission-flow.development.spec.ts:353`（Chrome 156 在页面首次出声后探测 `/favicon.ico`，与紧随的重载竞争）由 P3-14 引入，已修正且未改审计规则；`flight-render.development.spec.ts:63`（缩放 0.7578125 时 12 像素差，位于 P3-13 驾驶舱叠加边缘）在 main `0180ada9` 上同样失败，是既有问题，可能源于本机 Chrome 由 155 自动升级到 156（高概率），归 P3-13 后续或 P3-15，不在本任务修改。29 对 README 网络审计一节的提议交 27。
 
 ## 审批
 
