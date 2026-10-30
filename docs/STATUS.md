@@ -2,7 +2,7 @@
 type: status
 status: active
 phase: all
-updated: 2026-10-29
+updated: 2026-10-30
 ---
 
 # 项目进度
@@ -65,7 +65,7 @@ updated: 2026-10-29
      - 驾驶舱表现模型、全部仪表与左/右显示屏、消息行、F1 叠加、战略地图画面（ADR-0019）与地图输入就绪都在 `src/render/cockpit/` 与 `src/render/map/`，经同 tick projection 逐 tick推进；API 与交接见 [render 模块说明](./engineering/modules/render.md)。
      - D-01、D-02 与执行中的决定由 agent 依用户 2026-10-28 的明确授权批准（[spec 审批](./plan/p3/13/spec.md#审批)）：`RULES_VERSION` 10、快照格式 9、replay 格式 3、切片定义 7，`ConverterVersion` 为 `osr-import.graphics-6.logic-4.audio-2.models-4`，旧缓存须重新导入。D-02 不建共享提示模型。
      - 与原版的对照见 [32 表现判定](./plan/p3/13/subtasks/32-presentation-verdicts.md#完成证据)：已有截图可判的项全部一致；新增 DOSBox-X 启动 0 次。需要用户游玩补采的 M-1/2/3/4/7/8 与若干非 M 项记为经批准的证据缺口（不计为一致），恢复方式见 `missing-evidence.md`。
-     - P3-14 已于 2026-10-29 合入：类型 9 指示条改读分区级 `communications.warnings`，尾随警告的攻击者遍历已接入；类型 9 机体标签的端到端复验（AC-14/AC-21）交 P3-15。另有 F1 键 `cockpit-front` 仍无 Core 规则与明确负责项。
+     - P3-14 已于 2026-10-29 合入：类型 9 指示条改读分区级 `communications.warnings`，尾随警告的攻击者遍历已接入；类型 9 机体标签的端到端复验（AC-14/AC-21）交 P3-15。F1 键 `cockpit-front` 的 Core 规则经 P3-15/12 并入 G-08 披露，随其他视角归 P4（[slice-gaps](./engineering/slice-gaps.md#g-08-与-f1-前视)）。
    - [P3-14](./plan/p3/14/spec.md)（飞行音效触发）的实现与工程文档已完成，2026-10-29 合入 main；[goal](./plan/p3/14/goal.md) 30 个子任务中 27 个完成，尚未完成的是 26（用户人耳判定）、27（屏幕解锁后重跑有头的真实隐藏用例）与 28（最终对齐）。
      - 原版音效规则（分派、逐对象声音表、8 个发声与 5 个类别、位置与引擎参数、锁定音与 9 型警告、模式矩阵）见 [audio](./original/formats/audio.md#flight-sound-presentation-p3-14)；`src/app/flight-audio/` 的模块与交接见 [app 模块说明](./engineering/modules/app.md)。
      - D-01（[P3-02 spec](./plan/p3/02/spec.md#审批) 的 FA-01 至 FA-09、[P3-04](./plan/p3/04/spec.md#审批)、[P2-08](./plan/p2/08/spec.md) 的播放器扩展）经用户明确批准；D-02 与执行中的决定依用户 2026-10-28 的授权批准。与 main 合并后 `RULES_VERSION` 11、快照格式 9、replay 格式 3。
