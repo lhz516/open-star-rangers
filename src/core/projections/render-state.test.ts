@@ -4,7 +4,7 @@ import { deepFrozen } from '../../content/logic/logic-content.test-support.ts';
 import type { Vec3 } from '../contracts/domain-events.ts';
 import { initialPlayerControl, initialPlayerTargeting } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
-import type { ObjectState } from '../world/entity-table.ts';
+import type { ObjectState, SteeredMovementBlock } from '../world/entity-table.ts';
 import { addPlayerEntity, busyCombat, entityInit, expectFault, stateText, stillEntityInit, TEST_MODEL, TEST_ORIENTATION, testState, tickInput } from '../world/world.test-support.ts';
 import { renderWorld, type RenderState } from './render-state.ts';
 
@@ -37,18 +37,22 @@ describe('Render State (P3-02 AC-10, Projection 与 Render State)', () => {
     state.player.entityId = player.id;
     Object.assign(state.player, { viewMode: 0x11, subMode: 8 });
     first.placementSerial = 2;
+    (first.movement as SteeredMovementBlock).speed = 12.5;
     state.clock = 6;
     const render = renderWorld(state);
     // P3-12 (FS-01): new entities are pending, out of Warp, with no source kind.
     const unlit = { hitShimmerStart: null, explosionStart: null, inWarp: false, sourceKindBit: null, display: 'pending' };
+    // P3-14's (FA-04): the object state and the block speed.
+    const firstState = { state: 'presentation-ready', speed: 12.5 };
+    const playerState = { state: 'presentation-ready', speed: player.movement!.speed };
     expect(render).toEqual({
       tick: 0,
       clock: 6,
       viewMode: 0x11,
       observedEntityId: player.id,
       entities: [
-        { id: first.id, kindBit: 5, presentation: { type: 'model', model: other }, position: { x: -1, y: 0.5, z: 9 }, orientation: TEST_ORIENTATION, placementSerial: 2, ...unlit },
-        { id: player.id, kindBit: 0, presentation: { type: 'model', model: TEST_MODEL }, position: { x: 0, y: 2, z: 3 }, orientation: TEST_ORIENTATION, placementSerial: 0, ...unlit },
+        { id: first.id, kindBit: 5, presentation: { type: 'model', model: other }, position: { x: -1, y: 0.5, z: 9 }, orientation: TEST_ORIENTATION, placementSerial: 2, ...unlit, ...firstState },
+        { id: player.id, kindBit: 0, presentation: { type: 'model', model: TEST_MODEL }, position: { x: 0, y: 2, z: 3 }, orientation: TEST_ORIENTATION, placementSerial: 0, ...unlit, ...playerState },
       ],
       warp: null,
       subMode: 8,
@@ -72,6 +76,34 @@ describe('Render State (P3-02 AC-10, Projection 与 Render State)', () => {
       [6, null], [null, null], [null, null], [null, 6], [null, null], [null, null],
     ]);
     expect(deepFrozen(render)).toBe(true);
+  });
+
+  // P3-14 FA-04: the state and speed the sound consumer reads for every listed entity.
+  it('gives each entity its object state and its movement block speed, whatever the block\'s mode', () => {
+    const state = testState();
+    const entities = [7, 5, 20, 21, 22, 24, 25].map((kindBit) => state.entities.allocate(entityInit(kindBit)));
+    const [craft, warping, missile, projectile, explosion, fragment] = entities;
+    const speeds = [64.5, 4000, 300.25, 900, 2.5, 7.75];
+    [craft, warping, missile, projectile, explosion, fragment].forEach((entity, index) => { (entity.movement as { speed: number }).speed = speeds[index]; });
+    (warping.movement as SteeredMovementBlock).mode = 'warp';
+    const states: ObjectState[] = ['active', 'projectile-hit', 'destroyed-source', 'area-switch', 'pending-removal', 'new', 'awaiting-presentation'];
+    entities.forEach((entity, index) => { entity.state = states[index]; });
+    const render = renderWorld(state);
+    expect(render.entities.map(({ id, state: objectState, speed }) => [id, objectState, speed])).toEqual(
+      entities.map(({ id }, index) => [id, states[index], [...speeds, 0][index]]),
+    );
+    expect(entities.map(({ movement }) => movement!.mode)).toEqual(['craft', 'warp', 'craft', 'linear', 'linear', 'spinning', 'marker']);
+    // Read when the projection is taken, detached from later writes.
+    craft.state = 'pending-removal';
+    (craft.movement as SteeredMovementBlock).speed = 1;
+    expect(render.entities[0]).toMatchObject({ state: 'active', speed: 64.5 });
+    expect(deepFrozen(render)).toBe(true);
+  });
+
+  it('is Core\'s fault for a listed entity without a movement block', () => {
+    const state = testState();
+    state.entities.allocate(entityInit(7)).movement = null;
+    expect(() => renderWorld(state)).toThrow('render-state.movement');
   });
 
   it('leaves parked entities out and shows them once they become active', () => {

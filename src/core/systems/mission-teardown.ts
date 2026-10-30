@@ -6,7 +6,8 @@
  * - 0, latched in this tick (in the mission flow or, for a third destruction, in request handling): the teardown
  *   starts. The view becomes 0x13 with the true old view as the previous one, and the view switch runs from it
  *   (leaving the Warp view restores the saved left page, MW-09); main state 1; every entity becomes pending removal,
- *   whatever its activity, state, destruction flag or Warp transit; `teardown-started`.
+ *   whatever its activity, state, destruction flag or Warp transit, each active one reporting `object-retired` (P3-14
+ *   FA-07); `teardown-started`.
  * - 1, the next tick: every entity asked to leave in its own update and was removed in request handling, which also
  *   released the player's references, AI controllers and their script uses. With the entity table and the AI parse
  *   cache empty, the run completes: `completedTick` and `mission-completed`, the last tick of the run (world.ts rejects
@@ -19,6 +20,7 @@
 import { CoreFaultError } from '../errors.ts';
 import { ALL_KINDS } from '../world/entity-table.ts';
 import type { MissionFlow, MissionResult } from '../world/world-state.ts';
+import { retire } from './object-state.ts';
 import { emit, type TickContext } from './pipeline.ts';
 import { commitViewSwitch } from './view-switch.ts';
 
@@ -70,7 +72,9 @@ function startTeardown(context: TickContext): void {
   const page = commitViewSwitch(context, TEARDOWN_VIEW_MODE, player.viewMode);
   if (page !== null) emit(context, { type: 'left-page-changed', tick: time.tick, ...page, commandIndex: null });
   world.flow.mainState = 1;
-  for (const entity of world.entities.walk(ALL_KINDS)) entity.state = 'pending-removal';
+  // Through the shared writer, so each active entity's retirement is reported (P3-14 FA-07; the original posts a
+  // removal item for each active object here, A-08).
+  for (const entity of world.entities.walk(ALL_KINDS)) retire(context, entity, 'pending-removal');
   emit(context, { type: 'teardown-started', tick: time.tick, entities: world.entities.size });
 }
 

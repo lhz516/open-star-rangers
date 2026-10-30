@@ -70,7 +70,7 @@ export function weaponList(family: 'gun' | 'missile', options: { readonly mount?
 export function target(position: Vec3, options: Partial<CombatTarget> = {}): CombatTarget {
   return {
     entityId: 9, kindBit: 7, name: { type: 'pool', index: 0 }, position, orientation: IDENTITY, distance: 0, speed: 100,
-    shield: null, model: null, craftAt08: null, ...options,
+    shield: null, model: null, craftAt08: null, activeState: true, ...options,
   };
 }
 
@@ -102,7 +102,7 @@ export function pilot({
       },
       combat: { readiness: 'ready', player: { entityId: 1, lock: { level: 0, losing: false, progress }, subsystems, target: aimed, weapons } },
     },
-    communications: { readiness: 'ready', player: { entityId: 1, warnings } },
+    communications: { readiness: 'ready', player: { entityId: 1 }, warnings },
   } as DeepPartial<Projection>;
 }
 

@@ -215,6 +215,21 @@ describe('tick order (P3-02 AC-09, 系统流水线)', () => {
     expect(updated.state).toBe('active');
   });
 
+  // P3-14 FA-07: a set-state into a retirement state goes through the shared writer, so it retires an active entity once.
+  it('retires an active entity that a set-state request moves into pending removal, once, and not a parked one', () => {
+    const [state, [active, parked]] = withEntities([3], [3, { activity: 'parked' }]);
+    addPlayerEntity(state);
+    active.state = 'active';
+    parked.state = 'active';
+    const events = runTickWith(state, {
+      'mission-flow': ({ requests }) => {
+        for (const entity of [active, active, parked]) requests.post(setState(entity, 'pending-removal'));
+      },
+    });
+    expect(events).toEqual([{ type: 'object-retired', tick: 1, entityId: active.id, kindBit: 3, state: 'pending-removal' }]);
+    expect([active.state, parked.state]).toEqual(['pending-removal', 'pending-removal']);
+  });
+
   it('drops requests posted after request handling', () => {
     const [state, [entity]] = withEntities([2]);
     addPlayerEntity(state);
@@ -397,6 +412,7 @@ describe('P3-07 access points (P3-07 S-01, AC-01; P3-02 CR-05, CR-07)', () => {
     spendGuidance(missile);
     expect(runTickWith(state, { 'mission-flow': ({ requests }) => requests.post({ type: 'expire', entityId: missile.id }) })).toMatchObject([
       { type: 'missile-ended', entityId: missile.id, shooterEntityId: null, outcome: 'fizzled' },
+      { type: 'object-retired', entityId: missile.id, kindBit: 20, state: 'pending-removal' },
     ]);
     expect(missile.state).toBe('pending-removal');
     runTickWith(state);
@@ -471,7 +487,8 @@ describe('P3-10 shared contract (P3-10 S-01, AC-01; P3-02 CB-02, CB-03, CB-08)',
   ] as Request[])('hands a $origin depart request to request handling, which does nothing without a player entity (DK3)', (request) => {
     const [state] = withEntities([0], [15]);
     const [idle] = withEntities([0], [15]);
-    expect(runTickWith(state, { 'mission-flow': ({ requests }) => requests.post(request) })).toEqual([]);
+    // Only the area check's retirement of the base without a player entity (P3-14 FA-07), as in the idle world.
+    expect(runTickWith(state, { 'mission-flow': ({ requests }) => requests.post(request) }).map(({ type }) => type)).toEqual(['object-retired']);
     runTickWith(idle);
     expect(stateText(state)).toBe(stateText(idle));
   });

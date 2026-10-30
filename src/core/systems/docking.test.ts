@@ -244,7 +244,8 @@ describe('the wait checks in mission flow (CB-02; DK1, DK5)', () => {
     waiting(without, 4, addBase(without), 0);
     without.state.player.entityId = null;
     without.state.player.dockingObject = null;
-    expect(run(without.state, [[]])).toEqual([[]]);
+    // Only the area check's retirement of the base without a player entity (P3-14 FA-07).
+    expect(run(without.state, [[]]).map((events) => events.map(({ type }) => type))).toEqual([['object-retired']]);
     expect(without.state.flow.subState).toBe(4);
   });
 

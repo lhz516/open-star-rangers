@@ -101,7 +101,7 @@ export interface ObjectEntityOptions extends SceneEntityOptions {
 export function sceneEntity(id: number, presentation: EntityPresentation, position: Vec3, { kindBit = 1, orientation = IDENTITY, display = 'shown', hitShimmerStart = null, explosionStart = null, sourceKindBit = null }: ObjectEntityOptions = {}): RenderEntity {
   return Object.freeze({
     id: id as EntityId, kindBit, presentation: Object.freeze(presentation), position, orientation,
-    placementSerial: 0, hitShimmerStart, explosionStart, inWarp: false, sourceKindBit, display,
+    placementSerial: 0, hitShimmerStart, explosionStart, inWarp: false, sourceKindBit, display, state: 'active', speed: 0,
   });
 }
 

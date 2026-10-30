@@ -1,8 +1,10 @@
+import type { FlightSoundDecision } from '../../app/flight-audio/consumer.ts';
 import { createFrameTiming } from '../../app/mission/dev-frame-timing.ts';
 import { developmentRecording, type MissionOwnerConsumer, type MissionOwnerSetup } from '../../app/mission/mission-owner.ts';
 import type { FileSave } from '../../app/mission/mission-ports.ts';
 import { openMission, TestClock } from '../../app/mission/mission.test-support.ts';
 import { ControlledHost } from '../../app/session/session-host.test-support.ts';
+import { readAssetId } from '../../content/asset-id.ts';
 import { createFileSave, type DownloadLink, type FileSaveHost } from '../../platform/files/file-save.ts';
 import { createGameCommandFeedback, type GameCommandFeedback } from '../game/game-command-feedback.ts';
 import { createGameSessionBridge, type GameSessionBridge } from '../game/game-session-bridge.ts';
@@ -108,3 +110,15 @@ export async function openDiagnostics(overrides: Partial<MissionOwnerSetup> = {}
 }
 
 export type OpenDiagnostics = Awaited<ReturnType<typeof openDiagnostics>>;
+
+/** A synthetic sound Asset of the sound log tests. */
+export const SOUND = readAssetId('sound/synthetic-flight/engine');
+
+/** A decision of owner 1's run 2 at `tick`; the rest overridden by `fields`. */
+export function soundDecision(tick: number, fields: Partial<FlightSoundDecision> = {}): FlightSoundDecision {
+  return Object.freeze({
+    ownerId: 1, runId: 2, tick, clock: tick * 2, trigger: 0, sound: SOUND,
+    source: { namespace: 'entity', id: 5, slot: 0 }, voiceClass: 1, result: 'started', code: null,
+    parameters: { volume: 100, pan: 64, rate: 22050 }, preempted: null, ...fields,
+  } satisfies FlightSoundDecision);
+}

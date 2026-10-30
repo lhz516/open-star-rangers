@@ -152,8 +152,8 @@ describe('a projectile or missile hit, 0x2a40c (H4, AC-09)', () => {
     // No subsystem-4 draw, no hull damage and no forced roll for a projectile with an attacker: nothing drawn.
     expect(state.rngState).toBe(rng);
     expect(context.events).toEqual([{
-      type: 'hit', tick: 1, victimEntityId: enemy.id, victimKindBit: 7, victimPosition: at(7, 5, 6), cause: 'projectile',
-      sourceEntityId: projectile.id, attacker: shooter(player), damage: 20, gated: false, shield: { before: 50, after: 30 },
+      type: 'hit', tick: 1, victimEntityId: enemy.id, victimKindBit: 7, victimPosition: at(7, 5, 6), victimForward: at(0, 0, 1), victimSpeed: 0,
+      cause: 'projectile', sourceEntityId: projectile.id, attacker: shooter(player), damage: 20, gated: false, shield: { before: 50, after: 30 },
       hull: { before: 100, after: 100 }, shieldWasEmpty: false, impact: IMPACT, projectile: 'ricochet',
     }]);
   });

@@ -65,6 +65,7 @@ const EVENT_TYPES = {
   'base-confirmed': true,
   'wingman-command-consumed': true,
   'transponder-deployed': true,
+  'object-retired': true,
   'all-clear': true,
   'settlement-started': true,
   'settlement-deferred': true,

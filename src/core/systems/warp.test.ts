@@ -205,7 +205,8 @@ describe('the Warp start (MW-04 warp-start, MW-05, MW-09)', () => {
     const orientation = [...player.orientation];
     const events = step(state, [warp]);
     expect(results(events)).toEqual([[0, 'request-warp', 'accepted', null]]);
-    expect(others(events)).toEqual([
+    // The area now centres on the destination, which retires the old target at the end of the tick (MW-10, P3-14 FA-07).
+    expect(others(events).filter(({ type }) => type !== 'object-retired')).toEqual([
       // P3-12 FS-03: the switch to view 1 first, at the pose before the set-up moved the player into the tunnel.
       {
         type: 'view-switched', tick: 1, fromViewMode: FLIGHT, fromSubMode: 0, viewMode: WARP, subMode: 0, stage: 'request-handling',

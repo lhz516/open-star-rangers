@@ -1,5 +1,10 @@
 import { readAssetId, type AssetId } from '../../content/asset-id.ts';
 import { readSoundPayload, soundChannelData, SOUND_PAYLOAD_SCHEMA_VERSION, type SoundPayload } from '../../content/sound-payload.ts';
+import {
+  defaultVoiceParameters, mergeVoiceParameters, RepeatProgress, voiceNodeParameters, type VoiceNodeParameters, type VoiceParameters,
+} from './voice-progress.ts';
+
+export { AUDIO_RATE_LIMIT, type VoiceNodeParameters, type VoiceParameters } from './voice-progress.ts';
 
 // DOM-free Web Audio playback (P2-08 S-08/S-09). The controller owns at most one context, created lazily in
 // `unlock()`; its status follows the context's own state changes and the page's visibility, never awaited promises.
@@ -7,6 +12,9 @@ import { readSoundPayload, soundChannelData, SOUND_PAYLOAD_SCHEMA_VERSION, type 
 
 /** Simultaneous voices at most; a resource guard only, not the original game's mixing channel count. */
 export const AUDIO_VOICE_LIMIT = 8;
+
+/** Ended voices whose end reason `voiceState` still reports, the most recent first; earlier ones are `unknown`. */
+export const AUDIO_ENDED_HISTORY = 256;
 
 /** Opaque buffer the capability creates and later plays; the controller never reads it. */
 export type AudioBufferHandle = object;
@@ -19,6 +27,8 @@ export interface AudioVoicePort {
   disconnect(): void;
   /** Listens for the voice's natural or stopped end; returns the removal. */
   onEnded(listener: () => void): () => void;
+  /** Applies new parameters from context time `when`; only voices created with parameters have it. */
+  setParameters?(parameters: VoiceNodeParameters, when: number): void;
 }
 
 export interface AudioContextPort {
@@ -31,8 +41,11 @@ export interface AudioContextPort {
   resume(): Promise<unknown>;
   suspend(): Promise<unknown>;
   close(): Promise<unknown>;
-  /** A voice playing `buffer` into the output, looping the whole buffer when asked; not yet started. */
-  createVoice(buffer: AudioBufferHandle, loop: boolean): AudioVoicePort;
+  /**
+   * A voice playing `buffer` into the output, looping the whole buffer when asked; not yet started. Only with
+   * `parameters` does it get parameter nodes, set to them before it is returned.
+   */
+  createVoice(buffer: AudioBufferHandle, loop: boolean, parameters?: VoiceNodeParameters): AudioVoicePort;
 }
 
 export interface AudioCapability {
@@ -58,7 +71,8 @@ export interface AudioControllerOptions {
   readonly reportError: (error: unknown) => void;
 }
 
-export type AudioStatus = 'idle' | 'locked' | 'running' | 'suspended' | 'unavailable' | 'failed' | 'disposed';
+/** `paused` while the task pause gate is closed, or after `resume()` while the context does not run yet. */
+export type AudioStatus = 'idle' | 'locked' | 'running' | 'paused' | 'suspended' | 'unavailable' | 'failed' | 'disposed';
 
 export type AudioErrorCode =
   | 'audio-unavailable'
@@ -69,13 +83,17 @@ export type AudioErrorCode =
   | 'duplicate-sound'
   | 'invalid-sound-payload'
   | 'voice-limit'
-  | 'disposed';
+  | 'disposed'
+  | 'audio-paused'
+  | 'invalid-parameters'
+  | 'unknown-voice'
+  | 'fixed-parameters';
 
 export interface AudioSnapshot {
   readonly status: AudioStatus;
   /** Registered sounds. */
   readonly loaded: number;
-  /** Voices currently playing. */
+  /** Live voices, playing or paused. */
   readonly voices: number;
 }
 
@@ -87,7 +105,7 @@ export interface SoundRecord {
 }
 
 export type LoadFailureCode = Extract<AudioErrorCode, 'invalid-sound-payload' | 'duplicate-sound' | 'audio-unavailable' | 'audio-failed' | 'disposed'>;
-export type PlayFailureCode = Exclude<AudioErrorCode, 'duplicate-sound' | 'invalid-sound-payload'>;
+export type PlayFailureCode = Exclude<AudioErrorCode, 'duplicate-sound' | 'invalid-sound-payload' | 'unknown-voice' | 'fixed-parameters'>;
 
 export type LoadResult =
   | { readonly status: 'loaded'; readonly count: number }
@@ -98,15 +116,52 @@ export type PlayResult =
   | { readonly status: 'started'; readonly voice: number }
   | { readonly status: 'rejected'; readonly code: PlayFailureCode };
 
+export type UpdateResult =
+  | { readonly status: 'updated' }
+  | { readonly status: 'rejected'; readonly code: 'unknown-voice' | 'fixed-parameters' | 'invalid-parameters' | 'audio-failed' | 'disposed' };
+
+/**
+ * Why a voice ended: `natural` when it played out (a `repeat` voice's scheduled stop after its last pass too),
+ * `stopped` by `stop` or `stopAll`, `preempted` by `stop(voice, 'preempted')`, and `released` when the controller ended
+ * it itself (hiding, a browser suspension or interruption, a host close or failure, a failed pause, disposal).
+ */
+export type VoiceEnd = 'natural' | 'stopped' | 'preempted' | 'released';
+
+export type VoiceState =
+  | { readonly status: 'playing' }
+  /** Kept while the context does not run. */
+  | { readonly status: 'paused' }
+  | { readonly status: 'ended'; readonly reason: VoiceEnd }
+  /** Never started, or ended before the last `AUDIO_ENDED_HISTORY` ends. */
+  | { readonly status: 'unknown' };
+
 export interface AudioController {
   /** Call from a user gesture handler; returns the status after the call. */
   unlock(): AudioStatus;
   /** Registers the whole batch or nothing. */
   load(sounds: readonly SoundRecord[]): LoadResult;
-  play(id: string): PlayResult;
-  /** Stops one voice; false for an unknown or finished voice. */
-  stop(voice: number): boolean;
+  /**
+   * Without `parameters` the voice is fixed: stored rate, full volume, both channels equal, and no parameter nodes. With
+   * them, absent ones default to volume 127, pan 64 and the stored rate, applied before the voice starts.
+   */
+  play(id: string, parameters?: Partial<VoiceParameters>): PlayResult;
+  /** Applies the given parameters to a live voice started with parameters, all or none. */
+  update(voice: number, parameters: Partial<VoiceParameters>): UpdateResult;
+  /** Reads a voice's state without touching the host. */
+  voiceState(voice: number): VoiceState;
+  /** Stops one voice, recording `reason` (`stopped` by default); false for an unknown or finished voice. */
+  stop(voice: number, reason?: 'stopped' | 'preempted'): boolean;
   stopAll(): void;
+  /**
+   * Closes the task pause gate: `play` is refused with `audio-paused`, and a context that exists is suspended with its
+   * voices kept where they are. Without a context (`idle`, `locked`) only the gate is recorded. Idempotent.
+   */
+  pause(): AudioStatus;
+  /**
+   * Call from a user gesture handler. Opens the gate while the page is visible and resumes the context, whose kept
+   * voices then continue from where they were; while hidden it does nothing.
+   */
+  resume(): AudioStatus;
   /** Frozen, and the same object until the next change. */
   getSnapshot(): AudioSnapshot;
   /** Calls `listener` after each snapshot change; returns the removal. Usable with `useSyncExternalStore`. */
@@ -117,19 +172,41 @@ export interface AudioController {
 interface Sound {
   readonly buffer: AudioBufferHandle;
   readonly loop: boolean;
-  /** For a `repeat` sound, the seconds its `plays` passes last: its looping voice stops that long after it starts. */
-  readonly repeatFor: number | null;
+  readonly sampleRate: number;
+  /** For a `repeat` sound, the source frames of its `plays` passes: its looping voice stops once it has played them. */
+  readonly repeatFrames: number | null;
 }
 
 interface Voice {
   readonly port: AudioVoicePort;
   readonly removeEnded: () => void;
+  readonly sampleRate: number;
+  /** The parameters last applied, or null for a fixed voice. */
+  parameters: VoiceParameters | null;
+  /** A `repeat` voice's remaining passes, once scheduled. */
+  progress: RepeatProgress | null;
+}
+
+/** Reported, carrying only the host error's name, when the host cannot suspend the context for `pause()`. */
+export class AudioPauseError extends Error {
+  override readonly name = 'AudioPauseError';
+  readonly hostError: string;
+  constructor(hostError: string) {
+    super(`The audio context could not be suspended (${hostError}).`);
+    this.hostError = hostError;
+  }
+}
+
+/** A `suspend()` the pause gate requested; it has landed once the context was seen suspended or the call settled. */
+interface PauseRequest {
+  landed: boolean;
 }
 
 const rejected = (code: PlayFailureCode): PlayResult => Object.freeze({ status: 'rejected', code });
 const REJECTED_IN: Readonly<Record<Exclude<AudioStatus, 'running'>, PlayResult>> = Object.freeze({
   idle: rejected('audio-locked'),
   locked: rejected('audio-locked'),
+  paused: rejected('audio-paused'),
   suspended: rejected('audio-suspended'),
   unavailable: rejected('audio-unavailable'),
   failed: rejected('audio-failed'),
@@ -137,17 +214,52 @@ const REJECTED_IN: Readonly<Record<Exclude<AudioStatus, 'running'>, PlayResult>>
 });
 const UNKNOWN_SOUND = rejected('unknown-sound');
 const VOICE_LIMIT = rejected('voice-limit');
+const INVALID_PARAMETERS = rejected('invalid-parameters');
+
+const UPDATED: UpdateResult = Object.freeze({ status: 'updated' });
+const updateRejected = (code: Extract<UpdateResult, { status: 'rejected' }>['code']): UpdateResult => Object.freeze({ status: 'rejected', code });
+const UPDATE_REJECTED = Object.freeze({
+  unknownVoice: updateRejected('unknown-voice'),
+  fixed: updateRejected('fixed-parameters'),
+  invalid: updateRejected('invalid-parameters'),
+  failed: updateRejected('audio-failed'),
+  disposed: updateRejected('disposed'),
+});
+
+const PLAYING: VoiceState = Object.freeze({ status: 'playing' });
+const PAUSED: VoiceState = Object.freeze({ status: 'paused' });
+const UNKNOWN_VOICE: VoiceState = Object.freeze({ status: 'unknown' });
+const ENDED: Readonly<Record<VoiceEnd, VoiceState>> = Object.freeze({
+  natural: Object.freeze({ status: 'ended', reason: 'natural' }),
+  stopped: Object.freeze({ status: 'ended', reason: 'stopped' }),
+  preempted: Object.freeze({ status: 'ended', reason: 'preempted' }),
+  released: Object.freeze({ status: 'ended', reason: 'released' }),
+});
 
 const loadFailure = (code: LoadFailureCode, assetId: AssetId | null = null): LoadResult => Object.freeze({ status: 'failed', code, assetId });
 
-/** Ignores a host promise's rejection: status follows `statechange`, never the promise. */
+/** Ignores a host promise's rejection: status follows `statechange`, never the promise (but for `pause()`'s suspension). */
 const settle = (promise: Promise<unknown>): void => { promise.catch(() => undefined); };
+
+function errorName(error: unknown): string {
+  if (typeof error !== 'object' || error === null) return 'unknown';
+  try {
+    const name: unknown = Reflect.get(error, 'name');
+    return typeof name === 'string' ? name : 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+const UNUSABLE: readonly AudioStatus[] = ['unavailable', 'failed', 'disposed'];
 
 class Controller implements AudioController {
   readonly #audio: AudioCapability;
   readonly #reportError: (error: unknown) => void;
   readonly #sounds = new Map<string, Sound>();
   readonly #voices = new Map<number, Voice>();
+  /** The end reasons of the most recently ended voices, oldest first. */
+  readonly #ended = new Map<number, VoiceEnd>();
   readonly #subscribers = new Set<() => void>();
   readonly #cleanups: (() => void)[] = [];
   #context: AudioContextPort | null = null;
@@ -155,6 +267,12 @@ class Controller implements AudioController {
   #hidden = false;
   /** The controller itself suspended a running context for hiding, so showing the page resumes it. */
   #suspendedForHiding = false;
+  /** The task pause gate: closed by `pause()`, opened only by `resume()`. */
+  #gateClosed = false;
+  /** The pause gate's latest suspension, until the context runs with the gate open; only it keeps voices. */
+  #pauseRequest: PauseRequest | null = null;
+  /** The context has run, so its kept voices wait for it to run again rather than for an unlock. */
+  #ran = false;
   #nextVoice = 1;
   #snapshot: AudioSnapshot = Object.freeze({ status: 'idle', loaded: 0, voices: 0 });
 
@@ -174,7 +292,7 @@ class Controller implements AudioController {
   }
 
   unlock(): AudioStatus {
-    if (this.#hidden || ['running', 'unavailable', 'failed', 'disposed'].includes(this.#status)) return this.#status;
+    if (this.#hidden || this.#status === 'running' || UNUSABLE.includes(this.#status)) return this.#status;
     if (this.#context === null) {
       try {
         this.#context = this.#audio.createContext();
@@ -183,9 +301,17 @@ class Controller implements AudioController {
         return this.#status;
       }
       if (!this.#host(context => { this.#cleanups.push(context.onStateChange(() => this.#follow())); })) return this.#status;
+      if (this.#gateClosed) {
+        // Takes the capability only: a context created running is suspended again, and either way it waits for resume().
+        this.#status = 'paused';
+        this.#follow();
+        this.#publish();
+        return this.#status;
+      }
       this.#follow();
       if (this.#status !== 'locked') return this.#status;
     }
+    if (this.#gateClosed) return this.#status;
     this.#suspendedForHiding = false;
     this.#host(context => settle(context.resume()));
     return this.#status;
@@ -219,7 +345,8 @@ class Controller implements AudioController {
         batch.set(assetId, {
           buffer: this.#audio.createBuffer(soundChannelData(payload), payload.sampleRate),
           loop: payload.loop !== 'none',
-          repeatFor: payload.loop === 'repeat' ? (payload.plays * payload.frames) / payload.sampleRate : null,
+          sampleRate: payload.sampleRate,
+          repeatFrames: payload.loop === 'repeat' ? payload.plays * payload.frames : null,
         });
       } catch {
         this.#fail();
@@ -231,23 +358,37 @@ class Controller implements AudioController {
     return Object.freeze({ status: 'loaded', count: batch.size });
   }
 
-  play(id: string): PlayResult {
-    if (this.#status !== 'running') return REJECTED_IN[this.#status];
+  play(id: string, parameters?: Partial<VoiceParameters>): PlayResult {
+    if (this.#status !== 'running') return REJECTED_IN[this.#gateClosed && !UNUSABLE.includes(this.#status) ? 'paused' : this.#status];
     const sound = this.#sounds.get(id);
     if (!sound) return UNKNOWN_SOUND;
+    const initial = parameters === undefined ? null : mergeVoiceParameters(defaultVoiceParameters(sound.sampleRate), parameters);
+    if (parameters !== undefined && initial === null) return INVALID_PARAMETERS;
     if (this.#voices.size >= AUDIO_VOICE_LIMIT) return VOICE_LIMIT;
     const voice = this.#nextVoice++;
     const started = this.#host(context => {
-      const port = context.createVoice(sound.buffer, sound.loop);
-      this.#voices.set(voice, { port, removeEnded: port.onEnded(() => { this.#release(voice, false); this.#publish(); }) });
-      if (sound.repeatFor === null) {
+      // A fixed voice gets no parameters, so the capability creates no parameter nodes for it.
+      const nodes = initial === null ? undefined : voiceNodeParameters(initial, sound.sampleRate);
+      const port = context.createVoice(sound.buffer, sound.loop, nodes);
+      let removeEnded: () => void;
+      try {
+        removeEnded = port.onEnded(() => { this.#end(voice, 'natural'); this.#publish(); });
+      } catch (error) {
+        // Not yet a voice the failure below releases, so its nodes are disconnected here.
+        this.#attempt(() => port.disconnect());
+        throw error;
+      }
+      const entry: Voice = { port, removeEnded, sampleRate: sound.sampleRate, parameters: initial, progress: null };
+      this.#voices.set(voice, entry);
+      if (sound.repeatFrames === null) {
         port.start();
       } else {
         // Start and stop from one context time, so the looping voice ends after exactly its passes when it starts on
         // time; start()'s duration argument is not used, since engines disagree on it for a looping source.
         const when = context.currentTime;
+        entry.progress = new RepeatProgress(sound.repeatFrames, sound.sampleRate, when, nodes?.playbackRate ?? 1);
         port.start(when);
-        port.stop(when + sound.repeatFor);
+        port.stop(entry.progress.stopTime());
       }
     });
     if (!started) return REJECTED_IN.failed;
@@ -255,16 +396,67 @@ class Controller implements AudioController {
     return Object.freeze({ status: 'started', voice });
   }
 
-  stop(voice: number): boolean {
+  update(voice: number, parameters: Partial<VoiceParameters>): UpdateResult {
+    if (this.#status === 'disposed') return UPDATE_REJECTED.disposed;
+    const entry = this.#voices.get(voice);
+    if (!entry) return UPDATE_REJECTED.unknownVoice;
+    if (entry.parameters === null) return UPDATE_REJECTED.fixed;
+    const next = mergeVoiceParameters(entry.parameters, parameters);
+    if (next === null) return UPDATE_REJECTED.invalid;
+    const { volume, pan, rate } = entry.parameters;
+    // Unchanged values need no host call, so a per-frame caller adds no automation events.
+    if (next.volume === volume && next.pan === pan && next.rate === rate) return UPDATED;
+    const nodes = voiceNodeParameters(next, entry.sampleRate);
+    const applied = this.#host(context => {
+      const now = context.currentTime;
+      entry.port.setParameters!(nodes, now);
+      // The passes left are counted in source frames, so a new stop replaces the old one at a new rate.
+      const stop = entry.progress?.retarget(now, nodes.playbackRate) ?? null;
+      if (stop !== null) entry.port.stop(stop);
+    });
+    if (!applied) return UPDATE_REJECTED.failed;
+    entry.parameters = next;
+    return UPDATED;
+  }
+
+  voiceState(voice: number): VoiceState {
+    if (this.#voices.has(voice)) return this.#status === 'running' ? PLAYING : PAUSED;
+    const reason = this.#ended.get(voice);
+    return reason === undefined ? UNKNOWN_VOICE : ENDED[reason];
+  }
+
+  stop(voice: number, reason: 'stopped' | 'preempted' = 'stopped'): boolean {
     if (!this.#voices.has(voice)) return false;
-    this.#release(voice, true);
+    this.#end(voice, reason);
     this.#publish();
     return true;
   }
 
   stopAll(): void {
-    this.#releaseAll();
+    this.#endAll('stopped');
     this.#publish();
+  }
+
+  pause(): AudioStatus {
+    if (this.#gateClosed || UNUSABLE.includes(this.#status)) return this.#status;
+    this.#gateClosed = true;
+    if (this.#status === 'idle' || this.#status === 'locked') return this.#status;
+    // Showing the page no longer resumes a context hidden before the pause.
+    this.#suspendedForHiding = false;
+    this.#requestPause();
+    this.#publish();
+    return this.#status;
+  }
+
+  resume(): AudioStatus {
+    if (this.#hidden || UNUSABLE.includes(this.#status)) return this.#status;
+    this.#gateClosed = false;
+    if (this.#context === null || this.#status === 'running') return this.#status;
+    this.#suspendedForHiding = false;
+    // A context that never ran waits for the autoplay policy; kept voices wait for `statechange` to report it running.
+    if (this.#status === 'paused' && !this.#ran) this.#setStatus('locked');
+    this.#host(context => settle(context.resume()));
+    return this.#status;
   }
 
   getSnapshot(): AudioSnapshot {
@@ -282,7 +474,8 @@ class Controller implements AudioController {
     if (this.#status === 'disposed') return;
     // The status changes first, so nothing a subscriber or host callback does during disposal can start or re-dispose.
     this.#status = 'disposed';
-    this.#releaseAll();
+    this.#pauseRequest = null;
+    this.#endAll('released');
     this.#removeListeners();
     this.#sounds.clear();
     this.#publish();
@@ -298,7 +491,10 @@ class Controller implements AudioController {
     }
   }
 
-  /** Follows the context state: `running` unless hidden, a lock before the first run, a suspension, or a failure once closed. */
+  /**
+   * Follows the context state: `running` unless hidden or paused, a lock before the first run, a suspension, or a failure
+   * once closed. Only the pause gate's own suspension keeps voices; any other change away from running releases them.
+   */
   #follow(): void {
     const context = this.#context;
     if (!context || this.#status === 'disposed' || this.#status === 'failed') return;
@@ -309,20 +505,34 @@ class Controller implements AudioController {
       this.#fail();
       return;
     }
+    const request = this.#pauseRequest;
     if (state === 'closed') {
       this.#fail();
     } else if (state === 'running') {
-      if (!this.#hidden) {
+      this.#ran = true;
+      // A resume issued before the pause: the pause's suspension, still to land, keeps the voices.
+      if (request !== null && !request.landed) return;
+      if (this.#gateClosed) {
+        // A late or spontaneous resume while paused: what it let play is released, and the context is suspended again.
+        this.#requestPause();
+        this.#release();
+      } else if (this.#hidden) {
+        // A late resume after hiding: suspend again, so no voice can start while hidden.
+        this.#suspendedForHiding = true;
+        this.#leave('suspended');
+        this.#host(port => settle(port.suspend()));
+      } else {
+        this.#pauseRequest = null;
         this.#setStatus('running');
-        return;
       }
-      // A late resume after hiding: suspend again, so no voice can start while hidden.
-      this.#suspendedForHiding = true;
-      this.#leaveRunning('suspended');
-      this.#host(port => settle(port.suspend()));
-    } else if (this.#status === 'running') {
+    } else if (state === 'suspended' && request !== null && this.#status === 'paused') {
+      request.landed = true;
+    } else if (this.#status === 'running' || (this.#status === 'paused' && !this.#gateClosed)) {
       // Suspended or interrupted by the browser, not the controller: nothing replays afterwards.
-      this.#leaveRunning('suspended');
+      this.#leave('suspended');
+    } else if (this.#status === 'paused') {
+      // An interruption, or a suspension the pause did not request: the gate stays closed, but nothing is kept.
+      this.#release();
     } else if (this.#status === 'idle') {
       this.#setStatus('locked');
     }
@@ -330,9 +540,14 @@ class Controller implements AudioController {
 
   #hide(): void {
     this.#hidden = true;
-    if (this.#status !== 'running') return;
+    if (this.#gateClosed) {
+      // Paused voices are released too, and showing the page does not resume the context.
+      this.#release();
+      return;
+    }
+    if (this.#status !== 'running' && this.#status !== 'paused') return;
     this.#suspendedForHiding = true;
-    this.#leaveRunning('suspended');
+    this.#leave('suspended');
     this.#host(context => settle(context.suspend()));
   }
 
@@ -341,6 +556,39 @@ class Controller implements AudioController {
     if (!this.#suspendedForHiding || this.#status !== 'suspended') return;
     this.#suspendedForHiding = false;
     this.#host(context => settle(context.resume()));
+  }
+
+  /**
+   * Suspends the context for the pause gate, keeping the voices; the status is `paused`. This is the one host promise
+   * the controller observes, since paused voices must not go on when the host cannot suspend.
+   */
+  #requestPause(): void {
+    const context = this.#context!;
+    const request: PauseRequest = { landed: false };
+    this.#pauseRequest = request;
+    this.#status = 'paused';
+    let suspension: Promise<unknown>;
+    try {
+      request.landed = context.state === 'suspended';
+      suspension = context.suspend();
+    } catch (error) {
+      this.#pauseFailed(error);
+      return;
+    }
+    suspension.then(
+      () => {
+        if (this.#pauseRequest !== request) return;
+        request.landed = true;
+        // A resume while the suspension was pending may have left no state change to follow.
+        this.#follow();
+      },
+      (error: unknown) => { if (this.#pauseRequest === request) this.#pauseFailed(error); },
+    );
+  }
+
+  #pauseFailed(error: unknown): void {
+    this.#reportError(new AudioPauseError(errorName(error)));
+    this.#fail();
   }
 
   /** Runs a host operation on the context, which every caller has; a synchronous throw fails the controller. */
@@ -355,29 +603,42 @@ class Controller implements AudioController {
   }
 
   #fail(): void {
-    this.#leaveRunning('failed');
+    this.#leave('failed');
   }
 
   /**
    * Changes the status before stopping any voice, so a subscriber reacting to the change can no longer start one, then
-   * publishes once. Voices exist only while running, so every status change away from it goes through here.
+   * publishes once. Voices exist only while running or paused, so every status change away from both goes through here.
    */
-  #leaveRunning(status: 'suspended' | 'failed'): void {
+  #leave(status: 'suspended' | 'failed'): void {
     this.#status = status;
-    this.#releaseAll();
+    this.#pauseRequest = null;
+    this.#endAll('released');
     this.#publish();
   }
 
-  #releaseAll(): void {
-    for (const voice of this.#voices.keys()) this.#release(voice, true);
+  /** Releases every voice without changing the status, which already refuses new ones, and publishes. */
+  #release(): void {
+    this.#endAll('released');
+    this.#publish();
   }
 
-  /** Stops and disconnects a voice and drops it; the caller publishes the change. */
-  #release(voice: number, stop: boolean): void {
+  #endAll(reason: VoiceEnd): void {
+    for (const voice of this.#voices.keys()) this.#end(voice, reason);
+  }
+
+  /**
+   * Stops (unless it ended by itself) and disconnects a voice, drops it and records its first end reason; the caller
+   * publishes the change.
+   */
+  #end(voice: number, reason: VoiceEnd): void {
     const entry = this.#voices.get(voice);
     if (!entry) return;
     this.#voices.delete(voice);
-    if (stop) this.#attempt(() => entry.port.stop());
+    this.#ended.set(voice, reason);
+    // A handle ends once and maps keep insertion order, so the first key is the oldest end.
+    if (this.#ended.size > AUDIO_ENDED_HISTORY) this.#ended.delete(this.#ended.keys().next().value!);
+    if (reason !== 'natural') this.#attempt(() => entry.port.stop());
     this.#attempt(() => entry.port.disconnect());
     this.#attempt(entry.removeEnded);
   }

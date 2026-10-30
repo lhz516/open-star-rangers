@@ -37,11 +37,12 @@ export interface ExplosionEntityOptions {
   readonly sourceKindBit?: number;
   readonly display?: RenderDisplay;
   readonly variant?: ExplosionVariant;
+  readonly speed?: number;
 }
 
 /** A Core explosion as the Render State lists it. */
-export function explosionEntity(id: number, { position = vec(0), orientation = IDENTITY, sourceKindBit = 7, display = 'shown', variant = 'other' }: ExplosionEntityOptions = {}): RenderEntity {
-  return Object.freeze({ ...renderEntity(id, { position, orientation, explosion: variant }), sourceKindBit, display });
+export function explosionEntity(id: number, { position = vec(0), orientation = IDENTITY, sourceKindBit = 7, display = 'shown', variant = 'other', speed = 0 }: ExplosionEntityOptions = {}): RenderEntity {
+  return Object.freeze({ ...renderEntity(id, { position, orientation, explosion: variant, speed }), sourceKindBit, display });
 }
 
 export const player = (position = vec(0), orientation = IDENTITY): RenderEntity => renderEntity(PLAYER, { position, orientation });

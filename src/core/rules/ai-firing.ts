@@ -195,6 +195,16 @@ export function updateAiLock(data: FiringData, shooter: CraftEntity, controller:
   return lock.level === 4;
 }
 
+/**
+ * CR-16's read-only query for the tail check's attacker test `0x4ef9c` (docs/plan/p3/02/spec.md, CR-16, FA-01): a craft
+ * whose missile lock level (weapon block +0x24, object +0x118) is 3 or 4, which for an AI craft only updateAiLock's
+ * stages 2 → 3 → 4 write. The caller filters the kinds, activity, state and object target; nothing changes or draws.
+ */
+export function isClosingMissileLock(entity: Entity): boolean {
+  const { combat } = entity;
+  return combat.type === 'craft' && (combat.weapons.lock.level === 3 || combat.weapons.lock.level === 4);
+}
+
 /** The base's kind mask for a subject outside the enemy kinds, `0x93780`, and for one inside them, `0x6c87f`. */
 const ENEMY_KINDS = 0x93780;
 const OTHER_KINDS = 0x6c87f;

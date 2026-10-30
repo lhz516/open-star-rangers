@@ -1,7 +1,7 @@
 /**
  * The active area and the parked objects (docs/plan/p3/06/spec.md, 活动区域、停放与世界边界; D-02, D-06, D-08;
  * docs/original/formats/executable.md, world boundary, active area, parking and autopilot, P3-06/04):
- * - stage 17, the area check (`0x3a468`/`0x3a4b0`), only writes object states;
+ * - stage 17, the area check (`0x3a468`/`0x3a4b0`), only writes object states, through object-state.ts's retire;
  * - message 0x20's parking switch (`0x21060`–`0x2112b`), which request handling's `leave` tries first, releases or
  *   builds the movement block;
  * - stage 13, the parked update (`0x2f1b0`): its cadence, the Warp transit (`0x2f298`, which also holds the generic
@@ -47,6 +47,7 @@ import { isActiveState, setActivity, ZERO_VECTOR, type Entity, type ObjectState 
 import type { WorldState } from '../world/world-state.ts';
 import { fullRepair } from './base-interior.ts';
 import { reportParkedEnemy } from './comm-reactions.ts';
+import { retire } from './object-state.ts';
 import { reportObjectEvent } from './mission-events.ts';
 import { emit, type TickContext } from './pipeline.ts';
 
@@ -110,18 +111,19 @@ export function switchParking(world: WorldState, entity: Entity): boolean {
 
 /**
  * Stage 17 (`0x3a468`): every entity but the player in state 7 or above. One outside the active area that is active
- * goes to area-switch, or to pending removal for the kinds removed on leaving (no event); one inside that is parked and
- * not in Warp goes to area-switch. Everything else stays, and nothing is released here.
+ * goes to area-switch, or to pending removal for the kinds removed on leaving, each with its `object-retired` (FA-07);
+ * one inside that is parked and not in Warp goes to area-switch. Everything else stays, and nothing is released here.
  */
-export function checkActiveArea(world: WorldState): void {
+export function checkActiveArea(context: TickContext): void {
+  const { world } = context;
   // The player does not move during the walk, so one centre serves as the original's cached one.
   const centre = activeAreaCentre(world);
   for (const entity of world.entities.walk(AREA_CHECK_KINDS)) {
     if (!isActiveState(entity.state)) continue;
     if (!isWithinActiveArea(centre, entity.position)) {
-      if (entity.activity === 'active') entity.state = isRemovedOnLeaving(entity.kindBit) ? 'pending-removal' : 'area-switch';
+      if (entity.activity === 'active') retire(context, entity, isRemovedOnLeaving(entity.kindBit) ? 'pending-removal' : 'area-switch');
     } else if (entity.activity === 'parked' && !entity.inWarp) {
-      entity.state = 'area-switch';
+      retire(context, entity, 'area-switch');
     }
   }
 }
@@ -183,7 +185,7 @@ function arrive(context: TickContext, entity: Entity, subject: Entity, leader: E
   if (leader === null && entity.ai.mode === 4) entity.ai.goal = recordGoal(world, entity, rand);
   entity.inWarp = false;
   if (entity.kindBit === WINGMAN_KIND_BIT || !isOutsideExitBounds(world.spawn.frame, subject.position)) return;
-  entity.state = 'pending-removal';
+  retire(context, entity, 'pending-removal');
   emit(context, { type: 'object-left-world', tick: world.tick, entityId: entity.id, kindBit: entity.kindBit, source: entity.source });
   reportObjectEvent(context, entity, 2);
 }

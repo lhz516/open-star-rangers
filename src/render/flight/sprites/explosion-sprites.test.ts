@@ -77,7 +77,7 @@ function setup(input: { animations?: ReturnType<typeof animations> } = {}) {
 }
 
 function explosion(key: ExplosionKey, z: number, { variant = 'other' as ExplosionVariant, selection = LIST_1, activationTick = 10 } = {}): PresentationExplosion {
-  return { key, origin: { type: 'core', entityId: 0 as never, eventIndex: 0 }, sourceKindBit: 7, variant, selection, activationTick, activationClock: 2 * activationTick, position: vec(0, 0, z) };
+  return { key, origin: { type: 'core', entityId: 0 as never, eventIndex: 0 }, sourceKindBit: 7, variant, selection, activationTick, activationClock: 2 * activationTick, position: vec(0, 0, z), forward: vec(0, 0, 1), speed: 0 };
 }
 
 type Quad = Mesh<BufferGeometry, ShaderMaterial>;

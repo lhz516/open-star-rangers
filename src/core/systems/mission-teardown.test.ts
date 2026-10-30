@@ -234,7 +234,10 @@ describe('the teardown after a success (ME-11)', () => {
     state.player.leftDisplay.page = WARP_PAGE;
     const events = world.step(tickInput());
     const index = events.findIndex(({ type }) => type === 'teardown-started');
-    expect(events[index - 1]).toEqual({ type: 'left-page-changed', tick: state.tick, page: 2, previousPage: 0, commandIndex: null });
+    // Between them, each active entity's retirement (P3-14 FA-07).
+    const page = events.findLastIndex(({ type }) => type === 'left-page-changed');
+    expect(events[page]).toEqual({ type: 'left-page-changed', tick: state.tick, page: 2, previousPage: 0, commandIndex: null });
+    expect(events.slice(page + 1, index).every(({ type }) => type === 'object-retired')).toBe(true);
     expect([state.player.viewMode, state.player.previousViewMode, state.player.leftDisplay.page]).toEqual([TEARDOWN_VIEW_MODE, WARP_VIEW_MODE, 2]);
   });
 });

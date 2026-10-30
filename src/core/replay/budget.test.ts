@@ -109,6 +109,20 @@ describe('per-tick budget (P3-06 AC-08, 容量核算)', () => {
   });
 });
 
+// P3-14 FA-07 (docs/plan/p3/02/spec.md): at most two retirements per entity and tick, 2 × entities = 4,096 within
+// eventsPerTick with the other derived terms (about 13,200).
+describe('object-retired at the entity limit (P3-14 FA-07)', () => {
+  it('retires every active entity the area check moves out, once each, within eventsPerTick', () => {
+    const state = testState();
+    addPlayerEntity(state, { position: { x: 0, y: 0, z: 0 } }).state = 'active';
+    while (state.entities.size < ENTITIES) state.entities.allocate(stillEntityInit(14, { position: { x: 20_000, y: 0, z: 0 } })).state = 'active';
+    const { events } = countedTick(state, tickInput());
+    expect(countOf(events)).toEqual({ 'object-retired': ENTITIES - 1 });
+    expect(new Set(events.map((event) => (event.type === 'object-retired' ? event.entityId : null))).size).toBe(ENTITIES - 1);
+    expect(2 * ENTITIES + 9_064).toBeLessThanOrEqual(eventsPerTick);
+  });
+});
+
 const FLIGHT = 0x0c;
 const MAP = 8;
 const commandsOf = (count: number, command: (index: number) => Command): Command[] => Array.from({ length: count }, (_, index) => command(index));

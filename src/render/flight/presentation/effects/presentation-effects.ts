@@ -27,13 +27,13 @@ import { isWithinActiveArea } from '../../../../core/rules/active-area.ts';
 import { explosionFrame } from '../../../../core/rules/explosions.ts';
 import { motionStep, type MotionStep } from '../../../../core/rules/flight-motion.ts';
 import { isLargeKind, spinFragment } from '../../../../core/rules/fragments.ts';
-import { linearBlock, linearItem } from '../../../../core/rules/movement-builders.ts';
+import { linearBlock, linearItem, rowOf } from '../../../../core/rules/movement-builders.ts';
 import type { EntityId, Matrix3 } from '../../../../core/world/entity-table.ts';
 import { checkPresentationContent, type PresentationContent } from '../explosion-selection.ts';
 import { PresentationError } from '../presentation-budget.ts';
 import { presentationViewport } from '../presentation-camera.ts';
 import type {
-  CoreExplosionKey, ExplosionActivation, ExtraExplosionKey, FragmentExplosionKey, FragmentKey, PresentationActivationRequest,
+  CoreExplosionKey, ExplosionActivation, ExplosionMotion, ExtraExplosionKey, FragmentExplosionKey, FragmentKey, PresentationActivationRequest,
   PresentationEffects, PresentationEffectsStep, PresentationObjectSlot, PresentationViewport,
 } from '../presentation-contract.ts';
 import {
@@ -128,6 +128,12 @@ interface EffectExplosion {
   readonly firstCallbackTick: number;
   /** Its mode-1 drift: the Core explosion's for an extra (X3), F(R2′ × s) from its fragment's frame otherwise. */
   readonly velocity: Vec3;
+  /**
+   * The R2 and speed of that block (P3-14 DW-02): the Core explosion's at its construction for an extra, R2′ and s for
+   * a fragment's. Null only for the extras of a Core explosion the Render State did not list at its construction, which
+   * leave at their first callback without activating.
+   */
+  readonly motion: ExplosionMotion | null;
   position: Vec3;
   phase: ExplosionPhase;
   due: number | null;
@@ -235,10 +241,13 @@ class Effects implements FlightPresentationEffects {
     const key: CoreExplosionKey = `core:${entityId}`;
     const firstCallbackTick = stage === 'object-update' ? step.tick : after(step.tick, 1, 'first-callback');
     const variant = isLargeKind(sourceKindBit) ? 'large' : 'other';
+    // X3 builds each extra's block as the Core explosion's (X2 step 5), which its mode-1 drift never changes.
+    const core = step.render.entities.find(({ id }) => id === entityId);
+    const motion: ExplosionMotion | null = core === undefined ? null : Object.freeze({ forward: rowOf(core.orientation, 2), speed: core.speed });
     const extras = extraExplosionPositions(sourceKindBit, position, step.beforeStep, step.random).map((at, ordinal): EffectExplosion => {
       const extra: EffectExplosion = {
         origin: { type: 'extra', parentExplosionKey: key, ordinal: ordinal as 0 | 1 | 2 | 3 | 4 }, variant, slot: step.reserveObject(), firstCallbackTick,
-        velocity, position: at, phase: 'new', due: null, key: null, activationClock: 0, held: null,
+        velocity, motion, position: at, phase: 'new', due: null, key: null, activationClock: 0, held: null,
       };
       this.#explosions.push(extra);
       return extra;
@@ -346,7 +355,8 @@ class Effects implements FlightPresentationEffects {
   #requestHandling(step: PresentationEffectsStep, due: Due): void {
     for (const explosion of due.activations) {
       const { origin, variant, position, slot } = explosion;
-      const activation = step.activate({ origin, variant, position, slot } as PresentationActivationRequest);
+      const motion = explosion.motion ?? invariant('activate', 'has no movement block of its Core explosion');
+      const activation = step.activate({ origin, variant, position, motion, slot } as PresentationActivationRequest);
       explosion.key = activation.key as ExtraExplosionKey | FragmentExplosionKey;
       explosion.phase = 'active';
       explosion.activationClock = step.clock;
@@ -390,9 +400,11 @@ class Effects implements FlightPresentationEffects {
       this.#release(fragment, step.tick);
       return;
     }
+    // R2′ is the fragment's frame completed with its velocity (`0x218e8`), s its block's speed.
+    const item = linearItem(fragment.position, fragment.rows, fragment.init.block);
     const explosion: EffectExplosion = {
       origin: { type: 'fragment', fragmentKey: fragment.key }, variant: 'other', slot: step.reserveObject(), firstCallbackTick: after(step.tick, 1, 'first-callback'),
-      velocity: linearBlock(linearItem(fragment.position, fragment.rows, fragment.init.block), false).velocity, position: fragment.position,
+      velocity: linearBlock(item, false).velocity, motion: Object.freeze({ forward: rowOf(item.orientation, 2), speed: item.speed }), position: fragment.position,
       phase: 'new', due: null, key: null, activationClock: 0, held: fragment,
     };
     this.#explosions.push(explosion);

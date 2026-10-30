@@ -4,7 +4,7 @@ import { committed, flush } from '../resources/resource-holder.test-support.ts';
 import { TICK_MS } from '../runtime/game-runtime.test-support.ts';
 import { RollbackError } from '../session/rollback-error.ts';
 import type { GameSessionStatus } from '../session/game-session.ts';
-import type { MissionOwnerConsumer, MissionOwnerSetup } from './mission-owner.ts';
+import type { MissionOwnerConsumer, MissionOwnerSetup, MissionSoundStatus } from './mission-owner.ts';
 import {
   missionHolder, missionJob, openMission, ownerSetup, skip, testPorts, testSlot, TestConsumer, toConfig, toDeparture, toFlight, type TestPorts,
 } from './mission.test-support.ts';
@@ -403,6 +403,78 @@ describe('holder replacement and disposal', () => {
     expect(setup.owner.getSnapshot()).toMatchObject({ flow: { position: 'flight', runId: 1 }, session: { phase: 'running', runId: 1 } });
     setup.host.deliver(TICK_MS);
     expect(run!.projection().clock.tick).toBe(1);
+  });
+});
+
+describe('sound hooks (P3-14/17)', () => {
+  /** A `media` consumer whose connection logs each activation with the session phase and flow it saw, and reports `status`. */
+  function soundProbe(log: string[], options: { readonly status?: () => MissionSoundStatus; readonly fail?: boolean } = {}) {
+    let changed: (() => void) | undefined;
+    const consumer: MissionOwnerConsumer = {
+      stage: 'media',
+      connect: (context) => {
+        changed = context.soundChanged;
+        return {
+          release: () => undefined,
+          onActivation: (cause) => {
+            log.push(`${cause}:${context.session.status().phase}`);
+            if (options.fail) throw new Error('activation');
+          },
+          ...(options.status ? { sound: options.status } : {}),
+        };
+      },
+    };
+    return { consumer, changed: () => changed!() };
+  }
+
+  it('activates media connections after each trusted action\'s session control, and enables sound only where it applies', async () => {
+    const log: string[] = [];
+    const { owner, seeds } = await openMission('mission-startable', { consumers: [soundProbe(log).consumer] });
+    owner.enableSound();
+    skip(owner);
+    owner.enableSound();
+    expect(log).toEqual([]);
+    owner.start();
+    expect(log).toEqual(['start:transition']);
+    owner.enableSound();
+    skip(owner);
+    owner.pause();
+    owner.enableSound();
+    owner.resume();
+    owner.openMenu();
+    owner.enableSound();
+    expect(owner.getSnapshot()).toMatchObject({ flow: { position: 'menu' }, session: { phase: 'paused' } });
+    owner.continueFromMenu();
+    expect(log).toEqual(['start:transition', 'enable-sound:transition', 'enable-sound:paused', 'resume:running', 'enable-sound:paused', 'continue:running']);
+    // A start that fails activates nothing.
+    owner.restart();
+    skip(owner);
+    seeds.failure = new Error('seed');
+    owner.start();
+    expect(owner.getSnapshot().flow).toMatchObject({ position: 'config', startFailure: { kind: 'seed' } });
+    expect(log).toHaveLength(6);
+  });
+
+  it('reports a throwing activation and shows the sound as failed; the action\'s result stands', async () => {
+    const log: string[] = [];
+    const { owner, reportError } = await openMission('mission-startable', { consumers: [soundProbe(log, { fail: true, status: () => 'available' }).consumer] });
+    expect(owner.getSnapshot().sound).toBe('available');
+    toDeparture(owner);
+    expect(owner.getSnapshot()).toMatchObject({ flow: { position: 'departure' }, sound: 'failed', actionError: null });
+    expect(reportError).toHaveBeenCalledWith(new Error('activation'));
+  });
+
+  it('shows the first media connection\'s sound, publishing when it says it changed, and unavailable without one', async () => {
+    expect((await openMission()).owner.getSnapshot().sound).toBe('unavailable');
+    let status: MissionSoundStatus = 'waiting-close';
+    const probe = soundProbe([], { status: () => status });
+    const { owner } = await openMission('mission-startable', { consumers: [probe.consumer, soundProbe([], { status: () => 'failed' }).consumer] });
+    const seen: MissionSoundStatus[] = [];
+    owner.subscribe(() => { seen.push(owner.getSnapshot().sound); });
+    expect(owner.getSnapshot().sound).toBe('waiting-close');
+    status = 'needs-activation';
+    probe.changed();
+    expect(seen).toEqual(['needs-activation']);
   });
 });
 

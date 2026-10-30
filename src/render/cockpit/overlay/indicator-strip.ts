@@ -2,9 +2,9 @@
  * Instrument type 9, the two warning labels (`0x4eb3c`; docs/original/formats/hud.md §4.8; P3-13 spec, 消息行、指示条与
  * Warp 灯, DC-11 Δ-04 and D-02 定稿 DD-02/DD-03), as one run's module.
  *
- * - **Inputs:** the two flags Core sampled for the same tick (`communications.player.warnings` on main: the missile
- *   flag `0x175f14` is `missileIncoming`, the craft flag `0x175f10` `attackerOnTail`). Without a player main has no
- *   flags: the strip is not drawn and keeps its state, and nothing is filled in as false. No random numbers.
+ * - **Inputs:** the two flags Core sampled for the same tick (FA-01's partition-level `communications.warnings`: the
+ *   missile flag `0x175f14` is `missileIncoming`, the craft flag `0x175f10` `attackerOnTail`). Without a player the
+ *   strip is not drawn and keeps its state, and nothing is filled in as false. No random numbers.
  * - **Blink:** its own clock, separate from the warning update's: when the clock is strictly past the due the phase
  *   toggles and the due becomes clock + 0x15; the body runs only then or in an always-redraw slot.
  * - **Labels:** the missile text in colour 10 at (second range start, y0), shown in phase 0; the craft text in 0xF at
@@ -61,8 +61,9 @@ export function createIndicatorStrip({ font: payload, hudText }: IndicatorStripI
   let craftShown = false;
 
   function draw(context: CockpitDrawContext, { rectangle: { y0, y1 }, params }: InstrumentRecord): void {
-    const warnings = context.projection.communications.player?.warnings;
-    if (warnings === undefined) return;
+    const { communications } = context.projection;
+    if (communications.player === null) return;
+    const { warnings } = communications;
     const { back, clock } = context;
     const always = context.layout.slot?.alwaysRedraw ?? false;
     const blink = due >>> 0 < clock >>> 0;

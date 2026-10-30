@@ -62,6 +62,9 @@ describe('local E2E integration', { timeout: 20_000 }, () => {
     for (const spec of ['resource-cache.spec.ts', 'audio-playback.spec.ts']) {
       expect(projectsOf(report.suites.find(suite => suite.file === spec) ?? {}), spec).toEqual(['development']);
     }
+    // P3-14/22: the flight sound's output runs in both builds, its locked and failure cases only in development.
+    expect(projectsOf(report.suites.find(suite => suite.file === 'flight-audio.spec.ts') ?? {})).toEqual(['development', 'production']);
+    expect(projectsOf(report.suites.find(suite => suite.file === 'flight-audio.development.spec.ts') ?? {})).toEqual(['development']);
     // Holds vacuously until such specs exist, then constrains every new one without another config change.
     for (const suite of report.suites) {
       const project = /\.(development|production)\.spec\.ts$/.exec(suite.file ?? '')?.[1];

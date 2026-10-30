@@ -102,6 +102,19 @@ class ProtectTests(unittest.TestCase):
         self.assertEqual(record["changedLines"], 3)
         self.assertEqual(emulator_settings("[cpu]\ncycles=max\n[dosbox]\ncycles=fixed 9\n"), {"cycles": "max"})
 
+    def test_private_config_wraps_the_game_launch_for_an_audio_capture(self):
+        base = BASE_CONFIG.format(captures=self.tmp / "captures", install=self.install, cd=self.tmp / "cd") + "srangers\n"
+        text, record = self.config(base)
+        self.assertTrue(text.endswith("c:\nsrangers\n"))  # unchanged without the setting
+        self.assertEqual(record["changes"], {"captures": 1, "mount-c": 1})
+        text, record = self.config(base, emulator={"audioCapture": "multitrack"})
+        self.assertTrue(text.endswith("c:\ncd main\ndx-capture /M srangers.exe\ncd ..\n"))
+        self.assertEqual(record["changes"], {"captures": 1, "mount-c": 1, "audio-capture": 1})
+        self.assertEqual(record["changedLines"], 3)
+        for refused in (base[:-len("srangers\n")], base + "SRANGERS.BAT\n"):  # no launch, or two
+            with self.subTest(refused=refused[-30:]):
+                self.assertCode("private-copy-invalid", self.config, refused, {"audioCapture": "multitrack"})
+
     def test_private_config_mounts_a_private_disc_on_the_same_drive(self):
         cd = self.tmp / "cd"
         cd.mkdir()

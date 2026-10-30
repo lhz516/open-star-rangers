@@ -6,7 +6,7 @@ import { readTickInput } from '../contracts/tick-input.ts';
 import { craftMovementBlock } from '../rules/flight-state.ts';
 import { scatteredRows } from '../rules/movement-builders.ts';
 import { RandStream } from '../rules/original-random.ts';
-import type { Entity, Matrix3 } from '../world/entity-table.ts';
+import type { Entity, Matrix3, SteeredMovementBlock } from '../world/entity-table.ts';
 import { entityInit, expectFault, testState, tickInput } from '../world/world.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { applyLaunchRequest } from './launch.ts';
@@ -68,10 +68,25 @@ describe('the projectile constructor 0x25b0c (W11, CR-03)', () => {
     });
     expect(projectile.ai.objectTarget).toBeNull();
     expect(context.events).toEqual([{
-      type: 'shot-fired', tick: 1, shooterEntityId: shooter.id, shooterKindBit: 0, shooterPosition: at(10, 20, 30), entityId: projectile.id,
-      family: 'gun', weapon: 0, mount: 3, position: SPAWN, trigger: TRIGGER,
+      type: 'shot-fired', tick: 1, shooterEntityId: shooter.id, shooterKindBit: 0, shooterPosition: at(10, 20, 30), shooterForward: at(0, 0, 1),
+      shooterSpeed: 40, entityId: projectile.id, family: 'gun', weapon: 0, mount: 3, position: SPAWN, trigger: TRIGGER,
     }]);
     expect(state.player.shots.projectilesFired).toBe(1);
+  });
+
+  // P3-14 FA-05: the shooter's third row and block speed at the emission, detached. A shooter always has a block: the
+  // constructors need its speed, so a null speed only ever comes from a parked victim's `hit`.
+  it('snapshots the shooter\'s third orientation row and its block speed, detached from the shooter', () => {
+    const [, shooter, context] = launchWorld();
+    shooter.orientation = matrix(1, 0, 0, 0, f(0.8), -f(0.6), 0, f(0.6), f(0.8));
+    (shooter.movement as SteeredMovementBlock).speed = 52.5;
+    applyLaunchRequest(context, missileLaunch(shooter, 1));
+    const [event] = context.events;
+    expect(event).toMatchObject({ type: 'shot-fired', family: 'missile', shooterForward: at(0, f(0.6), f(0.8)), shooterSpeed: 52.5 });
+    (shooter.movement as SteeredMovementBlock).speed = 1;
+    shooter.orientation = TURNED;
+    expect(event).toMatchObject({ shooterForward: at(0, f(0.6), f(0.8)), shooterSpeed: 52.5 });
+    expect(Object.isFrozen(event) && Object.isFrozen((event as { shooterForward: Vec3 }).shooterForward)).toBe(true);
   });
 
   it('flies an aimed shot along the request\'s orientation, but places it with the shooter\'s rows', () => {

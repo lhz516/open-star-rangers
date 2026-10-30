@@ -141,7 +141,7 @@ describe('flight.combat readings (CR-12, AC-04)', () => {
           entityId: target.id, kindBit: 7, name, position: { x: 0, y: 0, z: 100 }, orientation: [...TEST_ORIENTATION],
           distance: 100, speed: 37.5, shield: { current: 120, maximum: 450 },
           // CK-03: the model presentation's Asset and kind 7's craft record +0x08.
-          model: TEST_MODEL, craftAt08: 1,
+          model: TEST_MODEL, craftAt08: 1, activeState: true,
         },
         radar: {
           status: 1,
@@ -216,7 +216,7 @@ describe('flight.combat target (T7)', () => {
     expect(targetOf(state)).toBeNull();
     const target = add(state, 7, at(0, 0, 100));
     state.player.target = target.id;
-    expect(Object.keys(targetOf(state)!)).toEqual(['entityId', 'kindBit', 'name', 'position', 'orientation', 'distance', 'speed', 'shield', 'model', 'craftAt08']);
+    expect(Object.keys(targetOf(state)!)).toEqual(['entityId', 'kindBit', 'name', 'position', 'orientation', 'distance', 'speed', 'shield', 'model', 'craftAt08', 'activeState']);
     target.destroyed = true;
     target.state = 'destroyed-source';
     expect(targetOf(state)?.entityId).toBe(target.id);
@@ -251,6 +251,22 @@ describe('flight.combat target (T7)', () => {
     const other = 'model/test/other' as AssetId;
     state.player.target = add(state, 8, at(0, 0, 50), { presentation: { type: 'model', model: other } }).id;
     expect(targetOf(state)?.model).toBe(other);
+  });
+
+  // P3-14 FA-02: the lock tone's −1 for a target whose state is below 7, whatever its activity (A-06).
+  it.each([
+    ['new', false], ['presentation-ready', false], ['awaiting-presentation', false], ['destroyed-source', false], ['area-switch', false],
+    ['pending-removal', false], ['active', true], ['projectile-hit', true],
+  ] as const)('reads a target in state %s as active state %s, frozen and detached', (objectState, active) => {
+    const [state] = combatWorld();
+    const target = add(state, 7, at(0, 0, 100), { activity: 'parked' });
+    state.player.target = target.id;
+    target.state = objectState;
+    const reading = targetOf(state)!;
+    expect(reading.activeState).toBe(active);
+    target.state = active ? 'pending-removal' : 'active';
+    expect(reading.activeState).toBe(active);
+    expect(Object.isFrozen(reading)).toBe(true);
   });
 
   it('measures the distance as the right display does: each double difference times its f32 store', () => {

@@ -12,7 +12,7 @@ import { CoreFaultError } from '../errors.ts';
 import { missileMaximumSpeed, runtimeKindDefaults } from '../rules/combat-init.ts';
 import { motionStep } from '../rules/flight-motion.ts';
 import { craftMovementBlock, FULL_THROTTLE } from '../rules/flight-state.ts';
-import { applyGuidedLaunchSpeed, linearBlock, linearItem, offsetPosition, scatteredRows, speedOf } from '../rules/movement-builders.ts';
+import { applyGuidedLaunchSpeed, linearBlock, linearItem, offsetPosition, rowOf, scatteredRows, speedOf } from '../rules/movement-builders.ts';
 import { RandStream } from '../rules/original-random.ts';
 import { PLAYER_KIND_BIT } from '../rules/spawn-schedule.ts';
 import { MISSILE_KIND_BIT, PROJECTILE_KIND_BIT, type Entity, type Matrix3, type MissileProgram } from '../world/entity-table.ts';
@@ -129,6 +129,8 @@ export function applyLaunchRequest(context: TickContext, request: RequestOf<'lau
     shooterEntityId: shooter.id,
     shooterKindBit: shooter.kindBit,
     shooterPosition: shooter.position,
+    shooterForward: rowOf(shooter.orientation, 2),
+    shooterSpeed: shooter.movement?.speed ?? null,
     entityId: entity.id,
     family: request.family,
     weapon: request.family === 'gun' ? request.gun : request.missile,

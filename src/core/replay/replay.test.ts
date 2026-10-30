@@ -144,9 +144,12 @@ describe('replay (P3-02 AC-12, 快照、哈希与 replay)', () => {
       ['the rules version before P3-08', (record: Mutable) => { record.rulesVersion = 6; }, 'record.rulesVersion'],
       // P3-11/08 (ME-16) and P3-12/10 (FS-08) each incremented it from 7 on their branches, to 8, and their merge to 9;
       // P3-13/12 to 10 (CK-05): records of the status display order before P3-13 are refused, not replayed (P3-13 AC-01).
+      // P3-14/08 incremented it once more on its branch (FA-08), so merged it is 11: a record before the tail check's
+      // correction and the new event fields is refused.
       ['the rules version before P3-11 and P3-12', (record: Mutable) => { record.rulesVersion = 7; }, 'record.rulesVersion'],
       ['the rules version of P3-11 or P3-12 alone', (record: Mutable) => { record.rulesVersion = 8; }, 'record.rulesVersion'],
       ['the rules version before P3-13', (record: Mutable) => { record.rulesVersion = 9; }, 'record.rulesVersion'],
+      ['the rules version before P3-14', (record: Mutable) => { record.rulesVersion = 10; }, 'record.rulesVersion'],
       ['a speed preset out of range', (record: Mutable & { ticks: Mutable[] }) => { record.ticks[4] = tickInput([{ type: 'speed-preset', level: 0 }]) as never; }, 'record.ticks[4].commands[0].level'],
       ['an extra field', (record: Mutable) => { record.notes = ''; }, 'record'],
       ['a missing field', (record: Mutable) => { delete record.checkpointInterval; }, 'record.checkpointInterval'],

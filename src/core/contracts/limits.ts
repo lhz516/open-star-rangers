@@ -35,12 +35,13 @@ export const CORE_LIMITS = Object.freeze({
    * 640, 8,968 in all. P3-08 (CR-25) adds at most one `wingman-command-consumed` per wingman (32) and one
    * `transponder-deployed` per command (64): 9,064. P3-11 (ME-16) adds about 15 flow events (10 of its types at most
    * once, `player-loss-started` twice, the wingman loss message's `radio-queued` and two flush page changes), a rescue's
-   * `weapon-selected` around both lists (2 × 256 mounts) and the teardown's two page changes: 529, 9,593 in all. P3-12
+   * `weapon-selected` around both lists (2 × 256 mounts) and the teardown's two page changes: 529, 9,593. P3-12
    * (FS-08) adds `explosion-created` 353 (as many as `explosion-started`), `view-switched` 73 (one per `map-toggle`
    * command, the Warp start and completion, a docking, two launches, and P3-11's two loss entries and two rescues) and
-   * one `warp-wall-contact`: 10,020 in all, which this is about 3.3 times. At the entity limit the quadratic terms have
-   * no fixed bound, and exceeding the budget is a fault. P3-11 adds no request type: the teardown's `leave` is one of
-   * each live object's own two.
+   * one `warp-wall-contact`: 10,020. P3-14 (FA-07) adds at most two `object-retired` per entity and tick (an area
+   * switch, then a pending removal): 2 × entities = 4,096, 14,116 in all, which this is about 2.3 times. At the entity
+   * limit the quadratic terms have no fixed bound, and exceeding the budget is a fault. P3-11 adds no request type: the
+   * teardown's `leave` is one of each live object's own two.
    */
   eventsPerTick: 32_768,
   /**
@@ -82,7 +83,10 @@ export const CORE_LIMITS = Object.freeze({
   recordedTicks: 131_072,
   /** Commands of one recording: 2 per tick on average, e.g. fire held every tick plus one more action. */
   recordedCommands: 262_144,
-  /** Events of one recording: 4 per tick on average; at about 120 characters of JSON each, 64 MB at most. */
+  /**
+   * Events of one recording: 4 per tick on average; at about 120 characters of JSON each, 64 MB at most. P3-14's forward
+   * rows and speeds (FA-05) make a `shot-fired` or `hit` about 80 characters longer, and they are a minority of events.
+   */
   recordedEvents: 524_288,
   /** Checkpoints of one recording: tick 0 and one per tick, so an interval of 1 always fits. */
   recordedCheckpoints: 131_073,

@@ -1,17 +1,20 @@
 import { writeSoundPayload, type SoundPayloadInput } from '../../content/sound-payload.ts';
 import type {
-  AudioBufferHandle, AudioCapability, AudioContextPort, AudioVoicePort, PageLifecycleEvent, PageLifecycleHost,
+  AudioBufferHandle, AudioCapability, AudioContextPort, AudioVoicePort, PageLifecycleEvent, PageLifecycleHost, VoiceNodeParameters,
 } from './audio-controller.ts';
 
 // Fakes of the audio controller's host capabilities, shared by the controller's tests and its app consumers' tests.
 
 export class FakeVoice implements AudioVoicePort {
-  /** `start` and `stop`, followed by the context time when one was given. */
+  /** `start`, `stop` and `set` (parameters), followed by the context time when one was given. */
   readonly calls: string[] = [];
+  /** The parameter values applied before start, or null for a fixed voice without parameter nodes. */
+  readonly initial: VoiceNodeParameters | null = null;
   readonly ended = new Set<() => void>();
   readonly buffer: AudioBufferHandle;
   readonly loop: boolean;
   failStop = false;
+  failEnded = false;
   constructor(buffer: AudioBufferHandle, loop: boolean) {
     this.buffer = buffer;
     this.loop = loop;
@@ -23,6 +26,7 @@ export class FakeVoice implements AudioVoicePort {
   }
   disconnect(): void { this.calls.push('disconnect'); }
   onEnded(listener: () => void): () => void {
+    if (this.failEnded) throw new Error('listen failed');
     this.ended.add(listener);
     return () => { this.ended.delete(listener); };
   }
@@ -30,11 +34,30 @@ export class FakeVoice implements AudioVoicePort {
   end(): void { for (const listener of [...this.ended]) listener(); }
 }
 
+/** A voice created with parameters: it has parameter nodes, and records every later setting. */
+export class FakeParameterVoice extends FakeVoice {
+  override readonly initial: VoiceNodeParameters;
+  /** Each `setParameters` call: the values and their context time. */
+  readonly settings: { readonly parameters: VoiceNodeParameters; readonly when: number }[] = [];
+  failSet = false;
+  constructor(buffer: AudioBufferHandle, loop: boolean, initial: VoiceNodeParameters) {
+    super(buffer, loop);
+    this.initial = initial;
+  }
+  setParameters(parameters: VoiceNodeParameters, when: number): void {
+    if (this.failSet) throw new Error('InvalidStateError');
+    this.calls.push(`set ${when}`);
+    this.settings.push({ parameters, when });
+  }
+}
+
 export class FakeContext implements AudioContextPort {
   readonly calls: string[] = [];
   readonly voices: FakeVoice[] = [];
   readonly listeners = new Set<() => void>();
   failVoice = false;
+  /** New voices cannot report their end. */
+  failEnded = false;
   failListen = false;
   state: string;
   currentTime = 0;
@@ -49,9 +72,17 @@ export class FakeContext implements AudioContextPort {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
   }
-  // Like a browser blocking autoplay, the promises never settle; tests drive the state instead.
+  // Like a browser blocking autoplay, the promises never settle unless a test settles a suspension; tests drive the state.
   resume(): Promise<unknown> { this.calls.push('resume'); return new Promise(() => undefined); }
-  suspend(): Promise<unknown> { this.calls.push('suspend'); return new Promise(() => undefined); }
+  /** Each `suspend()` call's settlement, in call order. */
+  readonly suspensions: { readonly resolve: () => void; readonly reject: (error: unknown) => void }[] = [];
+  /** `suspend()` throws synchronously. */
+  failSuspend = false;
+  suspend(): Promise<unknown> {
+    this.calls.push('suspend');
+    if (this.failSuspend) throw new DOMException('suspend threw', 'InvalidStateError');
+    return new Promise((resolve, reject) => { this.suspensions.push({ resolve: () => resolve(undefined), reject }); });
+  }
   /** What `close()` does: reject (the default), resolve, stay pending, or throw synchronously. */
   closing: 'reject' | 'resolve' | 'pending' | 'throw' = 'reject';
   close(): Promise<unknown> {
@@ -60,9 +91,10 @@ export class FakeContext implements AudioContextPort {
     if (this.closing === 'pending') return new Promise(() => undefined);
     return this.closing === 'resolve' ? Promise.resolve() : Promise.reject(new Error('close rejected'));
   }
-  createVoice(buffer: AudioBufferHandle, loop: boolean): AudioVoicePort {
+  createVoice(buffer: AudioBufferHandle, loop: boolean, parameters?: VoiceNodeParameters): AudioVoicePort {
     if (this.failVoice) throw new Error('InvalidStateError');
-    const voice = new FakeVoice(buffer, loop);
+    const voice = parameters === undefined ? new FakeVoice(buffer, loop) : new FakeParameterVoice(buffer, loop, parameters);
+    voice.failEnded = this.failEnded;
     this.voices.push(voice);
     return voice;
   }

@@ -12,7 +12,8 @@
  * identity, and each run's cockpit is wired with it at tick 0 from the run's tick-0 projection. The consumer exposes the
  * map geometry of that content (`mapGeometry`, for the input's geometry port) and the current run's map presentation
  * cursor (`mapCursor`, the map input's production cursor), which the run's end withdraws; and the current run's cockpit
- * (`cockpit`), whose message line the base page bridges.
+ * (`cockpit`), whose message line the base page bridges. It also exposes the current run's presentation module
+ * (`presentation`, P3-14 D-02 DW-01), with or without a cockpit, for the flight sound consumer wired after it.
  *
  * Failures: a surface the device cannot provide (`GraphicsUnavailableError`) leaves an `unavailable` renderer and the
  * session runs, the cockpit advancing without a picture; any other creation failure, an undo that failed included,
@@ -25,6 +26,7 @@ import { prepareFlightContent, type PreparedFlightContent } from '../../render/f
 import { FlightRenderError } from '../../render/flight/renderer/flight-render-error.ts';
 import { createFlightRenderer, type FlightRenderer, type FlightRendererOptions } from '../../render/flight/renderer/flight-renderer.ts';
 import type { CockpitContent, CockpitRun } from '../../render/cockpit/composition/cockpit-run.ts';
+import type { FlightPresentation } from '../../render/flight/presentation/flight-presentation.ts';
 import { mapPictureGeometry, type MapPictureGeometry } from '../../render/cockpit/map-picture/map-picture-geometry.ts';
 import { wireFlightRun, type FlightRunMap } from '../../render/flight/renderer/flight-run.ts';
 import type { MapCursorDrawer } from '../../render/map/map-cursor.ts';
@@ -60,15 +62,21 @@ export interface FlightConsumer extends MissionOwnerConsumer<'media'> {
   mapGeometry(): MapPictureGeometry | null;
   /** The current run's map presentation cursor (`MapInputOptions.cursor`); null without a wired run. */
   mapCursor(): Pick<MapCursorDrawer, 'draw' | 'ready'> | null;
-  /** The current run's cockpit; null without a wired run. */
+  /** The current run's cockpit; null without a wired run or without `FlightConsumerOptions.cockpit`. */
   cockpit(): CockpitRun | null;
+  /** The presentation module `wireFlightRun` created for the current run; null without a wired run. */
+  presentation(): FlightPresentation | null;
 }
 
 /** A consumer for one owner. */
 export function createFlightConsumer({ holder, createSurface, seed, reportError, cockpit: links }: FlightConsumerOptions): FlightConsumer {
   let renderer: FlightRenderer | null = null;
   let mapGeometry: MapPictureGeometry | null = null;
-  let current: { readonly cockpit: CockpitRun; readonly cursor: Pick<MapCursorDrawer, 'draw' | 'ready'> } | null = null;
+  let current: {
+    readonly presentation: FlightPresentation;
+    readonly cockpit: CockpitRun | null;
+    readonly cursor: Pick<MapCursorDrawer, 'draw' | 'ready'> | null;
+  } | null = null;
   const connect = ({ ownerId }: MissionOwnerContext): MissionConsumerConnection => {
     if (renderer) throw new TypeError('A flight consumer connects one owner');
     const held = holder.current();
@@ -97,12 +105,11 @@ export function createFlightConsumer({ holder, createSurface, seed, reportError,
           hud ??= cockpitContentOf({ groups: held.groups, generation: held.generation, identity }, links.copy);
           mapGeometry = mapPictureGeometry(hud.mapGeometry);
         }
-        const { cockpit } = wireFlightRun(run, {
+        const { presentation, cockpit } = wireFlightRun(run, {
           renderer: created, binding, content, seed: seed(),
           cockpit: links && hud ? { content: hud, copy: links.copy, projection: run.projection(), map: links.map } : undefined,
         });
-        if (!cockpit) return;
-        const entry = Object.freeze({ cockpit: cockpit.run, cursor: cockpit.mapPort.cursor });
+        const entry = Object.freeze({ presentation, cockpit: cockpit?.run ?? null, cursor: cockpit?.mapPort.cursor ?? null });
         run.ownCleanup(() => {
           if (current === entry) current = null;
           return undefined;
@@ -116,5 +123,6 @@ export function createFlightConsumer({ holder, createSurface, seed, reportError,
     mapGeometry: () => mapGeometry,
     mapCursor: () => current?.cursor ?? null,
     cockpit: () => current?.cockpit ?? null,
+    presentation: () => current?.presentation ?? null,
   });
 }

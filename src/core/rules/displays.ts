@@ -16,6 +16,13 @@ import { quotient } from './energy.ts';
  */
 export const COCKPIT_DISPLAY_VIEW_MODES: ReadonlySet<number> = new Set([0x0c, 0x0d, 1, 6]);
 
+/**
+ * The view modes in which the tail check runs (docs/plan/p3/02/spec.md, FA-01; audio A-07): the type-9 callback is in the
+ * global per-frame list `0x1a23a0`, which `0x49b2c` calls whatever cockpit slot is active, so in 1, 6, 8 and 0xC–0x12,
+ * and not in 0x13.
+ */
+export const TAIL_CHECK_VIEW_MODES: ReadonlySet<number> = new Set([1, 6, 8, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12]);
+
 /** The status page and the energy page (D15). */
 const STATUS_PAGE = 0;
 export const ENERGY_PAGE = 1;

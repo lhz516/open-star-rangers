@@ -39,6 +39,7 @@ import {
   type ResultMessageReference,
   type ResultProjection,
   type SpeedLimitStatus,
+  type ThreatWarnings,
   type WeaponListReading,
   type WarpRequestReading,
   type WeaponRecordReference,
@@ -84,7 +85,7 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
             speed: 30.5,
             commandedSpeed: 41.25,
             maximumSpeed: 52,
-            // P3-13 CK-03: the craft record's +0xB8, not the live maximum.
+            // P3-13 CK-03 and P3-14 FA-03: the craft record's +0xB8, not the live maximum.
             recordMaximumSpeed: 64,
             // P3-07 recomputes it from the live energy state (CR-09).
             speedLimitStatus: 'live',
@@ -99,7 +100,11 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
       // A closed map; the player entity is not active yet.
       map: { readiness: 'ready', player: { state: 'closed', destination: null, markerEntityId: null, warpRequest: { accepted: false, reason: 'player-unavailable' } } },
       // P3-10 CB-14; its readings have their own tests (communications.test.ts).
-      communications: { readiness: 'ready', player: expect.objectContaining({ entityId: player.id, menu: null, incoming: null, base: null }) },
+      communications: {
+        readiness: 'ready',
+        player: expect.objectContaining({ entityId: player.id, menu: null, incoming: null, base: null }),
+        warnings: { attackerOnTail: false, missileIncoming: false },
+      },
       // P3-11 ME-14: in progress until the teardown completed.
       result: { readiness: 'ready', outcome: 'in-progress' },
     });
@@ -173,6 +178,27 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
       Object.assign(state.flow, { mainState: 1, completedTick: 3 });
       expectFault(() => projectWorld(state), 'invariant-violated', 'projection.result');
     });
+  });
+
+  // P3-14 FA-03: the engine's maximum speed is the record's, static, not +0x78.
+  it('gives the player craft record\'s +0xB8 as the record maximum speed, unchanged when the energy lowers +0x78', () => {
+    const base = testState();
+    const { content } = base.craftInfo;
+    const craft = content.craft.map((record, kindBit) => (kindBit === 0 ? { ...record, atB8: 187.5 } : record));
+    const state = { ...base, craftInfo: { ...base.craftInfo, content: { ...content, craft } } };
+    const player = addPlayerEntity(state, { maximumSpeed: 150 });
+    const motionPlayer = () => {
+      const { motion } = projectWorld(state).flight;
+      if (motion.readiness !== 'ready') throw new Error('motion not ready');
+      return motion.player;
+    };
+    const before = motionPlayer()!;
+    expect([before.recordMaximumSpeed, before.maximumSpeed]).toEqual([187.5, 150]);
+    // A stand-in for an energy update that lowered +0x78 (CR-09).
+    player.maximumSpeed = 40;
+    expect(motionPlayer()).toMatchObject({ recordMaximumSpeed: 187.5, maximumSpeed: 40 });
+    state.player.entityId = null;
+    expect(motionPlayer()).toBeNull();
   });
 
   it('keeps the combat group\'s four states apart: not implemented, no player, a live player and a destroyed one (P3-07 AC-04)', () => {
@@ -407,7 +433,7 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
     >();
     expectTypeOf<CombatPlayer['statusDisplay']>().toEqualTypeOf<{ readonly blink: 0 | 1; readonly rebuilds: number }>();
     expectTypeOf<keyof CombatTarget>().toEqualTypeOf<
-      'entityId' | 'kindBit' | 'name' | 'position' | 'orientation' | 'distance' | 'speed' | 'shield' | 'model' | 'craftAt08'
+      'entityId' | 'kindBit' | 'name' | 'position' | 'orientation' | 'distance' | 'speed' | 'shield' | 'model' | 'craftAt08' | 'activeState'
     >();
     expectTypeOf<CombatTarget['model']>().toEqualTypeOf<AssetId | null>();
     expectTypeOf<keyof WeaponListReading>().toEqualTypeOf<'index' | 'mount' | 'weapon' | 'ammunition' | 'damage' | 'status' | 'ballistics'>();
@@ -429,7 +455,11 @@ describe('projection (P3-02 AC-10, Projection 与 Render State; P3-06 AC-08, D-0
     // no option is unavailable, and the radio queue, deadlines and base timers are not shown.
     expectTypeOf<CommunicationsProjection['readiness']>().toEqualTypeOf<'ready'>();
     expectTypeOf<CommunicationsProjection['player']>().toEqualTypeOf<CommunicationsPlayer | null>();
-    expectTypeOf<keyof CommunicationsPlayer>().toEqualTypeOf<'entityId' | 'page' | 'subsystem' | 'menu' | 'incoming' | 'docking' | 'base' | 'warnings'>();
+    // P3-14 FA-01: the two warnings are the partition's, not the player's.
+    expectTypeOf<keyof CommunicationsProjection>().toEqualTypeOf<'readiness' | 'player' | 'warnings'>();
+    expectTypeOf<CommunicationsProjection['warnings']>().toEqualTypeOf<ThreatWarnings>();
+    expectTypeOf<keyof ThreatWarnings>().toEqualTypeOf<'attackerOnTail' | 'missileIncoming'>();
+    expectTypeOf<keyof CommunicationsPlayer>().toEqualTypeOf<'entityId' | 'page' | 'subsystem' | 'menu' | 'incoming' | 'docking' | 'base'>();
     expectTypeOf<CommunicationsPlayer['menu']>().toEqualTypeOf<CommunicationsMenuView | null>();
     expectTypeOf<CommunicationsPlayer['incoming']>().toEqualTypeOf<IncomingView | null>();
     expectTypeOf<CommunicationsPlayer['base']>().toEqualTypeOf<BaseServiceView | null>();

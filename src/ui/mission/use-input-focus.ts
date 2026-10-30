@@ -23,6 +23,8 @@ export interface ShellFocus {
   readonly heading: RefObject<HTMLHeadingElement | null>;
   /** The input zone's callback ref: it keeps the element and hands it to `bindZone`. */
   readonly zone: (element: HTMLElement | null) => void;
+  /** The mounted input zone, for a later focus decision such as the enable-sound control's. */
+  readonly zoneElement: RefObject<HTMLElement | null>;
 }
 
 /**
@@ -52,5 +54,5 @@ export function useShellFocus(
     else if (focusTarget === 'heading') heading.current?.focus();
     // Once, as the shell mounts.
   }, []);
-  return { heading, zone };
+  return { heading, zone, zoneElement };
 }

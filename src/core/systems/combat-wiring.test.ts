@@ -306,7 +306,8 @@ describe('explosions and fragments (CR-03, CR-08, X9)', () => {
     const shot = projectileAt(state, at(0, 50, -10), at(0, 0, 640));
     const world = constructWorld(state);
     const events = world.step(tickInput());
-    expect(types(events)).toEqual(['hit', 'object-destroyed', 'explosion-created']);
+    // The shot's removal retires it (P3-14 FA-07).
+    expect(types(events)).toEqual(['hit', 'object-destroyed', 'explosion-created', 'object-retired']);
     expect([victim.position, victim.state, shot.state]).toEqual([at(0, 50, 1.5), 'destroyed-source', 'pending-removal']);
     const [explosion] = state.entities.walk(1 << 22);
     // P3-12 FS-03: the construction in the movement stage, at the source's moved position, with the drift velocity.
@@ -469,7 +470,8 @@ describe('the parked engagement in the parked update (CR-09, E1–E4, AC-11)', (
     const events = stepWith(state, { 'parked-update': () => void (start = state.rngState) });
     // Elapsed 1002: 125 shots; the victim's shield takes all 3375, drawing nothing.
     expect(events).toEqual([{
-      type: 'hit', tick: 501, victimEntityId: victim.id, victimKindBit: VICTIM, victimPosition: at(0, 0, 0), cause: 'parked', sourceEntityId: null,
+      type: 'hit', tick: 501, victimEntityId: victim.id, victimKindBit: VICTIM, victimPosition: at(0, 0, 0), victimForward: at(0, 0, 1), victimSpeed: null,
+      cause: 'parked', sourceEntityId: null,
       attacker: { type: 'shooter', entityId: first.id, kindBit: 10 }, damage: damageAfter(1002), gated: false,
       shield: { before: 5000, after: 5000 - 3375 }, hull: { before: 1000, after: 1000 }, shieldWasEmpty: false, impact: null, projectile: null,
     }]);

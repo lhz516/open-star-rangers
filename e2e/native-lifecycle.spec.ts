@@ -2,7 +2,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { scenarioFiles } from '../src/workers/import-scenarios.test-support.ts';
+import { installAudioProbe } from './support/audio-playback.ts';
 import { installBrowserProbes } from './support/browser-probes.ts';
+import { audioReading } from './support/flight-audio.ts';
 import { FLIGHT_SURFACE_LISTENERS } from './support/mission-observations.ts';
 import { nativeBrowser, NativeTarget, until } from './support/native-lifecycle.ts';
 
@@ -11,6 +13,10 @@ import { nativeBrowser, NativeTarget, until } from './support/native-lifecycle.t
 // driven only by trusted CDP clicks on the page's own controls. Hiding is native: a headed Chrome with two tabs of a
 // CDP-created context, switched with `Target.activateTarget` (docs/engineering/README.md, 已验证的 CDP 自动化路线).
 // Evidence comes from the mission screen's read-only attributes and the browser probes; nothing fakes visibility.
+// P3-14 subtask 23 (spec 模式与生命周期; AC-10, AC-12): the same hides end the flight sound, while running and while
+// paused by the user, and showing the page again neither resumes the context nor replays a voice; only the explicit
+// resume sounds again, with voices started anew. Silence is judged by the audio probe's context state and clock and the
+// sources still connected, never by an analyser, which keeps its last frame once a context stops rendering.
 
 declare global {
   interface Window {
@@ -41,7 +47,8 @@ function state() {
     flightTick: document.querySelector('[data-testid="dev-flight-last-tick"]')?.textContent ?? null,
     frames: probe.frames.pending, timers: probe.timers.pending.length,
     leaveGuards: probe.listeners.filter(entry => entry.active && entry.type === 'beforeunload' && entry.group === 'other').length,
-    owned: probe.listeners.filter(entry => entry.active && ['keyboard', 'fullscreen', 'pointer-lock', 'session', 'render'].includes(entry.group)).map(entry => `${entry.group}:${entry.type}`).sort(),
+    owned: probe.listeners.filter(entry => entry.active && ['keyboard', 'fullscreen', 'pointer-lock', 'session', 'audio', 'render'].includes(entry.group)).map(entry => `${entry.group}:${entry.type}`).sort(),
+    sound: status?.querySelector<HTMLElement>('[data-testid="mission-sound"]')?.dataset.sound ?? null,
     visibilityEvents: window.osrNativeVisibility,
     errors: ['cleanup-failure', 'open-mission-failure', 'mission-open-failure', 'mission-action-error', 'mission-placeholder-failure', 'mission-start-failure']
       .filter(name => document.querySelector(`[data-testid="${name}"]`)),
@@ -84,6 +91,8 @@ const INPUT_PAGE = [
   'keyboard:blur', 'keyboard:focus', 'keyboard:pagehide', 'keyboard:pageshow', 'keyboard:visibilitychange',
   'pointer-lock:mousedown', 'pointer-lock:mousemove', 'pointer-lock:mouseup', 'pointer-lock:pointerlockchange', 'pointer-lock:pointerlockerror',
 ];
+/** The owner's flight sound controller's lifecycle listeners (P3-14), held from its close barrier to its release. */
+const AUDIO = ['audio:pagehide', 'audio:pageshow', 'audio:visibilitychange'];
 /** The owner's flight surface's listeners (P3-12). */
 const RENDER = FLIGHT_SURFACE_LISTENERS.map(type => `render:${type}`);
 /** One tick of the formal Runtime's default step, 64 ÷ 2 = 32 Hz. */
@@ -111,13 +120,15 @@ test('native tab hiding pauses the run, which stays paused when visible until an
     const session = await root.send('Target.attachToTarget', { targetId: appId, flatten: false });
     target = new NativeTarget(root, session.sessionId);
     for (const domain of ['Page', 'Runtime', 'Network', 'Log']) await target.command(`${domain}.enable`);
-    await target.command('Page.addScriptToEvaluateOnNewDocument', { source: `(${installBrowserProbes.toString()})();(${installNativeObservations.toString()})();` });
+    await target.command('Page.addScriptToEvaluateOnNewDocument', {
+      source: `(${installBrowserProbes.toString()})();(${installAudioProbe.toString()})();(${installNativeObservations.toString()})();`,
+    });
     await target.command('Page.navigate', { url: new URL('/e2e/entries/app.html?worker=mission-startable', baseURL).href });
     const cdp = root;
     const show = async (targetId: string) => { await cdp.send('Target.activateTarget', { targetId }); };
     await show(appId);
     const app = target;
-    const read = () => app.evaluate(state);
+    const read = async () => ({ ...await app.evaluate(state), audio: await app.evaluate(audioReading) });
     const settle = (milliseconds: number) => new Promise(resolve => setTimeout(resolve, milliseconds));
     /** Lets the visible page run three real animation frames, then 400 ms more. */
     const frames = async () => {
@@ -148,40 +159,58 @@ test('native tab hiding pauses the run, which stays paused when visible until an
     // Hidden during the departure hold: its timer is revoked while hidden, and ending it on return leaves the run paused.
     await app.press('Start mission');
     const intro = await until(read, value => value.position === 'intro' && value.timers === 1, 'Introduction placeholder');
-    expect(intro).toMatchObject({ run: null, tick: null, frames: 0, leaveGuards: 0, owned: [...INPUT_PAGE, ...RENDER, ...SESSION] });
+    expect(intro).toMatchObject({ run: null, tick: null, frames: 0, leaveGuards: 0, owned: [...AUDIO, ...INPUT_PAGE, ...RENDER, ...SESSION].sort() });
+    // The owner's controller creates no context before a trusted Start.
+    expect(intro.audio).toEqual({ contexts: [], time: null, started: 0, live: [], routed: 0 });
     await app.press('Skip');
     await until(read, value => value.position === 'config', 'Start page');
     await app.press('Start');
     const departure = await until(read, value => value.position === 'departure' && value.placeholder === 'timing', 'Departure placeholder');
     expect(departure).toMatchObject({ owner: intro.owner, run: 1, tick: 0, frames: 0, timers: 1, leaveGuards: 1 });
     await show(alternateId);
-    const heldHidden = await until(read, value => value.visibility === 'hidden' && value.placeholder === 'waiting', 'Native hidden during the departure');
+    const heldHidden = await until(read, value => value.visibility === 'hidden' && value.placeholder === 'waiting'
+      && value.audio.contexts[0] === 'suspended:', 'Native hidden during the departure, its context suspended');
     await settle(400);
-    expect(await read()).toMatchObject({ position: 'departure', run: 1, tick: 0, placeholder: 'waiting', frames: 0, timers: 0 });
+    const heldStable = await read();
+    expect(heldStable).toMatchObject({ position: 'departure', run: 1, tick: 0, placeholder: 'waiting', frames: 0, timers: 0 });
+    // The Start click created the owner's one context; the departure is silent, and hidden its context's clock stands.
+    expect(heldStable.audio, 'the hidden departure: no voice, the clock stands').toEqual(heldHidden.audio);
+    expect(heldHidden.audio).toMatchObject({ started: 0, live: [], routed: 0 });
     await show(appId);
     await until(read, value => value.visibility === 'visible' && value.placeholder === 'timing', 'Native visible during the departure');
     await app.press('Skip');
-    const departed = await until(read, value => value.position === 'flight', 'Departure end');
+    const departed = await until(read, value => value.position === 'flight' && value.audio.contexts[0] === 'suspended:', 'Departure end, its context suspended');
     expect(departed).toMatchObject({ run: 1, tick: 0, phase: 'paused', pause: 'hidden', frames: 0, timers: 0, leaveGuards: 1 });
     await frames();
     const heldPaused = await read();
-    expect(heldPaused).toMatchObject({ position: 'flight', run: 1, tick: 0, phase: 'paused', pause: 'hidden', frames: 0 });
+    expect(heldPaused).toMatchObject({ position: 'flight', run: 1, tick: 0, phase: 'paused', pause: 'hidden', frames: 0, sound: 'paused' });
+    expect(heldPaused.audio, 'held after the departure: nothing sounds, the clock stands').toEqual(departed.audio);
+    expect(departed.audio).toMatchObject({ started: 0, live: [], routed: 0 });
     await app.press('Resume');
-    const running = await until(read, value => value.phase === 'running' && value.tick !== null && value.tick > 0, 'Explicit resume after the departure');
+    const running = await until(read, value => value.phase === 'running' && value.tick !== null && value.tick > 0
+      && value.sound === 'available' && value.audio.live.length > 0, 'Explicit resume after the departure, sounding');
+    expect(running.audio.contexts).toEqual(['running:']);
+    expect(running.audio.routed, 'the sounding voices\' graphs').toBeGreaterThan(0);
 
-    // Hidden in flight: the run pauses and its frame loop stops; visible again it stays paused until resumed.
+    // Hidden in flight: the run pauses and its frame loop stops; visible again it stays paused until resumed. Every
+    // voice ends with the hide, the context is suspended and its clock stands, and nothing starts until the resume.
     await settle(300);
     await show(alternateId);
-    const hidden = await until(read, value => value.visibility === 'hidden' && value.phase === 'paused' && value.pause === 'hidden', 'Native hidden and pause');
+    const hidden = await until(read, value => value.visibility === 'hidden' && value.phase === 'paused' && value.pause === 'hidden'
+      && value.audio.live.length === 0 && value.audio.contexts[0] === 'suspended:', 'Native hidden, pause and silence');
     expect(hidden).toMatchObject({ run: 1, frames: 0, timers: 0, leaveGuards: 1 });
+    expect(hidden.audio.routed, 'hidden: every voice\'s graph disconnected').toBe(0);
     await settle(400);
     const hiddenStable = await read();
     expect(hiddenStable.tick).toBe(hidden.tick);
+    expect(hiddenStable.audio, 'hidden: no voice, no start, the context clock stands').toEqual(hidden.audio);
     await show(appId);
     await until(read, value => value.visibility === 'visible', 'Native visible return');
     await frames();
     const visiblePaused = await read();
     expect(visiblePaused).toMatchObject({ phase: 'paused', pause: 'hidden', tick: hidden.tick, frames: 0, flight: 'ready', flightCanvas: true });
+    expect(visiblePaused.sound, 'visible: the sound stays paused with the game').toBe('paused');
+    expect(visiblePaused.audio, 'visible: nothing resumed or replayed').toEqual(hidden.audio);
     // The flight renderer has no loop of its own (P3-12): while hidden no animation frame ran (frames 0 above), so it
     // drew no tick past the one the hide paused at; while the run stays paused its draw count and last tick hold across
     // real animation frames.
@@ -217,13 +246,44 @@ test('native tab hiding pauses the run, which stays paused when visible until an
     // The log starts with the state at installation, before the tab was first shown; then two native hide-show pairs.
     expect(resumed.visibilityEvents.slice(-4)).toEqual(['hidden', 'visible', 'hidden', 'visible']);
     expect(resumed.errors).toEqual([]);
+    // Only the explicit resume sounds again: its voices are new ones, started after the hide, in the same context.
+    const resounding = await until(read, value => value.sound === 'available' && value.audio.live.length > 0
+      && (value.audio.time ?? 0) > hidden.audio.time!, 'Sound after the explicit resume');
+    expect(resounding.audio.contexts).toEqual(['running:']);
+    expect(resounding.audio.live.every(source => source >= hidden.audio.started), 'only voices started after the resume').toBe(true);
+
+    // Paused by the user, the context is suspended with its voices kept; a hide while paused releases them too, and
+    // showing the page again leaves the run and its sound paused until the explicit resume, which starts new voices.
+    await app.press('Pause');
+    const userPaused = await until(read, value => value.phase === 'paused' && value.pause === 'user' && value.sound === 'paused'
+      && value.audio.contexts[0] === 'suspended:', 'User pause');
+    expect(userPaused.audio.live.length, 'paused: kept voices').toBeGreaterThan(0);
+    await show(alternateId);
+    const pausedHidden = await until(read, value => value.visibility === 'hidden' && value.audio.live.length === 0, 'Native hidden while paused, silence');
+    expect(pausedHidden).toMatchObject({ phase: 'paused', tick: userPaused.tick, frames: 0 });
+    expect(userPaused.audio.routed, 'paused: the kept voices\' graphs').toBeGreaterThan(0);
+    expect(pausedHidden.audio).toEqual({ ...userPaused.audio, live: [], routed: 0 });
+    await show(appId);
+    await until(read, value => value.visibility === 'visible', 'Native visible after the paused hide');
+    await frames();
+    const pausedVisible = await read();
+    expect(pausedVisible).toMatchObject({ phase: 'paused', tick: userPaused.tick, frames: 0, sound: 'paused' });
+    expect(pausedVisible.audio, 'visible after the paused hide: nothing resumed or replayed').toEqual(pausedHidden.audio);
+    await app.press('Resume');
+    const repaused = await until(read, value => value.phase === 'running' && value.sound === 'available' && value.audio.live.length > 0
+      && (value.audio.time ?? 0) > userPaused.audio.time!, 'Sound after resuming the paused hide');
+    expect(repaused.audio.contexts).toEqual(['running:']);
+    expect(repaused.audio.live.every(source => source >= userPaused.audio.started), 'only voices started after the resume').toBe(true);
+    expect(repaused.visibilityEvents.slice(-2)).toEqual(['hidden', 'visible']);
+    expect(repaused.errors).toEqual([]);
 
     // Leaving the mission releases the owner's session listeners, leave guard, timers and frames.
     await app.press('Mission menu');
     await until(() => app.evaluate(() => document.querySelector('[data-testid="mission-menu"]') !== null), Boolean, 'Mission menu');
     await app.press('Return to main menu');
-    const released = await until(read, value => value.position === null && value.frames === 0, 'Main menu');
+    const released = await until(read, value => value.position === null && value.frames === 0 && value.audio.contexts[0] === 'closed:resolved', 'Main menu');
     expect(released).toMatchObject({ timers: 0, leaveGuards: 0, owned: [], errors: [] });
+    expect(released.audio, 'the owner\'s one context closed, nothing connected').toMatchObject({ contexts: ['closed:resolved'], live: [], routed: 0 });
     await app.evaluate(() => { window.osrProbe.restore(); });
     expect(app.errors, 'Native application errors').toEqual([]);
     const [first] = shown;
@@ -232,8 +292,8 @@ test('native tab hiding pauses the run, which stays paused when visible until an
       + `(${(timing.frame - timing.click).toFixed(1)} ms after the click)`);
     await testInfo.attach('native-lifecycle', {
       body: JSON.stringify({
-        browser: browser.version(), origin: baseURL, intro, departure, heldHidden, departed, heldPaused, running, hidden, hiddenStable, visiblePaused,
-        resumed, timing, samples, released, allowed: app.allowed,
+        browser: browser.version(), origin: baseURL, intro, departure, heldHidden, heldStable, departed, heldPaused, running, hidden, hiddenStable, visiblePaused,
+        resumed, timing, samples, resounding, userPaused, pausedHidden, pausedVisible, repaused, released, allowed: app.allowed,
       }),
       contentType: 'application/json',
     });

@@ -6,18 +6,21 @@
  * the click; a confirmation that created no run shows why in an alert and leaves the page for a retry or the way back.
  * Once no retry can succeed (a latched cleanup failure, a changed package), only the way back stays enabled and takes
  * focus. The injected full screen request runs first within the same click (docs/plan/p3/05/spec.md, 全屏与 Keyboard
- * Lock), so the click's user activation still applies to it.
+ * Lock), so the click's user activation still applies to it, and the owner unlocks the sound within it as well
+ * (P3-14 S-09): the page shows the sound status, such as an earlier owner's audio still closing, but no enable-sound
+ * control, since Start is the activation.
  */
 import { useEffect, useId, useRef } from 'react';
 import type { MissionOwner, MissionOwnerSnapshot } from '../../app/mission/mission-owner.ts';
 import { useFocusOnMount } from '../pages/use-focus-on-mount.ts';
+import { AudioStatus } from './AudioStatus.tsx';
 import { startFailureText, startRetryable, wingmanLabel } from './mission-copy.ts';
 import { ActionErrorAlert, GapNote, GapNotes, SkeletonNote } from './MissionParts.tsx';
 import { MISSION_OBJECTIVES } from './slice-gaps-copy.ts';
 
 export interface StartConfigPageProps {
   readonly snapshot: MissionOwnerSnapshot;
-  readonly owner: Pick<MissionOwner, 'select' | 'start'>;
+  readonly owner: Pick<MissionOwner, 'select' | 'start' | 'getSnapshot' | 'subscribe'>;
   readonly onReturn: () => void;
   /** Associates a document fullscreen request with the run this start begins. */
   readonly startWithFullscreen?: (start: () => void) => void;
@@ -80,6 +83,7 @@ export function StartConfigPage({ snapshot, owner, onReturn, startWithFullscreen
         </div>
       )}
       <ActionErrorAlert error={actionError} />
+      <p><AudioStatus snapshot={snapshot} owner={owner} heading={heading} /></p>
       <p className="mission-actions">
         <button
           type="button"

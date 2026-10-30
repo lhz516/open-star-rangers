@@ -171,7 +171,7 @@ function factsOf({ tick, projection, events }: TickOutput): TickFacts {
   const player = combat.readiness === 'ready' ? combat.player : null;
   const communications = projection.communications.readiness === 'ready' ? projection.communications.player : null;
   return {
-    tick, page: communications?.page ?? null, subsystems: player?.subsystems ?? null, lock: player?.lock ?? null, warnings: communications?.warnings ?? null,
+    tick, page: communications?.page ?? null, subsystems: player?.subsystems ?? null, lock: player?.lock ?? null, warnings: projection.communications.readiness === 'ready' && communications !== null ? projection.communications.warnings : null,
     events: events.map(({ event }) => event),
   };
 }
@@ -237,7 +237,7 @@ export function wire(run: GameSessionRun, spec: GameRunSpec, { cockpit: withCock
     run.onFrame(({ report }) => {
       for (const { tick, projection } of report?.outputs ?? []) {
         const { flight: { combat }, communications } = projection;
-        heard.push({ tick, lock: combat.readiness === 'ready' ? combat.player?.lock : null, warnings: communications.readiness === 'ready' ? communications.player?.warnings : null });
+        heard.push({ tick, lock: combat.readiness === 'ready' ? combat.player?.lock : null, warnings: communications.readiness === 'ready' && communications.player !== null ? communications.warnings : null });
       }
       return undefined;
     });

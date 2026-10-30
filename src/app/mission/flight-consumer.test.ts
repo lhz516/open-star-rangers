@@ -294,6 +294,27 @@ describe('flight consumer', () => {
     expect(revoked).not.toHaveBeenCalled();
   });
 
+  it('exposes each run\'s presentation module, with or without a cockpit, and withdraws it with the run (P3-14/17)', async () => {
+    for (const cockpit of [false, true]) {
+      const mission = await openFlight({ cockpit });
+      const { owner, consumer } = mission;
+      expect(consumer.presentation()).toBeNull();
+      toFlight(owner);
+      const first = consumer.presentation()!;
+      expect(first).toMatchObject({ ownerId: owner.ownerId, runId: 1 });
+      expect(first.camera().tick).toBe(tickOf(mission));
+      if (cockpit) expect(consumer.cockpit()!.presentation.runId).toBe(1);
+      else expect(consumer.cockpit()).toBeNull();
+      owner.restart();
+      expect(consumer.presentation()).toBeNull();
+      toDeparture(owner);
+      expect(consumer.presentation()).not.toBe(first);
+      expect(consumer.presentation()!.runId).toBe(2);
+      mission.slot.release();
+      expect(consumer.presentation()).toBeNull();
+    }
+  });
+
   it('refuses a start before any GPU allocation when the package\'s HUD content cannot be drawn (P3-13/24)', async () => {
     const mission = await openFlight({ cockpit: true }, await nextSchemaJob('cockpit-hud-map', 'data/hud/instruments'));
     toDeparture(mission.owner);

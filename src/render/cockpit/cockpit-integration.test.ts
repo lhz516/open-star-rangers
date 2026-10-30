@@ -86,8 +86,7 @@ function withCue(projection: Projection, cues: Projection, cue: 'lock' | 'warnin
     return { ...projection, flight: { ...projection.flight, combat: { ...combat, player: combat.player && { ...combat.player, lock: lock ?? combat.player.lock } } } };
   }
   const communications = projection.communications as CommunicationsProjection;
-  const warnings = (cues.communications as CommunicationsProjection).player?.warnings;
-  return { ...projection, communications: { ...communications, player: communications.player && { ...communications.player, warnings: warnings ?? communications.player.warnings } } };
+  return { ...projection, communications: { ...communications, warnings: (cues.communications as CommunicationsProjection).warnings } };
 }
 
 // Whole runs of 200 ticks with every module drawing: about 0.3 s each alone.

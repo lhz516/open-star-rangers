@@ -101,7 +101,7 @@ function observeCapability(capability: AudioCapability): ObservedCapability {
         onStateChange: listener => inner.onStateChange(listener),
         resume: () => inner.resume(),
         suspend: () => inner.suspend(),
-        createVoice: (buffer, loop) => (voice = inner.createVoice(buffer, loop)),
+        createVoice: (buffer, loop, parameters) => (voice = inner.createVoice(buffer, loop, parameters)),
         close: () => {
           try {
             const result = inner.close();

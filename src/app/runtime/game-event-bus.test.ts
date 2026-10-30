@@ -177,6 +177,13 @@ describe('GameEventBus', () => {
     expect(calls).toEqual(['explosion-created:null', 'view-switched:null', 'warp-wall-contact:null']);
   });
 
+  it('accepts P3-14\'s retirement event type and filters by it (FA-07)', () => {
+    const bus = new GameEventBus(), calls: string[] = [];
+    bus.on('object-retired', (event, delivery) => { calls.push(`${event.type}:${event.state}:${delivery.commandId}`); });
+    bus.dispatch([...COMBAT_EVENTS, { type: 'object-retired', tick: 6, entityId: 9, kindBit: 7, state: 'pending-removal' } as const].map((event) => ({ event, commandId: null })));
+    expect(calls).toEqual(['object-retired:pending-removal:null']);
+  });
+
   it('clears every subscription, and rejects unknown types and non-function receivers', () => {
     const bus = new GameEventBus();
     let calls = 0;

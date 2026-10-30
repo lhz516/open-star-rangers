@@ -13,16 +13,17 @@
  *    phase flips, and `phaseFlipped` keeps whether it did. On a menu page without a menu, or on page 5 while no message
  *    plays, page 0 (P3-10, CB-09).
  *
- * 3. the tail warning (type 9, comm-reactions.ts's `checkTail`), in the same views.
- *
- * The communications presentation sub-step (radio.ts) follows in every view mode (CB-09).
+ * The tail warning (type 9, comm-reactions.ts's `checkTail`) follows in its own views, 1, 6, 8 and 0xC–0x12, as the
+ * original calls it every frame from the global callback list whatever the cockpit slot (FA-01, A-07); the
+ * communications presentation sub-step (radio.ts) follows in every view mode (CB-09).
  *
  * The original runs these per gauge period and pauses the status page in random flashes at field 10 = 1; Core runs
  * them every tick and ignores the flashes (CR-11, difference 4). The shield overlay is display only.
  */
 import { CoreFaultError } from '../errors.ts';
 import {
-  advanceBlink, clearsIncomingPage, clearsMenuPage, COCKPIT_DISPLAY_VIEW_MODES, hullField, nextCount, showsStatusPage, withStatusFields,
+  advanceBlink, clearsIncomingPage, clearsMenuPage, COCKPIT_DISPLAY_VIEW_MODES, hullField, nextCount, showsStatusPage, TAIL_CHECK_VIEW_MODES,
+  withStatusFields,
 } from '../rules/displays.ts';
 import { listStatus } from '../rules/mounts.ts';
 import type { LeftPage } from '../world/player-state.ts';
@@ -79,15 +80,17 @@ function updateLeftDisplay(context: TickContext): void {
 }
 
 /**
- * The `frame-end` stage: the cockpit display step and the tail warning in the views that have them, then in every view
- * the communications presentation sub-step (radio.ts), last as the original's `0x4e308` ends its frame render (CB-09).
+ * The `frame-end` stage: the cockpit display step in the views that have it, the tail warning in its views, then in
+ * every view the communications presentation sub-step (radio.ts), last as the original's `0x4e308` ends its frame
+ * render (CB-09, FA-01).
  */
 function runFrameEnd(context: TickContext): void {
-  if (COCKPIT_DISPLAY_VIEW_MODES.has(context.world.player.viewMode)) {
+  const { viewMode } = context.world.player;
+  if (COCKPIT_DISPLAY_VIEW_MODES.has(viewMode)) {
     clearRightDisplayTarget(context);
     updateLeftDisplay(context);
-    checkTail(context);
   }
+  if (TAIL_CHECK_VIEW_MODES.has(viewMode)) checkTail(context);
   presentIncoming(context);
 }
 

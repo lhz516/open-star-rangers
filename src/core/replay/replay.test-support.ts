@@ -46,6 +46,9 @@ export const roundTrip = (value: unknown): unknown => JSON.parse(JSON.stringify(
 /** P3-12/10's presentation facts (docs/plan/p3/02/spec.md, FS-03, FS-02), which no rule reads. */
 const PRESENTATION_EVENTS: ReadonlySet<string> = new Set(['explosion-created', 'view-switched', 'warp-wall-contact']);
 const PRESENTATION_STATE = 'modelShown';
+/** P3-14's retirement event and pose fields (docs/plan/p3/02/spec.md, FA-05, FA-07), which no rule reads. */
+const RETIREMENT_EVENT = 'object-retired';
+const POSE_FIELDS: ReadonlySet<string> = new Set(['shooterForward', 'shooterSpeed', 'victimForward', 'victimSpeed']);
 /** P3-13's counters and flip flag (docs/plan/p3/02/spec.md, CK-01, CK-02), which only the presentation and the status step read. */
 const COCKPIT_STATE: ReadonlySet<string> = new Set(['phaseFlipped', 'rebuilds', 'energyPageRedraws']);
 
@@ -57,15 +60,18 @@ const COCKPIT_STATE: ReadonlySet<string> = new Set(['phaseFlipped', 'rebuilds', 
  * RNG state). Every tick also reads the Render State, with P3-12/32's speed share (FS-12), before the snapshot: the
  * digests stay those of the code before it. P3-13/12's status display order (CK-01) moves the writes of fields 1, 5 and
  * 8 to the step after a flip; these runs still give the same digests, so no rule there read the fields in between.
+ * P3-14's `object-retired` and the FA-05 forward rows and speeds of `shot-fired` and `hit` are left out the same way;
+ * with them out, the digests stay those of the code before P3-14 too.
  */
 export function gameplayDigest(input: CreateWorldInput, ticks: readonly TickInput[]): string {
   const world = createWorld(input);
   const parts: string[] = [];
   const withoutFlag = (key: string, value: unknown) => (key === PRESENTATION_STATE || COCKPIT_STATE.has(key) ? undefined : value);
+  const withoutPose = (key: string, value: unknown) => (POSE_FIELDS.has(key) ? undefined : value);
   for (const tick of ticks) {
-    const events = world.step(tick).filter(({ type }) => !PRESENTATION_EVENTS.has(type));
+    const events = world.step(tick).filter(({ type }) => !PRESENTATION_EVENTS.has(type) && type !== RETIREMENT_EVENT);
     world.renderState();
-    parts.push(JSON.stringify(events), JSON.stringify(world.snapshot().state, withoutFlag));
+    parts.push(JSON.stringify(events, withoutPose), JSON.stringify(world.snapshot().state, withoutFlag));
   }
   return fnv1a64(parts.join('\n'));
 }

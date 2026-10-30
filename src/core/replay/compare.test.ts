@@ -339,11 +339,15 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
       type: 'target-changed', tick: 1, playerEntityId: 1, previousTarget: null, target: 5, targetKindBit: 7, mode: 'enemy',
       origin: commandIndex === null ? 'automatic' : 'command', commandIndex,
     });
+    // P3-14's forward rows and speeds (FA-05) are f32: 0.5 and 64 are, 0.1 is not.
+    const forward = () => ({ x: 0, y: -0.5, z: 1 });
     const shot = (tick: number, trigger: Mutable): Mutable => ({
-      type: 'shot-fired', tick, shooterEntityId: 1, shooterKindBit: 0, shooterPosition: point(), entityId: 9, family: 'gun', weapon: 2, mount: 3, position: point(), trigger,
+      type: 'shot-fired', tick, shooterEntityId: 1, shooterKindBit: 0, shooterPosition: point(), shooterForward: forward(), shooterSpeed: 64, entityId: 9,
+      family: 'gun', weapon: 2, mount: 3, position: point(), trigger,
     });
     const hit = (tick: number): Mutable => ({
-      type: 'hit', tick, victimEntityId: 5, victimKindBit: 7, victimPosition: point(), cause: 'projectile', sourceEntityId: 9, attacker: shooter, damage: 40,
+      type: 'hit', tick, victimEntityId: 5, victimKindBit: 7, victimPosition: point(), victimForward: forward(), victimSpeed: 32, cause: 'projectile',
+      sourceEntityId: 9, attacker: shooter, damage: 40,
       gated: false, shield: { before: 30, after: 0 }, hull: { before: 100, after: 90 }, shieldWasEmpty: false,
       impact: { point: point(), local: { x: 0, y: 0, z: -1 }, face: 5 }, projectile: 'removed',
     });
@@ -385,7 +389,7 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
         { type: 'target-cleared', tick: 1, playerEntityId: 1, previousTarget: 5, cause: 'invalid' },
         weaponSelected(2, null),
         shot(2, { type: 'ai', channel: 2 }),
-        { ...hit(2), cause: 'collision', sourceEntityId: null, attacker: { type: 'none' }, impact: null, projectile: null },
+        { ...hit(2), cause: 'collision', sourceEntityId: null, attacker: { type: 'none' }, impact: null, projectile: null, victimSpeed: null },
         { ...shot(2, { type: 'automatic' }), family: 'missile' },
         pageChanged(2, null),
         { ...destroyed(2), attacker: { type: 'lost-shooter' }, eventClass: 1, outcome: 'removed', activity: 'parked' },
@@ -415,6 +419,11 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
       ['depletion position', 17, (event: Mutable) => { (event.position as Mutable).x = 2; }],
       ['clearing cause', 19, (event: Mutable) => { event.cause = 'warp'; }],
       ['AI shot channel', 21, (event: Mutable) => { (event.trigger as Mutable).channel = 1; }],
+      // P3-14's (FA-05).
+      ['shooter forward row', 9, (event: Mutable) => { (event.shooterForward as Mutable).z = 0.5; }],
+      ['shooter speed', 9, (event: Mutable) => { event.shooterSpeed = null; }],
+      ['victim forward row', 12, (event: Mutable) => { (event.victimForward as Mutable).x = 1; }],
+      ['victim speed', 22, (event: Mutable) => { event.victimSpeed = 0; }],
     ])('reports a different %s at its tick', (_, index, change) => {
       const actual = combatRun();
       change(actual.events[index]);
@@ -442,6 +451,15 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
       ['a lost shooter with an entity', (result) => { result.events[25].attacker = { type: 'lost-shooter', entityId: 1 }; }, '.events[25].attacker'],
       ['a shooter without a kind', (result) => { result.events[12].attacker = { type: 'shooter', entityId: 1 }; }, '.events[12].attacker.kindBit'],
       ['an unknown projectile outcome', (result) => { result.events[12].projectile = 'stuck'; }, '.events[12].projectile'],
+      // P3-14's (FA-05): f32, not the general finite rule; the speeds may be null, the rows may not.
+      ['a shot without its forward row', (result) => { delete result.events[9].shooterForward; }, '.events[9].shooterForward'],
+      ['a shooter forward row that is not an f32', (result) => { (result.events[9].shooterForward as Mutable).y = 0.1; }, '.events[9].shooterForward.y'],
+      ['a shooter speed that is not an f32', (result) => { result.events[9].shooterSpeed = 0.1; }, '.events[9].shooterSpeed'],
+      ['a non-finite shooter speed', (result) => { result.events[9].shooterSpeed = Number.POSITIVE_INFINITY; }, '.events[9].shooterSpeed'],
+      ['a null victim forward row', (result) => { result.events[12].victimForward = null; }, '.events[12].victimForward'],
+      ['a victim forward row that is not an f32', (result) => { (result.events[12].victimForward as Mutable).x = 1e39; }, '.events[12].victimForward.x'],
+      ['a victim speed that is not a number', (result) => { result.events[12].victimSpeed = '32'; }, '.events[12].victimSpeed'],
+      ['a victim speed that is not an f32', (result) => { result.events[12].victimSpeed = 0.1; }, '.events[12].victimSpeed'],
       ['a destruction of an unknown activity', (result) => { result.events[13].activity = 'warping'; }, '.events[13].activity'],
       ['an event class of 2', (result) => { result.events[13].eventClass = 2; }, '.events[13].eventClass'],
       ['an explosion of an unknown variant', (result) => { result.events[10].variant = 'small'; }, '.events[10].variant'],
@@ -897,7 +915,7 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
     const pageChanged = (tick: number): Mutable => ({ type: 'left-page-changed', tick, page: 0, previousPage: 5, commandIndex: null });
     const flushed = (tick: number, cause: string): Mutable => ({ type: 'radio-flushed', tick, cause, removed: 0, interrupted: 'none' });
     const hit = (tick: number, victimEntityId: number, victimKindBit: number): Mutable => ({
-      type: 'hit', tick, victimEntityId, victimKindBit, victimPosition: point(), cause: 'collision', sourceEntityId: null, attacker: { type: 'none' }, damage: 40,
+      type: 'hit', tick, victimEntityId, victimKindBit, victimPosition: point(), victimForward: { x: 0, y: 0, z: 1 }, victimSpeed: null, cause: 'collision', sourceEntityId: null, attacker: { type: 'none' }, damage: 40,
       gated: false, shield: { before: 0, after: 0 }, hull: { before: 10, after: -30 }, shieldWasEmpty: true, impact: null, projectile: null,
     });
     const destroyed = (tick: number, entityId: number, kindBit: number): Mutable => ({
@@ -1208,6 +1226,54 @@ describe('replay result comparison (P3-02 AC-12, 快照、哈希与 replay)', ()
 
     it.each(invalid)('rejects %s on either side', (_, change, path) => {
       expectInvalidOnEitherSide(presentationRun, change, path);
+    });
+  });
+
+  describe('P3-14 retirement event (docs/plan/p3/02/spec.md, FA-07)', () => {
+    const retired = (tick: number, entityId: number, state: string): Mutable => ({ type: 'object-retired', tick, entityId, kindBit: 7, state });
+
+    /**
+     * Two ticks. Tick 1: a retirement before any stage's event, one after the command results, and an entity's area
+     * switch then its pending removal. Tick 2: the same entity IDs retire again, as each tick starts afresh.
+     */
+    function retiredRun(): Result {
+      const events = [
+        retired(1, 4, 'pending-removal'),
+        commandResult(1, 0),
+        retired(1, 5, 'area-switch'),
+        retired(1, 6, 'area-switch'),
+        retired(1, 6, 'pending-removal'),
+        retired(2, 5, 'pending-removal'),
+        retired(2, 4, 'area-switch'),
+      ];
+      return { events, checkpoints: [{ tick: 0, hash: hashOf(0) }, { tick: 2, hash: hashOf(2) }], finalTick: 2 };
+    }
+
+    it('accepts it in any stage, after a JSON round trip, and compares every field', () => {
+      expect(compareReplayResults(retiredRun(), JSON.parse(JSON.stringify(retiredRun())))).toEqual({ match: true });
+      for (const change of [
+        (event: Mutable) => { event.entityId = 9; },
+        (event: Mutable) => { event.kindBit = 8; },
+        (event: Mutable) => { event.state = 'pending-removal'; },
+      ]) {
+        const actual = retiredRun();
+        change(actual.events[2]);
+        expect(compareReplayResults(retiredRun(), actual)).toEqual({ match: false, tick: 1, kind: 'events' });
+      }
+    });
+
+    const invalid: [string, (result: Result) => void, string][] = [
+      ['another state', (result) => { result.events[0].state = 'destroyed-source'; }, '.events[0].state'],
+      ['an entity 0', (result) => { result.events[0].entityId = 0; }, '.events[0].entityId'],
+      ['a kind bit of 32', (result) => { result.events[0].kindBit = 32; }, '.events[0].kindBit'],
+      ['an extra field', (result) => { result.events[0].activity = 'active'; }, '.events[0]'],
+      ['a second pending removal of an entity', (result) => void result.events.splice(1, 0, retired(1, 4, 'pending-removal')), '.events[1].state'],
+      ['a second area switch of an entity', (result) => void result.events.splice(3, 0, retired(1, 5, 'area-switch')), '.events[3].state'],
+      ['an area switch after the entity\'s pending removal', (result) => void result.events.splice(1, 0, retired(1, 4, 'area-switch')), '.events[1].state'],
+    ];
+
+    it.each(invalid)('rejects %s on either side', (_, change, path) => {
+      expectInvalidOnEitherSide(retiredRun, change, path);
     });
   });
 });

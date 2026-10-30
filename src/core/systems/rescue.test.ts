@@ -137,11 +137,13 @@ function expectRescueEvents(events: readonly DomainEvent[], tick: number, loss: 
     { type: 'weapon-selected', tick, entityId, list: 1, index: 0, mount: 2, changed: false, commandIndex: null },
   ]);
   // The shared switch to the cockpit view (P3-12 FS-03), with the player at its rescue pose.
-  expect(events.slice(3)).toEqual([
+  expect(events.slice(3, 6)).toEqual([
     expect.objectContaining({ type: 'view-switched', tick, viewMode: COCKPIT_VIEW_MODE, player: expect.objectContaining({ entityId, position: rescued.position }) }),
     { type: 'player-rescued', tick, loss, ...rescued },
     { type: 'transition', tick, gap: loss === 'destroyed' ? 'G-02/5' : 'G-02/6' },
   ]);
+  // A destruction's escape pod then retires where its state is written (P3-14 FA-07); an energy loss has no pod.
+  expect(events.slice(6)).toMatchObject(loss === 'destroyed' ? [{ type: 'object-retired', tick, kindBit: 24, state: 'pending-removal' }] : []);
 }
 
 describe('the rescue 0x32e14/0x67b98 at its entry (ME-10; AC-06)', () => {
@@ -381,11 +383,18 @@ describe('the loss handling 0x32e14 at its callers (ME-07, ME-10, ME-13; AC-06, 
       outcome: 'failure', reason: { type: 'third-loss', loss: 'destroyed' }, summary: null, rescuesUsed: 2,
       endingGaps: [{ gap: 'G-02/7', variant: 'destroyed' }], playerKills: 0, latchTick: state.tick,
     };
-    expect(after(latched, isPodExpiry)).toEqual([
+    // Between them, the pod's and the teardown's retirements of the active entities (P3-14 FA-07).
+    const ending = after(latched, isPodExpiry);
+    expect(ending.filter(({ type }) => type !== 'object-retired')).toEqual([
       { type: 'result-latched', tick: state.tick, result },
       expect.objectContaining({ type: 'view-switched', fromViewMode: DESTRUCTION_VIEW, viewMode: 0x13, stage: 'mission-teardown' }),
       { type: 'teardown-started', tick: state.tick, entities: state.entities.size },
     ]);
+    // The pod retires in request handling, before the teardown's switch (P3-12 FS-03); the teardown's retirements follow it.
+    expect(ending.map(({ type }) => type)).toEqual([
+      'result-latched', 'object-retired', 'view-switched', 'object-retired', 'object-retired', 'object-retired', 'teardown-started',
+    ]);
+    expect(ofType(ending, 'object-retired').every((event) => event.state === 'pending-removal')).toBe(true);
     // The teardown starts in the latch's tick (P3-11/14): main state 1, the view 0x13 and every entity pending removal.
     expect([state.missionStatus, state.spawn.enabled, state.flow.mainState, state.flow.rescues, state.flow.result]).toEqual(['ended', false, 1, 0, result]);
     expect([player.destroyed, player.state, state.player.viewMode, state.player.previousViewMode]).toEqual([true, 'pending-removal', 0x13, DESTRUCTION_VIEW]);
@@ -463,7 +472,8 @@ describe('losses that are no failure (ME-10 step 1; AC-07)', () => {
     const world = constructWorld(state);
     const log = [...destroyInTick(state, player)];
     const expired = stepUntil(world, log, isPodExpiry);
-    expect(after(expired, isPodExpiry)).toEqual([]);
+    // Only the pod's own retirement (P3-14 FA-07) follows its expiry.
+    expect(after(expired, isPodExpiry)).toMatchObject([{ type: 'object-retired', kindBit: 24, state: 'pending-removal' }]);
     expect(log.filter(({ type }) => type === 'player-loss-started' || type === 'player-rescued' || type === 'result-latched' || type === 'transition')).toEqual([]);
     expect([state.flow.mainState, state.flow.subState, state.flow.rescues, state.flow.result, player.destroyed, player.state]).toEqual([4, 0, 2, null, true, 'destroyed-source']);
   });

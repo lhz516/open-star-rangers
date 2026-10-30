@@ -20,12 +20,17 @@
  * projection to judge the view.
  *
  * P3-12 (docs/plan/p3/02/spec.md, FS-12): the speed dust's speed share at the tick's end (speed-share.ts).
+ *
+ * P3-14 (docs/plan/p3/02/spec.md, FA-04): each entity also carries its object state and its movement block speed, which
+ * the sound consumer reads for the per-object sounds (A-01, A-02, A-04); a listed entity is never parked and so always
+ * has a block, and one without is Core's fault.
  */
 import type { Vec3 } from '../contracts/domain-events.ts';
+import { CoreFaultError } from '../errors.ts';
 import { activeAreaCentre } from '../rules/active-area.ts';
 import { warpProgress } from '../rules/warp-path.ts';
 import { WARP_VIEW_MODE } from '../systems/view-switch.ts';
-import { frozenVec, type Entity, type EntityId, type EntityPresentation, type Matrix3 } from '../world/entity-table.ts';
+import { frozenVec, type Entity, type EntityId, type EntityPresentation, type Matrix3, type ObjectState } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { speedShare } from './speed-share.ts';
 
@@ -46,6 +51,10 @@ export interface RenderEntity {
   /** An explosion's or a fragment's source kind bit (mb +0x104, +0xF0); null for every other kind. */
   readonly sourceKindBit: number | null;
   readonly display: RenderDisplay;
+  /** The object state (the original's byte +3), FA-04. */
+  readonly state: ObjectState;
+  /** The movement block's +0x08, f32 runtime units/s, FA-04. */
+  readonly speed: number;
 }
 
 /**
@@ -113,7 +122,8 @@ function renderDisplay({ id, state }: Entity, hiddenId: EntityId | null): Render
 
 /** `hiddenId` is the player's entity while its model is not shown (FS-02), otherwise null. */
 function renderEntity(entity: Entity, hiddenId: EntityId | null): RenderEntity {
-  const { id, kindBit, presentation, position: { x, y, z }, orientation, placementSerial, combat, inWarp } = entity;
+  const { id, kindBit, presentation, position: { x, y, z }, orientation, placementSerial, combat, inWarp, state, movement } = entity;
+  if (movement === null) throw new CoreFaultError('invariant-violated', 'render-state.movement');
   return Object.freeze({
     id,
     kindBit,
@@ -127,6 +137,8 @@ function renderEntity(entity: Entity, hiddenId: EntityId | null): RenderEntity {
     inWarp,
     sourceKindBit: combat.type === 'explosion' || combat.type === 'fragment' ? combat.sourceKindBit : null,
     display: renderDisplay(entity, hiddenId),
+    state,
+    speed: movement.speed,
   });
 }
 

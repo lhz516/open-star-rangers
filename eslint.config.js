@@ -185,6 +185,31 @@ const cockpitImports = {
 };
 const cockpitMessage = 'Cockpit modules read no DOM, host time, host randomness or host scheduling.';
 
+// P3-14 (docs/plan/p3/14/spec.md, 涉及模块, S-04, AC-13): the flight sound modules under src/app/flight-audio are
+// DOM-free consumers of the run, so they reference, by relative paths, no ui layer, original data, Worker, browser
+// adapter (`browser-*` or `.tsx`), render code but the flight presentation module, or platform code but the audio
+// controller; packages and computed imports are rejected too. tools/engineering-boundaries.test.ts checks the same
+// transitively, and that they neither step nor command the run.
+const flightAudioTarget = (target) => /^src\/(?:core|content|app|platform\/audio|render\/flight\/presentation)\//.test(target)
+  && !/\/browser-[^/]*$|\.tsx$/.test(target);
+const flightAudioImports = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: {
+      restricted: 'Flight sound modules import only Core, content, the app, the audio controller and the flight presentation module, by relative paths, and no browser adapter.',
+    },
+  },
+  create(context) {
+    const check = (node, specifier) => {
+      const target = relativeTarget(context.filename, specifier);
+      if (target === undefined || !flightAudioTarget(target)) context.report({ node, messageId: 'restricted' });
+    };
+    return moduleReferenceVisitors(check, () => false);
+  },
+};
+const flightAudioMessage = 'Flight sound modules read no DOM, host time, host randomness or host scheduling; the session frames them.';
+
 // One plugin object, so every config entry that uses it refers to the same plugin.
 const osrPlugin = {
   meta: osrMeta,
@@ -192,6 +217,7 @@ const osrPlugin = {
     'original-data-capabilities': originalDataCapabilities,
     'flight-presentation-imports': flightPresentationImports,
     'cockpit-imports': cockpitImports,
+    'flight-audio-imports': flightAudioImports,
   },
 };
 
@@ -341,6 +367,26 @@ export default tseslint.config(
       }],
       ...hostRestrictions(cockpitMessage, ['window', 'document', 'navigator', 'localStorage', 'indexedDB', 'fetch'], 'Cockpit modules are synchronous.'),
     },
+  },
+  {
+    // The flight sound modules: no DOM, ui, browser adapter, Three.js or other render code, and no host time, randomness
+    // or scheduling; the session's frames drive them, each synchronously.
+    files: ['src/app/flight-audio/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/*.test-support.{ts,tsx}'],
+    plugins: { osr: osrPlugin },
+    rules: {
+      'osr/flight-audio-imports': 'error',
+      ...hostRestrictions(flightAudioMessage, [
+        'window', 'document', 'navigator', 'self', 'globalThis', 'localStorage', 'indexedDB', 'fetch', 'XMLHttpRequest', 'WebSocket',
+        'EventSource', 'AudioContext', 'OfflineAudioContext', 'webkitAudioContext', 'Audio', 'HTMLMediaElement',
+      ], 'Flight sound consumers handle each frame synchronously; only the owner waits for an audio close.'),
+    },
+  },
+  {
+    // The owner-level sound connection waits for the previous controller's close (P3-14 subtask 17), so it may be async.
+    files: ['src/app/flight-audio/owner*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/*.test-support.{ts,tsx}'],
+    rules: { 'no-restricted-syntax': 'off' },
   },
   {
     // Core determinism: randomness and time come from the tick input, never from the host.

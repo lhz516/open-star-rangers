@@ -1,4 +1,4 @@
-export type ListenerGroup = 'keyboard' | 'fullscreen' | 'pointer-lock' | 'session' | 'render' | 'react' | 'vite' | 'worker' | 'test' | 'other';
+export type ListenerGroup = 'keyboard' | 'fullscreen' | 'pointer-lock' | 'session' | 'audio' | 'render' | 'react' | 'vite' | 'worker' | 'test' | 'other';
 /**
  * One message a Worker sent to the page: its `type` and `stage` when they are protocol tokens, its `jobId` when a safe
  * integer, otherwise null; `at` is the probe sequence when it arrived. Nothing else of the message is kept.
@@ -97,6 +97,7 @@ export function installBrowserProbes(): void {
   const capture = (options?: boolean | EventListenerOptions): boolean => typeof options === 'boolean' ? options : options?.capture ?? false;
   /** React DOM's per-instance name of its element event set, once an element shows it. */
   let reactEvents: string | undefined;
+  const LIFECYCLE_GROUPS: readonly ListenerGroup[] = ['session', 'keyboard', 'audio'];
   function group(target: EventTarget, type: string): ListenerGroup {
     if (target instanceof OriginalWorker) return 'worker';
     if (target === document.getElementById('root') || (target === document && type === 'selectionchange')) return 'react';
@@ -110,9 +111,12 @@ export function installBrowserProbes(): void {
     if (target instanceof Element && target.closest('[data-testid="mission-screen"], [data-testid="game-input-zone"]')) return 'keyboard';
     if ((target === window && ['focus', 'blur'].includes(type))) return 'keyboard';
     if ((target === document && type === 'visibilitychange') || (target === window && ['pagehide', 'pageshow'].includes(type))) {
-      // Session registers first; the input source registers the second distinct callback.
-      return listeners.some(entry => entry.object === target && entry.type === type && entry.active && ['session', 'keyboard'].includes(entry.group))
-        ? 'keyboard' : 'session';
+      // The mission owner's order: its session host registers first, the `input` stage's keyboard source the second
+      // distinct callback, and the `media` stage's audio controller (P3-14), created only after the close barrier's
+      // continuation, the third. Each takes the first of these groups none of the active callbacks holds. Without a
+      // mission owner, as on the viewer, whose audio controller is alone, the groups only number the registrations.
+      const held = new Set(listeners.filter(entry => entry.object === target && entry.type === type && entry.active).map(entry => entry.group));
+      return LIFECYCLE_GROUPS.find(candidate => !held.has(candidate)) ?? 'other';
     }
     if (target instanceof HTMLCanvasElement || (target instanceof MediaQueryList && target.media.includes('resolution'))) return 'render';
     return 'other';

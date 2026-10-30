@@ -64,7 +64,7 @@ export interface ShimmerEntityOptions {
 export function shimmerEntity(id: number, { kindBit = WINGMAN_KIND, model = MODEL, display = 'shown', inWarp = false, position = vec(0, 0, 50), orientation = IDENTITY }: ShimmerEntityOptions = {}): RenderEntity {
   return Object.freeze({
     id: id as EntityId, kindBit, presentation: Object.freeze({ type: 'model', model }), position, orientation, placementSerial: 0,
-    hitShimmerStart: null, explosionStart: null, inWarp, sourceKindBit: null, display,
+    hitShimmerStart: null, explosionStart: null, inWarp, sourceKindBit: null, display, state: 'active', speed: 0,
   });
 }
 

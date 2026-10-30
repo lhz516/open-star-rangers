@@ -2,7 +2,8 @@
  * The `communications` partition (docs/plan/p3/02/spec.md, CB-14; docs/plan/p3/10/spec.md, 规则输入与读模型边界 and D-01
  * item 2 ⑥): the player's menu, incoming message, docking and base readings, read from the world without changing it
  * or drawing a random number, deeply frozen and detached from it. The partition is ready: without a player entity its
- * player is null; a destroyed player keeps its readings, the gates of its controls being the rules'.
+ * player is null; a destroyed player keeps its readings, the gates of its controls being the rules'. The warnings are
+ * the partition's own, given with or without a player entity.
  *
  * - **Menu:** shown only while the left display is on pages 2–4 and a menu is built; a dormant menu (under page 5, or
  *   after a page the menu did not write) is not shown, and `menu: null` means closed. `menu.asset` is the commMenus Asset
@@ -16,7 +17,8 @@
  * - **Base:** while the committed view mode is 6: the docking object, the rows in their one order (both the service
  *   queue and the display order, BS5) with each record's selector and its service state `0x39cb4`, the cursor row and
  *   the three flags. The view always has a base service, as only docking enters it; a missing one is a fault.
- * - **Warnings:** the type-9 instrument's two lights as the tail check last left them.
+ * - **Warnings** (docs/plan/p3/02/spec.md, FA-01): the type-9 instrument's two flags as the tail check last sampled
+ *   them, kept between samples and while no player entity exists, for P3-13's lights and P3-14's warning sound.
  *
  * Not shown: the radio queue, the loading message, docking deadlines and countdowns, and the base dues and rates
  * (development diagnostics read them from a snapshot). Resources and ammunition are `flight.combat`'s.
@@ -27,12 +29,10 @@ import { BASE_VIEW_MODE, serviceState } from '../rules/docking.ts';
 import { elapsedEighths, playbackFrame } from '../rules/radio.ts';
 import type { CommunicationsMenu } from '../world/player-state.ts';
 import type { IncomingChannel, WorldState } from '../world/world-state.ts';
-import type { BaseServiceView, CommunicationsMenuView, CommunicationsPlayer, CommunicationsProjection, IncomingView } from './projection.ts';
+import type { BaseServiceView, CommunicationsMenuView, CommunicationsPlayer, CommunicationsProjection, IncomingView, ThreatWarnings } from './projection.ts';
 
 /** The Warp view mode, in which page 5 never shows a message (RQ5). */
 const WARP_VIEW_MODE = 1;
-
-const NO_PLAYER: CommunicationsProjection = Object.freeze({ readiness: 'ready', player: null });
 
 const fault = (site: string): CoreFaultError => new CoreFaultError('invariant-violated', `communications.${site}`);
 
@@ -82,17 +82,24 @@ function baseView(world: WorldState, subsystems: readonly number[]): BaseService
   });
 }
 
-/** The communications partition: ready, with the player's readings or null without a player entity. */
+/** The communications partition: ready, with the player's readings or null without a player entity, and the warnings. */
 export function projectCommunications(world: WorldState): CommunicationsProjection {
+  const { tailCheck } = world.communications;
+  const warnings: ThreatWarnings = Object.freeze({ attackerOnTail: tailCheck.attackerOnTail, missileIncoming: tailCheck.missileIncoming });
+  return Object.freeze({ readiness: 'ready', player: playerReadings(world), warnings });
+}
+
+/** The player's readings, or null without a player entity. */
+function playerReadings(world: WorldState): CommunicationsPlayer | null {
   const { player: state, communications } = world;
-  if (state.entityId === null) return NO_PLAYER;
+  if (state.entityId === null) return null;
   const player = world.entities.get(state.entityId);
   if (player === undefined || player.combat.type !== 'craft') throw fault('player');
   const { subsystems } = player.combat;
   const { page } = state.leftDisplay;
   const { menu } = state.communications;
-  const { channel, tailCheck } = communications;
-  const readings: CommunicationsPlayer = Object.freeze({
+  const { channel } = communications;
+  return Object.freeze({
     entityId: player.id,
     page,
     subsystem: subsystems[COMMUNICATIONS_FIELD],
@@ -100,7 +107,5 @@ export function projectCommunications(world: WorldState): CommunicationsProjecti
     incoming: channel.phase === 'playing' ? incomingView(world, channel) : null,
     docking: Object.freeze({ subState: world.flow.subState, dockingObject: state.dockingObject, docked: player.activity === 'docked' }),
     base: baseView(world, subsystems),
-    warnings: Object.freeze({ attackerOnTail: tailCheck.attackerOnTail, missileIncoming: tailCheck.missileIncoming }),
   });
-  return Object.freeze({ readiness: 'ready', player: readings });
 }

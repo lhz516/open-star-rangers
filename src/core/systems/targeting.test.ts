@@ -195,7 +195,8 @@ describe('target commands (AC-03; CR-05, T2–T4)', () => {
     const operations = ['enemy', 'friendly', 'next', 'previous', 'forward'] as const;
     const events = constructWorld(judged).step(tickInput(operations.map(target)));
     constructWorld(idle).step(tickInput());
-    expect(events).toEqual(operations.map((__, index) => ignored(index, reason)));
+    // Without a player entity the area check retires the two craft in both worlds (P3-14 FA-07).
+    expect(events.filter(({ type }) => type !== 'object-retired')).toEqual(operations.map((__, index) => ignored(index, reason)));
     expect(stateText(judged)).toBe(stateText(idle));
   });
 

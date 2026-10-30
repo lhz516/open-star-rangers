@@ -93,14 +93,16 @@ describe('the frame-end cockpit display step (CR-10)', () => {
   });
 });
 
-describe('the tail warning (P3-10 CB-09 item 2; cockpit.md, type 9)', () => {
-  it.each([0x0c, 0x0d, 1, 6])('checks in view mode %i: due again 0x80 units later with neither warning lit', (viewMode) => {
+// FA-01 (docs/plan/p3/02/spec.md) widens CB-09's views to A-07's: the type-9 callback runs in every frame of 1, 6, 8
+// and 0xC–0x12, whatever the cockpit slot, and not in 0x13 or the views without a frame render.
+describe('the tail warning (P3-10 CB-09 item 2 as P3-14 FA-01 corrects it; audio A-07)', () => {
+  it.each([0x0c, 0x0d, 1, 6, 8, 0x0e, 0x0f, 0x10, 0x11, 0x12])('checks in view mode %i: due again 0x80 units later with neither warning lit', (viewMode) => {
     const [state] = displayState(viewMode);
     constructWorld(state).step(tickInput());
     expect(state.communications.tailCheck).toEqual({ dueClock: 2 + 0x80, attackerOnTail: false, missileIncoming: false });
   });
 
-  it.each([0, 2, 8, 0x0e, 0x11, 0x12, 0x13])('does not check in view mode %i', (viewMode) => {
+  it.each([0, 2, 3, 0x0b, 0x13])('does not check in view mode %i', (viewMode) => {
     const [state] = displayState(viewMode);
     constructWorld(state).step(tickInput());
     expect(state.communications.tailCheck).toEqual({ dueClock: 0, attackerOnTail: false, missileIncoming: false });

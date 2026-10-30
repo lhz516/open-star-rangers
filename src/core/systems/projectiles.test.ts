@@ -205,8 +205,8 @@ describe('a projectile striking a craft (H3, H4, CR-06, AC-08)', () => {
     const context = contextOf(state);
     hitTestProjectile(context, shot);
     expect(context.events).toEqual([{
-      type: 'hit', tick: context.time.tick, victimEntityId: victim.id, victimKindBit: BOXED, victimPosition: at(0, 0, 0), cause: 'projectile',
-      sourceEntityId: shot.id, attacker: { type: 'shooter', entityId: player.id, kindBit: 0 }, damage: DAMAGE, gated: false,
+      type: 'hit', tick: context.time.tick, victimEntityId: victim.id, victimKindBit: BOXED, victimPosition: at(0, 0, 0), victimForward: at(0, 0, 1),
+      victimSpeed: 0, cause: 'projectile', sourceEntityId: shot.id, attacker: { type: 'shooter', entityId: player.id, kindBit: 0 }, damage: DAMAGE, gated: false,
       shield: { before: 100, after: 70 }, hull: { before: 100, after: 100 }, shieldWasEmpty: false, impact: ENTRY, projectile: 'ricochet',
     }]);
     // The shield took it all, with no draw; the ricochet then draws five.
@@ -236,8 +236,10 @@ describe('a projectile striking a craft (H3, H4, CR-06, AC-08)', () => {
     const shot = projectileAt(state, FROM, TO, player.id);
     const context = contextOf(state);
     hitTestProjectile(context, shot);
-    expect(context.events.map(({ type }) => type)).toEqual(['hit', 'object-destroyed', 'explosion-created']);
+    // Its removal retires it after the kill (P3-14 FA-07).
+    expect(context.events.map(({ type }) => type)).toEqual(['hit', 'object-destroyed', 'explosion-created', 'object-retired']);
     expect(context.events[0]).toMatchObject({ hull: { before: 10, after: -20 }, projectile: 'removed' });
+    expect(context.events[3]).toEqual({ type: 'object-retired', tick: context.time.tick, entityId: shot.id, kindBit: 21, state: 'pending-removal' });
     const [explosion] = state.entities.walk(1 << 22);
     expect(context.events[2]).toMatchObject({ entityId: explosion.id, sourceEntityId: victim.id, stage: 'movement' });
     expect([victim.destroyed, victim.state, explosion.combat]).toMatchObject([true, 'destroyed-source', { type: 'explosion', source: victim.id, heldSource: victim.id }]);
@@ -294,14 +296,14 @@ describe('a projectile striking a craft (H3, H4, CR-06, AC-08)', () => {
 
 describe('a projectile striking a fragment (H3, H4, CR-08, AC-08)', () => {
 
-  it('is removed off a small fragment without a draw; the durability loses the damage, with no event', () => {
+  it('is removed off a small fragment without a draw; the durability loses the damage, with no event but its retirement', () => {
     const { state, player } = world();
     const fragment = fragmentAt(state, at(0, 0, 0), 0, 1200);
     const shot = projectileAt(state, FROM, TO, player.id);
     state.rngState = 5;
     const context = contextOf(state);
     hitTestProjectile(context, shot);
-    expect(context.events).toEqual([]);
+    expect(context.events).toEqual([{ type: 'object-retired', tick: context.time.tick, entityId: shot.id, kindBit: 21, state: 'pending-removal' }]);
     expect([shot.state, projectileOf(shot).shooter, state.rngState]).toEqual(['pending-removal', null, 5]);
     expect([fragmentOf(fragment).durability, fragmentOf(fragment).explodeOnExpiry]).toEqual([1200 - DAMAGE, false]);
     expect(state.player.shots.projectileHits).toBe(0);
@@ -340,7 +342,7 @@ describe('a projectile striking a fragment (H3, H4, CR-08, AC-08)', () => {
     // At 512 units per second, the formal step of 1/32 s moves it from FROM to TO, through the fragment's box.
     const shot = projectileAt(state, FROM, FROM, player.id);
     blockOf(shot).velocity = at(0, 0, 512);
-    expect(tick(state)).toEqual([]);
+    expect(tick(state)).toEqual([{ type: 'object-retired', tick: state.tick, entityId: shot.id, kindBit: 21, state: 'pending-removal' }]);
     expect([shot.position, shot.state]).toEqual([TO, 'pending-removal']);
     expect([fragmentOf(fragment).durability, fragmentOf(fragment).explodeOnExpiry, fragmentOf(fragment).expiry]).toEqual([0, true, { type: 'at', clock: 1 }]);
     expect(fragment.state).toBe('active');

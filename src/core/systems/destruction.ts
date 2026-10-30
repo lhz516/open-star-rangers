@@ -28,6 +28,7 @@ import { RandStream } from '../rules/original-random.ts';
 import { PLAYER_KIND_BIT } from '../rules/spawn-schedule.ts';
 import type { Entity, ExplosionCombat, FragmentCombat } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
+import { retire } from './object-state.ts';
 import { passesTeardownGate } from './mission-teardown.ts';
 import { emit, type PipelineStage, type RequestOf, type TickContext } from './pipeline.ts';
 import { resolvePlayerLoss } from './rescue.ts';
@@ -201,13 +202,13 @@ export function setExplosionState(context: TickContext, entity: Entity, explosio
   }
   const update = explosionUpdate(explosion, world.clock, explosionFrameCount(world.ruleData.explosionFrames, explosion.variant));
   if (update === 'remove') {
-    entity.state = 'pending-removal';
+    retire(context, entity, 'pending-removal');
     return;
   }
   entity.state = 'active';
   if (update === 'over' && explosion.heldSource !== null) {
     const held = world.entities.get(explosion.heldSource);
-    if (held !== undefined) held.state = 'pending-removal';
+    if (held !== undefined) retire(context, held, 'pending-removal');
     explosion.heldSource = null;
   }
 }
@@ -236,12 +237,12 @@ export function expireFragment(context: TickContext, entity: Entity, fragment: F
     context.world.player.followedEntity = null;
     resolvePlayerLoss(context, 'destroyed');
   }
-  entity.state = 'pending-removal';
+  retire(context, entity, 'pending-removal');
 }
 
 /** Message 0x40 (`0x24424`): an explosion lets go of the source it held, which becomes pending removal (X4). */
-export function releaseHeld(_context: TickContext, entity: Entity, _request: RequestOf<'release-held'>): void {
-  entity.state = 'pending-removal';
+export function releaseHeld(context: TickContext, entity: Entity, _request: RequestOf<'release-held'>): void {
+  retire(context, entity, 'pending-removal');
 }
 
 /**
@@ -250,7 +251,7 @@ export function releaseHeld(_context: TickContext, entity: Entity, _request: Req
  */
 export function handOff(context: TickContext, source: Entity, request: RequestOf<'hand-off'>): void {
   const removed = source.kindBit !== PLAYER_KIND_BIT;
-  if (removed) source.state = 'pending-removal';
+  if (removed) retire(context, source, 'pending-removal');
   else context.world.player.modelShown = false;
   emit(context, { type: 'source-released', tick: context.time.tick, entityId: source.id, kindBit: source.kindBit, fragmentEntityId: request.fragment, removed });
 }

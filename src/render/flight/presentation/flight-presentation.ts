@@ -8,22 +8,24 @@
  * - **Advance:** each frame's successful ticks, in order and without a gap, for its owner and run; anything else is
  *   rejected unchanged. Per tick: the camera after the step; the Core explosions of its `explosion-started` events,
  *   each chosen once with the camera before the step; the presentation effects, whose explosions follow; then the Core
- *   choices whose explosion left the Render State are dropped. Only after the whole frame are the ticks notified, each
- *   to every subscriber once, in tick order. A failure while advancing leaves the module failed.
+ *   choices whose explosion left the Render State are dropped, and the others take their pose and movement block from
+ *   it. Each tick's notification carries the explosions it ended with (P3-14 DW-02). Only after the whole frame are the
+ *   ticks notified, each to every subscriber once, in tick order. A failure while advancing leaves the module failed.
  * - **Queries:** `camera()` and `explosions()` read the state after the last processed tick without drawing or
  *   advancing anything; a consumer that subscribes late resumes from them, and nothing earlier is notified again.
  * - **Lifetime:** a retry or a new run creates a new instance; nothing carries over. `dispose` is idempotent, stops
  *   every notification and rejects every later use.
  */
 import type { DomainEvent, ExplosionStartedEvent, Vec3 } from '../../../core/contracts/domain-events.ts';
-import type { RenderState } from '../../../core/projections/render-state.ts';
+import type { RenderEntity, RenderState } from '../../../core/projections/render-state.ts';
+import { rowOf } from '../../../core/rules/movement-builders.ts';
 import { RandStream, type RandSource } from '../../../core/rules/original-random.ts';
 import { FRAGMENT_KIND_BIT, frozenVec, type EntityId, type Matrix3 } from '../../../core/world/entity-table.ts';
 import { checkPresentationContent, drawExplosionSubset, selectExplosion, type ExplosionSubset, type PresentationContent } from './explosion-selection.ts';
 import { checkCapacity, PRESENTATION_LIMITS, PresentationError } from './presentation-budget.ts';
 import { cameraAfterStep, INITIAL_CAMERA_POSE, presentationViewport } from './presentation-camera.ts';
 import type {
-  CameraPose, CoreExplosionKey, DestructionCamera, ExplosionActivation, ExplosionKey, ExplosionOrigin,
+  CameraPose, CoreExplosionKey, DestructionCamera, ExplosionActivation, ExplosionKey, ExplosionMotion, ExplosionOrigin,
   ExtraExplosionKey, FragmentExplosionKey, FragmentKey, PresentationActivationRequest, PresentationCamera, PresentationObjectSlot,
   PresentationEffects, PresentationExplosion, PresentationFrameInput, PresentationStep, PresentationTick, PresentationTickInput,
 } from './presentation-contract.ts';
@@ -62,6 +64,8 @@ interface LiveExplosion {
   readonly activation: ExplosionActivation;
   readonly slot: PresentationObjectSlot | null;
   position: Vec3;
+  /** Null only for a Core explosion until its tick's end reads its block from the Render State (`#settleCore`). */
+  motion: ExplosionMotion | null;
 }
 
 /** When and from where an explosion activates. */
@@ -127,6 +131,8 @@ class Presentation implements FlightPresentation {
   readonly #fragments = new Map<FragmentKey, boolean>();
   readonly #listeners = new Map<number, PresentationListener>();
   #nextListener = 0;
+  /** `explosions()` after the last processed tick. */
+  #explosions: readonly PresentationExplosion[] = Object.freeze([]);
   #camera: PresentationCamera;
   #clock: number;
   #state: 'ready' | 'failed' | 'disposed' = 'ready';
@@ -155,8 +161,7 @@ class Presentation implements FlightPresentation {
 
   explosions(): readonly PresentationExplosion[] {
     this.#require('explosions');
-    return Object.freeze([...this.#live.values()].map(({ activation: { key, origin, sourceKindBit, variant, selection, tick, clock }, position }) =>
-      Object.freeze({ key, origin, sourceKindBit, variant, selection, activationTick: tick, activationClock: clock, position })));
+    return this.#explosions;
   }
 
   subscribe(listener: PresentationListener): () => void {
@@ -229,7 +234,11 @@ class Presentation implements FlightPresentation {
     const activations = [...core];
     if (this.#effects !== null) this.#stepEffects(this.#effects, { tick, clock, render, events, beforeStep, afterStep }, Object.freeze(core), activations);
     this.#settleCore(render);
-    return Object.freeze({ ownerId: this.ownerId, runId: this.runId, tick, clock, beforeStep, afterStep, activations: Object.freeze(activations) });
+    this.#explosions = Object.freeze([...this.#live.values()].map(({ activation: { key, origin, sourceKindBit, variant, selection, tick: at, clock: since }, position, motion }) =>
+      Object.freeze({ key, origin, sourceKindBit, variant, selection, activationTick: at, activationClock: since, position, ...(motion ?? invariant(key, 'has no movement block')) })));
+    return Object.freeze({
+      ownerId: this.ownerId, runId: this.runId, tick, clock, beforeStep, afterStep, activations: Object.freeze(activations), explosions: this.#explosions,
+    });
   }
 
   #activateCore(event: ExplosionStartedEvent, eventIndex: number, tick: number, beforeStep: PresentationCamera): ExplosionActivation {
@@ -238,17 +247,17 @@ class Presentation implements FlightPresentation {
     if (this.#activatedCore.has(key)) invariant(`events[${eventIndex}]`, `activates explosion ${entityId} a second time in the run`);
     this.#activatedCore.add(key);
     const origin: ExplosionOrigin = Object.freeze({ type: 'core', entityId, eventIndex });
-    return this.#activate(key, origin, sourceKindBit, variant, position, null, { tick, clock: activationClock, beforeStep });
+    return this.#activate(key, origin, sourceKindBit, variant, position, null, null, { tick, clock: activationClock, beforeStep });
   }
 
   /** Chooses once and keeps the choice, after checking the selection budget. */
   #activate(key: ExplosionKey, origin: ExplosionOrigin, sourceKindBit: number | null, variant: ExplosionActivation['variant'], position: Vec3,
-    slot: PresentationObjectSlot | null, { tick, clock, beforeStep }: ActivationTime): ExplosionActivation {
+    motion: ExplosionMotion | null, slot: PresentationObjectSlot | null, { tick, clock, beforeStep }: ActivationTime): ExplosionActivation {
     checkCapacity(this.#live.size, PRESENTATION_LIMITS.selections, `${PATH}.selections`);
     const at = frozenVec(position);
     const selection = selectExplosion(this.#subset, variant, at, beforeStep.position, this.#random);
     const activation: ExplosionActivation = Object.freeze({ key, origin, sourceKindBit, variant, selection, tick, clock, position: at });
-    this.#live.set(key, { activation, slot, position: at });
+    this.#live.set(key, { activation, slot, position: at, motion });
     return activation;
   }
 
@@ -315,8 +324,10 @@ class Presentation implements FlightPresentation {
     }
   }
 
-  #activatePresentation({ origin, variant, position, slot }: PresentationActivationRequest, at: ActivationTime): ExplosionActivation {
+  #activatePresentation({ origin, variant, position, motion: { forward, speed }, slot }: PresentationActivationRequest, at: ActivationTime): ExplosionActivation {
     if (!isFiniteVec(position)) invariant('effects.activate', 'needs a finite position');
+    if (!isFiniteVec(forward) || !Number.isFinite(speed)) invariant('effects.activate', 'needs a finite movement block');
+    const motion: ExplosionMotion = Object.freeze({ forward: frozenVec(forward), speed });
     if (origin.type === 'extra') {
       const { parentExplosionKey, ordinal } = origin;
       if (!this.#activatedCore.has(parentExplosionKey)) invariant('effects.activate', `names ${parentExplosionKey}, which is no activated Core explosion of this run`);
@@ -325,7 +336,7 @@ class Presentation implements FlightPresentation {
       const extra = `${parentExplosionKey}/${ordinal}`;
       if (this.#extraOrigins.has(extra)) invariant('effects.activate', `activates extra ${ordinal} of ${parentExplosionKey} a second time`);
       this.#extraOrigins.add(extra);
-      return this.#activate(this.#extraKeys.next(), Object.freeze({ type: 'extra', parentExplosionKey, ordinal }), null, variant, position, slot, at);
+      return this.#activate(this.#extraKeys.next(), Object.freeze({ type: 'extra', parentExplosionKey, ordinal }), null, variant, position, motion, slot, at);
     }
     if (origin.type === 'fragment') {
       const { fragmentKey } = origin;
@@ -334,21 +345,28 @@ class Presentation implements FlightPresentation {
       if (exploded) invariant('effects.activate', `explodes ${fragmentKey} a second time`);
       if (variant !== 'other') invariant('effects.activate', 'needs an other explosion for a fragment');
       this.#fragments.set(fragmentKey, true);
-      return this.#activate(this.#fragmentExplosionKeys.next(), Object.freeze({ type: 'fragment', fragmentKey }), FRAGMENT_KIND_BIT, variant, position, slot, at);
+      return this.#activate(this.#fragmentExplosionKeys.next(), Object.freeze({ type: 'fragment', fragmentKey }), FRAGMENT_KIND_BIT, variant, position, motion, slot, at);
     }
     return invariant('effects.activate', 'needs an extra or fragment origin');
   }
 
-  /** Moves the kept Core explosions to their pose at the tick's end, and drops those that left the Render State. */
+  /**
+   * Gives the kept Core explosions their position and movement block (`orientation` 6–8 and `speed`, FA-04) at the
+   * tick's end, and drops those that left the Render State.
+   */
   #settleCore({ entities }: RenderState): void {
-    let positions: ReadonlyMap<EntityId, Vec3> | null = null;
+    let listed: ReadonlyMap<EntityId, RenderEntity> | null = null;
     for (const [key, live] of this.#live) {
       const { origin } = live.activation;
       if (origin.type !== 'core') continue;
-      positions ??= new Map(entities.map(({ id, position }) => [id, position] as const));
-      const position = positions.get(origin.entityId);
-      if (position === undefined) this.#live.delete(key);
-      else live.position = position;
+      listed ??= new Map(entities.map((entity) => [entity.id, entity] as const));
+      const entity = listed.get(origin.entityId);
+      if (entity === undefined) {
+        this.#live.delete(key);
+        continue;
+      }
+      live.position = entity.position;
+      live.motion = Object.freeze({ forward: rowOf(entity.orientation, 2), speed: entity.speed });
     }
   }
 

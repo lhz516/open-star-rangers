@@ -115,6 +115,8 @@ export interface CombatTarget {
   readonly model: AssetId | null;
   /** f32: the craft record +0x08 of the target's kind (T7's readout), for kind bits 0–19; null otherwise (CK-03). */
   readonly craftAt08: number | null;
+  /** P3-14 (FA-02): the target's state is active or projectile-hit (the original's state ≥ 7), whatever its activity. */
+  readonly activeState: boolean;
 }
 
 /** A radar contact (T6); P3-13 projects it on the screen with its own camera. */
@@ -213,7 +215,10 @@ export interface MotionPlayer {
   readonly commandedSpeed: number;
   /** Runtime units per second; falls with the energy state. */
   readonly maximumSpeed: number;
-  /** The player's craft record +0xB8, f32 runtime units per second: the speed gauge's full scale (CK-03). */
+  /**
+   * The player's craft record +0xB8, f32 runtime units per second: the speed gauge's full scale (CK-03) and P3-14's
+   * flight-tone scale (FA-03); static, unlike `maximumSpeed` (+0x78).
+   */
   readonly recordMaximumSpeed: number;
   readonly speedLimitStatus: SpeedLimitStatus;
   /** The speed assist's switch and whether it has matched, readable without the event history. */
@@ -414,14 +419,23 @@ export interface CommunicationsPlayer {
   /** `docked`: the player's activity is docked. */
   readonly docking: { readonly subState: MissionSubState; readonly dockingObject: EntityId | null; readonly docked: boolean };
   readonly base: BaseServiceView | null;
-  /** The two lights of the type-9 instrument (P3-13). */
-  readonly warnings: { readonly attackerOnTail: boolean; readonly missileIncoming: boolean };
+}
+
+/** The type-9 instrument's two flags, as the tail check last sampled them (FA-01). */
+export interface ThreatWarnings {
+  readonly attackerOnTail: boolean;
+  readonly missileIncoming: boolean;
 }
 
 /** Communications, docking and base data (P3-10): null without a player entity; a destroyed player is still given. */
 export interface CommunicationsProjection {
   readonly readiness: 'ready';
   readonly player: CommunicationsPlayer | null;
+  /**
+   * P3-14 (FA-01): the two flags the instrument's lights (P3-13) and warning sound read, kept between samples and
+   * without a player entity; a null `player` does not mean they are false.
+   */
+  readonly warnings: ThreatWarnings;
 }
 
 export type { EndingGap, ResultReason };

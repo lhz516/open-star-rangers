@@ -201,10 +201,13 @@ describe('one death per object (H4, CR-06, AC-13)', () => {
     const world = constructWorld(state);
     const events = world.step(tickInput());
     // The player's destruction is delayed: only the missile's explosion is built in the tick (P3-12 FS-03); the
-    // destruction entry switches to the destruction view before its loss (P3-11 ME-09, P3-12 FS-03).
+    // destruction entry switches to the destruction view before its loss (P3-11 ME-09, P3-12 FS-03). The first shot's
+    // removal retires it (P3-14 FA-07) after the player's loss starts; the second flies on.
     expect(types(events)).toEqual([
-      'missile-ended', 'explosion-created', 'hit', 'hit', 'hit', 'object-destroyed', 'radio-flushed', 'view-switched', 'player-loss-started', 'hit',
+      'missile-ended', 'explosion-created', 'hit', 'hit', 'hit', 'object-destroyed', 'radio-flushed', 'view-switched', 'player-loss-started',
+      'object-retired', 'hit',
     ]);
+    expect(ofType(events, 'object-retired')).toEqual([{ type: 'object-retired', tick: 1, entityId: first.id, kindBit: 21, state: 'pending-removal' }]);
     expect(ofType(events, 'hit').map(({ victimEntityId, cause, damage }) => [victimEntityId, cause, damage])).toEqual([
       [player.id, 'missile', BLAST], [contact.id, 'missile', 630], [player.id, 'projectile', GUN_DAMAGE], [contact.id, 'collision', expect.any(Number)],
     ]);
@@ -232,8 +235,9 @@ describe('one death per object (H4, CR-06, AC-13)', () => {
     const victim = craftAt(state, 7, at(0, 50, 0), { shield: 0, hull: 1 });
     const [first, second] = [projectileAt(state, at(0, 50, -10), at(0, 0, 640), player), projectileAt(state, at(0.5, 50, -10), at(0, 0, 640), player)];
     const events = constructWorld(state).step(tickInput());
-    expect(types(events)).toEqual(['hit', 'object-destroyed', 'explosion-created']);
+    expect(types(events)).toEqual(['hit', 'object-destroyed', 'explosion-created', 'object-retired']);
     expect(ofType(events, 'object-destroyed')[0]).toMatchObject({ entityId: victim.id, outcome: 'explodes', eventClass: 0 });
+    expect(ofType(events, 'object-retired')[0]).toMatchObject({ entityId: first.id, state: 'pending-removal' });
     expect([victim.state, first.state, second.state]).toEqual(['destroyed-source', 'pending-removal', 'active']);
     expect(state.player.kills[7]).toBe(1);
   });
@@ -252,7 +256,10 @@ describe('attribution once the shooter is gone (H4, CR-06)', () => {
     const kills = state.player.kills;
     const events = constructWorld(state).step(tickInput());
     expect(state.entities.get(shooter.id)).toBeUndefined();
-    expect(types(events)).toEqual(['missile-ended', 'explosion-created', 'hit', 'object-destroyed', 'explosion-created', 'hit', 'object-destroyed', 'explosion-created']);
+    // The shot's removal after its hit retires it (P3-14 FA-07).
+    expect(types(events)).toEqual([
+      'missile-ended', 'explosion-created', 'hit', 'object-destroyed', 'explosion-created', 'hit', 'object-destroyed', 'explosion-created', 'object-retired',
+    ]);
     expect(events[0]).toMatchObject({ entityId: missile.id, shooterEntityId: null, outcome: 'detonated' });
     expect(ofType(events, 'hit').map(({ victimEntityId, attacker }) => [victimEntityId, attacker])).toEqual([
       [struck.id, { type: 'lost-shooter' }], [shot.id, { type: 'lost-shooter' }],
@@ -293,10 +300,14 @@ describe('the hand-offs to P3-11 (CR-13, X2, X7, D14)', () => {
     ]);
     // A shot the player fired before is the player's still: the kill counts (event class 0).
     const victim = craftAt(state, 7, at(0, 50, 0), { shield: 0, hull: 1 });
-    projectileAt(state, at(0, 50, -10), at(0, 0, 640), player);
+    const shot = projectileAt(state, at(0, 50, -10), at(0, 0, 640), player);
     until(101);
-    expect(log.at(-1)).toMatchObject({ type: 'explosion-created', sourceEntityId: victim.id });
-    expect(log.at(-2)).toMatchObject({ type: 'object-destroyed', entityId: victim.id, attacker: { type: 'shooter', entityId: player.id, kindBit: 0 }, eventClass: 0 });
+    // The shot's removal retires it right after the kill and its explosion's construction (P3-14 FA-07).
+    expect(log.slice(-3)).toMatchObject([
+      { type: 'object-destroyed', entityId: victim.id, attacker: { type: 'shooter', entityId: player.id, kindBit: 0 }, eventClass: 0 },
+      { type: 'explosion-created', sourceEntityId: victim.id },
+      { type: 'object-retired', entityId: shot.id, state: 'pending-removal' },
+    ]);
     expect(state.player.kills[7]).toBe(1);
     // The pod expires at clock 518 (tick 259), ends the follow and leaves; P3-11's loss handling rescues the same
     // entity there (rescue.test.ts has the rescue's own expectations).
@@ -361,7 +372,8 @@ describe('the order of a tick\'s events (CR-06)', () => {
     const events = constructWorld(state).step(tickInput([{ type: 'energy', operation: 'open' }, FIRE_PRIMARY]));
     expect(types(events)).toEqual([
       'command-result', 'left-page-changed', 'command-result',
-      'shot-fired', 'missile-ended', 'explosion-created', 'hit', 'object-destroyed', 'explosion-created', 'explosion-started', 'source-released', 'fragment-expired',
+      'shot-fired', 'missile-ended', 'explosion-created', 'hit', 'object-destroyed', 'explosion-created', 'explosion-started', 'object-retired', 'source-released',
+      'fragment-expired', 'object-retired',
       'hit',
       'hit', 'hit',
       'energy-depleted',
@@ -369,9 +381,14 @@ describe('the order of a tick\'s events (CR-06)', () => {
       'target-cleared',
     ]);
     expect(victims(events)).toEqual([[struck.id, 'missile'], [shotAt.id, 'projectile'], [player.id, 'collision'], [contact.id, 'collision'], [target.id, 'parked']]);
-    expect(events.filter(({ type }) => type !== 'hit' && type !== 'command-result' && type !== 'left-page-changed' && type !== 'shot-fired' && type !== 'target-cleared')
+    const others = new Set(['hit', 'command-result', 'left-page-changed', 'shot-fired', 'target-cleared', 'object-retired']);
+    expect(events.filter(({ type }) => !others.has(type))
       .map((event) => ('entityId' in event ? event.entityId : null))).toEqual([
       expect.any(Number), expect.any(Number), struck.id, expect.any(Number), explosion.id, source.id, fragment.id, depleted.id, engaging.id,
+    ]);
+    // The hand-off's source and the expired fragment retire where request handling writes their states (P3-14 FA-07).
+    expect(ofType(events, 'object-retired').map(({ entityId, state: retired }) => [entityId, retired])).toEqual([
+      [source.id, 'pending-removal'], [fragment.id, 'pending-removal'],
     ]);
     expect(events.at(-1)).toMatchObject({ previousTarget: leaving.id, cause: 'invalid' });
     expect(inContractOrder(events)).toBe(true);
@@ -399,7 +416,8 @@ describe('events read ticks later (CR-06)', () => {
     expect(kept.every((events) => deepFrozen(events))).toBe(true);
     const events = kept.flat();
     expect(ofType(events, 'hit')[0]).toEqual({
-      type: 'hit', tick: 1, victimEntityId: victim.id, victimKindBit: SHEDDING, victimPosition: at(0, 50, 0), cause: 'projectile', sourceEntityId: shot.id,
+      type: 'hit', tick: 1, victimEntityId: victim.id, victimKindBit: SHEDDING, victimPosition: at(0, 50, 0), victimForward: at(0, 0, 1),
+      victimSpeed: 0, cause: 'projectile', sourceEntityId: shot.id,
       attacker: { type: 'shooter', entityId: player.id, kindBit: 0 }, damage: GUN_DAMAGE, gated: false, shield: { before: 0, after: 0 },
       hull: { before: 1, after: 1 - GUN_DAMAGE }, shieldWasEmpty: true, impact: null, projectile: 'removed',
     });

@@ -496,6 +496,8 @@ describe('recording size limit', () => {
       'settlement-started', 'teardown-started', 'wingman-loss-timer-expired', 'wingman-loss-timer-started',
       // P3-12's.
       'explosion-created', 'view-switched', 'warp-wall-contact',
+      // P3-14's.
+      'object-retired',
     ].sort());
     // P3-09's arrival is the longest event (docs/plan/p3/02/spec.md, MW-05).
     expect(Math.max(...Object.values(events).map((event) => JSON.stringify(event).length))).toBe(JSON.stringify(events['warp-completed']).length);

@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-28
+updated: 2026-10-29
 related: [ADR-0009, ADR-0015]
 ---
 
@@ -108,7 +108,7 @@ related: [ADR-0009, ADR-0015]
 
 1. **消息行（类型 8）**：`createMessageLine({ font, flightMessages, copy })`；另有 `snapshot()`（队首、当前来电、队列长度与 `messageDrops`）与 `subscribe()`，供基地页的桥接（[UI 模块说明](./ui.md#游戏-store桥接与命令反馈)）。
 2. **左显示屏（类型 6）**：`createLeftDisplay({ content, interference, pages, initial })`，页 0、1 自有，页 2–5 由 `communicationPageDrawers(createCommunicationPages({ font, background, hudText, commMenus, names, copy }))`、页 6 由 `createWarpPage({ font, background, hudText }).drawWarpPage` 注入；`state()`。
-3. **类型 9 指示条**：`createIndicatorStrip({ font, hudText })`，读同 tick 的两项警告标志（现为 `communications.player.warnings`，见[交接](#交接p3-13)），自有 0x15 闪烁、不抽随机；`state()`。
+3. **类型 9 指示条**：`createIndicatorStrip({ font, hudText })`，读同 tick 的两项警告标志（FA-01 的分区级 `communications.warnings`，见[交接](#交接p3-13)），自有 0x15 闪烁、不抽随机；`state()`。
 4. **Warp 灯（类型 12）**：`createWarpLamp({ font, hudText })`；`state()`。
 5. **角落仪表（类型 0–3）**：`createCornerGauges({ font, labels })`；`timers()`。
 6. **雷达（类型 5）**：`createRadar()`；`state()`（含 DC-08 的 `noiseDropped`）与 `cachedDirection(entityId)`（DC-12，供叠加的偏心指针）。
@@ -145,14 +145,14 @@ P3-13 的实现、对照与判定记录在各子任务的完成证据中，判�
 
 - **P3-14（飞行音效）：**
   - **没有共享提示模型（[D-02 定稿](../../plan/p3/13/spec.md#d-02-定稿09)）：** 锁定音、9 型警告音与相应绘制之间没有共同状态。驾驶舱与音效消费者各自按 tick 升序消费同一批 `outputs`，只读每项同 tick 的 `projection`：`flight.combat.player.lock.progress`（含 −1/0 哨兵）、玩家目标、视角与子模式、两项已采样的警告标志；双方互不导入、不代为推进、不读对方状态，之间没有次序依赖，由应用分别登记（DD-05）。本任务不导出“叠加已调用”之类的派生事实，也不保留脉冲流（DD-04）；声音侧的状态与文件位置由 P3-14 决定。驾驶舱的锁定与警告只读同 tick projection 已由 26 以真实模块核对（[26 的完成证据](../../plan/p3/13/subtasks/26-replay-contract-integration.md#完成证据)）。
-  - **警告位置的切换：** 当前读取 main 的 `communications.player.warnings { attackerOnTail, missileIncoming }`（[indicator-strip.ts](../../../src/render/cockpit/overlay/indicator-strip.ts)）。P3-14 合入 FA-01 时，在同一次合并中改读分区级 `communications.warnings`，删除旧读取，不留别名、不双读；没有玩家时警告保留 Core 的已采样值，不由消费者填 false。
-  - **可达性冲突：** 07/32 依 hud §4.8 的绘制规则与截图中两段指示条的擦除态推断，两项 9 型警告在所选任务第一关中都出现过（高概率，代码与截图推断；[32 的完成证据](../../plan/p3/13/subtasks/32-presentation-verdicts.md#完成证据)的 I9 与 Q-13）。这与 P3-14 分支上 A-07 的“所选任务中不可达（高概率）”及其 D1-11 的前提冲突，须由 P3-14 复核；本任务不据 D1-11 豁免类型 9 的对照。
+  - **警告位置的切换：** P3-14 分支合入 main 时已在同一次合并中改读 FA-01 的分区级 `communications.warnings { attackerOnTail, missileIncoming }`（[indicator-strip.ts](../../../src/render/cockpit/overlay/indicator-strip.ts)），删除了旧的 `communications.player.warnings` 读取，不留别名、不双读；没有玩家时仍不绘制类型 9、保持自身状态，警告保留 Core 的已采样值，不由消费者填 false。
+  - **可达性冲突（已由 P3-14/24 回答）：** 07/32 依 hud §4.8 的绘制规则与截图中两段指示条的擦除态推断，两项 9 型警告在所选任务第一关中都出现过（高概率，代码与截图推断；[32 的完成证据](../../plan/p3/13/subtasks/32-presentation-verdicts.md#完成证据)的 I9 与 Q-13），与 P3-14 A-07 的“所选任务中不可达”冲突。P3-14/24 的运行时检查不支持该推断：在所选任务的完整运行中从未出现两项警告（读数与断点见 [audio 的 instrument 9](../../original/formats/audio.md#instrument-9-warning-a-07) 与 [24 的完成证据](../../plan/p3/14/subtasks/24-original-reference-coverage.md#完成证据)）。因此 A-07 的“不可达”仍为高概率，并有运行时支持；hud §4.8 的相反推断记为未得到运行时支持，截图中黑段的来源未确认。D1-11 据此成立：类型 9 的声音与指示条由合成离散测试验收，真实内容中不出现。32 的判定记录保持原样，不改写；P3-15 不应把类型 9 警告当作所选任务中可达的项。
   - **尾随警告的攻击者遍历：** main 的 Core `checkTail` 不遍历攻击者，`attackerOnTail` 恒为假（[Core 交接](./core.md#交接)中 P3-08 一条的“来自 P3-10”），所以类型 9 的机体标签与僚机的尾随来电目前不会出现。该规则更正属 P3-14 已批准的 D1-03（FA-01，P3-14/08），已在其分支提交 `3cd624f8` 中实现，本任务不重复实现。合入后须端到端复验 AC-14 的机体标签与 AC-21 的“规则副作用已交还且解决”（spec [与 P3-14 的关系](../../plan/p3/13/spec.md#与-p3-14-的关系)，依用户 2026-10-28 的授权列为跨任务剩余动作）。
   - **同名字段与版本：** P3-02 CK-03 的 `MotionPlayer.recordMaximumSpeed` 与 FA-03 同名同义，合并时只保留一份定义。P3-13/12 已相对其集成基线把 `RULES_VERSION` 递增为 10、快照格式递增为 9（replay 格式仍为 3，[Core 的快照与 replay](./core.md#快照录制replay-与比较)）；P3-14 合入时按“相对实际集成基线各递增一次”重新核对（CK-05）。
   - **装配位置：** 驾驶舱在 `wireFlightRun` 中登记；音效消费者另行登记、读同一 `outputs`，不经驾驶舱或其层。P3-12 一侧的表现模块接口见下文 P3-12 的[交接](#交接)。
 - **P3-15（联合验收）：**
   - **已验证（本任务范围内）：** 合成内容的 Node 与浏览器回归——各仪表与地图元素的像素（16–22）、真实链的分帧一致与 Core 不变（26）、合成包的驾驶舱与地图画面（27、28，含生产输入、Pointer Lock、右键与 Δ-09）、单画布与资源平衡、深度、上下文丢失与恢复、预算与故障（29）；31 以真实内容走通 F1、选目标、通讯、地图选点、Warp、停靠与离港，32 对有可比原版样本的元素判为一致（静态区域 0 差异与元素对照）。逐元素的分列判定只在 32 的完成证据中。
-  - **外部前提：** P3-14 合入（警告位置切换、尾随攻击者遍历、音效与 `FLIGHT_IN_PROGRESS` 的移除，见[在制标注](../slice-gaps.md#在制标注非-g-项)）；用户补采会话（下一条）。
+  - **外部前提：** P3-14 合入（警告位置切换、尾随攻击者遍历、音效；`FLIGHT_IN_PROGRESS` 已由 P3-14/18 移除，见[在制标注](../slice-gaps.md#在制标注非-g-项)）；用户补采会话（下一条）。
   - **经批准的证据缺口：** 依 spec 的[执行期决定及其补充](../../plan/p3/13/spec.md#原版证据途径与-dosbox-x-的使用)，M-1、M-2、M-3、M-4、M-7、M-8 的原版外观，以及非 M 的地图友方圆盘之并与主图单位标记、类型 9 在截图 `114`–`117` 的 1 像素残差、右显示屏设备重建后的首批像素（U-034）与真实内容中被毁视角的槽 7 消息行与标签，都记为经批准的证据缺口：不是通过、不是豁免，AC-12/14/15/16 中“须为一致”的子句在外观一栏仍未满足；M-5、M-6 按缺证表的“否则”列（保留外观等价高概率、节奏为运算级）。恢复方式为用户按私有 `local/research/p3-13/comparison-plan/missing-evidence.md` 的配方在一次基准会话中补采，再由新的验证项按冻结判据复核，不改写 32 的记录。
   - **联合复验范围：** 真实内容中的被毁视角（槽 7 消息行与视角标签，AC-23）；P3-14 合入后类型 9 机体标签与僚机尾随来电的端到端（AC-14、AC-21）；真实任务中从基地打开地图、停靠中与地图中被毁等跨任务路径的驾驶舱与地图画面；包含驾驶舱的完整闭环 replay（有无驾驶舱的事件流与周期哈希相同，26 的做法）与浏览器复验。节奏只到运算级（2 单位/tick，U-021），真实秒/帧结论须在 U-021 冻结后另测。
 
@@ -187,6 +187,7 @@ P3-13 的实现、对照与判定记录在各子任务的完成证据中，判�
 - **随机源：** `presentationRandom(seed)` 由宿主的 uint32 种子创建独立的 `RandStream`，从不触及世界 RNG；支持集与映射按原版，抽取次序不要求一致（spec 技术决定 5）。一个运行只有这一个表现流，飞行 pass 共用它（见[运行接线](#运行接线与逐-tick-推进)）。
 - **推进：** `advance({ ownerId, runId, outputs })` 接收帧报告的逐 tick 输出（结构上即 `TickOutput`）。先整体核对：同一 owner 与运行、tick 从上一 tick 起连续、`render` 的 tick 与时钟一致、时钟不倒退，否则 `invalid-input` 且状态不变。逐 tick：步末相机 → 按 `explosion-started` 的次序以步首相机为 Core 爆炸各选择一次（X4：`large` 取列表 1、`missile` 取列表 3、`other` 在平方距离 ≥ 160000 时取列表 2 否则列表 1；`selection.item` 是原列表的序号）→ 表现效果缝 → 丢弃已离开 Render State 的 Core 爆炸选择。整帧处理完后才通知订阅者，每个订阅者每个 tick 一次、按 tick 升序。处理中的任何错误使模块失败，此后的使用为 `invalid-state`。
 - **查询与订阅：** `camera()` 为最后处理的 tick 的步末相机；`explosions()` 无副作用地列出已激活且尚未结束的爆炸（`PresentationExplosion`，按激活次序）；`subscribe(listener)` 只通知此后的 tick，迟订阅者从两项查询恢复，不重播；撤销幂等。`dispose()` 幂等，之后拒绝一切使用。重试与新运行都是新实例。
+- **表现接口的增补（P3-14 D-02 的 DW-02，P3-14/20）：** `PresentationTick.explosions` 是该 tick 处理完后 `explosions()` 的结果（本 tick 结束时已激活且未结束的爆炸，同一次序），`PresentationExplosion` 另有其模式 1 移动块的 `forward`（第 3 行 R2）与 `speed`（+0x08，f32，运行时单位/秒）：Core 爆炸等于同 tick Render State 中该实体的 `orientation` 下标 6–8 与 `speed`（FA-04），额外爆炸取其构造时的值，碎片爆炸取其漂移 F(R2′ × s) 的 R2′ 与 s，漂移中都不变。纯表现输出，冻结，读取不抽取、不推进，不改变任何选择、相机或绘制，没有版本影响；音效消费者以它逐 tick 更新表现层爆炸的声音参数与离表（[app 模块说明的飞行音效](./app.md#飞行音效)）。
 - **相机：** [presentation-camera.ts](../../../src/render/flight/presentation/presentation-camera.ts)。0xC（F1）、1（Warp）以及没有自己相机函数的 6、8、0x13 取观察实体的位姿，没有观察实体时保留上一位姿；0x11 子模式 8 取被毁相机缝的位姿；其他视角为 `unsupported-view`。视口（逻辑像素、含端点）在 0xC、1、6 为 (0, 0)–(639, 315)，在 8、0x11、0x13 为 (0, 0)–(639, 479)。
 - **表现效果（13）：** [presentation-effects.ts](../../../src/render/flight/presentation/effects/presentation-effects.ts) 的 `createPresentationEffects({ content })` 经 `effects` 缝每 tick 在 Core 激活之后按原版的遍次序推进一次：机体爆炸的额外爆炸（X2、X3）、事件 0x10 与判别值 1、2 的碎片（X5）、带标志碎片到期的再爆炸（X7）与闪光检查（`0x24314`）；区域检查用 Render State 的 `activeAreaCentre`，从不用相机。缝的上下文 `PresentationEffectsStep` 只在本 tick 的 `step` 内有效：`reserveObject` 在分配前计入预算，`activate`、`move`、`end`、`releaseObject` 与 `nextFragmentKey`；`step` 必须同步。渲染器另读 `fragments()`（尚未离开的判别值 1、2 碎片，按创建次序，20 绘制）与 `flashRequests(tick)`（最近 `FLASH_REQUEST_TICKS` = 5 个已处理 tick 的闪光请求，21 推进屏幕闪光）。
 - **被毁视角相机（14）：** [destruction-camera.ts](../../../src/render/flight/presentation/destruction-camera/destruction-camera.ts) 的 `createDestructionCamera()` 经 `destructionCamera` 缝每 tick（含 tick 0）在相机形成之前推进，只在 0x11/8 返回位姿：每次切换到 0x11/8 的 `view-switched` 以切换时的玩家位姿与 f32 32° 的预转进入；未跟随时按 −30 × 经过秒数沿 R2 后退，跟随实体离表时冻结，跟随时距离每 tick 向 30 缓动四分之一（PV8）；离开视角即丢弃状态。
@@ -283,11 +284,11 @@ P3-13 的实现、对照与判定记录在各子任务的完成证据中，判�
   - **接入层：** 在同一画面、同一 WebGL 上下文中以 `FlightRunRender.addLayer` 登记 `slot: 'cockpit'` 的层（可以多个，按加入次序），只按逻辑坐标绘制（`frame.logicalCamera`、`frame.logical`），不自建画布或循环；层画入游戏图像，所以屏幕闪光同样作用于它。运行的 `FlightRunRender` 现在只在 `wireFlightRun` 的返回值中（[flight-consumer.ts](../../../src/app/mission/flight-consumer.ts) 的 `attachRun` 没有保留它）；P3-13 在同一接线中取得它，并把自己的 GPU 计划并入运行开始时由 `beginRun` 核对的计划（`addGpuPlans`），使预算在任何分配之前核对；资源从 `render.resources` 取得，随运行释放。
   - **视角信息：** 每帧的 `CompositionFrame` 给出 `viewMode`、`subMode`、`view`、当前 Render State（`render.current`）与最新 projection（总计划 §5：HUD 逐帧读取，不经 store）；世界视口（`world.viewport`，F1 与 Warp 为行 0–315）以外的区域目前为黑。驾驶舱槽在每个视角都被调用，6、8、0x13 只有它；视角标签、地图与基地画面由 P3-13 按视角决定。一次性提示可用 `view-switched`（FS-11）。
   - **在制提示（已由 P3-13/25 完成）：** 驾驶舱与 HUD 接入后，覆盖飞行区域的驾驶舱在制提示已移除，[mission-copy.ts](../../../src/ui/mission/mission-copy.ts) 的 `MISSION_SKELETON` 不再说没有驾驶舱与 HUD，`FLIGHT_IN_PROGRESS` 只剩 P3-14 的音效，显示在画面之外的状态栏（[在制标注](../slice-gaps.md#在制标注非-g-项)）。
-- **P3-14（飞行音效）：**
-  - **`PresentationTick` 与激活流：** 读同一运行的同一表现模块实例（`wireFlightRun` 返回的 `presentation`，目前同样未经 flight consumer 暴露，P3-14 在该接线中取得）。`subscribe` 每个 tick 通知一次 `PresentationTick { ownerId, runId, tick, clock, beforeStep, afterStep, activations }`；`wireFlightRun` 逐 tick 推进，所以通知在该 tick 的 pass 推进之前、本帧绘制之前到达。`activations` 先列 Core 爆炸（`origin.eventIndex` 为其 `explosion-started` 在该 tick 事件中的下标），再列表现层爆炸；每次激活只通知一次，迟订阅者从 `explosions()` 恢复、不重播；静止帧没有通知；重试是新实例。爆炸音效取所选 EXPL 项（`selection`）的声音，不另行抽取。
+- **P3-14（飞行音效，已由 P3-14 接入）：** 以下为当时的接口约定，P3-14 的实现见 [app 模块说明的飞行音效](./app.md#飞行音效)。
+  - **`PresentationTick` 与激活流：** 读同一运行的同一表现模块实例（`wireFlightRun` 返回的 `presentation`；P3-14 起由飞行消费者的 `presentation()` 交给排在其后的音效消费者）。`subscribe` 每个 tick 通知一次 `PresentationTick { ownerId, runId, tick, clock, beforeStep, afterStep, activations }`（P3-14 的 DW-02 另加 `explosions`，见[表现模块](#表现模块)）；`wireFlightRun` 逐 tick 推进，所以通知在该 tick 的 pass 推进之前、本帧绘制之前到达。`activations` 先列 Core 爆炸（`origin.eventIndex` 为其 `explosion-started` 在该 tick 事件中的下标），再列表现层爆炸；每次激活只通知一次，迟订阅者从 `explosions()` 恢复、不重播；静止帧没有通知；重试是新实例。爆炸音效取所选 EXPL 项（`selection`）的声音，不另行抽取。
   - **相机：** 听者用 `afterStep`（未插值、tick 结束时，所有支持的视角都有；6、8、0x13 为座机位姿）；`viewport` 是含端点的逻辑像素矩形，不输出投影坐标；退化的被毁相机可给出零行。
   - **与驾驶舱的关系：** P3-13 的 D-02 定稿不建共享提示模型，锁定与警告的声音另读同 tick projection，见 P3-13 的[交接](#交接p3-13)。
-  - **09 记录的接口差异（交其 D-02）：** 见 [09 的完成证据](../../plan/p3/12/subtasks/09-d01-contract-gate.md#完成证据)的对齐表：同 tick 的表现层激活排在 Core 之后（FS-10 决定 8，已批准）；运动块速度、`shot-fired` 与 `hit` 的行与速度不在 D-01 中，须 P3-14 按 P3-02 扩展规则另加；“移除”以 `display: 'released'` 还是离表为准、`explosion-created`、`view-switched` 与 `warp-wall-contact` 的处理分类、爆炸存活期内是否重放，由 P3-14 决定。
+  - **09 记录的接口差异（交其 D-02，已由 P3-14 的 [D-02 定稿](../../plan/p3/14/spec.md#d-02-定稿已批准)决定）：** 见 [09 的完成证据](../../plan/p3/12/subtasks/09-d01-contract-gate.md#完成证据)的对齐表：同 tick 的表现层激活排在 Core 之后（FS-10 决定 8，已批准，D2-10 沿用）；运动块速度、`shot-fired` 与 `hit` 的行与速度由 P3-02 的 FA-04、FA-05 加入，表现层爆炸的行与速度由 DW-02 加入；移除与离表、各事件的处理分类与爆炸存活期内的重放见 DW-06 至 DW-08 与 D2-06。
 - **P3-15（联合验收）：**
   - **被毁视角的真实流程：** P3-12 交付时 P3-11 尚未接入被毁进入，所以被毁相机只以合成状态验证（14 的 Node 测试，25 的隔离入口 `flight-scenes` 的 destruction view 用例），不计为 P3-12 已走通。P3-11 现已接入；真实的死亡、被毁视角、救援转换与 F1 门禁仍由 P3-15 在真实规则输出下验证（P3-13 的真实内容运行也未到达被毁视角，见 P3-13 的[交接](#交接p3-13)）。
   - **对照证据的位置：** 原版事实与置信度在 executable 的 [Flight scene rendering (P3-12)](../../original/formats/executable.md#flight-scene-rendering-p3-12) 与 [unknowns](../../original/unknowns.md)；冻结的对照方案在被忽略的 `local/research/p3-12/comparison-plan/`（`plan.md` 与星点、速度尘埃附录 `addendum-q14.md`，指纹见 [08](../../plan/p3/12/subtasks/08-original-records-comparison-plan.md#完成证据)、[30](../../plan/p3/12/subtasks/30-stars-speed-dust-research.md#完成证据) 的完成证据）；真实内容配对（[26](../../plan/p3/12/subtasks/26-real-content-comparison.md)）与表现判定（[27](../../plan/p3/12/subtasks/27-presentation-verdicts.md)）在本文写成时尚未完成，按计划分别输出到被忽略的 `local/research/p3-12/real-content/` 与 `local/research/p3-12/verdicts/`，完成后由各自的完成证据记录结构、计数与判定，P3-15 以那里为准；浏览器的合成读回与上述未自动验证的项见 [25 的完成证据](../../plan/p3/12/subtasks/25-browser-regression.md#完成证据)。

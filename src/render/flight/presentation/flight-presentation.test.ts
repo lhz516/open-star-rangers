@@ -118,7 +118,7 @@ describe('explosion activation', () => {
     const [chosen] = presentation.explosions();
     expect(chosen).toEqual({
       key: 'core:10', origin: { type: 'core', entityId: 10, eventIndex: 0 }, sourceKindBit: 3, variant: 'large', selection: { list: 1, item: 0 },
-      activationTick: 1, activationClock: 2, position: vec(1),
+      activationTick: 1, activationClock: 2, position: vec(1), forward: vec(0, 0, 1), speed: 0,
     });
     // Moving, the map view, a frame without ticks, ticks long past its animation, and no camera entity at all.
     presentation.advance(frame([tickInput(flying(2, [player(), boom(vec(2))])), tickInput(flying(3, [player(), boom(vec(3))], 8))]));
@@ -303,12 +303,14 @@ describe('destruction camera seam', () => {
   });
 });
 
+/** A presentation explosion's movement block, as the effects give it (DW-02). */
+const MOTION = Object.freeze({ forward: vec(0, 0, 1), speed: 0 });
 /** Effects that run `script` at each step. */
 const effectsOf = (script: (step: PresentationEffectsStep) => void): PresentationEffects => ({ step: script });
 /** Tick 1 with Core explosion 10 activated at the origin. */
 const withCoreTen = () => tickInput(flying(1, [player(), renderEntity(10, { explosion: 'other' })]), [explosionStarted(1, 10, 'other', vec(1))]);
 const extra = (step: PresentationEffectsStep, ordinal: 0 | 1 | 2 | 3 | 4, variant: 'large' | 'other' = 'other', position = vec(1), slot = step.reserveObject()) =>
-  step.activate({ origin: { type: 'extra', parentExplosionKey: 'core:10', ordinal }, variant, position, slot });
+  step.activate({ origin: { type: 'extra', parentExplosionKey: 'core:10', ordinal }, variant, position, motion: MOTION, slot });
 
 describe('presentation effects seam', () => {
   it('lists presentation activations after the Core ones, with run-wide keys and the camera before the step', () => {
@@ -318,7 +320,7 @@ describe('presentation effects seam', () => {
       if (step.tick !== 1) return;
       extra(step, 0, 'other', vec(0, 0, 400));
       const fragment = step.nextFragmentKey();
-      step.activate({ origin: { type: 'fragment', fragmentKey: fragment }, variant: 'other', position: vec(0, 0, 399), slot: step.reserveObject() });
+      step.activate({ origin: { type: 'fragment', fragmentKey: fragment }, variant: 'other', position: vec(0, 0, 399), motion: MOTION, slot: step.reserveObject() });
       extra(step, 4, 'large', vec(5));
     });
     const { presentation } = start([0, 0, 0, 1], { effects });
@@ -359,20 +361,22 @@ describe('presentation effects seam', () => {
       (step) => step.end('extra:1'),
       (step) => step.end('core:10' as never),
       (step) => step.move('extra:1', vec(1)),
-      (step) => step.activate({ origin: { type: 'fragment', fragmentKey: 'fragment:1' }, variant: 'other', position: vec(1), slot: step.reserveObject() }),
-      (step) => step.activate({ origin: { type: 'extra', parentExplosionKey: 'core:11', ordinal: 0 }, variant: 'other', position: vec(1), slot: step.reserveObject() }),
+      (step) => step.activate({ origin: { type: 'fragment', fragmentKey: 'fragment:1' }, variant: 'other', position: vec(1), motion: MOTION, slot: step.reserveObject() }),
+      (step) => step.activate({ origin: { type: 'extra', parentExplosionKey: 'core:11', ordinal: 0 }, variant: 'other', position: vec(1), motion: MOTION, slot: step.reserveObject() }),
       (step) => extra(step, 5 as never),
       (step) => extra(step, 0, 'missile' as never),
       (step) => extra(step, 0, 'other', vec(Number.NaN)),
+      (step) => step.activate({ origin: { type: 'extra', parentExplosionKey: 'core:10', ordinal: 0 }, variant: 'other', position: vec(1), motion: { forward: vec(Number.NaN), speed: 1 }, slot: step.reserveObject() }),
+      (step) => step.activate({ origin: { type: 'extra', parentExplosionKey: 'core:10', ordinal: 0 }, variant: 'other', position: vec(1), motion: { forward: vec(1), speed: Infinity }, slot: step.reserveObject() }),
       (step) => { extra(step, 2); extra(step, 2); },
       (step) => {
         const fragmentKey = step.nextFragmentKey();
-        step.activate({ origin: { type: 'fragment', fragmentKey }, variant: 'large' as never, position: vec(1), slot: step.reserveObject() });
+        step.activate({ origin: { type: 'fragment', fragmentKey }, variant: 'large' as never, position: vec(1), motion: MOTION, slot: step.reserveObject() });
       },
       (step) => {
         const fragmentKey = step.nextFragmentKey();
-        step.activate({ origin: { type: 'fragment', fragmentKey }, variant: 'other', position: vec(1), slot: step.reserveObject() });
-        step.activate({ origin: { type: 'fragment', fragmentKey }, variant: 'other', position: vec(1), slot: step.reserveObject() });
+        step.activate({ origin: { type: 'fragment', fragmentKey }, variant: 'other', position: vec(1), motion: MOTION, slot: step.reserveObject() });
+        step.activate({ origin: { type: 'fragment', fragmentKey }, variant: 'other', position: vec(1), motion: MOTION, slot: step.reserveObject() });
       },
       (step) => { const slot = step.reserveObject(); extra(step, 0, 'other', vec(1), slot); extra(step, 1, 'other', vec(1), slot); },
       (step) => { const slot = step.reserveObject(); step.releaseObject(slot); extra(step, 0, 'other', vec(1), slot); },
@@ -403,6 +407,65 @@ describe('presentation effects seam', () => {
     presentation.advance(frame([withCoreTen()]));
     expect(drawn).toEqual([6]);
     expect(random.used).toBe(5);
+  });
+});
+
+describe('per-tick explosions and movement blocks (P3-14 DW-02)', () => {
+  /** Rows whose R2 is +y. */
+  const UP = Object.freeze([1, 0, 0, 0, 0, -1, 0, 1, 0]) as unknown as Matrix3;
+  const EXTRA = Object.freeze({ forward: vec(0.6, 0, 0.8), speed: 40 });
+  const boom = (speed: number, position = vec(1)) => renderEntity(10, { explosion: 'other', orientation: UP, speed, position });
+  /** Core explosion 10 at speed 12 then 13, gone at tick 3; extra 1 with its own block in tick 1, ended in tick 2. */
+  const scene = () => [
+    tickInput(flying(1, [player(), boom(12)]), [explosionStarted(1, 10, 'other', vec(1))]),
+    tickInput(flying(2, [player(), boom(13, vec(2))])),
+    tickInput(flying(3)),
+  ];
+  const effects = () => effectsOf((step) => {
+    if (step.tick === 1) step.activate({ origin: { type: 'extra', parentExplosionKey: 'core:10', ordinal: 0 }, variant: 'other', position: vec(5), motion: EXTRA, slot: step.reserveObject() });
+    if (step.tick === 2) step.end('extra:1');
+  });
+  const motion = ({ key, position, forward, speed }: { key: string; position: unknown; forward: unknown; speed: number }) => ({ key, position, forward, speed });
+
+  it('gives each tick the explosions it ended with, Core blocks from that tick\'s Render State and presentation blocks as given', () => {
+    const { presentation, random } = start([0, 0], { effects: effects() });
+    const ticks = record(presentation);
+    presentation.advance(frame(scene()));
+    expect(ticks.map(({ explosions }) => explosions.map(motion))).toEqual([
+      [{ key: 'core:10', position: vec(1), forward: vec(0, 1, 0), speed: 12 }, { key: 'extra:1', position: vec(5), ...EXTRA }],
+      [{ key: 'core:10', position: vec(2), forward: vec(0, 1, 0), speed: 13 }],
+      [],
+    ]);
+    expect(ticks[0].explosions.map(({ key, selection }) => [key, selection])).toEqual(ticks[0].activations.map(({ key, selection }) => [key, selection]));
+    for (const { explosions } of ticks) {
+      expect(Object.isFrozen(explosions) && explosions.every((item) => Object.isFrozen(item) && Object.isFrozen(item.forward))).toBe(true);
+    }
+    // The query is the last tick's list; reading either draws nothing.
+    const used = random.used;
+    expect(presentation.explosions()).toBe(ticks[2].explosions);
+    expect(random.used).toBe(used);
+  });
+
+  it('gives the same lists whatever the frames, each equal to explosions() right after its tick', () => {
+    const grouped = start([0, 0], { effects: effects() });
+    const groupedTicks = record(grouped.presentation);
+    grouped.presentation.advance(frame(scene()));
+    const single = start([0, 0], { effects: effects() });
+    const singleTicks = record(single.presentation);
+    for (const input of scene()) {
+      single.presentation.advance(frame([input]));
+      single.presentation.advance(frame([]));
+      expect(single.presentation.explosions()).toBe(singleTicks.at(-1)!.explosions);
+    }
+    expect(singleTicks).toEqual(groupedTicks);
+  });
+
+  it('keeps an explosion\'s Core block unset in no tick: one not listed at its activation\'s end is dropped before the notification', () => {
+    const { presentation } = start([0]);
+    const ticks = record(presentation);
+    presentation.advance(frame([tickInput(flying(1), [explosionStarted(1, 10, 'other', vec(1))])]));
+    expect(ticks[0].activations).toHaveLength(1);
+    expect(ticks[0].explosions).toEqual([]);
   });
 });
 
@@ -443,7 +506,7 @@ describe('budgets', () => {
         // Each Core explosion's five extras, in turn, until every object slot is used.
         for (let index = 0; index < PRESENTATION_LIMITS.objects; index++) {
           const parentExplosionKey = `core:${10 + Math.floor(index / 5)}` as const;
-          step.activate({ origin: { type: 'extra', parentExplosionKey, ordinal: (index % 5) as 0 }, variant: 'large', position: vec(1), slot: step.reserveObject() });
+          step.activate({ origin: { type: 'extra', parentExplosionKey, ordinal: (index % 5) as 0 }, variant: 'large', position: vec(1), motion: MOTION, slot: step.reserveObject() });
         }
       });
       const presentation = createFlightPresentation({ ownerId: 1, runId: 1, content: presentationContent(), initial: flying(0), random, effects });

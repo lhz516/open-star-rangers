@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-28
+updated: 2026-10-29
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -32,6 +32,14 @@ src/
       use-mission-owner.ts
       use-resource-holder.ts
       use-viewer-owner.ts
+    flight-audio/
+      consumer.ts
+      content.ts
+      events.ts
+      hud-cues.ts
+      owner.ts
+      parameters.ts
+      voices.ts
     flow/
       app-flow.ts
     import/
@@ -346,6 +354,7 @@ src/
     audio/
       audio-controller.ts
       browser-audio-controller.ts
+      voice-progress.ts
     browser/
       browser-seed.ts
       browser-session-host.ts
@@ -510,6 +519,7 @@ src/
   ui/
     dev/
       MissionDevPanel.tsx
+      audio-log.ts
       command-draft.ts
       entity-inspection.ts
       event-log.ts
@@ -540,6 +550,7 @@ src/
       failure-copy.ts
       resource-copy.ts
     mission/
+      AudioStatus.tsx
       BasePage.tsx
       FlightView.tsx
       GameInputZone.tsx
@@ -551,6 +562,7 @@ src/
       PlaceholderPage.tsx
       ResultPage.tsx
       StartConfigPage.tsx
+      audio-copy.ts
       base-page.ts
       input-notices.ts
       mission-copy.ts
@@ -584,7 +596,7 @@ src/
 | [content](./modules/content.md) | 基础契约与切片定义，图形、状态显示屏文字、模型与效果 payload，规范 JSON 与规则数据、飞行数据、视角标签、HUD 文字与地图几何 payload |
 | [original-data](./modules/original-data.md) | 光盘、封包、版本识别与来源映射，任务、规则与飞行数据解析，图形、逻辑、规则数据、音频、模型、效果与飞行数据转换 |
 | [workers](./modules/workers.md) | 导入 Worker 的协议、宿主、作业与生产包配置 |
-| [app](./modules/app.md) | 正式 Runtime 与游戏会话（含运行中衔接与终局），任务流程、所有者与槽位，飞行画面消费者、飞行内容与驾驶舱内容和文案，资源持有者与任务文字，查看器音频与所有者 |
+| [app](./modules/app.md) | 正式 Runtime 与游戏会话（含运行中衔接与终局），任务流程、所有者与槽位，飞行画面消费者、飞行内容与驾驶舱内容和文案，飞行音效（声音绑定、声部账本、参数、HUD 提示、事件读取、运行级消费者与所有者级连接）与交接，资源持有者与任务文字，查看器音频与所有者 |
 | [ui](./modules/ui.md) | 游戏 store、会话桥接（含驾驶舱消息行的桥接）与命令反馈，任务页面、基地页面、终局占位与结果页及缺省标注文字，开发诊断，失败文案 |
 | [render](./modules/render.md) | 视口、WebGL 表面与资源查看渲染；P3-13 的驾驶舱、HUD 与地图（表现基础、光栅与文字、各仪表、运行装配、地图就绪凭证）与交接；P3-12 的飞行渲染（表现模块、渲染器、场景、合成与各 pass）与交接 |
 | [platform](./modules/platform.md) | 资源缓存、音频播放、任务端口的浏览器适配与键盘源 |
@@ -599,6 +611,7 @@ P1-09 的 [platform/input/](../../src/platform/input/) 提供通用事件、按�
 | [app/runtime/](../../src/app/runtime/) | 固定步长、连续意图与按住开火、命令队列与每 tick 批次、调用 Core、帧后事件、同 tick 读模型与两帧 Render State、开发录制 | DOM 监听、第二条游戏循环、UI 成功状态 |
 | [app/session/](../../src/app/session/) | 控制通道、唯一帧调度许可、运行身份、出发与运行中保持、停止与完成（终局序列与冻结结果）、通知边界、运行级消费者与清理 | 重复模拟世界、媒体/Worker 空实现 |
 | [app/mission/](../../src/app/mission/) | 开始资格、任务流程、占位计时、运行创建、重开与返回、所有者级资源与离页保护的所有权（DOM-free，宿主能力经端口） | React、DOM、规则判定、运行中的 Core 衔接 |
+| [app/flight-audio/](../../src/app/flight-audio/) | 飞行音效（P3-14）：所有者级的 `media` 阶段消费者（唯一的播放控制器、关闭屏障、激活与暂停门禁、声音状态）与每个运行一份的声音处理（静态绑定、A-03 声部账本、空间与引擎参数、锁定与 9 型提示音、事件读取与按原版分派次序的对象声音表）；读运行的帧与同一表现模块，全部同步（只有 `owner*.ts` 可等待关闭） | Core 写入、命令与意图、帧调度或计时器、DOM 与音频宿主（经控制器的注入能力）、驾驶舱状态、UI |
 | [ui/game-input/](../../src/ui/game-input/) | 生产键位表、上下文解析、游戏输入消费者、宿主能力与地图输入；通过 app 所有者 input 阶段使用运行句柄 | 平台事件采集、Core 规则实现、第二条调度循环 |
 | [render/map/](../../src/render/map/) | 地图输入与显示共用的纯 CSS 像素几何与生产几何端口、地图就绪凭证端口（P3-13）、隔离入口用的项目光标 | 地图规则、地图画面、DOM 事件采集、游戏调度 |
 | [render/flight/](../../src/render/flight/) | 飞行渲染（P3-12）：每个所有者一个渲染器与运行内 GPU 缓存，每个运行的场景、合成与各绘制 pass，经运行级帧消费者逐 tick 推进、逐帧绘制；运行接线 `wireFlightRun` 同时接入 P3-13 的驾驶舱与其层 | 第二条帧循环、Core 状态写入、驾驶舱/HUD/地图的绘制（在 `render/cockpit/`）、跨运行缓存 |
@@ -677,7 +690,7 @@ Core 消费规范化逻辑数据，不认识原版封包。持续事实走投影
 |---|---|---|
 | P1-06/07/08/09/10（已交付） | `ui/game/`、`ui/pages/`、`ui/dev/`；`render/scene/`、`render/viewport/`；`platform/input/`；必要时 `app/composition/`；仓库根 `e2e/`（P1 的 `render/synthetic/` 与其他合成演示模块已于 P3-04 退役，见[退役记录](#p3-04-合成演示退役记录)） | 消费者各自实现订阅与释放，应用装配，不增游戏循环 |
 | P2（已交付） | `original-data/io/`、`disc/`、`archive/`、`formats/`、`source/`、`conversion/`；`content/` 按数据类别组织；`platform/files/`、`storage/`、`audio/`；`workers/` | 纯字节读取端口由解析层定义，File/fs 实现分别在平台/工具；转换数据不写入仓库 |
-| P3 | `core/contracts/`、`world/`、`systems/`、`rules/`、`projections/`、`replay/`（P3-02 已交付，规则任务在其中扩展）；`app/runtime/`、`app/session/`、`app/mission/`、`ui/game/`、`ui/mission/`、`ui/dev/`（P3-04 已交付，输入、画面与音效经任务所有者接入）；`render/flight/`（P3-12 已交付）；`render/cockpit/`（P3-13 已交付，经 `render/flight/` 的同一合成接入） | 真实系统显式按固定顺序执行；不建立第二个会话、帧循环或运行 |
+| P3 | `core/contracts/`、`world/`、`systems/`、`rules/`、`projections/`、`replay/`（P3-02 已交付，规则任务在其中扩展）；`app/runtime/`、`app/session/`、`app/mission/`、`ui/game/`、`ui/mission/`、`ui/dev/`（P3-04 已交付，输入、画面与音效经任务所有者接入）；`app/flight-audio/`（P3-14 的实现已交付；V-06 的感知结论待 P3-14/26）；`render/flight/`（P3-12 已交付）；`render/cockpit/`（P3-13 已交付，经 `render/flight/` 的同一合成接入） | 真实系统显式按固定顺序执行；不建立第二个会话、帧循环或运行 |
 | P4 | `core/save/`；内容模块的战役/任务数据；UI 简报、结果等页面；`platform/video/`、`music/`（音效播放端口 `platform/audio/` 已由 P2-08 交付） | 媒体实现由 spike/ADR 确定，不在目录方案中选解码器；存档模型与持久化分开 |
 | P5 | 扩展原版导入、平台存储/PWA、UI 错误反馈、`e2e/`、`tools/` 与 CI/发布配置 | 不建立装满所有业务的 release 模块；缓存管理不静默覆盖玩家存档 |
 | P6 | `render/styles/`、`effects/`、内容模块的外观覆盖契约、画质设置 | 同一 Core/逻辑定义/存档；碰撞等逻辑不从 Enhanced 模型重新推导 |

@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P2
 task: "08"
-updated: 2026-10-08
+updated: 2026-10-17
 related: [ADR-0005, ADR-0007, ADR-0008, ADR-0015, U-004, U-027]
 reviewed: sha256:b71a3cf9dbc9
 ---
@@ -394,6 +394,102 @@ kind 为 `sound` 的 Asset，其 payload schema 版本为 1（记录在 P2-01 `P
 | 同时发声上限 | 导出的固定常量，至少为 4（四类核心角色可以同时发声），写入工程文档。它只是资源保护，不代表原版混音路数 |
 | 宿主错误 | 只记录错误名称用于分类，宿主错误文本不进入结果或快照 |
 
+### 播放控制器的扩展（P3-14 的修订）
+
+**状态：已获用户批准（2026-10-17，P3-14 的 D-01）。** 用户的选择：“批准全部推荐方案（含三项差异）”。由 P3-14/06 起草。
+
+本节定稿 [P3-14 spec 的控制器扩展边界](../../p3/14/spec.md#控制器扩展边界)中属于本 spec 的播放器公开契约：逐发声的初始参数与运行中更新、保留播放位置的任务暂停门禁，以及发声状态查询。P3-03 加入的 `repeat` 循环方式（[声音 payload schema 2](../../p3/03/spec.md#声音-payload-schema-2)）的停止方式也由本节重新规定。已批准的决定见 [P3-14 的 D-01 定稿](../../p3/14/spec.md#d-01-定稿已批准)（下文“D1-n”），Core 一侧见 [P3-02 的修订](../../p3/02/spec.md#p3-14-的契约修订d-01)，任务所有者的接线见 [P3-04 的修订](../../p3/04/spec.md#任务音频接线p3-14-的修订)。混音的原版事实只在 [audio A-09](../../../original/formats/audio.md#digital-mixing-in-the-linked-miles-library-a-09)；原版参数怎样计算属于消费者，平台只负责应用参数与管理资源。批准后，前文[播放控制器](#播放控制器)两节与本节不一致时以本节为准。
+
+**兼容原则：** 不传参数、不调用 `pause`/`resume` 的调用者（查看器）得到与修订前相同的节点图、结果、状态与错误码。新增的状态值与错误码只在使用新能力时出现。查看器的类型穷举处把 `paused` 当作 `suspended`，但这个状态在查看器中从不出现。同时发声上限 `AUDIO_VOICE_LIMIT` 仍为 8，仍只是资源保护。
+
+```ts
+export const AUDIO_VOICE_LIMIT = 8;          // 不变
+export const AUDIO_RATE_LIMIT = 44_100;      // 新增：速率上限（Hz），取游戏自己的钳位（A-09）；没有游戏以外的调用者需要更高
+export const AUDIO_ENDED_HISTORY = 256;      // 新增：保留终态的最近句柄数
+
+export type AudioStatus =
+  | 'idle' | 'locked' | 'running' | 'paused' | 'suspended' | 'unavailable' | 'failed' | 'disposed';  // 新增 paused
+
+export interface VoiceParameters {
+  readonly volume: number;   // 整数 0–127
+  readonly pan: number;      // 整数 0–127
+  readonly rate: number;     // 整数 Hz，1–AUDIO_RATE_LIMIT
+}
+
+export type AudioErrorCode =
+  | 'audio-unavailable' | 'audio-locked' | 'audio-suspended' | 'audio-failed' | 'unknown-sound' | 'duplicate-sound'
+  | 'invalid-sound-payload' | 'voice-limit' | 'disposed'                                    // 既有
+  | 'audio-paused' | 'invalid-parameters' | 'unknown-voice' | 'fixed-parameters';          // 新增
+
+export type PlayFailureCode = Exclude<AudioErrorCode, 'duplicate-sound' | 'invalid-sound-payload' | 'unknown-voice' | 'fixed-parameters'>;
+export type UpdateResult =
+  | { readonly status: 'updated' }
+  | { readonly status: 'rejected'; readonly code: 'unknown-voice' | 'fixed-parameters' | 'invalid-parameters' | 'audio-failed' | 'disposed' };
+
+export type VoiceEnd = 'natural' | 'stopped' | 'preempted' | 'released';
+export type VoiceState =
+  | { readonly status: 'playing' }
+  | { readonly status: 'paused' }
+  | { readonly status: 'ended'; readonly reason: VoiceEnd }
+  | { readonly status: 'unknown' };
+
+export interface AudioController {
+  unlock(): AudioStatus;
+  load(sounds: readonly SoundRecord[]): LoadResult;                          // 不变
+  play(id: string, parameters?: Partial<VoiceParameters>): PlayResult;
+  update(voice: number, parameters: Partial<VoiceParameters>): UpdateResult;
+  voiceState(voice: number): VoiceState;
+  stop(voice: number, reason?: 'stopped' | 'preempted'): boolean;           // reason 缺省为 'stopped'
+  stopAll(): void;
+  pause(): AudioStatus;
+  resume(): AudioStatus;
+  // getSnapshot、subscribe、dispose 不变；快照的 voices 计入 playing 与 paused 的发声
+}
+```
+
+| 场景 | 预期结果 | 拒绝或失败 |
+|---|---|---|
+| `play(id)`（不传参数） | 与修订前相同：不创建参数节点，按存储速率、全幅、两声道等幅播放。这样的发声是“固定”的 | 既有错误码；门禁关闭时为 `audio-paused`（见下） |
+| `play(id, parameters)` | 先校验整个对象：给出的每项都必须是范围内的整数，缺省项取 127、64 与存储速率。通过后创建本发声的参数节点，**在 `start()` 之前**设好增益、两个声道的增益与 `playbackRate`，再开始 | 非整数、非有限数或越界为 `invalid-parameters`：不分配句柄、不创建节点、不改变计数 |
+| `update(voice, parameters)` | 整个对象先校验；通过后在当前上下文时间同时应用所给各项。速率改变时重新安排 `repeat` 的停止（见下）。对暂停中的发声照样应用，继续时生效，不消耗进度 | 未知或已结束的句柄为 `unknown-voice`；固定发声为 `fixed-parameters`；参数非法为 `invalid-parameters`（不部分应用）；宿主操作抛错时控制器进入 `failed`，返回 `audio-failed`；已释放为 `disposed` |
+| `voiceState(voice)` | 纯读取，不调用宿主：存活且状态为 `running` 为 `playing`；保留而上下文未运行（门禁关闭，或继续后仍在等待上下文运行）为 `paused`；已结束为 `ended` 及原因；从未发出或已超出保留范围为 `unknown` | — |
+| 结束原因 | `natural`：自然播完，`repeat` 在最后一遍结束时的预定停止也算；`stopped`：调用者的 `stop`（缺省）或 `stopAll`；`preempted`：调用者以 `stop(voice, 'preempted')` 结束；`released`：控制器自行结束，即隐藏、`pagehide`、浏览器挂起或中断、宿主关闭或抛错、暂停失败与 `dispose` | 每个句柄只记录第一个原因；之后再停止返回 false |
+| 终态的保留 | 句柄单调递增、从不复用。最近 `AUDIO_ENDED_HISTORY` 个已结束句柄的原因被保留，更早的返回 `unknown`。读取者每帧查询自己跟踪的句柄，所以保留量与读取节奏无关 | — |
+| `pause()`：任务暂停门禁 | 关闭门禁，之后 `play` 返回 `audio-paused`。上下文存在且未失败时请求 `suspend()`，状态为 `paused`；已有发声保留，源采样进度停止（包括 `none`、`whole` 与 `repeat`），`voiceState` 为 `paused`。还没有上下文（`idle`、`locked`）时只记下门禁，状态不变。重复调用幂等 | `suspend()` 同步抛错或兑现为 rejected 时：以 `released` 释放全部发声，经 `reportError` 报告（只含错误名称），状态为 `failed`。这是控制器唯一观察宿主 Promise 结果的地方，因为暂停中的声音不能继续 |
+| `resume()`（须在可信用户激活中调用） | 页面可见时打开门禁；有上下文时调用 `resume()`，状态随 `statechange` 回到 `running`，保留的发声从原位置继续，不从头重播。页面隐藏时不做任何事，门禁保持关闭 | 上下文仍被自动播放策略阻止时状态为 `locked`，保留的发声仍为 `paused`、不发声，由下一次可信的 `resume()` 或 `unlock()` 继续 |
+| 门禁关闭时 `unlock()` | 没有上下文时在手势中创建，随后保持挂起；状态为 `paused`。只取得能力，不播放，也不打开门禁 | 构造失败为 `unavailable` |
+| 门禁关闭时页面隐藏 | 以 `released` 释放全部发声，失效待处理的参数更新；状态保持 `paused`。页面恢复可见时**不**恢复上下文 | — |
+| 门禁关闭时的意外转换 | 只有**当前这次** `pause()` 请求的 `suspend()` 造成的挂起保留发声。其他任何转换，例如浏览器中断（`interrupted`）、`suspend()` 尚未兑现时上下文被中断、非本次暂停造成的挂起、宿主关闭，都以 `released` 释放全部发声，与门禁状态无关。关闭时状态为 `failed`；其余情况下状态保持 `paused`，门禁仍关闭 | — |
+| 门禁打开时页面隐藏、浏览器挂起或中断 | 与修订前相同：释放全部发声（`released`），状态为 `suspended`，不补播 | — |
+
+**`repeat` 的遍数：**
+
+- 遍数按完整的源遍计，与速率、暂停和墙钟无关（A-09 的“complete source passes”）。不再用“速率为 1 时的墙钟停止时间”。
+- 控制器为每个 `repeat` 发声记下已消耗的源帧数。开始时与每次改变速率时，按“剩余源帧 ÷（缓冲采样率 × 当前 `playbackRate`）”在当前上下文时间之后重新安排 `stop(when)`；端口的语义是后一次调用取代尚未到达的停止。暂停时上下文时间不前进，所以进度保留。提前停止后不再自然续播。
+- **误差：** 速率不变时遍数精确，与 P3-03 的结果相同。每次改变速率，因 `playbackRate` 在渲染量子边界才生效，进度误差至多为 128 个输出帧乘以变化前后 `playbackRate` 之差（以源帧计）。测试按这一界限断言，不另设百分比容差。
+- `none` 在任何速率下播完一遍后自然结束；`whole` 循环到被停止。缓冲不按遍数复制。
+
+**参数到 Web Audio 的映射（D1-07、D1-13）：**
+
+- **音量：** 增益 = 音量 ÷ 127，线性幅度，不是分贝。A-09 的主音量在 P3 中为 127（没有声音设置），所以等于该式。
+- **声像：** 两个输出声道的增益分别为 T[127 − 声像] ÷ 128 与 T[声像] ÷ 128，T 为 A-09 的线性平衡表；声像 63 与 64 两声道都满幅。第一个声道是 Web Audio 的声道 0（左），这一“第一声道为左”的对应依 D1-07。不使用 `StereoPannerNode`：它是等功率曲线，中心值与两端的增益都不同。
+- **速率：** `playbackRate` = 速率 ÷ 该缓冲的采样率（payload 的存储速率）。平台接受 1–44,100（与游戏的钳位相同，A-09），拒绝 0 与更大的值；把计算结果钳到 0–44,100、并把小于 1 按 1 处理（A-09 中库对低于 1 的速率的处理）是消费者的事。
+- **不复现（D1-13）：** 点采样、22050 Hz 的 1:1 窗口、整数截断、8 位输出量化与 22050 Hz 的输出格式。
+- **节点：** 每个带参数的发声为“源 → 音量增益 → 两个声道增益 → 合并 → 输出”；参数节点随该发声的结束、停止或释放一起断开，并撤销其监听。
+
+**能力端口：** `AudioContextPort.createVoice(buffer, loop, parameters?)` 增加可选的初始参数 `{ gain, left, right, playbackRate }`（均为有限数），只有给出参数时才创建参数节点。返回的 `AudioVoicePort` 增加 `setParameters(parameters, when)`，固定发声没有该方法。浏览器适配在 `browser-audio-controller.ts`；假能力（`audio-controller.test-support.ts`）记录每次设置的参数与时间，以及安排的停止时间。
+
+**测试责任（P3-14/10、11、22）：**
+
+- 合法参数的边界：0、127、1、`AUDIO_RATE_LIMIT`，以及其外侧 1；非整数、NaN 与缺项的缺省值。
+- 初始参数先于 `start()` 设置；`update` 的全有或全无。
+- 结束原因的每条路径，以及迟到的 `ended` 回调；保留窗口的 256 与 257。
+- `repeat` 在初始速率、运行中变速、暂停/继续与提前停止下的遍数，以及上述误差界。
+- `pause` 与 `resume` 在 `idle`、`locked`、`running` 与隐藏中的交错，以及暂停失败。
+- 必需用例：暂停后（上下文已 `suspended`）再收到 `interrupted`；`suspend()` 尚未兑现时收到 `interrupted` 或 `closed`。两者都以 `released` 释放全部发声，之后的 `resume()` 不恢复任何旧发声。
+- 查看器的回归，包括节点数不变。
+- 浏览器中以合成采样测量左右声道与播放进度（P3-14/22）。
+
 ### 持久化与兼容
 
 - **不新增持久化：** 本任务不读写 IndexedDB 或 localStorage。音频组的 payload 经 P2-11 交给 P2-10 的缓存时，沿用其记录格式与恢复时的重新校验，不需改动缓存。
@@ -518,3 +614,5 @@ S/AC 编号与其余行为不变。详情见 [goal 执行记录](./goal.md#执�
 - 技术决定 7、AC-05、AC-07、AC-08 与风险约定。
 
 S/AC 编号、音频行为与其余契约不变。
+
+**2026-10-17 修订（P3-14 的 D-01：播放控制器的扩展，经用户明确批准）：** 用户于 2026-10-17 明确批准，选择“批准全部推荐方案（含三项差异）”（P3-14 spec 的 [D-01 定稿](../../p3/14/spec.md#d-01-定稿已批准)，本 spec 相关的是 D1-07、D1-13 与 D1-15；D1-13 的 Web Audio 重采样与浮点输出是已批准的差异）。只新增“[播放控制器的扩展（P3-14 的修订）](#播放控制器的扩展p3-14-的修订)”一节与本条记录：整数音量、声像与速率参数（速率上限 44,100 Hz），`update`、`voiceState`、`pause`/`resume` 门禁（只有本次暂停造成的挂起保留发声），以及按源遍数计的 `repeat`。查看器的既有行为不变。S/AC 编号与本 spec 的其他契约不变，历史证据不改写。

@@ -470,9 +470,9 @@ interface MissionReading { readonly owner: number | null; readonly ticks: { read
 
 /**
  * Runs the mission beside the held package (P3-04, replacing the retired synthetic demo): it starts a run from the main
- * menu with the preselected wingman, sees its tick advance, and returns. It creates no Worker or audio context, only the
- * owner's WebGL surfaces for the flight picture (P3-12), released on return, and leaves the held package and its
- * statuses as they were.
+ * menu with the preselected wingman, sees its tick advance, and returns. It creates no Worker; the owner's WebGL
+ * surfaces for the flight picture (P3-12) and the owner's one audio context, which the trusted Start click unlocks
+ * (P3-14 S-08), are released on return. It leaves the held package and its statuses as they were.
  */
 async function runMission(page: Page): Promise<MissionReading> {
   const menu = await statuses(page, 'resource-statuses').allInnerTexts();
@@ -482,6 +482,7 @@ async function runMission(page: Page): Promise<MissionReading> {
   });
   const before = await count();
   const flightCanvas = () => page.evaluate(at => window.osrProbe.snapshot().canvases.slice(at), before.canvases);
+  const missionContexts = () => page.evaluate(at => window.osrAudioProbe.records().slice(at), before.contexts);
   const { owner } = await enterMission(page);
   await endPlaceholder(page, 'G-02/1', 'button');
   await button(page, 'Start').click();
@@ -491,11 +492,15 @@ async function runMission(page: Page): Promise<MissionReading> {
   await button(page, 'Return to main menu').click();
   await expect(missionEntry(page)).toBeFocused();
   // The owner's flight surfaces: the test entry's StrictMode opens and releases a first owner before the one that runs,
-  // so the probes saw two canvases, each released with its context.
+  // so the probes saw two canvases, each released with its context. The first owner is released before its close
+  // barrier lets it create a controller, so only the running owner has an audio context, closed on return.
   const after = await count();
-  expect({ ...after, canvases: before.canvases }).toEqual(before);
+  expect({ ...after, canvases: before.canvases, contexts: before.contexts }).toEqual(before);
   expect(await flightCanvas()).toEqual([
     expect.objectContaining({ connected: false, lost: true }), expect.objectContaining({ connected: false, lost: true }),
+  ]);
+  await expect.poll(missionContexts, { message: 'the owner\'s one audio context, closed' }).toEqual([
+    expect.objectContaining({ state: 'closed', closes: ['resolved'] }),
   ]);
   expect(await statuses(page, 'resource-statuses').allInnerTexts()).toEqual(menu);
   return { owner, ticks };

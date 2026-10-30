@@ -68,6 +68,11 @@ class RecipeTests(unittest.TestCase):
         self.assertEqual(recipe.emulator, {"cycles": 30000})
         self.assertNotEqual(recipe.fingerprint, parse_recipe(text(scenario_recipe(SHA))).fingerprint)
         self.assertRejected("recipe-key-unknown", self.mutated(lambda d: d.update(emulator={"core": "dynamic"})))
+        recipe = parse_recipe(text(self.mutated(lambda d: d.update(emulator={"audioCapture": "multitrack"}))))
+        self.assertEqual(recipe.emulator, {"audioCapture": "multitrack"})
+        self.assertNotEqual(recipe.fingerprint, parse_recipe(text(scenario_recipe(SHA))).fingerprint)
+        self.assertRejected("recipe-value-invalid", self.mutated(lambda d: d.update(emulator={"audioCapture": "wave"})))
+        self.assertRejected("recipe-type-invalid", self.mutated(lambda d: d.update(emulator={"audioCapture": True})))
         self.assertRejected("recipe-type-invalid", self.mutated(lambda d: d.update(emulator=[])))
         for cycles, code in ((999, "recipe-value-invalid"), (2_000_001, "recipe-value-invalid"),
                              ("40000", "recipe-type-invalid"), (1.5, "recipe-type-invalid"),

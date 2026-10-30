@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-28
+updated: 2026-10-29
 related: [B-003, B-004, B-005, B-006]
 ---
 
@@ -14,7 +14,7 @@ related: [B-003, B-004, B-005, B-006]
 
 - **文字集中在一处：** 每项的界面文字只在 [slice-gaps-copy.ts](../../src/ui/mission/slice-gaps-copy.ts) 中，`SLICE_GAPS` 以 G ID 为键（`SliceGapId`：`G-01`、`G-02/1` 至 `G-02/10`、`G-03`、`G-04`、`G-05`、`G-06` 至 `G-10`），每项为 `{ title, text }`。同一文件中另有带 `gap` 字段的文案：G-04 开始配置页保留的目标与限制 `MISSION_OBJECTIVES`，G-03 的无线电消息摘要、页 5 短标注与未覆盖反馈 `MESSAGE_SUMMARIES`（`messageSummary`、`messageLabel`），战略地图零能量代价的项目提示标记 `MAP_COST_UNAVAILABLE`，G-05 基地页面的文字 `BASE_PAGE`，G-06 结果页的文字 `RESULT_PAGE`（`resultReason`）；G-02 占位页的标题与变体文字在 `PLACEHOLDER_PAGES`（`endingVariant`）。页面只放置文字，不改写；结果页的任务总结是唯一的导入文字，运行时从导入内容解析。
 - **页面中的标注：** [MissionParts.tsx](../../src/ui/mission/MissionParts.tsx) 的 `GapNote` 渲染一项，元素为 `class="slice-gap"`、`data-gap="<G ID>"`，以 “标题（G ID）. 说明” 显示；`GapNotes` 在一个 “Missing from this build” 区块中列出多项，使占位结束后这些说明仍可阅读。所有标注都是项目的英文界面文字，不是原版文字。
-- **核对：** [mission-copy.test.ts](../../src/ui/mission/mission-copy.test.ts) 核对 G ID 键与目标、限制的说明，[base-page.test.ts](../../src/ui/mission/base-page.test.ts) 核对 G-02/3、G-02/4、G-03、G-05 的文字、消息摘要的分类、基地页面的读数与消息行的呈现，[slice-gaps-copy.test.ts](../../src/ui/mission/slice-gaps-copy.test.ts) 以生产字符映射的合成字体核对 G-03 文案与 `MAP_COST_UNAVAILABLE` 的 DC-07 限制和切片可达序号的覆盖，[result-page.test.ts](../../src/ui/mission/result-page.test.ts) 核对结果页的读取与总结的各状态；开发与生产的任务流程 E2E 在每个页面读取可见的标注，每项恰好出现一次且文字与 `SLICE_GAPS` 一致（[P3-04/10](../plan/p3/04/subtasks/10-e2e-mission-flow.md#完成证据) 的 AC-19 行），[mission-result.development.spec.ts](../../e2e/mission-result.development.spec.ts) 同样核对救援占位、终局占位与结果页的标注（[P3-11/18](../plan/p3/11/subtasks/18-browser-verification.md#完成证据)），[cockpit.development.spec.ts](../../e2e/cockpit.development.spec.ts) 与 [cockpit.production.spec.ts](../../e2e/cockpit.production.spec.ts) 核对 G-03 的页 5 标注、消息行摘要与基地页的同一摘要，[base-interaction.development.spec.ts](../../e2e/base-interaction.development.spec.ts) 核对 `flight-in-progress` 只在状态栏、不在游戏画面中（[P3-13/27](../plan/p3/13/subtasks/27-browser-cockpit.md#完成证据)），[map-picture.production.spec.ts](../../e2e/map-picture.production.spec.ts) 核对 E = 0 时的 `MAP_COST_UNAVAILABLE`。
+- **核对：** [mission-copy.test.ts](../../src/ui/mission/mission-copy.test.ts) 核对 G ID 键与目标、限制的说明，[base-page.test.ts](../../src/ui/mission/base-page.test.ts) 核对 G-02/3、G-02/4、G-03、G-05 的文字、消息摘要的分类、基地页面的读数与消息行的呈现，[slice-gaps-copy.test.ts](../../src/ui/mission/slice-gaps-copy.test.ts) 以生产字符映射的合成字体核对 G-03 文案与 `MAP_COST_UNAVAILABLE` 的 DC-07 限制和切片可达序号的覆盖，[result-page.test.ts](../../src/ui/mission/result-page.test.ts) 核对结果页的读取与总结的各状态；开发与生产的任务流程 E2E 在每个页面读取可见的标注，每项恰好出现一次且文字与 `SLICE_GAPS` 一致（[P3-04/10](../plan/p3/04/subtasks/10-e2e-mission-flow.md#完成证据) 的 AC-19 行），[mission-result.development.spec.ts](../../e2e/mission-result.development.spec.ts) 同样核对救援占位、终局占位与结果页的标注（[P3-11/18](../plan/p3/11/subtasks/18-browser-verification.md#完成证据)），[cockpit.development.spec.ts](../../e2e/cockpit.development.spec.ts) 与 [cockpit.production.spec.ts](../../e2e/cockpit.production.spec.ts) 核对 G-03 的页 5 标注、消息行摘要与基地页的同一摘要，[base-interaction.development.spec.ts](../../e2e/base-interaction.development.spec.ts) 核对声音状态 `mission-sound` 只在状态栏、不在游戏画面中（P3-13/27 起核对状态栏的位置，P3-14/18 起为声音状态），[map-picture.production.spec.ts](../../e2e/map-picture.production.spec.ts) 核对 E = 0 时的 `MAP_COST_UNAVAILABLE`。
 
 ## 当前构建的缺省项
 
@@ -48,7 +48,9 @@ related: [B-003, B-004, B-005, B-006]
 
 P3-13 已把驾驶舱、HUD、视角标签与战略地图画入同一飞行画布（[P3-13 spec：缺省与标注](../plan/p3/13/spec.md#缺省与标注)），所以 P3-12 时覆盖在飞行区域底部的驾驶舱在制提示已移除，构建状态说明 `MISSION_SKELETON` 也不再说没有驾驶舱与 HUD。
 
-剩下的在制项是 P3-14 的音效：`MISSION_SKELETON` 写明还没有音效（P3-14），任务壳状态栏显示在制提示 “Sound effects are not implemented yet (P3-14).”（[MissionShell.tsx](../../src/ui/mission/MissionShell.tsx) 的 `flight-in-progress`，文字为 [mission-copy.ts](../../src/ui/mission/mission-copy.ts) 的 `FLIGHT_IN_PROGRESS`），在游戏画面之外，不遮挡驾驶舱像素。这是在制状态，不是 G 项：不进入 `SLICE_GAPS`，不使用 `GapNote`，也不是长期豁免；P3-14 接入音效时移除，最迟在 P3-15 之前补齐。音乐的缺省仍是 G-01。
+P3-14 的音效在制提示已由 P3-14/18 移除：音效消费者接入正式任务装配后，[mission-copy.ts](../../src/ui/mission/mission-copy.ts) 的 `FLIGHT_IN_PROGRESS`（状态栏的 `flight-in-progress`）删除，`MISSION_SKELETON` 改为写明飞行播放音效；状态栏在原处显示声音状态与“启用声音”按钮（[AudioStatus.tsx](../../src/ui/mission/AudioStatus.tsx)，[P3-14 spec：声音状态与开发诊断](../plan/p3/14/spec.md#声音状态与开发诊断)），它是项目状态，不是 G 项，也不是在制提示。现在没有非 G 项的在制标注；音乐的缺省仍是 G-01。
+
+音效不补齐其他缺省项：来电（`incoming-started`）的帧音效与语音、无线电项的音乐回调按 P3-14 的 D1-09 归切片外，不播放（事件读取的 `out-of-slice`，见 [app 模块说明的飞行音效](./modules/app.md#飞行音效)；G-03、G-01 不变）；基地按键的 10167、10169 由 Core 事件触发，不改变 G-05 基地页面是项目替代这一点。状态栏的 “Sound: on.” 只表示飞行音效已启用、可以播放，不表示上述缺省项已补齐。
 
 战略地图在 `percent: null`（E = 0）时显示的 `MAP_COST_UNAVAILABLE`（`N/A`）是项目提示，不是 G 项：原版在这里触发 x87 异常，其结果不是有效百分比，项目以集中定义的短标记代替（[P3-13 DC-09](../plan/p3/13/spec.md#dc-09-地图呈现与输入)，已批准差异 Δ-06）。
 

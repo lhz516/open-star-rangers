@@ -481,7 +481,7 @@ describe('the wingman (P3-02 AC-08, R-03, Q-06)', () => {
     expect(world.projection().mission.wingman).toBe(index);
     expect(world.renderState().entities[1]).toEqual({
       id: 2, kindBit: 1, presentation: { type: 'model', model: modelOf(1) }, position: wingman.position, orientation: wingman.orientation, placementSerial: 0,
-      hitShimmerStart: null, explosionStart: null, inWarp: false, sourceKindBit: null, display: 'shown',
+      hitShimmerStart: null, explosionStart: null, inWarp: false, sourceKindBit: null, display: 'shown', state: 'active', speed: wingman.movement!.speed,
     });
   });
 });

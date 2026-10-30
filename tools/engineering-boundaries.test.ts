@@ -649,6 +649,61 @@ describe('TypeScript module environments', () => {
         for (const source of allowed) expect((await lint(source, file)).messages, source).toEqual([]);
       });
 
+    // docs/plan/p3/14/spec.md, 涉及模块, S-04 and AC-13: the flight sound modules are DOM-free consumers of the run. They
+    // import no ui layer, original data, Worker, browser adapter, package, render code but the flight presentation module
+    // or platform code but the audio controller, read no DOM, host time, randomness or scheduling, and handle each frame
+    // synchronously; only the owner-level connection (owner*.ts) may wait for the previous controller's close.
+    it.each(['src/app/flight-audio/probe.ts', 'src/app/flight-audio/nested/probe.ts'])(
+      'keeps the flight sound modules DOM-free and off the ui, browser adapters and other render code, in %s', async (file) => {
+        const up = file.includes('/nested/') ? '../../../' : '../../';
+        const imports = [
+          'three', 'react', 'zustand', 'node:fs', `${up}ui/mission/MissionShell.tsx`, `${up}ui/game/describe-error.ts`, `${up}original-data/imfat.ts`,
+          `${up}workers/import-protocol.ts`, `${up}workers/production-package.ts`, `${up}platform/audio/browser-audio.ts`, `${up}platform/input/keyboard-source.ts`,
+          `${up}platform/storage/browser-cache.ts`, `${up}render/flight/renderer/flight-renderer.ts`, `${up}render/cockpit/presentation/cockpit-presentation.ts`,
+          `${up}render/webgl/browser-webgl-surface.ts`, `${up}app/mission/MissionView.tsx`, `${up}app/composition/browser-host.ts`, `${up}../tools/task-state.ts`,
+        ];
+        const samples: [string, string][] = [
+          ...imports.flatMap((specifier, index) => importForms.map((form, kind) => [form(specifier, `${index}_${kind}`), 'osr/flight-audio-imports'] as [string, string])),
+          ['export const load = (name: string) => import(name);', 'osr/flight-audio-imports'],
+          [`export type Shell = import('${up}ui/mission/MissionShell.tsx').Shell;`, 'osr/flight-audio-imports'],
+          ['export const value = document.hidden;', 'no-restricted-globals'],
+          ['export const value = window.innerWidth;', 'no-restricted-globals'],
+          ['export const value = globalThis.navigator;', 'no-restricted-globals'],
+          ['export const value = new AudioContext();', 'no-restricted-globals'],
+          ['export const value = new Audio();', 'no-restricted-globals'],
+          ['export const value = fetch;', 'no-restricted-globals'],
+          ['export const value = queueMicrotask(() => {});', 'no-restricted-globals'],
+          ['export const value = requestIdleCallback(() => {});', 'no-restricted-globals'],
+          ['export const value = crypto.getRandomValues(new Uint32Array(1));', 'no-restricted-globals'],
+          ['export const value = globalThis.crypto.randomUUID();', 'no-restricted-properties'],
+          ...hostOperations.map(({ source, rule }) => [source, rule] as [string, string]),
+        ];
+        await expectSampleRules(samples, file);
+        const allowed = [
+          `import { CORE_LIMITS } from '${up}core/contracts/limits.ts'; export const value = CORE_LIMITS;`,
+          `import type { AssetId } from '${up}content/asset-id.ts'; export type Value = AssetId;`,
+          `import { createAudioController } from '${up}platform/audio/audio-controller.ts'; export const value = createAudioController;`,
+          `import type { PresentationTick } from '${up}render/flight/presentation/presentation-contract.ts'; export type Value = PresentationTick;`,
+          `import { MAX_TICKS_PER_FRAME } from '${up}app/runtime/game-runtime.ts'; export const value = MAX_TICKS_PER_FRAME;`,
+          `import type { GameSessionRun } from '${up}app/session/game-session.ts'; export type Value = GameSessionRun;`,
+          file.includes('/nested/') ? "import { attachRunAudio } from '../consumer.ts'; export const value = attachRunAudio;" : "import { attachRunAudio } from './consumer.ts'; export const value = attachRunAudio;",
+          'export const value = (closed: Promise<void>) => closed.then(() => 1);',
+        ];
+        for (const source of allowed) expect((await lint(source, file)).messages, source).toEqual([]);
+        // The owner waits for the previous controller's close; its other restrictions stay. Nested modules get no exception.
+        const waits = 'export const value = async (closed: Promise<void>) => { await closed; return 1; };';
+        const owner = file.replace('probe.ts', 'owner.ts');
+        if (file.includes('/nested/')) await expectSampleRules([[waits, 'no-restricted-syntax']], owner);
+        else expect((await lint(waits, owner)).messages).toEqual([]);
+        await expectSampleRules([['export const value = setTimeout;', 'no-restricted-globals'], ["export { value } from 'three';", 'osr/flight-audio-imports']], owner);
+        // Its tests and test support keep the ordinary app rules.
+        const support = "import { readFileSync } from 'node:fs'; export const value = async () => [readFileSync, Math.random(), document, await Promise.resolve(1)];";
+        expect((await lint(support, file.replace('probe.ts', 'probe.test.ts'))).messages).toEqual([]);
+        expect((await lint("export const value = [Math.random(), document.hidden, setTimeout];", file.replace('probe.ts', 'probe.test-support.ts'))).messages).toEqual([]);
+        // Other app modules are not restricted by it.
+        expect((await lint("export const value = [Math.random(), document.hidden, setTimeout];", 'src/app/mission/probe.ts')).messages).toEqual([]);
+      });
+
     it.each(['ts', 'tsx'])('rejects host scheduling, time, randomness and async syntax in core .%s', async (extension) => {
       await expectSampleRules(hostOperations.map(({ source, rule }) => [source, rule] as const), `src/core/probe.${extension}`);
     });
@@ -1132,6 +1187,148 @@ describe('cockpit boundaries', () => {
         'src/render/cockpit/radar/gpu.ts -> three in src/render/cockpit/radar/gpu.ts',
         'src/render/cockpit/target-display/values.ts -> src/render/cockpit/target-display/gpu/scene.ts',
       ]);
+    });
+  });
+});
+
+describe('flight audio boundaries', () => {
+  // docs/plan/p3/14/spec.md, 涉及模块, S-04 and AC-13: the flight sound modules under src/app/flight-audio are DOM-free
+  // consumers of the run. They and everything they reach stay free of packages, DOM and host scheduling names, the ui
+  // layer, original data, browser adapters and render code but the flight presentation module; they neither step nor
+  // command the run nor schedule frames of their own. Render, platform, Core and content never reach them. Names are
+  // checked in the modules themselves: the Session and Runtime they reach own the run's input and frames, and the
+  // resource holder they reach reads the Worker's production package profile and the cache contract (P2-11 S-05).
+  const origin = /^src\/app\/flight-audio\//;
+  const banned = new Set([
+    'window', 'document', 'navigator', 'localStorage', 'indexedDB', 'fetch', 'AudioContext', 'webkitAudioContext', 'performance',
+    'requestAnimationFrame', 'requestIdleCallback', 'setTimeout', 'setInterval', 'queueMicrotask',
+    // The run's input and stepping, a Runtime or Session of their own, and the presentation module's step.
+    'submitCommand', 'setIntent', 'clearIntent', 'requestFrame', 'cancelFrame', 'createGameRuntime', 'createGameSession', 'advance',
+  ]);
+  const forbidden = (path: string): boolean => /^src\/(?:ui|original-data)\//.test(path) || /\/browser-[^/]*\.ts$|\.tsx$/.test(path)
+    || (path.startsWith('src/render/') && !path.startsWith('src/render/flight/presentation/'));
+  const projectPath = (directory: string, fileName: string): string => relative(directory, fileName).split(sep).join('/');
+  const production = (compilation: ts.Program, directory: string): string[] => compilation.getRootFileNames()
+    .map(fileName => projectPath(directory, fileName)).filter(path => origin.test(path) && !/\.test(?:-support)?\.ts$/.test(path));
+
+  /** Flight sound modules that use a banned name, or reach a forbidden module, a package or a computed import. */
+  function audioReach(compilation: ts.Program, directory: string): string[] {
+    const names = production(compilation, directory)
+      .flatMap(path => [...identifierNames(compilation.getSourceFile(join(directory, path))!)].filter(name => banned.has(name)).map(name => `${path}: ${name}`));
+    return [...names, ...sourceReach(compilation, directory, { origin, forbidden, packages: true })].sort();
+  }
+  /**
+   * Render, platform, Core and content production modules that reach a flight sound module, each with the one it reaches
+   * first, found over the reversed source graph in one pass.
+   */
+  function reverseReach(compilation: ts.Program, directory: string): string[] {
+    const dependencies = sourceDependencies(compilation, directory);
+    const importers = new Map<string, string[]>();
+    for (const { fileName } of compilation.getSourceFiles()) {
+      const from = projectPath(directory, fileName);
+      if (!from.startsWith('src/')) continue;
+      for (const next of dependencies(fileName)) {
+        if (next === COMPUTED_IMPORT) continue;
+        const target = projectPath(directory, next);
+        const list = importers.get(target);
+        if (list) list.push(from);
+        else importers.set(target, [from]);
+      }
+    }
+    const reached = new Map([...importers.keys()].filter(path => origin.test(path)).map(path => [path, path]));
+    const queue = [...reached.keys()];
+    for (let index = 0; index < queue.length; index++) {
+      for (const importer of importers.get(queue[index]) ?? []) {
+        if (reached.has(importer)) continue;
+        reached.set(importer, reached.get(queue[index])!);
+        queue.push(importer);
+      }
+    }
+    return [...reached].filter(([path]) => /^src\/(?:render|platform|core|content)\//.test(path) && !/\.test(?:-support)?\.tsx?$/.test(path))
+      .map(([path, audio]) => `${path} -> ${audio}`).sort();
+  }
+  /** Flight sound modules missing from the Node program, which only the tests that import them pull in. */
+  const unchecked = (directory: string, app: ts.Program, nodeFiles: ReadonlySet<string>): string[] =>
+    production(app, directory).filter(path => !nodeFiles.has(resolve(directory, path)));
+
+  it('reaches no ui, original data, browser adapter, package or other render code, and neither steps nor commands the run', () => {
+    const compilation = sharedAppProgram();
+    expect(production(compilation, root).length).toBeGreaterThanOrEqual(6);
+    expect(audioReach(compilation, root)).toEqual([]);
+  });
+
+  it('is reached from no render, platform, Core or content module', () => {
+    expect(reverseReach(sharedAppProgram(), root)).toEqual([]);
+  });
+
+  it('checks every flight sound module in the Node program', () => {
+    expect(unchecked(root, sharedAppProgram(), sharedNodeFiles())).toEqual([]);
+  });
+
+  it('flags forbidden names, layers, adapters and packages reached directly or through intermediaries, and reverse reach', () => {
+    withFixtures({
+      'src/app/flight-audio/bridge.ts': "export { value } from '../session/bridge.ts';",
+      'src/app/session/bridge.ts': "export { value } from '../../ui/value.ts';",
+      'src/ui/value.ts': 'export const value = 1;',
+      'src/app/flight-audio/adapter.ts': "export type { Port } from '../../platform/audio/browser-audio.ts';",
+      'src/platform/audio/browser-audio.ts': 'export interface Port { readonly id: number }',
+      'src/app/flight-audio/view.ts': "export { view } from '../mission/view.tsx';",
+      'src/app/mission/view.tsx': 'export const view = 1;',
+      'src/app/flight-audio/renderer.ts': "export { renderer } from '../../render/flight/renderer/renderer.ts';",
+      'src/render/flight/renderer/renderer.ts': 'export const renderer = 1;',
+      'src/app/flight-audio/parser.ts': "export type Source = import('../../original-data/io/byte-source.ts').ByteSource;",
+      'src/original-data/io/byte-source.ts': 'export interface ByteSource { readonly byteLength: number }',
+      'src/app/flight-audio/scene.ts': "export type Scene = import('three').Scene;",
+      'src/app/flight-audio/dynamic.ts': 'export const load = (name: string) => import(name);',
+      'src/app/flight-audio/loop.ts': [
+        'export const loop = (run: { submitCommand(): void }, presentation: { advance(): void }) => {',
+        'run.submitCommand(); presentation.advance(); requestAnimationFrame(() => undefined); return document.hidden; };',
+      ].join(' '),
+      'src/app/flight-audio/clean.ts': [
+        "export type { Tick } from '../../render/flight/presentation/contract.ts';", "export { play } from '../../platform/audio/controller.ts';",
+        "export { limit } from '../../core/limits.ts';", "export { asset } from '../../content/asset.ts';", "export { profile } from '../resources/profile.ts';",
+      ].join(' '),
+      'src/render/flight/presentation/contract.ts': 'export interface Tick { readonly tick: number }',
+      'src/platform/audio/controller.ts': 'export const play = 1;',
+      'src/core/limits.ts': 'export const limit = 1;',
+      'src/content/asset.ts': 'export const asset = 1;',
+      'src/app/resources/profile.ts': "export { profile } from '../../workers/production-package.ts';",
+      'src/workers/production-package.ts': 'export const profile = 1;',
+      'src/render/flight/presentation/sound.ts': "export type { Decision } from '../../../app/session/decision.ts';",
+      'src/app/session/decision.ts': "export type { Decision } from '../flight-audio/decision.ts';",
+      'src/app/flight-audio/decision.ts': 'export interface Decision { readonly tick: number }',
+      'src/platform/audio/hook.ts': "export const load = () => import('../../app/flight-audio/decision.ts');",
+      'src/ui/sound.ts': "export type { Decision } from '../app/flight-audio/decision.ts';",
+    }, directory => {
+      const compilation = program('app', directory);
+      expect(audioReach(compilation, directory)).toEqual([
+        'src/app/flight-audio/adapter.ts -> src/platform/audio/browser-audio.ts',
+        'src/app/flight-audio/bridge.ts -> src/ui/value.ts',
+        'src/app/flight-audio/dynamic.ts -> computed import in src/app/flight-audio/dynamic.ts',
+        'src/app/flight-audio/loop.ts: advance',
+        'src/app/flight-audio/loop.ts: document',
+        'src/app/flight-audio/loop.ts: requestAnimationFrame',
+        'src/app/flight-audio/loop.ts: submitCommand',
+        'src/app/flight-audio/parser.ts -> src/original-data/io/byte-source.ts',
+        'src/app/flight-audio/renderer.ts -> src/render/flight/renderer/renderer.ts',
+        'src/app/flight-audio/scene.ts -> three in src/app/flight-audio/scene.ts',
+        'src/app/flight-audio/view.ts -> src/app/mission/view.tsx',
+      ]);
+      expect(reverseReach(compilation, directory)).toEqual([
+        'src/platform/audio/hook.ts -> src/app/flight-audio/decision.ts',
+        'src/render/flight/presentation/sound.ts -> src/app/flight-audio/decision.ts',
+      ]);
+    });
+  });
+
+  it('flags a flight sound module that no test brings into the Node program', () => {
+    withFixtures({
+      'src/app/flight-audio/checked.ts': 'export const checked = 1;',
+      'src/app/flight-audio/checked.test.ts': "import { checked } from './checked.ts'; export const value = checked;",
+      'src/app/flight-audio/orphan.ts': 'export const orphan = 1;',
+    }, directory => {
+      const nodeFiles = new Set(program('node', directory).getSourceFiles().map(file => resolve(file.fileName)));
+      expect(unchecked(directory, program('app', directory), nodeFiles)).toEqual(['src/app/flight-audio/orphan.ts']);
     });
   });
 });

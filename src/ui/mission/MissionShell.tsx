@@ -1,8 +1,8 @@
 /**
  * The mission screen during flight and after a run ended (docs/plan/p3/04/spec.md: 应用流程, 任务菜单、暂停与退出): the
  * game view area with the flight picture of P3-12, whose cockpit and HUD are P3-13's; the project status bar outside it with
- * the phase, the pause reason, why resume is unavailable, the missing music (G-01) and the sound effects still in progress
- * (P3-14, not a G item); pause, resume and mission menu
+ * the phase, the pause reason, why resume is unavailable, the missing music (G-01) and the sound status with its
+ * enable-sound control (P3-14 S-09, `AudioStatus`); pause, resume and mission menu
  * controls; and, once the run faulted or stopped, its reason without imported content, with restart (unless a cleanup
  * failed) and the way back. Focus starts on the heading.
  *
@@ -11,23 +11,25 @@
  * departure or a running hold ended or Continue resumed the run, focus starts on the zone instead when `useShellFocus`
  * allows. While the sampled projection shows the base view, the game view holds the G-05 base page (P3-10).
  */
+import { useCallback } from 'react';
 import type { MissionOwner, MissionOwnerSnapshot } from '../../app/mission/mission-owner.ts';
 import type { GameStoreReader } from '../game/game-store.ts';
 import { useGame } from '../game/use-game.ts';
+import { AudioStatus } from './AudioStatus.tsx';
 import { selectBaseShown } from './base-page.ts';
 import { BasePage } from './BasePage.tsx';
 import { FlightView, type MissionFlightView } from './FlightView.tsx';
 import { GameInputZone } from './GameInputZone.tsx';
-import { fullscreenButtonState, type GapNotice, type InputFocusEntry } from './input-notices.ts';
+import { fullscreenButtonState, zoneFocusable, type GapNotice, type InputFocusEntry } from './input-notices.ts';
 import { InputNotices, type MissionInputView } from './InputNotices.tsx';
-import { describeStructure, FLIGHT_IN_PROGRESS, FULLSCREEN_BUTTON, pauseText, phaseText, resumeBlockedText } from './mission-copy.ts';
+import { describeStructure, FULLSCREEN_BUTTON, pauseText, phaseText, resumeBlockedText } from './mission-copy.ts';
 import { ActionErrorAlert, GapNote, GapNotes, SkeletonNote } from './MissionParts.tsx';
 import { SLICE_GAPS } from './slice-gaps-copy.ts';
 import { useShellFocus } from './use-input-focus.ts';
 
 export interface MissionShellProps {
   readonly snapshot: MissionOwnerSnapshot;
-  readonly owner: Pick<MissionOwner, 'pause' | 'resume' | 'openMenu' | 'restart'>;
+  readonly owner: Pick<MissionOwner, 'pause' | 'resume' | 'openMenu' | 'restart' | 'enableSound' | 'getSnapshot' | 'subscribe'>;
   readonly onReturn: () => void;
   /** The mission input; without one the game view has no input zone and focus always starts on the heading. */
   readonly input?: MissionInputView | null;
@@ -79,6 +81,14 @@ export function MissionShell({ snapshot, owner, onReturn, input = null, entry = 
   const blocked = resumeBlockedText(session);
   const inFlight = flow.position === 'flight';
   const fullscreenButton = input ? fullscreenButtonState(input.fullscreen.status) : 'hidden';
+  const { zoneElement } = focus;
+  // The P3-05 conditions for focusing the input zone, read when the enable-sound click settles.
+  const readyZone = useCallback((): HTMLElement | null => {
+    const { flow: { position }, session: { phase } } = owner.getSnapshot();
+    const ready = position === 'flight'
+      && zoneFocusable({ running: phase === 'running', visible: document.visibilityState === 'visible', windowFocused: document.hasFocus() });
+    return ready ? zoneElement.current : null;
+  }, [owner, zoneElement]);
   const view = <GameView game={game} flight={flight} />;
   return (
     <section aria-labelledby="mission-shell-heading" data-testid="mission-shell">
@@ -93,7 +103,7 @@ export function MissionShell({ snapshot, owner, onReturn, input = null, entry = 
         {paused && <span>{paused}</span>}
         {blocked && <span id="mission-resume-blocked">{blocked}</span>}
         <span data-gap="G-01">{SLICE_GAPS['G-01'].title} (G-01)</span>
-        <span data-testid="flight-in-progress">{FLIGHT_IN_PROGRESS}</span>
+        <AudioStatus snapshot={snapshot} owner={owner} heading={focus.heading} readyZone={readyZone} />
       </div>
       {inFlight && (
         <p className="mission-actions">

@@ -30,6 +30,8 @@ const ELAPSED = 640;
 const SCALE = 0.75;
 const GUNS_ONLY = 1360;
 const at = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
+/** An entity's third orientation row, as `hit` snapshots it (FA-05). */
+const forwardOf = ({ orientation: o }: Entity): Vec3 => at(o[6], o[7], o[8]);
 
 function content() {
   const info = syntheticCraftInfo();
@@ -117,7 +119,7 @@ describe('the single-target engagement 0x30150 (E3, AC-11)', () => {
     engageParked(context, self, ELAPSED);
     // d = (30 − 4) × 0.75 = 19.5; 1360 × 0.75 = 1020; kind 2 (0x4, in 0x87c) × 0.5 = 510, all taken by the shield.
     expect(context.events).toEqual([{
-      type: 'hit', tick: 1, victimEntityId: victim.id, victimKindBit: 2, victimPosition: at(30, 0, 0), cause: 'parked', sourceEntityId: null,
+      type: 'hit', tick: 1, victimEntityId: victim.id, victimKindBit: 2, victimPosition: at(30, 0, 0), victimForward: forwardOf(victim), victimSpeed: null, cause: 'parked', sourceEntityId: null,
       attacker: shooterOf(self), damage: 510, gated: false, shield: { before: 5000, after: 4490 }, hull: { before: 1000, after: 1000 },
       shieldWasEmpty: false, impact: null, projectile: null,
     } satisfies DomainEvent]);
@@ -295,7 +297,7 @@ describe('the single-target engagement 0x30150 (E3, AC-11)', () => {
     expect(victim.combat.subsystems[4]).toBe(1);
     expect(context.events).toEqual([
       {
-        type: 'hit', tick: 1, victimEntityId: victim.id, victimKindBit: 7, victimPosition: at(30, 0, 0), cause: 'parked', sourceEntityId: null,
+        type: 'hit', tick: 1, victimEntityId: victim.id, victimKindBit: 7, victimPosition: at(30, 0, 0), victimForward: forwardOf(victim), victimSpeed: null, cause: 'parked', sourceEntityId: null,
         attacker: shooterOf(self), damage: 1072, gated: false, shield: { before: 0, after: 0 }, hull: { before: 100, after: -972 },
         shieldWasEmpty: true, impact: null, projectile: null,
       },

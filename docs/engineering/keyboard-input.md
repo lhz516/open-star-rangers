@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-28
+updated: 2026-10-29
 related: [ADR-0004, ADR-0018, U-011, U-012]
 ---
 
@@ -157,6 +157,6 @@ P3-09 起 `toggle-map`、`map-point` 与 `request-warp` 由 Core 判定（门禁
 
 ## 8. 项目界面按键
 
-游戏输入区外的页面控件继续遵循原生键盘操作。G-02 占位（含 P3-11 的救援与终局占位）的 Enter、Space、Escape 新按下跳过当前占位，repeat 只抑制重复激活；G-06 结果页只有原生按钮（Restart mission、Return to main menu），没有页面按键，进入时焦点在结果标题；主菜单 Start mission 入口抑制 Enter/Space repeat。实现见 [page-keys.ts](../../src/ui/mission/page-keys.ts)。资源查看器的方向键旋转、`+`/`=`/`-` 缩放和 `0` 复位是独立诊断按键，见 [viewer-keys.ts](../../src/ui/viewer/viewer-keys.ts)；均不属于游戏绑定表。
+游戏输入区外的页面控件继续遵循原生键盘操作。P3-14/18 的“Enable sound”按钮在任务壳状态栏与任务菜单中（输入区之外，可 Tab 到达；声音待启用时从输入区按 Tab 一次即到，Enter 启用，P3-14/22 在浏览器中核对），只解锁声音，不暂停、继续或关闭菜单，`p` 仍经所有者的既有暂停控制。声音的可信激活另有开始配置页的 Start、任务菜单的 Continue，以及暂停控件或 `p` 的继续（所有者的 `onActivation` 原因 `start`、`continue`、`resume`、`enable-sound`，[app 模块说明](./modules/app.md#任务所有者)）；菜单中或暂停时启用只取得音频能力，游戏继续后才发声。点击后声音变为可用且满足[第 4 节](#4-活动界面与焦点)的输入区条件时焦点回到输入区，按钮仍在（如被浏览器策略拒绝）时焦点留在按钮上，用户已移走焦点或页面隐藏时不动，其余情况到本页第一个可用的动作按钮（[UI 模块说明](./modules/ui.md#任务页面与缺省标注)）。G-02 占位（含 P3-11 的救援与终局占位）的 Enter、Space、Escape 新按下跳过当前占位，repeat 只抑制重复激活；G-06 结果页只有原生按钮（Restart mission、Return to main menu），没有页面按键，进入时焦点在结果标题；主菜单 Start mission 入口抑制 Enter/Space repeat。实现见 [page-keys.ts](../../src/ui/mission/page-keys.ts)。资源查看器的方向键旋转、`+`/`=`/`-` 缩放和 `0` 复位是独立诊断按键，见 [viewer-keys.ts](../../src/ui/viewer/viewer-keys.ts)；均不属于游戏绑定表。
 
 <a id="资源查看器的诊断键p2-11"></a>

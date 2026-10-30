@@ -272,7 +272,8 @@ describe('0x29670, the player against the craft (H6, AC-08)', () => {
       const craft = craftAt(current.state, OTHER, at(1, 0, 0));
       change(current);
       const rng = current.state.rngState;
-      expect(current.world.step(tickInput())).toEqual([]);
+      // Without a player entity the area check retires the craft (P3-14 FA-07); collision adds nothing.
+      expect(current.world.step(tickInput()).filter(({ type }) => type !== 'object-retired')).toEqual([]);
       expect([craft.combat.proximity, current.state.rngState]).toEqual([null, rng]);
     }
   });
@@ -398,7 +399,8 @@ describe('0x29934, the others against each other (H6, AC-08)', () => {
     reversed.player.entityId = null;
     craftAt(reversed, WINGMAN, at(0, 0, 0));
     craftAt(reversed, SMALL, at(3, 0, 0));
-    expect(reversedWorld.step(tickInput())).toEqual([]);
+    // Only the area check's retirements without a player entity (P3-14 FA-07).
+    expect(reversedWorld.step(tickInput()).map(({ type }) => type)).toEqual(['object-retired', 'object-retired']);
   });
 
   it('bounces an A member off a large B member, which takes half the damage and no push', () => {
@@ -435,7 +437,8 @@ describe('0x29934, the others against each other (H6, AC-08)', () => {
     const member = craftAt(state, SMALL, ORIGIN, { hull: 40 });
     const [b1, b2] = [craftAt(state, OTHER, at(1, 0, 0)), craftAt(state, OTHER_14, at(0, 1, 0))];
     const events = world.step(tickInput());
-    expect(events.map(({ type }) => type)).toEqual(['hit', 'object-destroyed', 'explosion-created', 'hit', 'hit']);
+    // Then the area check, without a player entity, retires the two still in state 7 (P3-14 FA-07).
+    expect(events.map(({ type }) => type)).toEqual(['hit', 'object-destroyed', 'explosion-created', 'hit', 'hit', 'object-retired', 'object-retired']);
     expect(hitList(events)).toEqual([[member.id, 50], [b1.id, 50], [b2.id, 50]]);
     expect(member.state).toBe('destroyed-source');
     expect(blockOf(b2).impulse).toEqual({ direction: at(0, 0, 1), magnitude: 0 });

@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-23
+updated: 2026-10-28
 related: [U-021, B-006]
 ---
 
@@ -68,7 +68,7 @@ related: [U-021, B-006]
 | `pauses` | 有序暂停点：`id`、`stop`、`fields`。`stop` 为 `{"kind": "breakpoint", "object": …, "offset": …}` 或 `{"kind": "vrt"}`（下一次垂直回扫）；断点停止可改用 `offsets` 给出备选位置，并可带停止条件 `when`，见[备选位置、停止条件与绑定读数](#备选位置停止条件与绑定读数)，以及读数等待 `until`，见[读数检验：等待与分支](#读数检验等待与分支)。暂停点可带跳转 `jump`，见[命中位置与跳转](#命中位置与跳转)。`fields` 可省略或为空：这样的暂停点只停止（并施加其刺激），不读字段、不产生样本，也不等操作者确认 |
 | `fields` | `id`；`address`：`object`、`offset`（LE 对象位置），或 `register`、`offset`（断点处寄存器值加偏移，偏移 −65536…65535，在 DS 段内；只能在断点暂停点读取，见下），或 `bound`、`offset`（较早暂停点的一个整数读数加偏移，见[绑定读数](#备选位置停止条件与绑定读数)），以及可选的 `pointers`（每跳解引用后加上的非负偏移）；或 `{"low": n}`：线性页 0 中的地址（实模式中断向量表与 BIOS 数据区，0 ≤ n 且 n + 字段大小 ≤ 0x1000），按线性地址直接读取，不能带指针；`type`：`u8`、`u16`、`u32`、`i16`、`i32` 或 `f32`（小端）；`unit`：非空的受限 ASCII 记号（字母或数字开头，只含字母、数字与 `._/:+-`，至多 64 个字符），例如 `raw`、`tick-1/64s`；`required`：默认为 `true`。每个字段至少被一个暂停点使用 |
 | `limits` | `runSeconds`、`waitSeconds`、`maxPauses`、`maxFields`、`maxChainDepth`、`repeatReads`（≥ 2）、`maxReadBytes`、`maxLogBytes`；可选 `maxSkippedHits`（0–1000000，默认 100000） |
-| `emulator`（可选） | 只接受 `cycles`（1000–2000000）。工具把私有配置中的 cycles 行改为 `fixed <值>` |
+| `emulator`（可选） | 只接受 `cycles`（1000–2000000）与 `audioCapture`（只取 `"multitrack"`）。工具把私有配置中的 cycles 行改为 `fixed <值>`；录音见[录音](#录音) |
 | `gameSettings`（可选） | 只接受 `STARTUP_PRACTICE`（布尔）与 `CURR_LEVEL`（`[练习, 战役]` 两个 0–100 的原始难度） |
 | `disc`（可选） | 只接受 `omit`：私有光盘副本不含的 1–4 个 manifest 文件路径（如 `MAIN/NAME.EXT`，大写 8.3 名称，带目录），见[私有光盘副本](#私有光盘副本) |
 | `devices`（可选） | 输入设备状态字段：`id`、`address`、`type`（`u8`、`u16`、`u32`、`i16`、`i32`）。`address` 为 `{"object": …, "offset": …}`（LE 对象位置），或 `{"register": "ESI", "offset": …}`（断点处寄存器值加偏移，偏移 −65536…65535，在 DS 段内）。每个设备至少被一个刺激写入 |
@@ -182,6 +182,7 @@ related: [U-021, B-006]
 ### 私有配置与游戏设置
 
 - **`emulator.cycles`：** 只改私有配置副本，基准配置不变。不声明时，私有配置保留基准的 cycles 行。在 `identity.config` 中写上 `cycles`，工具就会按私有配置核对它。
+- **`emulator.audioCapture`：** 见[录音](#录音)。
 - **`disc.omit`：** 见[私有光盘副本](#私有光盘副本)。
 - **`gameSettings`：** 预设私有副本设置文件 `MAIN/SRANGER.CFG` 中的游戏自身设置。
   - 用途：让操作者只用可用的输入就能进入场景，例如跳过只能用鼠标操作的页面（[B-006 的进入路线](../original/behavior/B-006-simulation-timing.md#场景与输入)）。这两项都是玩家可在设置页改动并保存的普通设置；难度值的含义见 [scenario 的难度读取](../original/formats/scenario.md#difficulty-readers-p3-01)。
@@ -387,7 +388,7 @@ P3-10/25 依 [P3-10 spec 修订 1](../plan/p3/10/spec.md#受损注入修订-1202
   - 原版事实见 [scenario 的难度读取](../original/formats/scenario.md#difficulty-readers-p3-01)与 [B-003](../original/behavior/B-003-campaign-flow.md)。
 - **私有配置与 cycles：** 记录实际配置，而不是假定私有副本满足基准设置。报告的 `environment.emulator` 包含：
   - 私有配置与基准配置的哈希（`configSha256`、`baselineConfigSha256`）；
-  - 改动行（`changedLines`、`changes`：`captures`、`mount-c`、`cycles`）；
+  - 改动行（`changedLines`、`changes`：`captures`、`mount-c`、`cycles`，以及录音时的 `audio-capture`）；
   - 实际写入的设置（`settings`：`cycles`、`core`、`cputype`、`machine`、`memsize`）；
   - 挂载的介质（`media`）。
 
@@ -452,15 +453,24 @@ P3-10/25 依 [P3-10 spec 修订 1](../plan/p3/10/spec.md#受损注入修订-1202
 
 - **输出位置：** 私有配置把 DOSBox-X 的 `captures` 重定向到运行目录的 `captures/`。基准的 `local/StarRang/captures/` 受严格保护，运行期间在那里新增文件会使运行失败。
 - **操作方式：** 工具以 `-nogui -nomenu` 启动，没有菜单栏，也就没有 **Capture** 菜单，只能用 DOSBox-X 映射器的捕获快捷键（`-defaultmapper` 下为默认映射）。
-  - P3-01 的合格运行都没有使用捕获，本机尚未在工具运行中验证过这条途径。第一次使用时，先确认文件确实写进了运行目录的 `captures/`。
+  - 映射器快捷键需要宿主按键，本机无法送达（[本机限制](#角色单一会话与本机限制)），所以截图与录像在工具运行中不可用；录音改用配方的 `emulator.audioCapture`（[录音](#录音)），P3-14/24 已确认文件写进运行目录的 `captures/`。
 - **证据的用途：** 捕获文件是原始像素，可用来判断分辨率与颜色。它只说明画面状态，不能代替读数；其帧率也不是游戏帧率。Computer Use 截图是缩放后的图像，只能用于观察状态。
 - **存放：** 截图与录像只放在 `local/`，文档中只写相对路径。
+
+### 录音
+
+P3-14/24 加入 `emulator.audioCapture`，用于取得原版声音的参考录音。不声明它的配方解析、运行与指纹都不变。
+
+- **方式：** 唯一取值 `"multitrack"`。工具把私有配置 `[autoexec]` 中唯一的游戏启动行（基准为 `srangers`，即 `SRANGERS.BAT`）换成 `cd main`、`dx-capture /M srangers.exe`、`cd ..` 三行，这正是该批处理所做的事，只是由 DOSBox-X 的 DX-CAPTURE 包住可执行文件：包住批处理时，批处理一启动程序录音就结束。找不到这一行或有多行时以 `private-copy-invalid` 拒绝。报告的 `environment.emulator.changes` 记 `audio-capture`，配方指纹包含该键。
+- **输出：** 运行目录 `captures/` 中的一个 AVI（`srangers_000.mt.avi`），每个混音通道一条 48 kHz、16 位立体声 PCM 音轨（实测为 CDAUDIO、SB、FM 三条；数字音效只在 SB 轨，音乐在 FM 轨）。工具回收进程时用 SIGKILL，AVI 的索引与头部长度不会写完，按块（`NNwb`）顺序读取即可。
+- **时间轴（P3-14/24 实测）：** 录音按模拟器时间产生，调试器暂停期间不产生样本：录音长度等于停止时的 `emulatedMs`（相差不到 1 毫秒），所以录音位置 = `emulatedMs` × 48。一次按 ID 播放出现在其启动调用之后约 47 毫秒（Miles 半缓冲的延迟）。
+- **限制：** 录音只说明设备输出，不能代替读数；DOSBox-X 的重采样与混音参与其中。录音只放在 `local/`，文档中只写计数、整数与判定。
 
 ## 原版文件保护与意外变化
 
 - **私有副本：** 游戏只在运行目录的私有副本中运行。
   - 副本由独立的普通文件组成，没有符号链接或硬链接，并按 [manifest](../original/manifest.md) 核对。
-  - 私有配置与基准配置只差三处：重定向的 `captures`、C 盘挂载，以及配方声明的 cycles；声明 `disc.omit` 时另有光盘挂载行（见[私有光盘副本](#私有光盘副本)）。
+  - 私有配置与基准配置只差三处：重定向的 `captures`、C 盘挂载，以及配方声明的 cycles；声明 `disc.omit` 时另有光盘挂载行（见[私有光盘副本](#私有光盘副本)），声明 `audioCapture` 时另有游戏启动行（见[录音](#录音)）。
   - 光盘按只读 CD-ROM 挂载，并绑定到 manifest 中已核验的镜像；声明 `disc.omit` 时挂载的是从该镜像复制并逐个核验的私有光盘目录。
   - 游戏的存档、缓存与交换文件都写在私有副本中。
 - **默认保护范围：** 运行前后计算哈希并比较。

@@ -43,7 +43,10 @@ export function isWithinActiveArea(centre: Vec3 | null, { x, y }: Vec3): boolean
 /** Kinds 0x1f00000 (missiles, gun projectiles, explosions, 0x800000, fragments): removed instead of parked on leaving. */
 const REMOVED_ON_LEAVING_KINDS = 0x1f00000;
 
-/** Whether an entity of `kindBit` leaving the active area is removed rather than parked, without an event. */
+/**
+ * Whether an entity of `kindBit` leaving the active area is removed rather than parked; area.ts writes the state and its
+ * `object-retired` (P3-14 FA-07).
+ */
 export function isRemovedOnLeaving(kindBit: number): boolean {
   return ((REMOVED_ON_LEAVING_KINDS >>> kindBit) & 1) === 1;
 }

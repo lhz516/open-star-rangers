@@ -7,8 +7,9 @@
  *
  * - **Target:** what the right display reads (T7), for the player's target while its ID resolves: its kind, name, pose,
  *   distance, movement block speed (null without a block), for a craft its shield over c5C (null otherwise), the model
- *   Asset of a model presentation (null for the marker) and, for kind bits 0–19, its kind's craft record +0x08 (CK-03).
- *   The right display's damage (subsystem 14), the marker's crosshair and the text formats are the presentation's.
+ *   Asset of a model presentation (null for the marker), for kind bits 0–19 its kind's craft record +0x08 (CK-03), and
+ *   whether its state is active or projectile-hit (P3-14's lock tone, FA-02; its activity is not read). The right
+ *   display's damage (subsystem 14), the marker's crosshair and the text formats are the presentation's.
  * - **Radar:** rules/radar.ts's reading for the player's target (T6).
  * - **Resources:** raw values with their full scales (D16): energy / c54, shield / c5C, charge / c74, hull (raw, may be
  *   negative) / c9C and the spare power E / T; clamping and ratios are the presentation's.
@@ -42,7 +43,7 @@ import { chainAmmunition, isMissileMount, listStatus, mountState } from '../rule
 import { weaponRange } from '../rules/load-transforms.ts';
 import { readRadar } from '../rules/radar.ts';
 import { toInt32 } from '../rules/record-defaults.ts';
-import type { Entity, Matrix3, WeaponBlock } from '../world/entity-table.ts';
+import { isActiveState, type Entity, type Matrix3, type WeaponBlock } from '../world/entity-table.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { warpProgress } from '../rules/warp-path.ts';
 import { WARP_VIEW_MODE } from '../systems/view-switch.ts';
@@ -96,6 +97,7 @@ function readTarget(world: WorldState, player: Entity): CombatTarget | null {
     shield: combat.type === 'craft' ? reading(combat.shield, craftRecord(world, target.kindBit).at5C) : null,
     model: target.presentation.type === 'model' ? target.presentation.model : null,
     craftAt08: target.kindBit <= LAST_CRAFT_KIND_BIT ? craftRecord(world, target.kindBit).at08 : null,
+    activeState: isActiveState(target.state),
   });
 }
 

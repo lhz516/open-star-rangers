@@ -101,5 +101,7 @@ function fragmentEntity(key: FragmentKey, look: AssetId, sourceKindBit: number, 
   return {
     id: fragmentId(key), kindBit: FRAGMENT_KIND_BIT, presentation: { type: 'model', model: look }, position, orientation: rows,
     placementSerial: 0, hitShimmerStart: null, explosionStart: null, inWarp: false, sourceKindBit, display: 'shown',
+    // Not a Core entity and never in Render State: FA-04's state and speed are placeholders the model layer ignores.
+    state: 'active', speed: 0,
   };
 }

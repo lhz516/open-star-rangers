@@ -6,4 +6,4 @@
  * the events a rule emits, or the state a rule keeps. A change to the shape of a snapshot or replay record increments
  * that format's own version instead; a change that alters both increments both.
  */
-export const RULES_VERSION = 10;
+export const RULES_VERSION = 11;
