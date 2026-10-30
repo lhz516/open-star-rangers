@@ -60,8 +60,8 @@ updated: "2026-10-29"
 | [05-real-device-computer-use.md](./subtasks/05-real-device-computer-use.md) | — | blocked |
 | [06-real-device-physical.md](./subtasks/06-real-device-physical.md) | 05 | pending |
 | [07-real-content-runs.md](./subtasks/07-real-content-runs.md) | — | in-progress |
-| [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | in-progress |
-| [09-annotation-audit.md](./subtasks/09-annotation-audit.md) | — | pending |
+| [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | blocked |
+| [09-annotation-audit.md](./subtasks/09-annotation-audit.md) | — | in-progress |
 | [10-e2e-documentation.md](./subtasks/10-e2e-documentation.md) | 01, 02, 03, 04 | pending |
 | [11-final-alignment.md](./subtasks/11-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10 | pending |
 
@@ -74,6 +74,10 @@ updated: "2026-10-29"
   Evidence: 私有记录 `local/research/p3-15/real-device/attempt-2026-10-29.md`；合成任务已在隔离 Chrome 中进入 running、焦点在游戏输入区，证明准备路径可用。
   Affected acceptance: AC-05（05 全部验收项）；06 依赖 05。
   Resume when: 用户不在使用本机桌面（或用户在场并同意让出桌面），再按私有记录的准备步骤重跑；也可与 06 合并为一次有用户在场的实机会话。
+- **2026-10-29 — Subtask 08 blocked:** 汇总表已写完并在 worker 分支提交（`fed33ecb`，`exec/p3-15-08` worktree 保留），R-01 至 R-23 与 V-01 至 V-06 各行有来源与原分类；V-06 的感知一栏须等 P3-14/26 的开发者人耳判定，10177 与爆炸的时间差仍待试听判定或明确批准。
+  Evidence: `node tools/task-state.ts p3/14` 为 `resolve-blocker`（26、27 blocked，28 pending）；worker 的链接检查 249 个 0 失败，抽查 10 行的 4 个发现已修正。
+  Affected acceptance: 08 的“V-06 一行反映 P3-14 最终结论”；AC-08；11。
+  Resume when: `node tools/task-state.ts p3/14` 报告 `done`；然后在同一 worktree 按 26 的判定更新 V-06 一行并勾选剩余验收项。
 
 ## 审批
 
