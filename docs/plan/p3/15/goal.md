@@ -60,7 +60,7 @@ updated: "2026-10-29"
 | [05-real-device-computer-use.md](./subtasks/05-real-device-computer-use.md) | — | in-progress |
 | [06-real-device-physical.md](./subtasks/06-real-device-physical.md) | 05 | pending |
 | [07-real-content-runs.md](./subtasks/07-real-content-runs.md) | — | in-progress |
-| [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | pending |
+| [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | in-progress |
 | [09-annotation-audit.md](./subtasks/09-annotation-audit.md) | — | pending |
 | [10-e2e-documentation.md](./subtasks/10-e2e-documentation.md) | 01, 02, 03, 04 | pending |
 | [11-final-alignment.md](./subtasks/11-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10 | pending |
@@ -68,6 +68,8 @@ updated: "2026-10-29"
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
 ## 执行记录
+
+- **2026-10-29 — 并行派发方式：** 宿主的 `create_session` 只能在项目现有检出或新 worktree 中建会话，不能在指定的 `exec/` worktree 中启动 worker；用户不在且授权“用任何方式来unblock”。因此 worker 改由协调者的后台子 agent 在各自 `exec/p3-15-NN` worktree 中按 worker 模式执行，集成规则不变。05 需在本机桌面用 Computer Use，由协调者在本检出中执行（其写入范围只有 `local/` 与本 subtask 文档），已删除其空 worktree 与分支。
 
 ## 审批
 
