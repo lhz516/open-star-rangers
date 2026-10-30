@@ -58,7 +58,7 @@ updated: "2026-10-29"
 | [03-joint-lifecycle-resources.md](./subtasks/03-joint-lifecycle-resources.md) | 01 | pending |
 | [04-warning-end-to-end.md](./subtasks/04-warning-end-to-end.md) | 01 | pending |
 | [05-real-device-computer-use.md](./subtasks/05-real-device-computer-use.md) | — | completed |
-| [06-real-device-physical.md](./subtasks/06-real-device-physical.md) | 05 | pending |
+| [06-real-device-physical.md](./subtasks/06-real-device-physical.md) | 05 | blocked |
 | [07-real-content-runs.md](./subtasks/07-real-content-runs.md) | — | in-progress |
 | [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | blocked |
 | [09-annotation-audit.md](./subtasks/09-annotation-audit.md) | — | in-progress |
@@ -79,6 +79,10 @@ updated: "2026-10-29"
   Affected acceptance: 08 的“V-06 一行反映 P3-14 最终结论”；AC-08；11。
   Resume when: `node tools/task-state.ts p3/14` 报告 `done`；然后在同一 worktree 按 26 的判定更新 V-06 一行并勾选剩余验收项。
 - **2026-10-29 — Subtask 05 恢复：** 用户告知桌面已空闲（“desktop is free now”），满足恢复条件；协调者在本检出继续 05。
+- **2026-10-29 — Subtask 06 blocked:** 05 已完成并列出只能由用户在物理键盘上完成、或需人在场观察画面的残余（物理 Fn、持续按住操纵键、Option 主炮电平及并行、锁定地图按住清除、其余 Keyboard Lock 码与排除项、菜单/失焦解锁、地图自绘光标）；询问用户能否现在进行实机会话时，用户不在。
+  Evidence: [05 的完成证据](./subtasks/05-real-device-computer-use.md#完成证据)；ask_user 回复“The user is not available to respond”。
+  Affected acceptance: AC-05 的残余部分；06 的全部验收；11。
+  Resume when: 用户在本机、同意进行约 15 分钟的物理键盘会话；协调者按 05 的准备步骤（`local/research/p3-15/real-device/`）打开隔离 Chrome 与合成任务后逐项引导。
 
 ## 审批
 
