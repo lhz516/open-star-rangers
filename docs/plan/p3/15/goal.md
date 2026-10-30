@@ -55,7 +55,7 @@ updated: "2026-10-29"
 |---|---|---|
 | [01-joint-loop-development.md](./subtasks/01-joint-loop-development.md) | — | completed |
 | [02-joint-loop-production.md](./subtasks/02-joint-loop-production.md) | 01 | completed |
-| [03-joint-lifecycle-resources.md](./subtasks/03-joint-lifecycle-resources.md) | 01 | in-progress |
+| [03-joint-lifecycle-resources.md](./subtasks/03-joint-lifecycle-resources.md) | 01 | completed |
 | [04-warning-end-to-end.md](./subtasks/04-warning-end-to-end.md) | 01 | in-progress |
 | [05-real-device-computer-use.md](./subtasks/05-real-device-computer-use.md) | — | completed |
 | [06-real-device-physical.md](./subtasks/06-real-device-physical.md) | 05 | blocked |
