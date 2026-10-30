@@ -62,7 +62,7 @@ updated: "2026-10-29"
 | [07-real-content-runs.md](./subtasks/07-real-content-runs.md) | — | completed |
 | [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | blocked |
 | [09-annotation-audit.md](./subtasks/09-annotation-audit.md) | — | blocked |
-| [10-e2e-documentation.md](./subtasks/10-e2e-documentation.md) | 01, 02, 03, 04 | in-progress |
+| [10-e2e-documentation.md](./subtasks/10-e2e-documentation.md) | 01, 02, 03, 04 | completed |
 | [12-f1-disclosure.md](./subtasks/12-f1-disclosure.md) | — | in-progress |
 | [11-final-alignment.md](./subtasks/11-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 12 | pending |
 
