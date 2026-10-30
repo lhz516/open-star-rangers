@@ -57,7 +57,7 @@ updated: "2026-10-29"
 | [02-joint-loop-production.md](./subtasks/02-joint-loop-production.md) | 01 | pending |
 | [03-joint-lifecycle-resources.md](./subtasks/03-joint-lifecycle-resources.md) | 01 | pending |
 | [04-warning-end-to-end.md](./subtasks/04-warning-end-to-end.md) | 01 | pending |
-| [05-real-device-computer-use.md](./subtasks/05-real-device-computer-use.md) | — | blocked |
+| [05-real-device-computer-use.md](./subtasks/05-real-device-computer-use.md) | — | in-progress |
 | [06-real-device-physical.md](./subtasks/06-real-device-physical.md) | 05 | pending |
 | [07-real-content-runs.md](./subtasks/07-real-content-runs.md) | — | in-progress |
 | [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | blocked |
@@ -78,6 +78,7 @@ updated: "2026-10-29"
   Evidence: `node tools/task-state.ts p3/14` 为 `resolve-blocker`（26、27 blocked，28 pending）；worker 的链接检查 249 个 0 失败，抽查 10 行的 4 个发现已修正。
   Affected acceptance: 08 的“V-06 一行反映 P3-14 最终结论”；AC-08；11。
   Resume when: `node tools/task-state.ts p3/14` 报告 `done`；然后在同一 worktree 按 26 的判定更新 V-06 一行并勾选剩余验收项。
+- **2026-10-29 — Subtask 05 恢复：** 用户告知桌面已空闲（“desktop is free now”），满足恢复条件；协调者在本检出继续 05。
 
 ## 审批
 
