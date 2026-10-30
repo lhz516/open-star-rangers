@@ -59,7 +59,7 @@ updated: "2026-10-29"
 | [04-warning-end-to-end.md](./subtasks/04-warning-end-to-end.md) | 01 | pending |
 | [05-real-device-computer-use.md](./subtasks/05-real-device-computer-use.md) | — | completed |
 | [06-real-device-physical.md](./subtasks/06-real-device-physical.md) | 05 | blocked |
-| [07-real-content-runs.md](./subtasks/07-real-content-runs.md) | — | in-progress |
+| [07-real-content-runs.md](./subtasks/07-real-content-runs.md) | — | completed |
 | [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | blocked |
 | [09-annotation-audit.md](./subtasks/09-annotation-audit.md) | — | in-progress |
 | [10-e2e-documentation.md](./subtasks/10-e2e-documentation.md) | 01, 02, 03, 04 | pending |
