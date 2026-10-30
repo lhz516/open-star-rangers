@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "14"
-updated: 2026-10-28
+updated: "2026-10-30"
 ---
 
 # P3-14：飞行音效触发 — Goal
@@ -100,7 +100,7 @@ updated: 2026-10-28
 | [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | completed |
 | [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | completed |
 | [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | blocked |
-| [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23 | blocked |
+| [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23 | in-progress |
 | [29-full-e2e-remediation.md](./subtasks/29-full-e2e-remediation.md) | 23 | completed |
 | [30-start-gain-remediation.md](./subtasks/30-start-gain-remediation.md) | 22 | completed |
 | [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29, 30 | pending |
@@ -141,6 +141,7 @@ updated: 2026-10-28
   Affected acceptance: 27 的第 3 项（AC-12、AC-16 的有头复验），28。
   Resume when: 屏幕解锁后在协调者检出中运行 `pnpm test:e2e --project=development-headed e2e/native-lifecycle.spec.ts` 与 `pnpm test:e2e --project=development e2e/audio-playback.spec.ts e2e/mission-flow.development.spec.ts`，全部通过后补 27 的完成证据并标记完成。
 - **STATUS 提议（27）：** 下次更新 P3-14 摘要时写明实现与工程文档已完成，V-06 感知待 26 的人耳判定。
+- **2026-10-30 — Subtask 27 恢复：** 用户要求先完成 P3-14，屏幕未锁定，满足恢复条件；协调者在 main 检出中重跑三个有头的真实隐藏用例。
 
 ## 审批
 
