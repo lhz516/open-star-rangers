@@ -143,7 +143,7 @@ P3-09 起 `toggle-map`、`map-point` 与 `request-warp` 由 Core 判定（门禁
 
 **隔离地图入口：** P3-05/27 的 `/e2e/entries/map-input.html` 只在开发服务器提供，不是正式任务地图路径；现使用唯一生产绑定表，几何及地图上下文仍为合成。加 `?manual=1` 后可点击 **Open unlocked map**：输入区自动聚焦，等待光标后按 Escape，再点击 **Refresh observations** 读取快照；**Close test session** 回收本次会话。按钮和观察快照只存在于该开发入口，不改 Core 或正式地图。未锁指针时页面收到的新 Escape 按生产绑定关闭地图；已锁时即使页面收到 Escape 也不提交命令或打开菜单，只等待浏览器实际解锁，地图保持打开；Playwright 合成键不证明浏览器原生解锁或系统快捷键行为，原生证据见 [37](../plan/p3/05/subtasks/37-native-input-residuals.md)。Chrome headless 下，HTTP origin 上隔离 context 支持真实 Pointer Lock；`about:blank`/`setContent` 会遇到 `WrongDocumentError`。入口用 CDP `Runtime.evaluate` 并显式 `userGesture: false` 驱动观察钩子，避免 Playwright 的 evaluate、locator 或截图留下用户激活，误改变自动锁定路径。`pointer-lock` 监听独立计组；预热使用 `./e2e/entries/*.html`。具体像素、锁定、回退和资源平衡证据见 [27 完成证据](../plan/p3/05/subtasks/27-map-input-entry.md#完成证据) 与 [36 完成证据](../plan/p3/05/subtasks/36-production-map-input-entry.md#完成证据)。
 
-**本机实机核对状态（P3-05/30、31、37）：**
+**本机实机核对状态（P3-05/30、31、37；P3-15/05、06）：**
 
 | 项目 | 证据与当前结论 |
 |---|---|
@@ -151,6 +151,7 @@ P3-09 起 `toggle-map`、`map-point` 与 `request-warp` 由 Core 判定（门禁
 | 地图移动单位 | 27 的 CDP 注入鼠标输入在 Chrome 155、DPR 1/2 报告 CSS 像素位移；这不是物理鼠标单位证据。 |
 | 31：物理设备结果（历史） | macOS Chrome 无痕窗口中的物理 Fn 与操纵键、持续按住/释放、Option 与 Space 并行组合已由用户执行，并以六份连续 OSR replay 核验；Fn+F1 单独复测提交 `cockpit-front`，Fn+F11 单独复测无命令，F10 新提示已观察，操纵轴松开后归零。Option/箭头/Space 的重复操作限制了逐动作归因。用户报告全屏提示为 “Press and hold Esc to exit”，暂停后 Cmd+L/Cmd+T 执行原生行为，但暂停后的锁状态转换未直接读取。当时未锁定地图 Escape 未执行：旧隔离入口的 TEST_BINDINGS 没有 map-context Escape，不能验证生产契约；生产地图路径不属本任务。逐项记录见本地忽略的 `local/research/p3-05/real-device/worker-31-input-check.md`。**31 当时没有完成 AC-18 的地图 Escape、精确锁解除与逐动作归因；后续补证见 37，不追溯改写。** |
 | 37：残余项补证 | [37 的原生/物理证据](../plan/p3/05/subtasks/37-native-input-residuals.md#完成证据)补齐 31 当时的三项缺口：生产绑定的未锁地图 Escape 关闭合成地图；全屏 Running 的原生 Cmd+L 被拦截，`p` 暂停后仍在全屏时同码恢复地址栏，再以 Cmd+T 打开原生标签；用户逐组 Option+↑/↓/←/→ 并轻点 Space，合格 replay 各有持续 primary 与一次重叠 secondary，轴为 0、释放后无开火。↑/← 的不合格初次尝试保留，原因未确认；单独复测通过。30/31/37 合并覆盖本机 AC-18，不外推其他平台或下游 Core 地图规则。 |
+| P3-15/05、06：集成基线复核 | 在 P3-15 的集成基线上，[05](../plan/p3/15/subtasks/05-real-device-computer-use.md#完成证据)（Computer Use）与 [06](../plan/p3/15/subtasks/06-real-device-physical.md#完成证据)（用户物理操作）重新核对 F 键、操纵键按住与松开、Option 主炮电平、活动 Keyboard Lock 截获与 Escape/Tab/F12/菜单/失焦解锁、离页确认、地图 Pointer Lock、自绘光标与 Escape，均与本文一致。物理 Fn+F11 在本机两次都没有送达页面（同一会话中 Fn+F9、F10、F12 均送达），本机 macOS 的“显示桌面”快捷键为系统默认的 F11（高概率是系统先消费了该键，未单独证实）；F11 的页面路径由 05 证实，物理途径需在系统设置中改用标准功能键或解除该快捷键后复测。 |
 | Q-05 原版运行样本 | 06 与 [34 成功基地采样](../plan/p3/05/subtasks/34-base-runtime-sample.md#完成证据)已满足本任务的码到动作样本门槛；基地缺口不再阻塞。它们不证明宿主物理键到扫描码；该证据边界与 U-011 的部分确认状态仍见[原版键位表](../original/input/key-map.md#运行样本q-05p3-0506)。 |
 
 残余项不得以合成按键、CDP 注入、页面 `isTrusted`、DOS 输入码注入或配置推导替代。跨操作系统与浏览器矩阵归 P5。
