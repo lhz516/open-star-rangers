@@ -34,7 +34,7 @@ updated: "2026-10-29"
 | S-05 | 07 | 07 本地真实内容的成功/失败与重试运行 |
 | S-06 | 04 | 04 的真实规则警告、驾驶舱像素与音效消费者状态 |
 | S-07 | 08 | 08 的对照汇总表逐行核对来源 |
-| S-08 | 09 | 09 的 UI 与文档标注审计 |
+| S-08 | 09、12 | 09 的 UI 与文档标注审计；12 的 F1 披露 |
 | S-09 | 01–09、10 | 11 运行全部工程门槛并核对差异交回记录 |
 | AC-01 | 01、02 | 01 development 与 02 production 的成功、失败、重试完整流程断言 |
 | AC-02 | 01、02 | 01：两份开发录制经 `runReplayCheck` 得 `{ match: true }`；02：生产无开发录制/诊断入口 |
@@ -44,7 +44,7 @@ updated: "2026-10-29"
 | AC-06 | 04 | 04：真实攻击者/来弹条件下的 Core 警告、类型 9 像素与 `instrument-9` 声音决定 |
 | AC-07 | 07 | 07：内容身份、配置、输入路径与结果，与 P3-11/B-003/B-005 核对 |
 | AC-08 | 08 | 08 的汇总表；11 抽查来源与分类未被改写 |
-| AC-09 | 09 | 09 的逐项位置/标注/文档链接表 |
+| AC-09 | 09、12 | 09 的逐项位置/标注/文档链接表；12 披露 F1 前视的处置后由 09 复审该行 |
 | AC-10 | 10、11 | 11：`pnpm check`、`pnpm test:e2e`、`pnpm check:compliance`、git 审阅 |
 
 ## 子任务跟踪
@@ -54,16 +54,17 @@ updated: "2026-10-29"
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-joint-loop-development.md](./subtasks/01-joint-loop-development.md) | — | completed |
-| [02-joint-loop-production.md](./subtasks/02-joint-loop-production.md) | 01 | pending |
-| [03-joint-lifecycle-resources.md](./subtasks/03-joint-lifecycle-resources.md) | 01 | pending |
-| [04-warning-end-to-end.md](./subtasks/04-warning-end-to-end.md) | 01 | pending |
+| [02-joint-loop-production.md](./subtasks/02-joint-loop-production.md) | 01 | in-progress |
+| [03-joint-lifecycle-resources.md](./subtasks/03-joint-lifecycle-resources.md) | 01 | in-progress |
+| [04-warning-end-to-end.md](./subtasks/04-warning-end-to-end.md) | 01 | in-progress |
 | [05-real-device-computer-use.md](./subtasks/05-real-device-computer-use.md) | — | completed |
 | [06-real-device-physical.md](./subtasks/06-real-device-physical.md) | 05 | blocked |
 | [07-real-content-runs.md](./subtasks/07-real-content-runs.md) | — | completed |
 | [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | blocked |
-| [09-annotation-audit.md](./subtasks/09-annotation-audit.md) | — | in-progress |
+| [09-annotation-audit.md](./subtasks/09-annotation-audit.md) | — | blocked |
 | [10-e2e-documentation.md](./subtasks/10-e2e-documentation.md) | 01, 02, 03, 04 | pending |
-| [11-final-alignment.md](./subtasks/11-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10 | pending |
+| [12-f1-disclosure.md](./subtasks/12-f1-disclosure.md) | — | pending |
+| [11-final-alignment.md](./subtasks/11-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 12 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -83,6 +84,10 @@ updated: "2026-10-29"
   Evidence: [05 的完成证据](./subtasks/05-real-device-computer-use.md#完成证据)；ask_user 回复“The user is not available to respond”。
   Affected acceptance: AC-05 的残余部分；06 的全部验收；11。
   Resume when: 用户在本机、同意进行约 15 分钟的物理键盘会话；协调者按 05 的准备步骤（`local/research/p3-15/real-device/`）打开隔离 Chrome 与合成任务后逐项引导。
+- **2026-10-29 — Subtask 09 blocked；F1 处置与修复项 12：** 09 的审计（worker 提交 `07644c1b`，`exec/p3-15-09` worktree 保留）发现 F1 `cockpit-front` 在 Core 仍为 `not-implemented`，没有界面标注、清单条目或批准的处置，AC-09 未满足；其余 G-01 至 G-10 在开发与生产构建中均有标注且与文档一致，未发现其他未披露的占位或近似。协调者依据用户在本次执行中的授权（“在执行goal的过程中，如果需要修改spec或其他Decision，我都批准你修改。用任何方式来unblock任何问题，完成这个goal。”）选择披露而非在 P3 实现：原版 F1 只在飞行按键上下文把视角设为 0xC（已确认，代码），P3 只有前视且被毁中不轮询按键，所以在 P3 可达状态中没有可见或规则差异；`cockpit-front` 是 Core 唯一仍为 `not-implemented` 的命令，现有多处测试以它覆盖该结果路径，实现它的价值只在 P4 加入 G-08 视角时出现。因此新增修复项 12：把 F1 与前视别名并入 G-08 的披露（UI 文案、slice-gaps、P3-01 清单与工程文档），不改变代码行为；最终对齐加入对 12 的依赖。
+  Evidence: [09 的完成证据](./subtasks/09-annotation-audit.md#完成证据)（worker 分支）；[executable 的按视角分派按键](../../../original/formats/executable.md)；`src/core/systems/commands.ts` 的默认分支。
+  Affected acceptance: AC-09；09 的第 1、2 项验收；11。
+  Resume when: 12 完成并集成后，在 `exec/p3-15-09` worktree 复审 F1 一行与受影响页面（开发与生产，合成内容），更新证据并勾选验收。
 
 ## 审批
 
