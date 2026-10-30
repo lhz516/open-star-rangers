@@ -57,7 +57,7 @@ updated: "2026-10-29"
 | [02-joint-loop-production.md](./subtasks/02-joint-loop-production.md) | 01 | pending |
 | [03-joint-lifecycle-resources.md](./subtasks/03-joint-lifecycle-resources.md) | 01 | pending |
 | [04-warning-end-to-end.md](./subtasks/04-warning-end-to-end.md) | 01 | pending |
-| [05-real-device-computer-use.md](./subtasks/05-real-device-computer-use.md) | — | in-progress |
+| [05-real-device-computer-use.md](./subtasks/05-real-device-computer-use.md) | — | blocked |
 | [06-real-device-physical.md](./subtasks/06-real-device-physical.md) | 05 | pending |
 | [07-real-content-runs.md](./subtasks/07-real-content-runs.md) | — | in-progress |
 | [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | in-progress |
@@ -70,6 +70,10 @@ updated: "2026-10-29"
 ## 执行记录
 
 - **2026-10-29 — 并行派发方式：** 宿主的 `create_session` 只能在项目现有检出或新 worktree 中建会话，不能在指定的 `exec/` worktree 中启动 worker；用户不在且授权“用任何方式来unblock”。因此 worker 改由协调者的后台子 agent 在各自 `exec/p3-15-NN` worktree 中按 worker 模式执行，集成规则不变。05 需在本机桌面用 Computer Use，由协调者在本检出中执行（其写入范围只有 `local/` 与本 subtask 文档），已删除其空 worktree 与分支。
+- **2026-10-29 — Subtask 05 blocked:** 本机桌面正被用户持续使用（两分钟内 HIDIdleTime 0–8 s）；Computer Use 只能在每次重新读取窗口后断续送达按键，页面内点击不送达；开始手势使隔离的 Chrome 全屏覆盖用户显示器并抢到前台，随即失焦。为不干扰用户，停止操作，未测得任何 AC-05 项。
+  Evidence: 私有记录 `local/research/p3-15/real-device/attempt-2026-10-29.md`；合成任务已在隔离 Chrome 中进入 running、焦点在游戏输入区，证明准备路径可用。
+  Affected acceptance: AC-05（05 全部验收项）；06 依赖 05。
+  Resume when: 用户不在使用本机桌面（或用户在场并同意让出桌面），再按私有记录的准备步骤重跑；也可与 06 合并为一次有用户在场的实机会话。
 
 ## 审批
 
