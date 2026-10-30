@@ -58,7 +58,7 @@ updated: "2026-10-29"
 | [03-joint-lifecycle-resources.md](./subtasks/03-joint-lifecycle-resources.md) | 01 | completed |
 | [04-warning-end-to-end.md](./subtasks/04-warning-end-to-end.md) | 01 | completed |
 | [05-real-device-computer-use.md](./subtasks/05-real-device-computer-use.md) | — | completed |
-| [06-real-device-physical.md](./subtasks/06-real-device-physical.md) | 05 | in-progress |
+| [06-real-device-physical.md](./subtasks/06-real-device-physical.md) | 05 | completed |
 | [07-real-content-runs.md](./subtasks/07-real-content-runs.md) | — | completed |
 | [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | blocked |
 | [09-annotation-audit.md](./subtasks/09-annotation-audit.md) | — | completed |
@@ -91,6 +91,8 @@ updated: "2026-10-29"
 - **2026-10-30 — F1 处置前提更正（12）：** 12 核对代码后更正 2026-10-29 记录中的前提：原版在前视（0xC）按 F1 仍重选驾驶舱布局，清黑画面并全量重绘驾驶舱（已确认，代码；玩家能否察觉这一帧未经运行观察，未确认），被毁序列中不读取该键；本构建按下不改变任何状态。视角与规则仍无差异，处置不变（披露、不改代码、规则归 P4）；G-08 文案、slice-gaps、P3-01 清单、键位文档与 core 分册均已写明这一呈现差异。
 - **2026-10-30 — Subtask 09 恢复：** 12 已集成（`0458ada4`），满足恢复条件；在原 `exec/p3-15-09` worktree 中变基到 main 后复审 F1 一行与受影响页面。
 - **2026-10-30 — Subtask 06 恢复：** 用户要求“开始06”，满足恢复条件；协调者在本检出中准备隔离 Chrome 并引导用户逐项物理操作。
+- **2026-10-30 — Subtask 06 完成，保留一项物理途径：** 用户完成物理键盘会话，05 的残余均已取得结果，未发现与 P3-05 契约不一致；唯一未取得结果的是物理 Fn+F11（页面无事件、屏幕无可见变化、原因未归因），F11 → G-10 的页面路径由 05 证实。该项记为 AC-05 的保留项。
+  Resume when（仅此保留项）: 在 macOS 键盘设置中把 F 键改为标准功能键，或确认 Fn+F11 未被系统快捷键占用后，用户在同一准备步骤下重按 Fn+F11 并观察 G-10 提示。
 
 ## 审批
 
