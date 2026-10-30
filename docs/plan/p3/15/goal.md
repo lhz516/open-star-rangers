@@ -53,13 +53,13 @@ updated: "2026-10-29"
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-joint-loop-development.md](./subtasks/01-joint-loop-development.md) | — | pending |
+| [01-joint-loop-development.md](./subtasks/01-joint-loop-development.md) | — | in-progress |
 | [02-joint-loop-production.md](./subtasks/02-joint-loop-production.md) | 01 | pending |
 | [03-joint-lifecycle-resources.md](./subtasks/03-joint-lifecycle-resources.md) | 01 | pending |
 | [04-warning-end-to-end.md](./subtasks/04-warning-end-to-end.md) | 01 | pending |
-| [05-real-device-computer-use.md](./subtasks/05-real-device-computer-use.md) | — | pending |
+| [05-real-device-computer-use.md](./subtasks/05-real-device-computer-use.md) | — | in-progress |
 | [06-real-device-physical.md](./subtasks/06-real-device-physical.md) | 05 | pending |
-| [07-real-content-runs.md](./subtasks/07-real-content-runs.md) | — | pending |
+| [07-real-content-runs.md](./subtasks/07-real-content-runs.md) | — | in-progress |
 | [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | pending |
 | [09-annotation-audit.md](./subtasks/09-annotation-audit.md) | — | pending |
 | [10-e2e-documentation.md](./subtasks/10-e2e-documentation.md) | 01, 02, 03, 04 | pending |
