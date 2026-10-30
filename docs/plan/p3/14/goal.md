@@ -100,7 +100,7 @@ updated: "2026-10-30"
 | [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | completed |
 | [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | completed |
 | [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | blocked |
-| [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23 | in-progress |
+| [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23 | completed |
 | [29-full-e2e-remediation.md](./subtasks/29-full-e2e-remediation.md) | 23 | completed |
 | [30-start-gain-remediation.md](./subtasks/30-start-gain-remediation.md) | 22 | completed |
 | [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29, 30 | pending |

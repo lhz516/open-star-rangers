@@ -4,7 +4,7 @@ status: active
 phase: P3
 task: "14"
 subtask: "27"
-updated: 2026-10-29
+updated: "2026-10-30"
 ---
 
 # 27 — 工程说明、检查与 V-06 交接
@@ -48,7 +48,7 @@ updated: 2026-10-29
 
 - [x] 接口、版本、错误、释放和缺省说明与实际实现一致，updated 与链接正确。
 - [x] V-06 自动/感知结论可追溯，研究置信度和实施验收分开；历史重验范围明确。（感知一栏按 goal 的依赖调整标为“待 26”，由 26 补齐）
-- [ ] 集成候选的工程/合规/相关浏览器检查通过，无本任务未处理的功能或证据缺口。
+- [x] 集成候选的工程/合规/相关浏览器检查通过，无本任务未处理的功能或证据缺口。
 
 ## 验证方法
 
@@ -127,3 +127,6 @@ P3-14 改变的共享契约与受影响的历史证据如下。旧的通过结�
 - **Rubber-duck：** 4 项阻塞、5 项非阻塞，全部采纳：补本节检查结果；历史表中 30 的 `audio-playback` 结果如实写为 headed 用例的环境失败；源码结构不再写“P3-14 已交付”，改为“实现已交付，感知待 26”；V-06 表中含证据缺口的行不再整体写“一致”；`START_PARAMETERS` 只含音量与声像；“Sound: on.” 只表示已启用、可播放；隐藏后会重启持续声音与仍在进行的爆炸；app 与 render 分册不再复述原版地址与运行时读数，改为链接 audio 与 24；“停放命中”与“声音不可用”分行，后者研究置信度为不适用。
 - 本项启动的浏览器与 Playwright 服务器均随 runner 结束，无残留进程。
 
+### 有头真实隐藏用例复验（2026-10-30，协调者）
+
+屏幕未锁定，在 main `9abf6cfb`（P3-14 代码自 30 之后未变，另含 P3-15 的验证代码与文档）上 `pnpm build` 后运行：`npx playwright test --project=development-headed e2e/native-lifecycle.spec.ts` 1 通过（Chrome 156.0.8078.74；hidden → visible 三轮，departure 停在 tick 0，暂停于 tick 12，恢复后不追赶）；`npx playwright test --project=development e2e/audio-playback.spec.ts e2e/mission-flow.development.spec.ts` 12 通过，含 `audio-playback.spec.ts:86` 的真实隐藏停声与恢复不重放，以及 `mission-flow.development.spec.ts:847` 的 Warp 中真实隐藏。2026-10-29 记录的三项窗口初始隐藏失败均已消失，第 3 项验收满足。V-06 的感知一栏仍待 26。
