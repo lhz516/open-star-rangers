@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-29
+updated: 2026-10-30
 related: [ADR-0004, ADR-0018, U-011, U-012]
 ---
 
@@ -10,7 +10,7 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 
 本文是当前构建的游戏输入与键位绑定权威说明。原版事实只在[原版键位冲突表](../original/input/key-map.md)维护；这里记录项目绑定、实现边界、浏览器能力、已知差异与验证状态。绑定契约见 [P3-05 spec](../plan/p3/05/spec.md)，源码落点见[源码结构指南](./source-structure.md)。
 
-> **实现状态：** P3-05 已接通任务游戏输入区、生产绑定表、能力申请和地图输入。Core 仍按各任务逐步接入规则；键盘已到达命令消费者不等于所有动作已有玩法效果。P3-07 的目标、武器和能量规则已于 2026-10-13 与本任务一同合入 main，相关原版事实见 [executable](../original/formats/executable.md) 的 T3、W3、D10、D15。P3-09 的地图与 Warp 规则（`m`、地图鼠标与 `w` 的 Core 效果）见下文[地图与 Warp 上下文中的命令结果](#地图与-warp-上下文中的命令结果)。P3-10 已接入通讯菜单（`c`、`x`、未修饰数字）与基地按键（上下导航、Enter、`l`）的 Core 规则，契约见 [P3-02 的 CB-07](../plan/p3/02/spec.md#cb-07-命令判定)。P3-13 已把前视驾驶舱、HUD 与战略地图画入飞行画面，并把生产地图几何、右键电平与绘制就绪凭证接入正式运行（见[地图鼠标与光标](#地图鼠标与光标)）；F1 的 `cockpit-front` 仍没有 Core 规则（`not-implemented`，见下文 P3-11 一条），其他视角键归 G-08。
+> **实现状态：** P3-05 已接通任务游戏输入区、生产绑定表、能力申请和地图输入。Core 仍按各任务逐步接入规则；键盘已到达命令消费者不等于所有动作已有玩法效果。P3-07 的目标、武器和能量规则已于 2026-10-13 与本任务一同合入 main，相关原版事实见 [executable](../original/formats/executable.md) 的 T3、W3、D10、D15。P3-09 的地图与 Warp 规则（`m`、地图鼠标与 `w` 的 Core 效果）见下文[地图与 Warp 上下文中的命令结果](#地图与-warp-上下文中的命令结果)。P3-10 已接入通讯菜单（`c`、`x`、未修饰数字）与基地按键（上下导航、Enter、`l`）的 Core 规则，契约见 [P3-02 的 CB-07](../plan/p3/02/spec.md#cb-07-命令判定)。P3-13 已把前视驾驶舱、HUD 与战略地图画入飞行画面，并把生产地图几何、右键电平与绘制就绪凭证接入正式运行（见[地图鼠标与光标](#地图鼠标与光标)）；F1 与前视别名的 `cockpit-front` 仍没有 Core 规则（`not-implemented`，见下文 P3-11 一条），按 G-08 披露、随其他视角归 P4（[切片缺省清单](./slice-gaps.md#g-08-与-f1-前视)）；其他视角键归 G-08。
 
 ## 1. 适用范围
 
@@ -49,7 +49,7 @@ related: [ADR-0004, ADR-0018, U-011, U-012]
 | `KeyC`、`KeyX` | flight | 打开/关闭通讯菜单（`x` 也是各级菜单的退出键） | 原版绑定；P3-10 规则：子系统 13 为 2 时 `c` 为 `subsystem-disabled`，没有可显示的类别为 `no-candidate` |
 | 未修饰 `KeyB`（无 Shift、无有效 Ctrl） | flight | 投放 Xpon（`drop-transponder`）；可重复 | 原版绑定，正常玩法为高概率（[X5](../original/formats/executable.md#x5-is-b-normal-play--likely-code-no-runtime-check)）；P3-08 的 D-03 加入，门禁与效果由 Core 判定（[CR-20](../plan/p3/02/spec.md#cr-20-动态-xpon-与-bd-01)、[CR-30](../plan/p3/02/spec.md#cr-30-b-的输入侧d-03)） |
 | `KeyL`；`ArrowUp` / `ArrowDown` | base | 离港；基地服务列表向上/向下导航（可重复，在两端夹住） | 原版绑定；P3-10 规则 |
-| `F1`、`ArrowUp`、Shift/NumLock 状态相同的 `Numpad8` | flight；`Numpad8` 在 base 同状态下另作向上导航 | 前视驾驶舱 | 原版绑定 |
+| `F1`、`ArrowUp`、Shift/NumLock 状态相同的 `Numpad8` | flight；`Numpad8` 在 base 同状态下另作向上导航 | 提交 `cockpit-front`（前视驾驶舱）；Core 尚无规则，结果为 `not-implemented`，视角停留在前视，不显示 G-08 标注；规则随其他视角归 P4（G-08 披露） | 原版绑定 |
 | `F2`–`F10`、`Home`、`PageUp`、`ArrowLeft`、`ArrowRight`、`ArrowDown`；Shift/NumLock 状态相同的 `Numpad7/9/4/5/6/2` | flight | G-08 标注，不提交命令 | 原版视角键；表现缺省项 |
 | `KeyA`、`F11` | flight | G-09、G-10 标注，不提交命令 | 原版功能暂缺 |
 | `KeyP`（可带 Shift；不带有效 Ctrl/Meta；Alt 独立并行） | 所有游戏输入上下文，包括 paused | 任务所有者暂停/继续控制 | 项目宿主控制 |

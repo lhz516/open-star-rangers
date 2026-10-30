@@ -63,7 +63,7 @@ updated: "2026-10-29"
 | [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | blocked |
 | [09-annotation-audit.md](./subtasks/09-annotation-audit.md) | — | blocked |
 | [10-e2e-documentation.md](./subtasks/10-e2e-documentation.md) | 01, 02, 03, 04 | completed |
-| [12-f1-disclosure.md](./subtasks/12-f1-disclosure.md) | — | in-progress |
+| [12-f1-disclosure.md](./subtasks/12-f1-disclosure.md) | — | completed |
 | [11-final-alignment.md](./subtasks/11-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 12 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -88,6 +88,7 @@ updated: "2026-10-29"
   Evidence: [09 的完成证据](./subtasks/09-annotation-audit.md#完成证据)（worker 分支）；[executable 的按视角分派按键](../../../original/formats/executable.md)；`src/core/systems/commands.ts` 的默认分支。
   Affected acceptance: AC-09；09 的第 1、2 项验收；11。
   Resume when: 12 完成并集成后，在 `exec/p3-15-09` worktree 复审 F1 一行与受影响页面（开发与生产，合成内容），更新证据并勾选验收。
+- **2026-10-30 — F1 处置前提更正（12）：** 12 核对代码后更正 2026-10-29 记录中的前提：原版在前视（0xC）按 F1 仍重选驾驶舱布局，清黑画面并全量重绘驾驶舱（已确认，代码；玩家能否察觉这一帧未经运行观察，未确认），被毁序列中不读取该键；本构建按下不改变任何状态。视角与规则仍无差异，处置不变（披露、不改代码、规则归 P4）；G-08 文案、slice-gaps、P3-01 清单、键位文档与 core 分册均已写明这一呈现差异。
 
 ## 审批
 

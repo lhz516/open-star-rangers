@@ -113,7 +113,11 @@ describe('slice gap copy (G IDs)', () => {
     expect(SLICE_GAPS['G-07'].text).toMatch(/fixed at raw value 19/);
     expect(SLICE_GAPS['G-06'].text).toMatch(/does not reproduce the campaign state/);
     expect(SLICE_GAPS['G-06'].text).not.toMatch(/no results page/);
-    expect(SLICE_GAPS['G-08'].text).toMatch(/only the forward cockpit view.*cursor and keypad.*P4/);
+    const views = SLICE_GAPS['G-08'].text;
+    expect(views).toMatch(/only the forward cockpit view\. F1 and its aliases \(the Up arrow, and keypad 8 .*\) keep that view/);
+    expect(views).toMatch(/keep that view, and a press changes nothing now; in the original it also redraws the whole cockpit/);
+    expect(views).toMatch(/Their Core rule arrives with the other views in P4\./);
+    expect(views).toMatch(/other views, including cursor and keypad view aliases, are not implemented; P4/);
     expect(SLICE_GAPS['G-09'].text).toMatch(/does not implement.*autopilot.*no autopilot command.*P4/);
     expect(SLICE_GAPS['G-10'].text).toMatch(/fixed at Medium.*switching.*P4/);
   });

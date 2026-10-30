@@ -128,7 +128,9 @@ export const SLICE_GAPS: Readonly<Record<SliceGapId, SliceGapCopy>> = Object.fre
   ),
   'G-08': gap(
     'Additional cockpit views missing',
-    'This build provides only the forward cockpit view. The original\'s other views, including cursor and keypad view aliases, '
+    'This build provides only the forward cockpit view. F1 and its aliases (the Up arrow, and keypad 8 when it acts as Up) '
+      + 'keep that view, and a press changes nothing now; in the original it also redraws the whole cockpit. Their Core '
+      + 'rule arrives with the other views in P4. The original\'s other views, including cursor and keypad view aliases, '
       + 'are not implemented; P4 is responsible for them.',
   ),
   'G-09': gap(

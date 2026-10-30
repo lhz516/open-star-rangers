@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: P3
-updated: 2026-10-29
+updated: 2026-10-30
 related: [B-003, B-004, B-005, B-006]
 ---
 
@@ -36,11 +36,19 @@ related: [B-003, B-004, B-005, B-006]
 | G-05 | 原版基地内部画面（TABL 10165 的图像与文字） | 项目的基地页面：在任务壳唯一的游戏输入区内，标题 “Base service (G-05)” 与标注。按 projection 的同一次序（既是服务队列也是显示次序）列出 11 行：行号、项目名称（按选择值所服务的子系统命名，置信度为高概率；子系统未知的写 “Subsystem N (unknown)”）、状态的文字（0 为无需服务，否则写出状态值）、首行在需要服务时为 “Being serviced”（首行无需服务时服务步不会越过它，所以其余行不标注）、光标行为 “Selected”；基地的三个完成标志；能量、船体与所选导弹挂点的弹药读数。projection 没有服务的到期与速率，因此不显示倒计时或进度百分比。按键说明区分已接入的上下、Enter、`L` 与 `M`（打开战略地图，地图中 `M` 或 Esc 关闭并回到基地；P3-02 spec 的 MW-04），以及项目控制 `P`（暂停）与 Esc（任务菜单，G-07）。页面不绑定按键、没有鼠标规则入口：按键经输入区与 `GameCommandFeedback.submit` 每次按下提交一次。本页打开之后最近一条基地命令的结果可查询（不朗读），之后的提交失败以 `role="alert"` 显示结构化原因；打开之前的飞行命令（Enter 的速度匹配同为 `confirm-selection`）与失败不显示。projection 经桥接按 10 Hz 采样，光标与行序的变化在帧末立即发布；页面另有 G-03 的无线电消息区块（见 G-03 行），显示驾驶舱消息行的同一队首与当前来电，队首变化立即发布，不建第二条队列，往返地图不重播；视图保持 4:3，内容较多时在输入区内滚动 | 任务壳的游戏视图 [BasePage.tsx](../../src/ui/mission/BasePage.tsx)（`base-page`，各行 `base-service-row` 的 `data-row`、`data-record`、`data-selector`、`data-state`、`data-in-service`、`data-selected`），读模型 [base-page.ts](../../src/ui/mission/base-page.ts)；样式在 [app.css](../../src/app/app.css) |
 | G-06（结果页、重开与返回） | 原版战役中的统计页、二选一的重玩或继续提示、高分榜、晋升与勋章，以及重开任务入口保留的战役状态 | 运行完成后、终局占位之后的项目结果页（P3-11）：结果（成功或失败，文字加标记，不只靠颜色）、规则原因的项目文字（全清；第三次损失，区分被毁与能量耗尽；或结算失败）、标为本次尝试项目摘要的已用救援次数与击杀合计（不是原版统计公式），以及成功时从导入内容解析的任务总结（标注原版在下一关出发前显示它；无匹配、空总结、失败与解析失败分别说明）；明确它代替原版统计页、提示、高分榜、晋升与勋章，P3 不判定勋章。`Restart mission` 开始同一任务的新实例：回到介绍，以同一内容、难度 19 与重新抽取的种子从 tick 0 创建新世界，只沿用僚机选择，不复刻原版重开时保留的关卡编号、战役统计、晋升与高分榜。`Return to main menu` 释放任务。进入结果页时焦点在标题 | 结果页 [ResultPage.tsx](../../src/ui/mission/ResultPage.tsx)（`mission-result`，`data-outcome`、`data-reason`；总结 `mission-result-summary` 的 `data-summary`；缺省说明中的 G-06 与 G-02/10），流程位置 `result`；任务菜单 [MissionMenuPage.tsx](../../src/ui/mission/MissionMenuPage.tsx)（`mission-menu`）；运行故障或停止后的提示（`mission-ended`，可以重开时） |
 | G-07 | 原版主菜单、选项与战役设置（含难度滑块） | 项目页面：主菜单的 `Start mission` 入口、开始配置页的固定难度（原始值 19，“fixed, G-07”）与暂停式的任务菜单（Continue、Restart mission、Return to main menu）；不提供难度设置 | 主菜单 [MainMenuPage.tsx](../../src/ui/pages/MainMenuPage.tsx) 入口的说明；开始配置页的标注与难度；任务菜单的标注 |
-| G-08 | F2–F10 及原版光标、小键盘视角键（P3-05 绑定表中的视角键） | 本构建只提供前视驾驶舱；原版其他视角（含光标与小键盘别名）未实现，由 P4 补齐 | 任务壳的飞行输入区暂缺提示：F2–F10、`Home`、`PageUp`、`ArrowLeft`、`ArrowRight`、`ArrowDown`；NumLock 与 Shift 状态相同时的 `Numpad7`、`Numpad9`、`Numpad4`、`Numpad5`、`Numpad6`、`Numpad2` |
+| G-08 | F2–F10 及原版光标、小键盘视角键（P3-05 绑定表中的视角键）；F1 与前视别名的 Core 规则 | 本构建只提供前视驾驶舱；F1 与前视别名（`ArrowUp`、NumLock 与 Shift 状态相同时的 `Numpad8`）停留在该视角，现在按下不改变任何状态（原版在前视中按下还会重绘整个驾驶舱），其 Core 规则随其他视角在 P4 实现（见[下文](#g-08-与-f1-前视)）；原版其他视角（含光标与小键盘别名）未实现，由 P4 补齐 | 任务壳的飞行输入区暂缺提示：F2–F10、`Home`、`PageUp`、`ArrowLeft`、`ArrowRight`、`ArrowDown`；NumLock 与 Shift 状态相同时的 `Numpad7`、`Numpad9`、`Numpad4`、`Numpad5`、`Numpad6`、`Numpad2`。F1 与前视别名不显示提示，文案中的说明随这些提示出现 |
 | G-09 | 自动驾驶（`a`） | 本构建不实现原版自动驾驶，也不提供自动驾驶命令；由 P4 补齐 | 任务壳的飞行输入区暂缺提示：`KeyA` |
 | G-10 | 飞行中切换操纵灵敏度（F11） | 灵敏度固定为 Medium；本构建未实现飞行中切换，由 P4 补齐 | 任务壳的飞行输入区暂缺提示：`F11` |
 
 各页面显示的 G 项：主菜单 G-07；介绍占位 G-02/1；开始配置 G-04、G-07，以及缺省说明中的 G-01、G-02/1、G-02/2；出发占位 G-02/2；入港与离港占位 G-02/3、G-02/4；救援占位 G-02/5、G-02/6；终局占位 G-02/7、G-02/8、G-02/9；结果页 G-06 与 G-02/10；任务壳（飞行）状态栏的 G-01、飞行输入区的 G-08–G-10 暂缺提示与缺省说明中的 G-01、G-02/1、G-02/2，运行结束且可以重开时另有 G-06；任务壳在基地视角时游戏视图内的 G-05 与 G-03；任务菜单 G-07、G-06。飞行中的 G-03 由驾驶舱左显示屏页 5 的项目短标注标出（画面内，不是 DOM 标注）。
+
+### G-08 与 F1 前视
+
+- **本构建：** 飞行中 F1、`ArrowUp` 与 NumLock 与 Shift 状态相同时的 `Numpad8` 仍提交 `cockpit-front`（[bindings.ts](../../src/ui/game-input/bindings.ts)），不被 G-08 拦截，也不显示 G-08 提示。Core 还没有该命令的规则：[commands.ts](../../src/core/systems/commands.ts) 的 `judgeCommand` 走默认的 `rejectNotImplemented`，结果为 `rejected`/`not-implemented`，不改状态。`cockpit-front` 的 Core 规则随 G-08 的其他视角由 P4 实现。
+- **与原版的差异：** 原版 F1/Up 只在飞行按键上下文把视角设为 0xC；地图、Warp 与基地的按键上下文不处理视角键，被毁序列中不轮询按键（已确认，代码，[executable 的按键上下文与视角键](../original/formats/executable.md#automatic-views-and-cameras-p3-0109)）。P3 可达的飞行视角只有前视 0xC，所以在 P3 可达的所有状态中原版 F1 也不改变视角或规则状态，与本构建没有规则差异（已确认，代码）。仍有两处差异：
+  - **呈现：** 原版在 0xC 中按 F1 仍经 `0x216d4` 调用显示切换 `0x3f158`，为前视重选驾驶舱布局；布局选择 `0x49848` 每次调用都把画面清黑并强制整个驾驶舱全量重绘（已确认，代码，[executable](../original/formats/executable.md#automatic-views-and-cameras-p3-0109)、[cockpit 的全量重绘](../original/formats/cockpit.md#instrument-records-scheduling-and-visible-persistence-p3-1301)）。本构建按下不重绘。这一帧在画面上能否察觉未经运行观察（未确认）。
+  - **命令结果（开发可见）：** 本构建为 `rejected`/`not-implemented`；原版在飞行中执行上述切换，在被毁序列中不读取该键（Core 中其他飞行命令此时为 `player-unavailable`）。
+- **处置：** 依 P3-15 的修复项 [12](../plan/p3/15/subtasks/12-f1-disclosure.md)，F1 与前视别名并入 G-08 的披露（[P3-01 缺省清单](../plan/p3/01/spec.md#缺省清单)的 2026-10-30 修订）；G-08 文案写明它们停留在前视驾驶舱、现在按下不改变任何状态而原版还会重绘整个驾驶舱，Core 规则归 P4。
 
 本构建尚无界面的其他 G 项见 P3-01 的[缺省清单](../plan/p3/01/spec.md#缺省清单)，由负责实现的任务加入本文。
 
