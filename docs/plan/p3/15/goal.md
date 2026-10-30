@@ -60,7 +60,7 @@ updated: "2026-10-30"
 | [05-real-device-computer-use.md](./subtasks/05-real-device-computer-use.md) | — | completed |
 | [06-real-device-physical.md](./subtasks/06-real-device-physical.md) | 05 | completed |
 | [07-real-content-runs.md](./subtasks/07-real-content-runs.md) | — | completed |
-| [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | in-progress |
+| [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | completed |
 | [09-annotation-audit.md](./subtasks/09-annotation-audit.md) | — | completed |
 | [10-e2e-documentation.md](./subtasks/10-e2e-documentation.md) | 01, 02, 03, 04 | completed |
 | [12-f1-disclosure.md](./subtasks/12-f1-disclosure.md) | — | completed |
