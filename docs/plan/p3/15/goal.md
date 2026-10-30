@@ -53,7 +53,7 @@ updated: "2026-10-29"
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-joint-loop-development.md](./subtasks/01-joint-loop-development.md) | — | in-progress |
+| [01-joint-loop-development.md](./subtasks/01-joint-loop-development.md) | — | completed |
 | [02-joint-loop-production.md](./subtasks/02-joint-loop-production.md) | 01 | pending |
 | [03-joint-lifecycle-resources.md](./subtasks/03-joint-lifecycle-resources.md) | 01 | pending |
 | [04-warning-end-to-end.md](./subtasks/04-warning-end-to-end.md) | 01 | pending |
