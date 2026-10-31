@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: "P3"
 task: "15"
-updated: "2026-10-29"
+updated: "2026-10-30"
 ---
 
 # P3-15：玩法闭环联合验证与原版对照 — Goal
@@ -60,7 +60,7 @@ updated: "2026-10-29"
 | [05-real-device-computer-use.md](./subtasks/05-real-device-computer-use.md) | — | completed |
 | [06-real-device-physical.md](./subtasks/06-real-device-physical.md) | 05 | completed |
 | [07-real-content-runs.md](./subtasks/07-real-content-runs.md) | — | completed |
-| [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | blocked |
+| [08-comparison-summary.md](./subtasks/08-comparison-summary.md) | — | in-progress |
 | [09-annotation-audit.md](./subtasks/09-annotation-audit.md) | — | completed |
 | [10-e2e-documentation.md](./subtasks/10-e2e-documentation.md) | 01, 02, 03, 04 | completed |
 | [12-f1-disclosure.md](./subtasks/12-f1-disclosure.md) | — | completed |
@@ -94,6 +94,7 @@ updated: "2026-10-29"
 - **2026-10-30 — Subtask 06 完成，保留一项物理途径：** 用户完成物理键盘会话，05 的残余均已取得结果，未发现与 P3-05 契约不一致；唯一未取得结果的是物理 Fn+F11（页面无事件、屏幕无可见变化、原因未归因），F11 → G-10 的页面路径由 05 证实。该项记为 AC-05 的保留项。
   Resume when（仅此保留项）: 在 macOS 键盘设置中把 F 键改为标准功能键，或确认 Fn+F11 未被系统快捷键占用后，用户在同一准备步骤下重按 Fn+F11 并观察 G-10 提示。
 - **2026-10-30 — Fn+F11 复测：** 用户在新的运行中单独复测 Fn+F11，仍没有任何 F11 事件到达页面，同一会话中 Fn+F9、F10、F12 均送达；本机“显示桌面”为系统默认的 F11。结论改为宿主在浏览器之前拦截了 F11（高概率），应用无法处理；保留项与恢复条件不变，键位指南已记录。
+- **2026-10-30 — Subtask 08 恢复：** P3-14 已完成（`4138e15b`，`node tools/task-state.ts p3/14` 为 done），满足恢复条件；在原 `exec/p3-15-08` worktree 中变基到 main 后按 P3-14/26 的判定更新 V-06 一行。
 
 ## 审批
 
