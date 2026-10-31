@@ -103,7 +103,7 @@ updated: "2026-10-30"
 | [11-render-test-risks.md](./subtasks/11-render-test-risks.md) | — | completed |
 | [12-r22-gap-audit.md](./subtasks/12-r22-gap-audit.md) | — | completed |
 | [13-comparison-verdicts.md](./subtasks/13-comparison-verdicts.md) | 07, 12 | pending |
-| [14-gap-annotation-audit.md](./subtasks/14-gap-annotation-audit.md) | — | in-progress |
+| [14-gap-annotation-audit.md](./subtasks/14-gap-annotation-audit.md) | — | completed |
 | [15-unknowns-ownership.md](./subtasks/15-unknowns-ownership.md) | — | completed |
 | [16-exit-review-handoff.md](./subtasks/16-exit-review-handoff.md) | 01, 02, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 18, 19, 20 | pending |
 | [18-ac23-fixup-width.md](./subtasks/18-ac23-fixup-width.md) | — | completed |
@@ -137,6 +137,7 @@ updated: "2026-10-30"
 - **2026-10-30 — 15 完成：** 登记表只改负责阶段一列：U-001、U-004、U-009、U-020 的 P3 部分与 U-027 的部件标志、槽 0/3 闭合；U-008、U-010、U-022、U-031 与 U-027 的其余分量、U-033 保留 P3，作为阻塞交 16；U-028 证据不足、不改。依据见 [15](./subtasks/15-unknowns-ownership.md#完成证据)。
 - **2026-10-30 — 18 完成：** 关键字表对 32 位 fixup 目标偏移报 `unsupported-payload`（`RegionFixup` 带 `targetBits`），解析器与转换器路径各有拒绝测试，去掉修复后失败；合法输出不变，`ConverterVersion` 不递增；内置表的契约没有宽度要求，未改。P3-03 覆盖表补 AC-23，`node tools/task-state.ts p3/03` 为 `done`。集成后 `pnpm check` 通过。
 - **2026-10-30 — 05 完成：** 候选 `9a3b21f2`（含 04、18）的 package-check 成功形状齐全、退出码 0；完整 `ContentIdentity` 与 P3-15/07 私有记录逐字段相同（含完整 manifest 与来源指纹），说明 04、18 没有改变转换输出。
+- **2026-10-30 — 14 完成：** G-01 至 G-10（含 G-02 各子项）在候选 `9ab62872` 的开发与生产构建中标注齐全、与 `SLICE_GAPS` 一致，没有漏标、未替换的临时资源或超范围项；joint-loop 生产闭环在该候选上通过，不依赖自动驾驶或强制调试。复用条件：之后的改动不触及 UI、绑定、驾驶舱/地图绘制、缺省清单、`src/app`、Core 流程与结果或构建配置，否则以 09 的最终候选回归为准。
 
 ## 审批
 
