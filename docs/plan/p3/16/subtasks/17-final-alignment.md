@@ -4,7 +4,7 @@ status: active
 phase: "P3"
 task: "16"
 subtask: "17"
-updated: "2026-10-30"
+updated: "2026-10-31"
 ---
 
 # 17 — 最终对齐
@@ -39,17 +39,31 @@ updated: "2026-10-30"
 ## 写入范围
 
 - `dist/**`：只在 `check:original` 需要当前候选的构建时重建（被忽略）。
+- `docs/reviews/P3-exit.md`：只把评审中等待本项 `check:original` 的工程边界一行、阶段责任覆盖的计数与 P3-16 交付一句改为实际结果，并更正本项审查发现的 R 项汇总一句（2026-10-31 协调者扩大）。
+- `local/research/p3-16/final-alignment/**`：构建清单与扫描报告（被忽略）。
 
 ## 验收标准
 
-- [ ] 每个 S/AC 都有对应证据或明确的 blocked 记录与恢复条件；没有以代理检查冒充实机、原版或人工证据。
-- [ ] `pnpm --silent check:original` 在最终候选上通过；各检查绑定的候选一致或已重跑。
-- [ ] AC-19：STATUS 与阶段索引符合确认前的限制，链接与元数据通过。
-- [ ] AC-20：git 审阅、原版隔离与清理通过；没有 push 或部署。
-- [ ] `node tools/task-state.ts p3/16` 与 `node tools/task-state.ts p3/03` 的输出与 tracker 一致。
+- [x] 每个 S/AC 都有对应证据或明确的 blocked 记录与恢复条件；没有以代理检查冒充实机、原版或人工证据。
+- [x] `pnpm --silent check:original` 在最终候选上通过；各检查绑定的候选一致或已重跑。
+- [x] AC-19：STATUS 与阶段索引符合确认前的限制，链接与元数据通过。
+- [x] AC-20：git 审阅、原版隔离与清理通过；没有 push 或部署。
+- [x] `node tools/task-state.ts p3/16` 与 `node tools/task-state.ts p3/03` 的输出与 tracker 一致。
 
 ## 验证方法
 
 - 运行上列命令；`git status --short`、`git ls-files` 审阅；链接检查。
 
 ## 完成证据
+
+- **2026-10-31（协调者，main，集成提交 `7fb0bd15` 之后的工作树）：** 只做验证；本项的文档修改只限扩大后的写入范围。
+- **覆盖与证据：** goal 验收覆盖表的 S-01 至 S-11、AC-01 至 AC-20 所指的实现与验证子任务（01–16、18–20）全部 `completed`，其验收复选框全部勾选（`grep '^- \[ \]'` 在 01–16、18–20 中为 0）。按 spec 仍为上游缺口的项（R-22 八项 blocked、U-021 的最终前提、R-23 的 9 个未验证单元、外观证据缺口与授权不足的审批）都在评审中有原责任、影响与恢复条件，没有以代理检查冒充实机、原版或人工证据：试听与物理按键证据经 07 判定不受影响而复用，真实内容由 06 在本机 Chrome 中实际复跑。
+- **候选绑定：** 最终 `src` 树 `21e68310cf43eae58b863d4b3b12b318c3d489e5`；`git diff a02f4ad0 HEAD -- . ':!docs'` 为空，即 08（`a02f4ad0`）、09（`e1910f04`）、10（`5465f27d`）与 06、07（`f2c61924`，只差 20 的测试支持文件）都绑定同一产品代码。05 在 `9a3b21f2` 上运行，之后只有 19（渲染）与 20（测试）改代码，不在转换路径上；14 在 `9ab62872` 上运行，其复用条件由 09 在最终候选上的完整回归满足（19 不改驾驶舱或地图绘制）。没有需要重跑的项。
+- **`check:original`：** 评审与证据定稿后（含本项对评审的修改）`pnpm build` 退出 0，`pnpm --silent check:original` 退出 0：`osr-local-compliance`/1、`kind: original`、`passed: true`、0 finding，build 9、index 与 worktree 各 2,113 项、untracked 0。本次 `dist` 清单（P2-13/04 算法）SHA-256 `74260a03139057ce9b48f7d30153fc5798f6dfbd9b958a8ddca4829c9315843d`，9 个文件，与 08、09、10 逐行相同。报告与清单在被忽略的 `local/research/p3-16/final-alignment/`。
+- **评审的更新（扩大的写入范围）：** 工程边界一行由“待验证”改为“通过”并引用本项结果，阶段责任覆盖计数改为 5 通过、11 不通过、1 待定（退出判定及交接，待负责人确认），P3-16 交付一句改为实际结果；按审查意见更正 R 项汇总一句：只有 R-19 全部一致，其余逐单元判定，有效的经批准差异与经批准的取证方法本身不阻止通过，阻止的是未验证、blocked、授权不足或受 U-021 约束的单元。结论“不通过”与 draft 状态不变。
+- **AC-19：** STATUS 只改了卷首说明、P3 行的状态列（仍为“进行中”）、P3-15 子项后的 P3-16 摘要与“下一步”（指向待确认的评审）、已修复的联合故障说明与 U-021 的一句补充；评审记录列仍为 `—`，没有任务执行状态。阶段索引只在 P3-16 行加评审链接、在第 7 节指向评审。两者 `updated:` 为 2026-10-31。
+- **链接与元数据：** 脚本检查 `d2a793e4` 以来改动的 35 个 Markdown 文件、4,810 个相对链接与锚点（含显式 `<a id>`）：0 处失效；另有 8 处命中都在 16 的完成证据中以行内代码引用的建议文本里，不是链接。改动的文档都有 front matter 与 `updated:`。
+- **AC-20：** `git diff --name-status d2a793e4 HEAD` 只含：本任务的计划文档与评审；S-11 的 STATUS、阶段索引、engineering README、source-structure、core/render/original-data 模块说明；P3-03 goal 的四行映射与一条记录；P3-02/09/10 spec 的修订；`executable.md` 的查证补记；`unknowns.md` 只改负责阶段一列与日期（15 的逐列比对）；`src/core`、`src/original-data`、`src/render` 的修复与测试，`e2e` 的新回归与 map-picture 测量修复。没有依赖或锁文件变化（10），没有原版内容（`check:original` 与 `check:compliance` 通过；只记身份、计数与哈希，私有输出都在被忽略的 `local/research/p3-16/`）。没有 `exec-p3-16-*` 分支或 worktree 残留，`git worktree prune` 已运行；本任务启动的服务器、浏览器、临时 profile 与端口都已关闭（`lsof` 在 5100–5199 无监听）；没有 push、部署或阶段切换。09 与 10 的首次失败与私有输出已从 worker 目录复制到 `local/research/p3-16/e2e/` 与 `compliance/`。
+- **路由：** `node tools/task-state.ts p3/03` 为 `done (terminal)`；本项标记完成后 `node tools/task-state.ts p3/16` 为 `done`。
+- **审查：** rubber-duck 审查本项与评审：阻断项为“本项尚无证据却在评审中称已完成”，由本记录与 tracker 解决，并在全部文档定稿后重跑 `check:original`；非阻断项为 R 项汇总一句与判定规则不符，已更正。确认 STATUS 与阶段索引符合 AC-19，改动范围符合 AC-20，登记表只改负责阶段一列。
+- **文档影响：** 除上述评审更新外无其他文档需要修改；STATUS 已由协调者在 16 集成时更新，阶段状态在负责人确认前不变。
