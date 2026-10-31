@@ -109,9 +109,9 @@ updated: "2026-10-31"
 | [18-ac23-fixup-width.md](./subtasks/18-ac23-fixup-width.md) | — | completed |
 | [19-explosion-sprite-sampling.md](./subtasks/19-explosion-sprite-sampling.md) | — | completed |
 | [20-map-picture-recorder.md](./subtasks/20-map-picture-recorder.md) | — | completed |
-| [21-r22-original-runs.md](./subtasks/21-r22-original-runs.md) | — | pending |
-| [22-r07-fuse-windows.md](./subtasks/22-r07-fuse-windows.md) | — | pending |
-| [23-r05b-coverage-guard.md](./subtasks/23-r05b-coverage-guard.md) | — | pending |
+| [21-r22-original-runs.md](./subtasks/21-r22-original-runs.md) | — | in-progress |
+| [22-r07-fuse-windows.md](./subtasks/22-r07-fuse-windows.md) | — | in-progress |
+| [23-r05b-coverage-guard.md](./subtasks/23-r05b-coverage-guard.md) | — | in-progress |
 | [24-shimmer-logical-pixel.md](./subtasks/24-shimmer-logical-pixel.md) | — | pending |
 | [25-untested-r-branches.md](./subtasks/25-untested-r-branches.md) | — | pending |
 | [26-p3-12-appearance-gaps.md](./subtasks/26-p3-12-appearance-gaps.md) | — | pending |
