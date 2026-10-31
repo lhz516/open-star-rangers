@@ -110,7 +110,7 @@ updated: "2026-10-31"
 | [19-explosion-sprite-sampling.md](./subtasks/19-explosion-sprite-sampling.md) | — | completed |
 | [20-map-picture-recorder.md](./subtasks/20-map-picture-recorder.md) | — | completed |
 | [21-r22-original-runs.md](./subtasks/21-r22-original-runs.md) | — | in-progress |
-| [22-r07-fuse-windows.md](./subtasks/22-r07-fuse-windows.md) | — | in-progress |
+| [22-r07-fuse-windows.md](./subtasks/22-r07-fuse-windows.md) | — | completed |
 | [23-r05b-coverage-guard.md](./subtasks/23-r05b-coverage-guard.md) | — | completed |
 | [24-shimmer-logical-pixel.md](./subtasks/24-shimmer-logical-pixel.md) | — | in-progress |
 | [25-untested-r-branches.md](./subtasks/25-untested-r-branches.md) | — | pending |
@@ -158,6 +158,7 @@ updated: "2026-10-31"
 - **2026-10-31 — 17 最终对齐通过，goal 完成：** 每个 S/AC 都有证据或带恢复条件的上游缺口记录；各检查绑定同一产品代码（`src` 树 `21e68310`），定稿后的 `check:original` 在同一 `dist` 指纹上通过；STATUS 与阶段索引符合确认前的限制；没有残留分支、worktree、进程或 push。协调者扩大 17 的写入范围，把评审中等待本项的工程边界一行改为通过，并按审查更正 R 项汇总一句。P3 退出评审仍为 draft，结论“不通过”，待负责人确认；本 goal 完成不等于 P3 通过。
 - **2026-10-31 — spec 修订 1 与新增子任务 21–27（goal 变更）：** 用户原话（经父会话转达）：“开始第一组和第二组，如果难以做到就修改/放宽审阅标准，批准任何需要修改审阅标准的地方。”协调者据此在 spec 审批节写修订 1（允许第一、二组的原版运行与判据修订，取代技术决定 5 等处的相应限制），新增第一组 22（R-07 Φ 求值器）、23（R-05b 覆盖守卫）、24（屏幕门共用规则），第二组 21（R-22 八项）、25（9 个未测 R 分支，不含 R-23 物理键两项）、26（P3-12 的 11 个外观缺口），以及 27（评审修订）。17 回到 pending 并依赖 21–27，最终对齐将重跑。第三组（U-021 冻结、C/B? 事后审阅、R-23 物理键、P3-13 M 会话、P3-14 试听、物理 Fn+F11）不在范围内。
 - **2026-10-31 — 23 完成（以证据解决）：** R-05b 种子 1 的停放覆盖守卫在最终候选上按原判据恢复为 13/13：新版窗口由 160 tick 延长到 164 tick（窗口长度与计数 13 都不是 P3-06 spec 或 B-008 的判据，是新版一侧集成循环的取样参数），过滤、独立期望与 `== 13` 守卫不变；其余种子 52/52，敏感性检查 3/3 能发现缺失。没有判据修订。
+- **2026-10-31 — 22 完成（以证据解决）：** 私有 Φ 求值器按 P3-07 原判据覆盖首次引信检查（触发帧须恰为相位 3），自检 165/165；在最终候选上重判全部 R-07 窗口，只有原 4 个 `no-check` 窗口改变且全部成立，其余 1,470 个结果与 07 相同。R-07 的已归因单元满足恢复条件，交 27 改为“一致：直接”。没有判据修订。
 
 ## 审批
 
