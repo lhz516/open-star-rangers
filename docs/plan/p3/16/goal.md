@@ -94,7 +94,7 @@ updated: "2026-10-30"
 | [02-p3-03-coverage.md](./subtasks/02-p3-03-coverage.md) | — | completed |
 | [03-joint-fault-contract.md](./subtasks/03-joint-fault-contract.md) | — | completed |
 | [04-joint-fault-core.md](./subtasks/04-joint-fault-core.md) | 03 | completed |
-| [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | 18 | pending |
+| [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | 18 | in-progress |
 | [06-real-content-reruns.md](./subtasks/06-real-content-reruns.md) | 04, 18, 19 | pending |
 | [07-affected-evidence.md](./subtasks/07-affected-evidence.md) | 01, 04, 19 | pending |
 | [08-engineering-checks.md](./subtasks/08-engineering-checks.md) | 04, 18, 19 | pending |
