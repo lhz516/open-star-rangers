@@ -90,9 +90,9 @@ updated: "2026-10-30"
 
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
-| [01-candidate-evidence-map.md](./subtasks/01-candidate-evidence-map.md) | — | pending |
-| [02-p3-03-coverage.md](./subtasks/02-p3-03-coverage.md) | — | pending |
-| [03-joint-fault-contract.md](./subtasks/03-joint-fault-contract.md) | — | pending |
+| [01-candidate-evidence-map.md](./subtasks/01-candidate-evidence-map.md) | — | in-progress |
+| [02-p3-03-coverage.md](./subtasks/02-p3-03-coverage.md) | — | in-progress |
+| [03-joint-fault-contract.md](./subtasks/03-joint-fault-contract.md) | — | in-progress |
 | [04-joint-fault-core.md](./subtasks/04-joint-fault-core.md) | 03 | pending |
 | [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | — | pending |
 | [06-real-content-reruns.md](./subtasks/06-real-content-reruns.md) | 04 | pending |
