@@ -108,7 +108,7 @@ updated: "2026-10-30"
 | [16-exit-review-handoff.md](./subtasks/16-exit-review-handoff.md) | 01, 02, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 18, 19, 20 | pending |
 | [18-ac23-fixup-width.md](./subtasks/18-ac23-fixup-width.md) | — | completed |
 | [19-explosion-sprite-sampling.md](./subtasks/19-explosion-sprite-sampling.md) | — | completed |
-| [20-map-picture-recorder.md](./subtasks/20-map-picture-recorder.md) | — | in-progress |
+| [20-map-picture-recorder.md](./subtasks/20-map-picture-recorder.md) | — | completed |
 | [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -139,6 +139,7 @@ updated: "2026-10-30"
 - **2026-10-30 — 05 完成：** 候选 `9a3b21f2`（含 04、18）的 package-check 成功形状齐全、退出码 0；完整 `ContentIdentity` 与 P3-15/07 私有记录逐字段相同（含完整 manifest 与来源指纹），说明 04、18 没有改变转换输出。
 - **2026-10-30 — 14 完成：** G-01 至 G-10（含 G-02 各子项）在候选 `9ab62872` 的开发与生产构建中标注齐全、与 `SLICE_GAPS` 一致，没有漏标、未替换的临时资源或超范围项；joint-loop 生产闭环在该候选上通过，不依赖自动驾驶或强制调试。复用条件：之后的改动不触及 UI、绑定、驾驶舱/地图绘制、缺省清单、`src/app`、Core 流程与结果或构建配置，否则以 09 的最终候选回归为准。
 - **2026-10-30 — 19 完成：** 爆炸精灵片元改用共用的 `logicalPixel()`，网格扩一个逻辑像素、块外丢弃，不再读相邻帧；修复前新回归在 485/576/800/960/1066 五个宽度全部失败，修复后 0 处不合，去掉修复后再次失败。集成后 `pnpm check` 通过，聚焦浏览器回归 5 项通过。worker 建议在 `docs/engineering/README.md` 的飞行渲染浏览器用例处列出新用例，交 16（其写入范围）。
+- **2026-10-31 — 20 完成：** 记录器以 store 现有 projection 为初值，按键前等到一个发布帧与其后的无标签帧；`:211` 单独与 8 线程满载各 10/10，判据仍区分 16/20 tick 周期。`:284` 的“≤ 4 个图内 tick”执行速度前提在其他会话重负载时不满足（11 次失败全在此处，属前提而非产品缺陷）；09 的全量 E2E 须在没有其他重负载时运行，失败时按技术决定 9 查因。集成后 `pnpm check` 通过。
 
 ## 审批
 

@@ -506,10 +506,13 @@ function installLabelRecorder({ zoom, labels, background }: { zoom: Rect; labels
   // Right-button presses by the page clock, as the input zone receives them.
   document.addEventListener('mousedown', event => { if (event.button === 2) record.presses.push(performance.now()); }, true);
   const equal = (pixels: Uint8Array, at: number, rgb: number[]) => pixels[at] === rgb[0] && pixels[at + 1] === rgb[1] && pixels[at + 2] === rgb[2];
-  let projection: unknown = null;
+  type State = { projection: { clock: { tick: number }; player: { viewMode: number } } | null };
+  // The projection the store already holds may be up to a publication interval old, so the first frame does not count
+  // it as published.
+  let projection = (game.getState() as State).projection;
   const step = (time: number, own: number): void => {
     if (record.stopped || own !== generation) return;
-    const state = game.getState() as { projection: { clock: { tick: number }; player: { viewMode: number } } | null };
+    const state = game.getState() as State;
     const published = state.projection !== projection;
     projection = state.projection;
     const tick = state.projection?.clock.tick ?? null;
@@ -559,11 +562,23 @@ export function tickAfter(samples: readonly LabelSample[], time: number): { low:
   return frameTicks(samples)[index];
 }
 
-/** Starts the label recorder for `map`'s zoom window in `content`'s colours. */
+/**
+ * Starts the label recorder for `map`'s zoom window in `content`'s colours, and waits until it has recorded a published
+ * frame and, from then on, a frame without labels: the ticks of later frames are bounded from that publication, and a
+ * first change of the labels after it has a frame before to change from.
+ */
 export async function recordLabels(page: Page, content: MapContent, map: MapOpen): Promise<void> {
   const labels = LABEL_INDICES.map(index => [...content.mapPalette[index]]);
   await page.evaluate(installLabelRecorder, { zoom: zoomInside(map), labels, background: [...content.mapPalette[0]] });
+  await expect.poll(async () => {
+    const { samples } = await recordedLabels(page);
+    const anchor = samples.findIndex(isAnchor);
+    return anchor >= 0 && samples.slice(anchor).some(({ shown }) => shown === false);
+  }, { message: 'the label recorder has a published frame and then one without labels', timeout: 5_000, intervals: [5] }).toBe(true);
 }
+
+/** Whether a frame knows its tick exactly: the store published it in that frame. */
+const isAnchor = (sample: LabelSample): sample is LabelSample & { tick: number } => sample.published && sample.tick !== null;
 
 /** The runtime's fixed step: 64 clock units a second at 2 a tick (core/contracts/time.ts, FixedStepClock). */
 const TICK_MS = 1000 / 32;
@@ -575,7 +590,7 @@ const TICK_MS = 1000 / 32;
  * bounds both from above.
  */
 export function frameTicks(samples: readonly LabelSample[]): { low: number; high: number }[] {
-  const anchors = samples.map(({ tick, published, time }) => (published && tick !== null ? { tick, time } : null));
+  const anchors = samples.map(sample => (isAnchor(sample) ? { tick: sample.tick, time: sample.time } : null));
   let previous: { tick: number; time: number } | null = null;
   const before = anchors.map(anchor => (previous = anchor ?? previous));
   let next: { tick: number; time: number } | null = null;
