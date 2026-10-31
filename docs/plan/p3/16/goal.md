@@ -102,7 +102,7 @@ updated: "2026-10-30"
 | [10-compliance-artifacts.md](./subtasks/10-compliance-artifacts.md) | 04, 18, 19 | pending |
 | [11-render-test-risks.md](./subtasks/11-render-test-risks.md) | — | completed |
 | [12-r22-gap-audit.md](./subtasks/12-r22-gap-audit.md) | — | completed |
-| [13-comparison-verdicts.md](./subtasks/13-comparison-verdicts.md) | 07, 12 | pending |
+| [13-comparison-verdicts.md](./subtasks/13-comparison-verdicts.md) | 07, 12 | in-progress |
 | [14-gap-annotation-audit.md](./subtasks/14-gap-annotation-audit.md) | — | completed |
 | [15-unknowns-ownership.md](./subtasks/15-unknowns-ownership.md) | — | completed |
 | [16-exit-review-handoff.md](./subtasks/16-exit-review-handoff.md) | 01, 02, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 18, 19, 20 | pending |
