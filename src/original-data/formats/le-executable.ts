@@ -36,8 +36,16 @@ export interface ObjectPosition {
   readonly offset: number;
 }
 
-/** A 32-bit offset that the loader sets to the address of `object` + `offset` (a fixup record's internal target). */
-export interface RegionFixup extends ObjectPosition {
+/** A fixup record's internal target: the position and how many bits the record stores the target offset in (flag 0x10). */
+export interface FixupTarget extends ObjectPosition {
+  readonly targetBits: 16 | 32;
+}
+
+/**
+ * A 32-bit offset that the loader sets to the address of `object` + `offset` (a fixup record's internal target). Both
+ * target offset widths load the same; a contract that requires one checks `targetBits`.
+ */
+export interface RegionFixup extends FixupTarget {
   /** Offset of the 4 patched bytes from the region's start. */
   readonly at: number;
 }
@@ -84,7 +92,7 @@ const FIXUP_SOURCE_BYTES: Readonly<Record<number, number>> = Object.freeze({ 0x0
 interface PageFixup {
   readonly start: number;
   readonly end: number;
-  readonly target: ObjectPosition | null;
+  readonly target: FixupTarget | null;
 }
 
 /**
@@ -115,13 +123,14 @@ function pageFixups(records: Uint8Array, path: string): PageFixup[] {
     const offsets = list ? [] as number[] : [s16()];
     const count = list ? u8() : 0;
     const wide = (flags & 0x40) !== 0 ? 2 : 1;
-    let target: ObjectPosition | null = null;
+    let target: FixupTarget | null = null;
     switch (flags & 0x03) {
       case 0: { // internal reference: object, then a target offset unless the source is a 16-bit selector
         const object = wide === 2 ? u16() : u8();
         if ((source & 0x0f) !== 0x2) {
-          const offset = (flags & 0x10) !== 0 ? u32() : u16();
-          if ((source & 0x0f) === 0x7 && (flags & 0x04) === 0) target = { object, offset };
+          const targetBits = (flags & 0x10) !== 0 ? 32 : 16;
+          const offset = targetBits === 32 ? u32() : u16();
+          if ((source & 0x0f) === 0x7 && (flags & 0x04) === 0) target = { object, offset, targetBits };
         }
         break;
       }
@@ -264,11 +273,12 @@ export async function openLeExecutable(file: ByteSource, path: string): Promise<
           const crosses = Math.floor((from + 3) / LE_PAGE_SIZE) !== first;
           const pages = [known.page, page].sort((left, right) => left - right);
           if (known.joined || !crosses || pages[0] !== first || pages[1] !== first + 1) invalid(at, 'a fixup is recorded more than once');
-          if (known.fixup.object !== target.object || known.fixup.offset !== target.offset) invalid(at, 'the records of a fixup disagree');
+          const { object, offset, targetBits } = known.fixup;
+          if (object !== target.object || offset !== target.offset || targetBits !== target.targetBits) invalid(at, 'the records of a fixup disagree');
           found.set(position, { ...known, joined: true });
           return;
         }
-        found.set(position, { fixup: Object.freeze({ at: position, object: target.object, offset: target.offset }), page, joined: false });
+        found.set(position, { fixup: Object.freeze({ at: position, ...target }), page, joined: false });
       });
       const fixups = [...found.values()].map(({ fixup }) => fixup).sort((left, right) => left.at - right.at);
       fixups.forEach((fixup, index) => {

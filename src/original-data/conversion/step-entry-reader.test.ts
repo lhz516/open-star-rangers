@@ -84,7 +84,7 @@ describe('step region readers', () => {
     const withFixups = await readFixedUp(fixedUp, 'c');
     expect(await readFixedUp(fixedUp, 'd')).toBe(withFixups);
     // The fixup patches bytes 4–7 of the region with the address of object 1 offset 0; the stored bytes are unpatched.
-    expect(withFixups.fixups).toEqual([{ at: 4, object: 1, offset: 0 }]);
+    expect(withFixups.fixups).toEqual([{ at: 4, object: 1, offset: 0, targetBits: 32 }]);
     expect(withFixups.bytes).toHaveLength(12);
     // A region read without its fixups is a different read, which the LE reader rejects as patched.
     await expect(read(fixedUp, 'e')).rejects.toMatchObject({ name: 'SourceError', code: 'invalid-payload', location: 'e' });

@@ -8,7 +8,7 @@ import {
 import { CLASSIC_P2_SLICE } from '../../content/slice-definition.ts';
 import type { DiscPath } from '../disc/disc-path.ts';
 import { AI_LAYOUT } from '../formats/ai.ts';
-import { aiContent, syntheticAiSources, syntheticBuiltIn, syntheticKeywordTables } from '../formats/ai.test-support.ts';
+import { aiContent, syntheticAiSources, syntheticBuiltIn, syntheticKeywordTables, type SyntheticKeywordTables } from '../formats/ai.test-support.ts';
 import type { RegionFixup } from '../formats/le-executable.ts';
 import { BASE_REPAIR_RECORD } from '../formats/base-repair.ts';
 import { COMM_MENU_IDS, COMM_NOB, defaultCommMenus, syntheticCommTables } from '../formats/comm.test-support.ts';
@@ -17,7 +17,7 @@ import { CRAFT_NOB, craftTableCell, defaultCraftInfo, syntheticCraftInfoBlock, s
 import { DEBRIS_NOB, defaultDebrisParameters, syntheticDebrisBlock } from '../formats/debris.test-support.ts';
 import type { SyntheticBlock } from '../formats/formats.test-support.ts';
 import type { ExecutableRegion } from '../source-mapping.ts';
-import { buildImfat, syntheticLeExecutable, type SyntheticEntry } from '../synthetic.test-support.ts';
+import { buildImfat, internalOffsetFixupRecord, syntheticLeExecutable, type SyntheticEntry } from '../synthetic.test-support.ts';
 import { PRODUCTION_EXECUTABLE } from './production-executable.ts';
 import type { RuleDataSources } from './production-rule-data.ts';
 
@@ -111,21 +111,13 @@ function messageObject(strings: readonly string[]): { readonly bytes: Uint8Array
 
 const LE_PAGE = 4_096;
 
-/** A fixup record for a non-additive internal 32-bit offset at `offset` of its page (negative on the later of two pages). */
-function fixupRecord(offset: number, object: number, target: number): number[] {
-  const wide = target > 0xffff;
-  const record = [0x07, wide ? 0x10 : 0x00, offset & 0xff, (offset >>> 8) & 0xff, object];
-  for (let index = 0; index < (wide ? 4 : 2); index++) record.push((target >>> (index * 8)) & 0xff);
-  return record;
-}
-
 /** Adds the fixup records of `regionFixups`, patching a region at `regionAt` of the object whose first page is `firstPage`. */
 function recordFixups(records: Record<number, number[]>, firstPage: number, regionAt: number, regionFixups: readonly RegionFixup[]): void {
-  for (const { at, object, offset } of regionFixups) {
+  for (const { at, ...target } of regionFixups) {
     const position = regionAt + at;
     const page = Math.floor(position / LE_PAGE);
     for (const recorded of position + 4 > (page + 1) * LE_PAGE ? [page, page + 1] : [page]) {
-      (records[firstPage + recorded] ??= []).push(...fixupRecord(position - recorded * LE_PAGE, object, offset));
+      (records[firstPage + recorded] ??= []).push(...internalOffsetFixupRecord(position - recorded * LE_PAGE, target));
     }
   }
 }
@@ -136,9 +128,9 @@ const KEYWORD_TABLES_AT = 0x31b;
 /**
  * The LE file: object 1 the flight messages, object 2 the handler targets and then the keyword tables, object 3 the
  * built-in names and object 4 the built-in table, placed so that a fixup crosses a page boundary, followed by the
- * keyword names. Objects 1–3 take one page each.
+ * keyword names. Objects 1–3 take one page each. `changeKeywords` may change the keyword tables before they are written.
  */
-function syntheticExecutable({ builtInPrograms, keywordTables }: AiPrograms, messages: readonly string[]) {
+function syntheticExecutable({ builtInPrograms, keywordTables }: AiPrograms, messages: readonly string[], changeKeywords?: (keywords: SyntheticKeywordTables) => void) {
   // The names are consecutive regions in object 3.
   const builtIn = syntheticBuiltIn(builtInPrograms);
   const namesEnd = builtIn.names.reduce((end, { region }) => Math.max(end, region.offset + region.length), 0);
@@ -147,6 +139,7 @@ function syntheticExecutable({ builtInPrograms, keywordTables }: AiPrograms, mes
   const tableAt = LE_PAGE - AI_LAYOUT.programBytes - 2;
   const builtInEnd = tableAt + builtIn.bytes.length + 9;
   const keywords = syntheticKeywordTables(keywordTables, { object: 2, offset: KEYWORD_TABLES_AT }, { object: 4, offset: builtInEnd + 3 });
+  changeKeywords?.(keywords);
   const keywordNamesEnd = keywords.names.reduce((end, { region }) => Math.max(end, region.offset + region.length), 0);
   const table = Uint8Array.from({ length: keywordNamesEnd + 6 }, (_, index) => ((index * 3) & 0xff) || 1);
   table.set(builtIn.bytes, tableAt);
@@ -172,8 +165,13 @@ function syntheticExecutable({ builtInPrograms, keywordTables }: AiPrograms, mes
   };
 }
 
-/** The synthetic sources of `contents`, mapped by a plan of synthetic IDs and regions for the slice candidate. */
-export function syntheticRuleData(contents: RuleDataContents = defaultRuleDataContents()): SyntheticRuleData {
+/**
+ * The synthetic sources of `contents`, mapped by a plan of synthetic IDs and regions for the slice candidate.
+ * `changeKeywords` may change the executable's keyword tables before they are written.
+ */
+export function syntheticRuleData(
+  contents: RuleDataContents = defaultRuleDataContents(), changeKeywords?: (keywords: SyntheticKeywordTables) => void,
+): SyntheticRuleData {
   const ids = SYNTHETIC_RULE_DATA_IDS;
   const { campaignGroup, campaignSlot } = CLASSIC_P2_SLICE.candidate;
   const { hitDamageScale, ...info } = contents['craft-info'];
@@ -188,7 +186,7 @@ export function syntheticRuleData(contents: RuleDataContents = defaultRuleDataCo
   const face = syntheticCommFace(contents['comm-messages']);
   const messages = contents['flight-messages'];
   const messageKeys = Object.keys(messages) as (keyof typeof messages)[];
-  const executable = syntheticExecutable(contents['ai-programs'], messageKeys.map(key => messages[key]));
+  const executable = syntheticExecutable(contents['ai-programs'], messageKeys.map(key => messages[key]), changeKeywords);
 
   const sources: RuleDataSources = {
     candidate: CLASSIC_P2_SLICE.candidate,

@@ -7,14 +7,14 @@ import {
 import type { DiscPath } from '../disc/disc-path.ts';
 import { SourceError, type SourceErrorData } from '../source-error.ts';
 import { sourceFailure } from '../source-error.test-support.ts';
-import { memoryByteSource } from '../synthetic.test-support.ts';
+import { internalOffsetFixupRecord, memoryByteSource } from '../synthetic.test-support.ts';
 import { AI_LAYOUT, AI_SOURCE_LIMITS, parseAiPrograms } from './ai.ts';
 import {
-  aiContent, aiSources, BUILT_IN_LOCATION, keywordNameLocation, keywordTableLocation, nameLocation, SYNTHETIC_AI_IDS, syntheticAiSources,
-  syntheticBuiltIn, syntheticBuiltInExecutable, syntheticKeywordExecutable, syntheticKeywordTables, type SyntheticAiSources,
+  aiContent, aiSources, BUILT_IN_LOCATION, keywordNameLocation, keywordTableLocation, nameLocation, SYNTHETIC_AI_IDS,
+  syntheticAiSources, syntheticBuiltIn, syntheticBuiltInExecutable, syntheticKeywordExecutable, syntheticKeywordTables, type SyntheticAiSources,
 } from './ai.test-support.ts';
 import type { SyntheticBlock } from './formats.test-support.ts';
-import { openLeExecutable } from './le-executable.ts';
+import { openLeExecutable, type FixupTarget } from './le-executable.ts';
 
 // P3-03 AC-05 (parsing), AC-14 (structural limits) and AC-18 for the AISTUFF group-0 closure and the EXE built-in program
 // table. All sources are code-generated from synthetic content; texts carry MARKER, which no diagnostic may contain.
@@ -166,7 +166,8 @@ describe('AISTUFF and built-in AI program parsing', () => {
     const built = syntheticBuiltInExecutable(synthetic.builtIn);
     const executable = await openLeExecutable(memoryByteSource(built.file), 'file');
     const fixedUp = await executable.readFixedUpRegion(built.table, BUILT_IN_LOCATION);
-    // Record 1's name fixup crosses a page boundary and is recorded on both pages.
+    // Record 1's name fixup crosses a page boundary and is recorded on both pages. The name fixups store 16-bit target
+    // offsets and the handler fixups 32-bit ones, as in the original; P3-03 requires no width of this table.
     expect(fixedUp.fixups).toEqual(synthetic.builtIn.fixups);
     const names = await Promise.all(built.names.map(region => executable.readRegion(region, 'name')));
     const sources = aiSources(synthetic);
@@ -338,8 +339,8 @@ describe('built-in table rejection', () => {
   it.each<[string, (synthetic: SyntheticAiSources['builtIn']) => void, string, string]>([
     ['a missing name fixup', ({ fixups }) => fixups.splice(2, 1), 'invalid-payload', region('/programs[1]/name')],
     ['a missing handler fixup', ({ fixups }) => fixups.splice(1, 1), 'invalid-payload', region('/programs[0]/handler')],
-    ['a fixup at a value field', ({ fixups }) => fixups.push({ at: programBytes + 4, object: 2, offset: 0 }), 'invalid-payload', region('/programs[1]')],
-    ['a fixup at the count', ({ fixups }) => fixups.push({ at: programBytes * 2, object: 2, offset: 0 }), 'invalid-payload', region('/count')],
+    ['a fixup at a value field', ({ fixups }) => fixups.push({ at: programBytes + 4, object: 2, offset: 0, targetBits: 32 }), 'invalid-payload', region('/programs[1]')],
+    ['a fixup at the count', ({ fixups }) => fixups.push({ at: programBytes * 2, object: 2, offset: 0, targetBits: 32 }), 'invalid-payload', region('/count')],
     ['a count other than the region', ({ bytes }) => setU32(bytes, programBytes * 2, 1), 'invalid-payload', region('/count')],
     ['a negative count', ({ bytes }) => setU32(bytes, programBytes * 2, -2), 'invalid-payload', region('/count')],
     ['a non-zero +0x1C', ({ bytes }) => setU32(bytes, 0x1c, 1), 'unsupported-payload', region('/programs[0]/at1C')],
@@ -565,22 +566,33 @@ describe('keyword tables (AC-23)', () => {
     expect(encodeRuleDataPayload({ role: 'ai-programs', content: readAiPrograms(JSON.parse(new TextDecoder('latin1').decode(bytes))) })).toEqual(bytes);
   });
 
-  it('reads the tables and names through the LE fixed-up region reader', async () => {
-    const content = aiContent();
-    const synthetic = syntheticAiSources(content);
-    const built = syntheticKeywordExecutable(synthetic.keywords);
+  /** Parses `synthetic` with its keyword tables and names read from an LE file whose name fixups `record` writes. */
+  async function parseThroughLe(synthetic: SyntheticAiSources, record?: Parameters<typeof syntheticKeywordExecutable>[1]) {
+    const built = syntheticKeywordExecutable(synthetic.keywords, record);
     const executable = await openLeExecutable(memoryByteSource(built.file), 'file');
     const sources = aiSources(synthetic);
     const tables = await Promise.all(built.tables.map(async (region, index) => ({ region, ...await executable.readFixedUpRegion(region, table(index)), location: table(index) })));
-    tables.forEach(({ fixups }, index) => expect(fixups).toEqual(synthetic.keywords.tables[index].fixups));
     const names = await Promise.all(built.names.map(async (region, index) => ({ region, bytes: await executable.readRegion(region, 'name'), location: keywordNameLocation(index) })));
-    const parsed = parseAiPrograms(AISTUFF, { ...sources, keywordTables: tables as unknown as typeof sources.keywordTables, keywordNames: names }, 0);
-    expect(parsed.content.keywordTables).toEqual(content.keywordTables);
+    return { tables, parse: () => parseAiPrograms(AISTUFF, { ...sources, keywordTables: tables as unknown as typeof sources.keywordTables, keywordNames: names }, 0) };
+  }
+
+  it('reads the tables and names through the LE fixed-up region reader', async () => {
+    const content = aiContent();
+    const synthetic = syntheticAiSources(content);
+    const read = await parseThroughLe(synthetic);
+    read.tables.forEach(({ fixups }, index) => expect(fixups).toEqual(synthetic.keywords.tables[index].fixups));
+    expect(read.parse().content.keywordTables).toEqual(content.keywordTables);
   });
 
-  it.each<[string, (offset: number, object: number, target: number) => number[]]>([
-    ['an additive fixup', (offset, object, target) => [0x07, 0x04, offset & 0xff, offset >>> 8, object, target & 0xff, target >>> 8, 1, 0]],
-    ['a 16-bit offset fixup', (offset, object, target) => [0x05, 0x00, offset & 0xff, offset >>> 8, object, target & 0xff, target >>> 8]],
+  it('rejects name fixups with a 32-bit target offset, which the LE reader accepts', async () => {
+    // Target flag 0x10: the same internal 32-bit offset to object 4, its target offset stored in 32 bits.
+    const read = await parseThroughLe(syntheticAiSources(), (offset, target) => internalOffsetFixupRecord(offset, { ...target, targetBits: 32 }));
+    expect(await regionFailure(read.parse)).toEqual(diagnostic('unsupported-payload', table(0, '/entries[0]/name')));
+  });
+
+  it.each<[string, (offset: number, target: FixupTarget) => number[]]>([
+    ['an additive fixup', (offset, { object, offset: target }) => [0x07, 0x04, offset & 0xff, offset >>> 8, object, target & 0xff, target >>> 8, 1, 0]],
+    ['a 16-bit offset fixup', (offset, { object, offset: target }) => [0x05, 0x00, offset & 0xff, offset >>> 8, object, target & 0xff, target >>> 8]],
   ])('rejects a table that %s patches in the LE reader', async (_, record) => {
     const built = syntheticKeywordExecutable(syntheticAiSources().keywords, record);
     const executable = await openLeExecutable(memoryByteSource(built.file), 'file');
@@ -588,11 +600,12 @@ describe('keyword tables (AC-23)', () => {
   });
 
   it.each<[string, (synthetic: SyntheticAiSources['keywords']) => void, string, string]>([
-    ['a fixup at a value word', ({ tables }) => tables[1].fixups.push({ at: pair + 4, object: 4, offset: 0x10 }), 'unsupported-payload', table(1, '/entries[1]')],
-    ['a fixup at the terminator pair', ({ tables }) => tables[2].fixups.push({ at: 2 * pair, object: 4, offset: 0x10 }), 'unsupported-payload', table(2, '/terminator')],
-    ['a fixup across two words', ({ tables }) => tables[0].fixups.push({ at: 2 * pair + 2, object: 4, offset: 0x10 }), 'unsupported-payload', table(0, '/entries[2]')],
+    ['a fixup at a value word', ({ tables }) => tables[1].fixups.push({ at: pair + 4, object: 4, offset: 0x10, targetBits: 16 }), 'unsupported-payload', table(1, '/entries[1]')],
+    ['a fixup at the terminator pair', ({ tables }) => tables[2].fixups.push({ at: 2 * pair, object: 4, offset: 0x10, targetBits: 16 }), 'unsupported-payload', table(2, '/terminator')],
+    ['a fixup across two words', ({ tables }) => tables[0].fixups.push({ at: 2 * pair + 2, object: 4, offset: 0x10, targetBits: 16 }), 'unsupported-payload', table(0, '/entries[2]')],
     ['a missing name fixup', ({ tables }) => tables[1].fixups.splice(4, 1), 'unsupported-payload', table(1, '/entries[4]/name')],
     ['a fixup to another object', ({ tables }) => { tables[3].fixups[1] = { ...tables[3].fixups[1], object: 3 }; }, 'unsupported-payload', table(3, '/entries[1]/name')],
+    ['a fixup with a 32-bit target offset', ({ tables }) => { tables[2].fixups[1] = { ...tables[2].fixups[1], targetBits: 32 }; }, 'unsupported-payload', table(2, '/entries[1]/name')],
     ['a stored pointer other than the target offset', ({ tables }) => setU32(tables[0].bytes, pair, 0), 'unsupported-payload', table(0, '/entries[1]/name')],
     ['a pair after a null pair inside the table', ({ tables }) => { setU32(tables[1].bytes, 2 * pair, 0); tables[1].fixups.splice(2, 1); }, 'unsupported-payload', table(1, '/entries[2]/name')],
     ['no terminator pair', ({ tables }) => setU32(tables[2].bytes, 2 * pair, 0x10), 'unsupported-payload', table(2, '/terminator')],

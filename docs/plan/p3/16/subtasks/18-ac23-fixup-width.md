@@ -43,14 +43,24 @@ updated: "2026-10-30"
 
 ## 验收标准
 
-- [ ] 修复前已复现 32 位目标偏移被接受；修复后关键字表对其报 `unsupported-payload`，合成拒绝测试在去掉修复后失败。
-- [ ] 合法输入的转换输出与内容身份不变；`ConverterVersion` 的处理符合 P3-03 规则（不需要递增，或已停下报告）。
-- [ ] 内置表的处理与其契约条文一致，并写明依据。
-- [ ] P3-03 goal 只多 AC-23 一行与那一条执行记录的修改；`node tools/task-state.ts p3/03` 为 `done`。
-- [ ] 受影响的 Vitest 文件与 `pnpm check` 通过；没有新依赖或原版内容。
+- [x] 修复前已复现 32 位目标偏移被接受；修复后关键字表对其报 `unsupported-payload`，合成拒绝测试在去掉修复后失败。
+- [x] 合法输入的转换输出与内容身份不变；`ConverterVersion` 的处理符合 P3-03 规则（不需要递增，或已停下报告）。
+- [x] 内置表的处理与其契约条文一致，并写明依据。
+- [x] P3-03 goal 只多 AC-23 一行与那一条执行记录的修改；`node tools/task-state.ts p3/03` 为 `done`。
+- [x] 受影响的 Vitest 文件与 `pnpm check` 通过；没有新依赖或原版内容。
 
 ## 验证方法
 
 - `pnpm test -- src/original-data`，再运行 `pnpm check`；`node tools/task-state.ts p3/03`；`git --no-pager diff docs/plan/p3/03/goal.md`。
 
 ## 完成证据
+
+- **复现：** 修复前，`ai.test.ts` 新增的“rejects name fixups with a 32-bit target offset, which the LE reader accepts”（合成 LE，关键字表名称 fixup 的目标标志置 0x10，其余与合法样本相同，经 `readFixedUpRegion` 读取后解析）失败于“expected a SourceError”，即 32 位目标偏移被接受。
+- **修复：** [le-executable.ts](../../../../../src/original-data/formats/le-executable.ts) 新增 `FixupTarget { object, offset, targetBits }`，`RegionFixup` 继承它；`targetBits` 按目标标志 0x10 取 32 或 16，跨页两条记录的宽度不同也报“the records of a fixup disagree”（`invalid-payload`）。[ai.ts](../../../../../src/original-data/formats/ai.ts) 的 `parseKeywordTables` 对 `targetBits !== 16` 报 `unsupported-payload`，位置为 `<表>/entries[i]/name`。
+- **测试：** 解析器路径两项（经 LE 读取器的全宽样本 → `keywordTables[0]/entries[0]/name`；`it.each` 拒绝组中改一个 fixup 为 32 位 → `keywordTables[2]/entries[1]/name`），转换器路径一项（`convert-rule-data.test.ts`，`syntheticRuleData` 新增的 `changeKeywords` 改表 1 第 3 项 → `…parts[9]…/entries[2]/name`）；去掉 ai.ts 的那一行检查后这 3 项失败（3 failed / 164 passed），恢复后通过。`le-executable.test.ts` 断言读取器报告的宽度并拒绝跨页宽度不一致。合成编码统一为 `synthetic.test-support.ts` 的 `internalOffsetFixupRecord`，按 fixup 的 `targetBits` 写记录，替换原有三份按目标值大小选宽度的副本（ai、rule-data、production-graphics 支持文件）。
+- **内置表：** P3-03 spec 对 `0x1762f8` 只要求区域、名称与 ID 链（导入项表、Asset 表与“来源映射与核验”），核验 2 中“与内置表 `0x1762f8` 的核对相同”只指存储字等于目标偏移，不要求宽度；原版名称 fixup 为 16 位、处理函数 fixup 为 32 位（[ai §3.3](../../../../original/formats/ai.md#33-built-in-program-table-0x1762f8)）。因此内置表行为不变：合成内置表现按原版混合宽度编码（名称 16、处理函数 32），“reads the built-in table … through the LE fixed-up region reader”仍通过。
+- **输出与版本：** 修复只增加拒绝，合法输入的解析结果与编码路径不变。本机真实镜像 `node tools/package-check.ts local/StarRang/cd/STAR_RANGERS.{ccd,img,sub,cue}` 为 `complete`，`osr-import.graphics-6.logic-4.audio-2.models-4`，manifest `manifest:sha256:b0ea7efdd14a5d30b465a7d3d4cb2eb2c1e49537128dd86e63a4ad37800aabac` 与 [P3-13/30](../../13/subtasks/30-real-content-import.md) 记录相同，`ai-programs` 的关键字计数 3/6/5/3、14、111 与 `digests.keywordTables` `sha256:6981ee39…adf60` 与 P3-08/13 相同（真实的 17 个 fixup 都是 16 位，被接受）。P3-03 规则是“输出发生变化的转换器，各自递增其组件”（spec“包身份与转换器版本”），输出不变，因此不递增 `ConverterVersion`。
+- **P3-03 goal：** 只加 AC-23 覆盖行（实现指向 P3-08/13 与本子任务）并改写 2026-10-30（P3-16/02）那一条执行记录（四行都已补，AC-23 的拒绝证据由本子任务补齐），未新增记录；`node tools/task-state.ts p3/03` → `done (terminal)`。
+- **检查：** `pnpm exec vitest run src/original-data src/workers`（71 个文件、2,621 个测试）通过；`pnpm typecheck`、`eslint src/original-data` 通过；`pnpm check` 通过（447 个文件、11,933 个测试与构建）。没有新依赖，测试只用合成数据。
+- **rubber-duck：** 无发现（确认宽度来自目标标志 0x10、跨页宽度一致、内置表不受影响、生产测试支持的关键字目标偏移 < 0x10000 仍编码为 16 位）。**simplify：** 采纳：合并三份 fixup 记录编码器到 `synthetic.test-support.ts`，去掉一条冗余断言；保留解析器与转换器两条路径的测试（本子任务要求）与 `changeKeywords` 钩子（转换器测试所需的最小入口）。
+- **文档影响：** [original-data 模块说明](../../../../engineering/modules/original-data.md)的关键字表与 `readFixedUpRegion` 两处改为已按宽度拒绝、`RegionFixup` 携带 `targetBits`。[ai 格式文档](../../../../original/formats/ai.md)只记原版事实（17 个 16 位 fixup），不描述该偏差，无需改动。`docs/original/formats/executable.md` 的 `readFixedUpRegion` 一句仍准确（未提宽度），且不在写入范围内，未改。

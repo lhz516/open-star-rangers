@@ -446,9 +446,9 @@ export function checkKeywordNameRegions(regions: readonly { readonly length: num
 
 /**
  * The keyword tables (ai.md §5.3): four consecutive regions of {name pointer, i32 value} pairs, each ended by one null
- * pair at its end. Exactly the name word of every other pair is patched, by a fixup to the start of a given name region
- * in object 4 whose stored word is the target offset; every given region is named, and the names of a table differ
- * with A–Z folded. A pair may share a name region with others; the region is read once.
+ * pair at its end. Exactly the name word of every other pair is patched, by a fixup with a 16-bit target offset to the
+ * start of a given name region in object 4 whose stored word is the target offset; every given region is named, and the
+ * names of a table differ with A–Z folded. A pair may share a name region with others; the region is read once.
  */
 function parseKeywordTables(tables: AiProgramSources['keywordTables'], names: readonly AiRegionRead[]): KeywordTables {
   const size = AI_LAYOUT.keywordEntryBytes;
@@ -468,6 +468,7 @@ function parseKeywordTables(tables: AiProgramSources['keywordTables'], names: re
       const path = index < count ? `/entries[${index}]` : '/terminator';
       if (fixup.at % size !== 0 || index >= count) unsupported(`${location}${path}`, 'a fixup patches a value word or the terminator pair');
       if (fixup.object !== AI_LAYOUT.keywordNameObject) unsupported(`${location}${path}/name`, 'the fixup targets another object');
+      if (fixup.targetBits !== 16) unsupported(`${location}${path}/name`, 'the fixup stores its target offset in other than 16 bits');
       fixupAt.set(fixup.at, fixup);
     }
     const terminator = count * size;

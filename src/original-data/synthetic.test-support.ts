@@ -1,5 +1,6 @@
 // Builders for synthetic test data in the original formats. Test-only; never reads original files.
 
+import type { FixupTarget } from './formats/le-executable.ts';
 import type { ByteSource } from './io/byte-source.ts';
 
 export interface SourceRequest {
@@ -382,6 +383,16 @@ const SYNTHETIC_LE_PAGE = 4_096;
 
 /** A fixup record patching a 32-bit offset at `offset` of its page (internal reference to object 1). */
 export const leInternalFixup = (offset: number): number[] => Array.from(new ByteWriter().u8(0x07, 0x10).u16(offset).u8(1).u32(0).toBytes());
+
+/**
+ * A fixup record for a non-additive internal 32-bit offset at `offset` of its page (negative on the later of two pages),
+ * storing the target offset in `targetBits`.
+ */
+export function internalOffsetFixupRecord(offset: number, { object, offset: target, targetBits }: FixupTarget): number[] {
+  const record = [0x07, targetBits === 32 ? 0x10 : 0x00, offset & 0xff, (offset >>> 8) & 0xff, object];
+  for (let index = 0; index < targetBits / 8; index++) record.push((target >>> (index * 8)) & 0xff);
+  return record;
+}
 
 /** Builds an MZ stub, an LE header, the object table, page map, fixup tables and data pages, in that order. */
 export function syntheticLeExecutable(fields: SyntheticLeFields): Uint8Array {

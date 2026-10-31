@@ -369,6 +369,11 @@ describe('keyword tables (P3-03 AC-23)', () => {
     const missing = withAi(ai => ({ keywordNames: ai.keywordNames.slice(1) }));
     await expect(convert(missing)).rejects.toMatchObject({ code: 'subresource-mismatch', location: `${part(0, KEYWORD_TABLES)}/entries[0]/name` });
   });
+
+  it('rejects a name fixup with a 32-bit target offset, which the LE reader accepts', async () => {
+    const fixture = syntheticRuleData(undefined, ({ tables }) => { tables[1].fixups[2] = { ...tables[1].fixups[2], targetBits: 32 }; });
+    await expect(convert({ fixture })).rejects.toMatchObject({ name: 'SourceError', code: 'unsupported-payload', location: `${part(0, KEYWORD_TABLES + 1)}/entries[2]/name` });
+  });
 });
 
 describe('rule-data budget', () => {

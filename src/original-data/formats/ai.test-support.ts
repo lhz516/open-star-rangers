@@ -3,9 +3,9 @@ import {
 } from '../../content/rule-data/ai-programs.ts';
 import { syntheticAiPrograms } from '../../content/rule-data/rule-data.test-support.ts';
 import type { ExecutableRegion } from '../source-mapping.ts';
-import { syntheticLeExecutable } from '../synthetic.test-support.ts';
+import { internalOffsetFixupRecord, syntheticLeExecutable } from '../synthetic.test-support.ts';
 import { AI_LAYOUT, type AiProgramSources } from './ai.ts';
-import type { ObjectPosition, RegionFixup } from './le-executable.ts';
+import type { FixupTarget, ObjectPosition, RegionFixup } from './le-executable.ts';
 import { entryRead, type SyntheticBlock } from './formats.test-support.ts';
 
 // Code-generated synthetic AISTUFF entries and EXE built-in table regions for P3-03 tests; they never hold original data,
@@ -184,7 +184,8 @@ interface SyntheticBuiltIn {
 
 /**
  * The built-in table: the records, then their i32 count (ai.md §3.3). Each record's +0x00 and +0x18 hold the target
- * offsets of their fixups; the names are consecutive regions from `namesAt`, one per record.
+ * offsets of their fixups, 16-bit for the names and 32-bit for the handlers as in the original; the names are
+ * consecutive regions from `namesAt`, one per record.
  */
 export function syntheticBuiltIn(programs: readonly BuiltInProgram[], namesAt = BUILT_IN_NAMES_AT): SyntheticBuiltIn {
   const { programBytes } = AI_LAYOUT;
@@ -198,7 +199,7 @@ export function syntheticBuiltIn(programs: readonly BuiltInProgram[], namesAt = 
     const record = index * programBytes;
     const bytes = Uint8Array.from({ length: program.name.length + 1 }, (_, at) => at < program.name.length ? program.name.charCodeAt(at) : 0);
     names.push({ region: { object: namesAt.object, offset: nameOffset, length: bytes.length }, bytes });
-    fixups.push({ at: record, object: namesAt.object, offset: nameOffset }, { at: record + 0x18, ...program.handler });
+    fixups.push({ at: record, object: namesAt.object, offset: nameOffset, targetBits: 16 }, { at: record + 0x18, ...program.handler, targetBits: 32 });
     write(block, record, [
       ...programFields(program), [0x00, 'u32', nameOffset], [0x08, 'u32', program.kindMask], [0x18, 'u32', program.handler.offset],
       [0x2c, 'f32', program.at2C],
@@ -240,7 +241,7 @@ export function syntheticKeywordTables(
         names.push({ region: { object: namesAt.object, offset, length: bytes.length }, bytes });
         nameOffset += bytes.length + (names.length % 2);
       }
-      fixups.push({ at: index * size, object: namesAt.object, offset });
+      fixups.push({ at: index * size, object: namesAt.object, offset, targetBits: 16 });
       block.u32(index * size, offset).u32(index * size + 4, value);
     });
     const bytes = block.toBlock().bytes;
@@ -289,14 +290,6 @@ export function aiSources({ globals, table, entries, builtIn, keywords }: Synthe
 
 const LE_PAGE = 4_096;
 
-/** A fixup record for a non-additive internal 32-bit offset at `offset` of its page (negative on the later of two pages). */
-function fixupRecord(offset: number, object: number, target: number): number[] {
-  const wide = target > 0xffff;
-  const record = [0x07, wide ? 0x10 : 0x00, offset & 0xff, (offset >>> 8) & 0xff, object];
-  for (let index = 0; index < (wide ? 4 : 2); index++) record.push((target >>> (index * 8)) & 0xff);
-  return record;
-}
-
 /**
  * An LE file holding `builtIn`: object 1 is filler, object 2 the handler targets, object `namesAt.object` (3) the names
  * and object 4 the table at `tableAt`, by default so that a fixup crosses a page boundary. Returns the file and the
@@ -311,11 +304,11 @@ export function syntheticBuiltInExecutable(builtIn: SyntheticBuiltIn, tableAt = 
   const objects = [{ bytes: filled(64, 1) }, { bytes: filled(0x300, 2) }, { bytes: names }, { bytes: table }];
   // Page map indexes: objects 1–3 take one page each, so object 4 starts at index 4.
   const fixups: Record<number, number[]> = {};
-  for (const { at, object, offset } of builtIn.fixups) {
+  for (const { at, ...target } of builtIn.fixups) {
     const position = tableAt + at;
     const page = Math.floor(position / LE_PAGE);
     for (const recorded of position + 4 > (page + 1) * LE_PAGE ? [page, page + 1] : [page]) {
-      (fixups[4 + recorded] ??= []).push(...fixupRecord(position - recorded * LE_PAGE, object, offset));
+      (fixups[4 + recorded] ??= []).push(...internalOffsetFixupRecord(position - recorded * LE_PAGE, target));
     }
   }
   return {
@@ -331,7 +324,7 @@ export function syntheticBuiltInExecutable(builtIn: SyntheticBuiltIn, tableAt = 
  */
 export function syntheticKeywordExecutable(
   keywords: SyntheticKeywordTables,
-  record: (offset: number, object: number, target: number) => number[] = fixupRecord,
+  record: (offset: number, target: FixupTarget) => number[] = internalOffsetFixupRecord,
 ) {
   const filled = (length: number, seed: number) => Uint8Array.from({ length }, (_, index) => (index * 11 + seed) & 0xff);
   const end = (regions: readonly { region: ExecutableRegion }[]) => regions.reduce((last, { region }) => Math.max(last, region.offset + region.length), 0);
@@ -339,7 +332,7 @@ export function syntheticKeywordExecutable(
   const names = filled(end(keywords.names) + 3, 4);
   for (const { region, bytes } of keywords.tables) tables.set(bytes, region.offset);
   for (const { region, bytes } of keywords.names) names.set(bytes, region.offset);
-  const fixups: Record<number, number[]> = { 2: keywords.tables.flatMap(({ region, fixups: list }) => list.flatMap(({ at, object, offset }) => record(region.offset + at, object, offset))) };
+  const fixups: Record<number, number[]> = { 2: keywords.tables.flatMap(({ region, fixups: list }) => list.flatMap(({ at, ...target }) => record(region.offset + at, target))) };
   return {
     file: syntheticLeExecutable({ objects: [{ bytes: filled(64, 1) }, { bytes: tables }, { bytes: filled(64, 3) }, { bytes: names }], fixups }),
     tables: keywords.tables.map(({ region }) => region),

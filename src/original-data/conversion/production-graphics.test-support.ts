@@ -9,7 +9,7 @@ import { encodeMapGeometryPayload, type MapGeometry } from '../../content/hud/ma
 import { statusMessagesPayloadLength, type StatusMessagesPayload } from '../../content/hud/status-messages-payload.ts';
 import { archiveLocator, executableRegion, isRegionLocator, type ArchiveEntryLocator, type ExecutableRegionLocator } from '../source-mapping.ts';
 import {
-  buildImfat, ByteWriter, syntheticDiag, syntheticLeExecutable, syntheticSnip, type SyntheticDiagFields, type SyntheticEntry,
+  buildImfat, ByteWriter, internalOffsetFixupRecord, syntheticDiag, syntheticLeExecutable, syntheticSnip, type SyntheticDiagFields, type SyntheticEntry,
 } from '../synthetic.test-support.ts';
 import { cockpitLayoutBlock, dataPaletteBlock, hudFontTables, mfdBlock, rawImageBlock, spriteImageBlock, tableBlock } from './conversion.test-support.ts';
 import { PRODUCTION_FLIGHT_GRAPHICS_MAPPINGS } from './production-flight-graphics.ts';
@@ -184,13 +184,9 @@ export interface PositionedFixup {
 
 const LE_PAGE = 4_096;
 
-/** The LE fixup record of an internal 32-bit offset at `offset` of its page (negative on the later of two pages). */
-function fixupRecord(offset: number, { object, offset: target }: PositionedFixup['target']): number[] {
-  const wide = target > 0xffff;
-  const record = [0x07, wide ? 0x10 : 0x00, offset & 0xff, (offset >>> 8) & 0xff, object];
-  for (let index = 0; index < (wide ? 4 : 2); index++) record.push((target >>> (index * 8)) & 0xff);
-  return record;
-}
+/** The LE fixup record of an internal 32-bit offset at `offset` of its page, its target offset as wide as it needs. */
+const fixupRecord = (offset: number, target: PositionedFixup['target']): number[] =>
+  internalOffsetFixupRecord(offset, { ...target, targetBits: target.offset > 0xffff ? 32 : 16 });
 
 /**
  * A synthetic LE executable of four objects that holds `writes` and a generated pattern elsewhere. `fixups` adds a fixup
