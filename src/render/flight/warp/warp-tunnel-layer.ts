@@ -10,7 +10,7 @@
  *   has been stepped (a run whose first state is already in a Warp shows the effect from its first tick).
  * - **Image:** the effect's lines are rasterised into a logical-resolution RGBA image (warp-tunnel-image.ts) in the
  *   Warp palette's ramp colours as stored, and drawn opaque where a line was drawn, each logical pixel enlarged by the
- *   logical scale without interpolation. It neither tests nor writes depth.
+ *   logical scale without interpolation (logical-screen.ts `LOGICAL_PIXEL_GLSL`). It neither tests nor writes depth.
  * - **Camera:** the original projects with the game camera's stored rows (WT4 step 1), the observed entity's pose in
  *   Warp, where the drawn camera keeps the library's orthonormal rows (drawn-pose.ts). When the drawn camera is exactly
  *   the previous or the current tick's camera, the layer projects with that tick's stored rows; between ticks it uses
@@ -19,7 +19,7 @@
  * The run's GPU cache holds the image texture, quad and material (`WARP_TUNNEL_GPU_PLAN`), released with the run.
  */
 import {
-  BufferAttribute, BufferGeometry, DataTexture, DoubleSide, Mesh, NearestFilter, RGBAFormat, Scene, ShaderMaterial,
+  DataTexture, DoubleSide, Mesh, NearestFilter, RGBAFormat, Scene, ShaderMaterial,
   UnsignedByteType,
 } from 'three';
 import type { RenderFrame } from '../../../app/runtime/game-runtime.ts';
@@ -28,6 +28,7 @@ import type { RenderState } from '../../../core/projections/render-state.ts';
 import type { RandSource } from '../../../core/rules/original-random.ts';
 import { WARP_VIEW_MODE } from '../../../core/systems/view-switch.ts';
 import type { CompositionFrame, FlightLayer, LayerPass } from '../composition/flight-layers.ts';
+import { LOGICAL_MESH_VERTEX, LOGICAL_PIXEL_GLSL, logicalBufferUniform, logicalQuad, setLogicalBuffer } from '../composition/logical-screen.ts';
 import type { CameraPose } from '../presentation/presentation-contract.ts';
 import { libraryOrientation } from '../scene/drawn-pose.ts';
 import type { FlightGpuCache, FlightGpuPlan } from '../renderer/flight-gpu-cache.ts';
@@ -57,11 +58,13 @@ const TEXTURE = `${PATH}:image`;
 const GEOMETRY = `${PATH}:quad`;
 const MATERIAL = `${PATH}:material`;
 
-const VERTEX = 'varying vec2 texel; void main() { texel = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
 /** One image texel per logical pixel; texels no line wrote are left alone. */
-const FRAGMENT = `uniform sampler2D image; varying vec2 texel;
+const FRAGMENT = `uniform sampler2D image;
+${LOGICAL_PIXEL_GLSL}
 void main() {
-  vec4 colour = texelFetch(image, clamp(ivec2(floor(texel)), ivec2(0), ivec2(${WARP_IMAGE_WIDTH - 1}, ${WARP_IMAGE_HEIGHT - 1})), 0);
+  ivec2 texel = logicalPixel();
+  if (texel.y > ${WARP_IMAGE_HEIGHT - 1}) discard;
+  vec4 colour = texelFetch(image, texel, 0);
   if (colour.a < 0.5) discard;
   gl_FragColor = colour;
 }`;
@@ -92,6 +95,7 @@ class Layer implements WarpTunnelLayer {
   readonly #tunnel: WarpTunnel;
   readonly #image: WarpTunnelImage;
   readonly #texture: DataTexture;
+  readonly #material: ShaderMaterial;
   readonly #scene = new Scene();
   #drawn: Drawn | null = null;
 
@@ -107,14 +111,12 @@ class Layer implements WarpTunnelLayer {
       return texture;
     }) as DataTexture;
     this.#image = new WarpTunnelImage(this.#texture.image.data as Uint8Array);
-    const geometry = cache.geometry(GEOMETRY, { vertices: 4, indices: 6 }, () => new BufferGeometry()
-      .setAttribute('position', new BufferAttribute(new Float32Array([0, 0, 0, width, 0, 0, 0, height, 0, width, height, 0]), 3))
-      .setIndex([0, 1, 2, 2, 1, 3]));
-    const material = cache.material(MATERIAL, () => new ShaderMaterial({
-      name: 'flight-warp-tunnel', uniforms: { image: { value: this.#texture } }, vertexShader: VERTEX, fragmentShader: FRAGMENT,
-      side: DoubleSide, depthTest: false, depthWrite: false,
-    }));
-    const mesh = new Mesh(geometry, material);
+    const geometry = cache.geometry(GEOMETRY, { vertices: 4, indices: 6 }, () => logicalQuad(width, height));
+    this.#material = cache.material(MATERIAL, () => new ShaderMaterial({
+      name: 'flight-warp-tunnel', uniforms: { image: { value: this.#texture }, logicalBuffer: logicalBufferUniform() },
+      vertexShader: LOGICAL_MESH_VERTEX, fragmentShader: FRAGMENT, side: DoubleSide, depthTest: false, depthWrite: false,
+    })) as ShaderMaterial;
+    const mesh = new Mesh(geometry, this.#material);
     mesh.name = 'flight-warp-tunnel';
     mesh.frustumCulled = false;
     this.#scene.add(mesh);
@@ -124,7 +126,7 @@ class Layer implements WarpTunnelLayer {
     this.#tunnel.step(state);
   }
 
-  passes({ render, world, logicalCamera }: CompositionFrame): readonly LayerPass[] {
+  passes({ render, world, logical, logicalCamera }: CompositionFrame): readonly LayerPass[] {
     const { current } = render;
     const warp = current.viewMode === WARP_VIEW_MODE ? current.warp : null;
     const pass = this.#tunnel.pass;
@@ -139,6 +141,7 @@ class Layer implements WarpTunnelLayer {
       this.#texture.needsUpdate = true;
       this.#drawn = { pass, camera };
     }
+    setLogicalBuffer(this.#material, logical);
     return [{ scene: this.#scene, camera: logicalCamera }];
   }
 }

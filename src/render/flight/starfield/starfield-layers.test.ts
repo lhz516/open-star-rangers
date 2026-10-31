@@ -1,10 +1,11 @@
 import type { DataTexture, Mesh, ShaderMaterial } from 'three';
-import { Camera } from 'three';
+import { Camera, Vector2 } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { PalettePayload } from '../../../content/graphics/palette-payload.ts';
 import type { RenderState } from '../../../core/projections/render-state.ts';
 import { scriptedRand } from '../../../core/rules/rand.test-support.ts';
 import type { Matrix3 } from '../../../core/world/entity-table.ts';
+import { LOGICAL_MESH_VERTEX, LOGICAL_PIXEL_GLSL } from '../composition/logical-screen.ts';
 import type { CompositionFrame, LayerPass } from '../composition/flight-layers.ts';
 import { yaw } from '../nebula/nebula.test-support.ts';
 import { renderState, vec } from '../presentation/presentation.test-support.ts';
@@ -28,6 +29,9 @@ const F1 = 0x0c;
 const WARP = 1;
 const DESTRUCTION = 0x11;
 
+/** A drawing buffer whose device pixel centres fall on logical pixel edges (row 145 on row 192's top). */
+const LOGICAL = Object.freeze({ scale: 485 / 640, bufferWidth: 485, bufferHeight: 364 });
+
 const viewportOf = (viewMode: number) => Object.freeze({ left: 0, top: 0, right: 639, bottom: viewMode === DESTRUCTION ? 479 : 315 });
 
 function setup(draws: readonly number[] = []) {
@@ -35,7 +39,7 @@ function setup(draws: readonly number[] = []) {
   const random = scriptedRand(draws);
   const logicalCamera = new Camera();
   const frame = (current: RenderState, rows: Matrix3 | null = IDENTITY): CompositionFrame => ({
-    view: current.viewMode === WARP ? 'warp' : current.viewMode === DESTRUCTION ? 'destruction' : 'flight', logicalCamera,
+    view: current.viewMode === WARP ? 'warp' : current.viewMode === DESTRUCTION ? 'destruction' : 'flight', logicalCamera, logical: LOGICAL,
     render: renderFrame(current),
     world: rows === null ? null : { scene: { camera: { position: vec(0), rows }, viewport: viewportOf(current.viewMode) } },
   }) as unknown as CompositionFrame;
@@ -80,6 +84,9 @@ describe('star-field and speed-dust layers (AC-23)', () => {
       expect(passes[0]).not.toHaveProperty('clearDepth');
       const material = image(passes).mesh.material as ShaderMaterial;
       expect([material.depthTest, material.depthWrite]).toEqual([false, false]);
+      // Each device pixel shows the logical pixel of its centre by the composition's shared rule.
+      expect([material.vertexShader, material.fragmentShader.includes(LOGICAL_PIXEL_GLSL)]).toEqual([LOGICAL_MESH_VERTEX, true]);
+      expect(material.uniforms.logicalBuffer.value).toEqual(new Vector2(485, 364));
     }
     cache.dispose();
     expect(cache.counts().texels).toBe(0);

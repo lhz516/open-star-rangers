@@ -7,8 +7,8 @@
  * palette exactly as imported (`resolveRows`): F1, Warp and the destruction view use `palette/flight/cockpit-hud-map`,
  * the map `palette/map/screen`; base and the views without a cockpit draw nothing.
  *
- * - **Pixels:** each logical pixel is enlarged by the logical scale without interpolation, as the nebula layer draws
- *   (the device pixel whose centre lies in [x·s, (x + 1)·s) shows logical column x, and likewise for rows). The pass
+ * - **Pixels:** each logical pixel is enlarged by the logical scale without interpolation, by the rule the P3-12 layers
+ *   share (logical-screen.ts `LOGICAL_PIXEL_GLSL`). The pass
  *   neither tests nor writes depth, so the world's depth, which Warp keeps across frames, is untouched; P3-12's screen
  *   stage then applies the screen flash once to the whole game image, the cockpit included.
  * - **Upload:** the surfaces change only when the presentation processes ticks; `changed()` marks the picture for one
@@ -20,6 +20,7 @@
 import { BufferGeometry, DataTexture, Mesh, NearestFilter, RGBAFormat, Scene, ShaderMaterial, Sphere, UnsignedByteType } from 'three';
 import type { PalettePayload } from '../../../content/graphics/palette-payload.ts';
 import type { CompositionFrame, FlightLayer, LayerPass } from '../../flight/composition/flight-layers.ts';
+import { LOGICAL_PIXEL_GLSL, logicalBufferUniform, setLogicalBuffer } from '../../flight/composition/logical-screen.ts';
 import type { FlightGpuCache, FlightGpuPlan } from '../../flight/renderer/flight-gpu-cache.ts';
 import { FlightRenderError } from '../../flight/renderer/flight-render-error.ts';
 import type { CockpitPresentation } from '../presentation/cockpit-contract.ts';
@@ -38,11 +39,11 @@ const MATERIAL = `${PATH}:material`;
 
 /** One triangle over the whole target from the vertex index alone, so the geometry holds no vertex. */
 const VERTEX = 'void main() { gl_Position = vec4(gl_VertexID == 1 ? 3.0 : -1.0, gl_VertexID == 2 ? 3.0 : -1.0, 0.0, 1.0); }';
-/** The logical pixel of the device pixel (rows of the target bottom up); uncovered pixels let the world through. */
-const FRAGMENT = `uniform sampler2D picture; uniform float scale; uniform float bufferHeight;
+/** The logical pixel of the device pixel; uncovered pixels let the world through. */
+const FRAGMENT = `uniform sampler2D picture;
+${LOGICAL_PIXEL_GLSL}
 void main() {
-  ivec2 logical = ivec2(floor(gl_FragCoord.x / scale), floor((bufferHeight - gl_FragCoord.y) / scale));
-  vec4 colour = texelFetch(picture, clamp(logical, ivec2(0), ivec2(${WIDTH - 1}, ${HEIGHT - 1})), 0);
+  vec4 colour = texelFetch(picture, logicalPixel(), 0);
   if (colour.a < 0.5) discard;
   gl_FragColor = vec4(colour.rgb, 1.0);
 }`;
@@ -90,7 +91,7 @@ class Layer implements CockpitLayer {
     });
     this.#material = cache.material(MATERIAL, () => new ShaderMaterial({
       name: 'cockpit-layer',
-      uniforms: { picture: { value: this.#texture }, scale: { value: 1 }, bufferHeight: { value: 1 } },
+      uniforms: { picture: { value: this.#texture }, logicalBuffer: logicalBufferUniform() },
       vertexShader: VERTEX, fragmentShader: FRAGMENT, depthTest: false, depthWrite: false,
     })) as ShaderMaterial;
     const mesh = new Mesh(geometry, this.#material);
@@ -111,8 +112,7 @@ class Layer implements CockpitLayer {
       this.#resolve(this.#palettes[palette], screenRows, worldRows);
       this.#stale = false;
     }
-    this.#material.uniforms.scale.value = logical.scale;
-    this.#material.uniforms.bufferHeight.value = logical.bufferHeight;
+    setLogicalBuffer(this.#material, logical);
     return [{ scene: this.#scene, camera: logicalCamera }];
   }
 

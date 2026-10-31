@@ -1,10 +1,11 @@
 import type { DataTexture, Mesh, ShaderMaterial } from 'three';
-import { Camera } from 'three';
+import { Camera, Vector2 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { readAssetId, type AssetId } from '../../../content/asset-id.ts';
 import type { ImagePayload } from '../../../content/graphics/image-payload.ts';
 import type { PalettePayload } from '../../../content/graphics/palette-payload.ts';
 import type { Matrix3 } from '../../../core/world/entity-table.ts';
+import { LOGICAL_MESH_VERTEX, LOGICAL_PIXEL_GLSL } from '../composition/logical-screen.ts';
 import type { CompositionFrame } from '../composition/flight-layers.ts';
 import type { PresentationViewport } from '../presentation/presentation-contract.ts';
 import { FlightGpuCache } from '../renderer/flight-gpu-cache.ts';
@@ -53,7 +54,7 @@ function setup(images: readonly ImagePayload[] = IMAGES) {
   const layer = createNebulaLayer({ cache, images, palettes: PALETTES });
   const logicalCamera = new Camera();
   const frame = (cameraRows: Matrix3, viewport = F1, view: 'flight' | 'destruction' = 'flight'): CompositionFrame => ({
-    view, logicalCamera,
+    view, logicalCamera, logical: { scale: 485 / 640, bufferWidth: 485, bufferHeight: 364 },
     world: { scene: { view, viewport, camera: { position: { x: 5, y: 6, z: 7 }, rows: cameraRows } } },
   }) as unknown as CompositionFrame;
   return { cache, layer, frame, logicalCamera };
@@ -101,6 +102,9 @@ describe('nebula layer', () => {
     const material = mesh.material as ShaderMaterial;
     expect([material.depthTest, material.depthWrite]).toEqual([false, false]);
     expect([mesh.position.x, mesh.position.y]).toEqual([320 - 91, 240 - 91]);
+    // Each device pixel shows the logical pixel of its centre by the composition's shared rule, less the footprint's origin.
+    expect([material.vertexShader, material.fragmentShader.includes(LOGICAL_PIXEL_GLSL)]).toEqual([LOGICAL_MESH_VERTEX, true]);
+    expect(material.uniforms).toMatchObject({ origin: { value: new Vector2(320 - 91, 240 - 91) }, logicalBuffer: { value: new Vector2(485, 364) } });
     // θ = π: stored rows run left, stored columns down.
     expect(at(350, 210)).toEqual(shows(0, 'top-left'));
     expect(at(290, 210)).toEqual(shows(0, 'bottom-left'));

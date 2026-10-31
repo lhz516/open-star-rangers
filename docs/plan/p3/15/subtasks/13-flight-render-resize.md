@@ -42,12 +42,42 @@ updated: "2026-10-30"
 
 ## 验收标准
 
-- [ ] 根因有可重复的证据，并说明是产品缺陷、测试假设错误还是浏览器取样差异。
-- [ ] 按根因修复后，`flight-render.development.spec.ts:63` 单独连续 10 次通过，其余 `flight-render.development` 与 `flight-render.production` 用例通过；没有用笼统容差掩盖产品缺陷。
-- [ ] `pnpm check` 通过；文档与修复一致；`map-picture.development.spec.ts:211` 的复核结论已记录。
+- [x] 根因有可重复的证据，并说明是产品缺陷、测试假设错误还是浏览器取样差异。
+- [x] 按根因修复后，`flight-render.development.spec.ts:63` 单独连续 10 次通过，其余 `flight-render.development` 与 `flight-render.production` 用例通过；没有用笼统容差掩盖产品缺陷。
+- [x] `pnpm check` 通过；文档与修复一致；`map-picture.development.spec.ts:211` 的复核结论已记录。
 
 ## 验证方法
 
 - 按 [browser-testing](../../../../../.agents/skills/browser-testing/SKILL.md)：`pnpm test:e2e e2e/flight-render.development.spec.ts --project=development --repeat-each=10`（或单独用例），以及 `e2e/flight-render.production.spec.ts --project=production`；修复的产品代码有单元测试；`pnpm check`。
 
 ## 完成证据
+
+- **2026-10-30（worker exec/p3-15-13）：**
+  - **根因（已确认，产品缺陷）：** 违反 P3-12 AC-05/AC-16 的是各层在“设备像素中心恰在逻辑像素边上”时的取舍不一致，不是测试假设，也不是浏览器合成。
+    - **两组读数：** 第一幅 640 宽画面是 1×，没有恰在边上的中心，`expectF1Background` 通过，因此偏差出在缩小后的画面。缓冲 485 × 364（缩放 97/128）时，设备行 145 的中心恰为逻辑 192.0。
+    - **探针：** 私有探针（`local/research/p3-15/flight-render/`）沿用同一流程，读回整块设备像素，逐像素对照第一幅画面与独立算出的背景（星云、星点）。
+    - **失配像素的来源：** 4 个失配设备像素都显示星云第 191 行的颜色。第一幅画面在第 191 行的这些位置是驾驶舱叠加色，第 192 行是背景色。
+    - **各层取舍：** 星云、星点、尘埃与 Warp 效果用插值后的 `texel = position.xy` 取整，得 191.99…，落在 191 行。驾驶舱用 `floor((bufferHeight − gl_FragCoord.y) / scale)`，落在 192 行；该行透明，片元被丢弃。合成结果是“第 191 行的星云、没有第 191 行的叠加”，任何逻辑像素都不是这个组合。
+    - **为什么间歇：** 失败取决于运行抽到的星云起点在第 191、192 行这些列是否同色，所以时过时不过。
+    - **按 [x·s, (x + 1)·s) 逐像素严格比较的读数：** 修复前缓冲 485 宽有 95–96 处、576 宽（缩放 0.9）有 1561–1619 处不合，其中测试判据下的不一致像素 0–28 个。世界各层在 485 与 576 宽时取边前一行、在 365 宽时取边后一行；驾驶舱的浮点除法在 576 宽时也有 4–5 处取了边前一行。
+    - **浏览器版本：** 与 Chrome 155→156 的关系未确认（无法在本机启动 155）。插值误差的方向本来就不受契约约束，是潜伏缺陷。
+  - **修复：** [logical-screen.ts](../../../../../src/render/flight/composition/logical-screen.ts) 新增各层共用的 `LOGICAL_PIXEL_GLSL`。
+    - **规则：** `logicalPixel()` 由 `gl_FragCoord` 的设备像素按整数运算 ⌊(2d + 1)·320 ÷ 缓冲宽度⌋ 取逻辑像素，行自顶向下，夹在逻辑画面内；恰在边上时一律取边后的像素。
+    - **辅助：** 新增 `logicalBufferUniform`/`setLogicalBuffer`，每帧设置缓冲尺寸。`logicalQuad` 比图像每边多一个逻辑像素，使覆盖不依赖光栅化的边规则；图像外的逻辑像素丢弃。
+    - **改用的层：** 星云（减去 footprint 原点 `origin`）、星点与速度尘埃、Warp 效果，以及驾驶舱层。
+  - **不改的层：** 爆炸精灵与受击闪烁的屏幕门不属本失败，保留原取法，作为已知问题记入 [render 模块说明](../../../../engineering/modules/render.md#画面合成)。测试判据未改：根因是产品缺陷，原判据在边上允许两侧，修复后也成立。
+  - **单元测试：**
+    - 新增 `logical-screen.test.ts`：固定着色器的整数表达式与 y 翻转，并对 298、365、485、576、640、960、1280 宽的每个设备像素核对半开区间规则，含 485 宽时 145 → 192。
+    - 星云、星点/尘埃、Warp、驾驶舱四个层的测试断言片元着色器含共用规则、顶点着色器无插值坐标，`logicalBuffer` 等于帧的缓冲尺寸（485 × 364 或 1280 × 960）。星云的测试另断言 `origin` 等于 footprint 原点。
+  - **浏览器验证（Chrome 156.0.8078.74，headless，端口 5133/5134，只用合成内容）：**
+    - **修复后探针：** 485 宽 6 次、576、365、298 宽各 2 次，严格不合均为 0。
+    - **`flight-render.development`：** `pnpm test:e2e e2e/flight-render.development.spec.ts --project=development --repeat-each=10` 在修复后与精简后各跑一次，均 30 passed，其中 :63 用例 10/10。
+    - **`flight-render.production`：** `--project=production` 1 passed。
+    - **相关回归：** `cockpit-lifecycle`、`cockpit.development`/`cockpit.production`、`flight-scenes.development`、`map-picture.development`/`map-picture.production` 在两个项目下修复后与精简后各跑一次，均 40 passed，9 个按项目跳过。
+  - **`pnpm check`：** 通过（Vitest 446 个文件、11,902 个测试，构建成功）。
+  - **`map-picture.development.spec.ts:211` 复核（只记录，未改动）：** 本机单独运行 3/3 通过。该用例的断言多以帧 tick 区间的上下界判定，下面两处对负载敏感，属测试判据，不是产品缺陷：
+    - **携带计数的延迟：** “携带的计数推迟切换”断言 `change.after + 1 − pressAgain.high > 5` 用的是切换前最后一帧的下界 `after`。预期延迟约 9 tick，余量约 4 tick（125 ms）。高负载下切换前后帧稀疏时，`after` 提前，断言可能失败，而产品行为正确。
+    - **周期判定：** `fitsPeriod(held, 20) === false` 要求四次切换的区间合计窄于约 12 tick。帧间隔与发布滞后增大时，区间变宽，20 tick 的周期也可能被判为符合。
+    - **建议：** 由该用例的所有者（P3-13 的维护）把这两处并入已有的“预算超出则重试”循环，或以帧间隔为条件重试。不在本子任务写入范围内。
+  - **复审：** code-review 子代理未发现缺陷。它提出的两点已处理：给公式补 Node 单元测试；把受击闪烁屏幕门的同类取法记入已知问题。simplify 的四路复审后，三份四边扩展四边形合并为 `logicalQuad`，星点层恢复解构参数，驾驶舱注释改为引用共用规则。另有两条未采纳：一是把 uniform 移到合成层统一设置，二是 `origin` 与 `mesh.position` 重复；理由是需要更大改动，且测试依赖 `mesh.position`。
+  - **文档影响：** 更新 [render 模块说明](../../../../engineering/modules/render.md)：画面合成中的共用取样规则、此前的缺陷与已知问题，以及驾驶舱层引用。`docs/original/`、unknowns、ADR 与 spec 无需改动：未改变原版结论或冻结决定。

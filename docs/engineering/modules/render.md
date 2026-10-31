@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-29
+updated: 2026-10-30
 related: [ADR-0009, ADR-0015]
 ---
 
@@ -123,7 +123,7 @@ related: [ADR-0009, ADR-0015]
 
 - **内容与文案：** `CockpitContent`（[cockpit-run.ts](../../../src/render/cockpit/composition/cockpit-run.ts)）是一个资源包已核对的 HUD 内容，带包的代际与内容身份，由应用的 `cockpitContentOf` 给出（[app 说明](./app.md#飞行画面)）；`CockpitCopy { incoming, costUnavailable }` 是应用注入的项目文案（G-03 摘要与标注、`MAP_COST_UNAVAILABLE`），render 不导入 UI。
 - **`createCockpitRun({ ownerId, runId, content, copy, initial, seed, models, backPlane, pointer })`：** 按[上节](#仪表模块与登记次序)的次序登记模块并建驾驶舱表现；不分配 GPU。返回 `{ presentation, messageLine, mapPicture, mapGeometry, diagnostics() }`；`diagnostics()` 为开发摘要 `CockpitDiagnostics`（tick、视角、左显示屏页、消息队列长度与 `messageDrops`、`radarNoiseDropped`、各记录上次绘制时刻、抽取数），开发面板经 `MissionDiagnostics.cockpitCounts()` 读取其中三项（[UI 模块说明](./ui.md#开发诊断)）。
-- **驾驶舱层：** [cockpit-layer.ts](../../../src/render/cockpit/composition/cockpit-layer.ts) 的 `createCockpitLayer({ cache, presentation, palettes })` 是 `cockpit` 槽的层：按当前布局把 S 的不透明行与 B 世界行中的被覆盖像素以该布局的调色板解析成一张 640 × 480 RGBA 纹理，每个逻辑像素按逻辑缩放最近邻放大；不测试也不写深度，所以世界深度（含 Warp 保留的深度）不变，屏幕闪光仍只由 P3-12 的屏幕阶段对整幅游戏图像作用一次。`changed()` 标记表面已推进，下次绘制才重新解析上传；没有 tick 的帧、重画与恢复的上下文显示同一画面。基地、0x13 与已释放的表现不画。`COCKPIT_GPU_PLAN` 为纹素 307,200、顶点/索引 0（三角形由顶点序号生成）、渲染目标 0。
+- **驾驶舱层：** [cockpit-layer.ts](../../../src/render/cockpit/composition/cockpit-layer.ts) 的 `createCockpitLayer({ cache, presentation, palettes })` 是 `cockpit` 槽的层：按当前布局把 S 的不透明行与 B 世界行中的被覆盖像素以该布局的调色板解析成一张 640 × 480 RGBA 纹理，每个逻辑像素按逻辑缩放最近邻放大（与 P3-12 各层同一取样规则，见[画面合成](#画面合成)）；不测试也不写深度，所以世界深度（含 Warp 保留的深度）不变，屏幕闪光仍只由 P3-12 的屏幕阶段对整幅游戏图像作用一次。`changed()` 标记表面已推进，下次绘制才重新解析上传；没有 tick 的帧、重画与恢复的上下文显示同一画面。基地、0x13 与已释放的表现不画。`COCKPIT_GPU_PLAN` 为纹素 307,200、顶点/索引 0（三角形由顶点序号生成）、渲染目标 0。
 - **接线（`wireFlightRun` 的 `cockpit`）：** `FlightRunCockpit { content, copy, projection, map }`，`projection` 为运行的 tick 0 projection，`map` 为 `FlightRunMap { geometry, rightButton, pointer, revoked }`。内容须是运行的包代际与内容身份；驾驶舱在 `beginRun` 之前以 tick 0 的 Render State、projection、P3-12 相机与同一宿主种子创建，任何模块拒绝的内容或文案、未就绪的分区与另一包的内容都在 GPU 分配之前拒绝开始；`beginRun` 核对 `addGpuPlans(content.plan, COCKPIT_GPU_PLAN)`；层随 pass 之后加入。每帧先让 P3-12 的表现模块与各 pass 逐 tick 走完本帧全部 tick，再以同样的 tick（各带自己的 `TickOutput` 与步末相机，右键电平每批读一次）推进驾驶舱（DC-04；不建共享提示模型，D-02 DD-05），然后绘制一次；没有 tick 的帧不推进、不读右键。返回 `cockpit: { run, layer, mapPort }`（`FlightRunCockpitWiring`）；每项取得都交给 `run.ownCleanup`，随运行释放。
 
 ### 地图就绪与输入几何（P3-13/23）
@@ -232,6 +232,7 @@ P3-13 的实现、对照与判定记录在各子任务的完成证据中，判�
 [flight-layers.ts](../../../src/render/flight/composition/flight-layers.ts) 定义层与帧，[flight-composition.ts](../../../src/render/flight/composition/flight-composition.ts) 按运行组合它们（[spec：画面合成与 P3-13 接口](../../plan/p3/12/spec.md#画面合成与-p3-13-接口)）。
 
 - **逻辑画面：** [logical-screen.ts](../../../src/render/flight/composition/logical-screen.ts)：640 × 480，原点左上，y 向下；以一个缩放比（缓冲宽度 ÷ 640）映射到绘制缓冲，窗口、宽高比与像素比只改变缩放比，不改变逻辑位置、视野或可见内容；4:3 布局使逻辑画面底边与缓冲至多差一个设备像素。世界相机以原版投影把相机空间映射到游戏图像，并向左偏移半个逻辑像素（`RASTER_OFFSET_X` = −0.5）：WebGL 按像素中心采样，在每逻辑像素一个设备像素时由此复现原版的列 ⌊xl⌋ ≤ x < ⌊xr⌋ 与行 round(y)（RS1、RS2，恰好相等的情形除外）；y 不偏移。
+- **设备像素取逻辑像素：** 放大逻辑像素的二维层（星云、星点、速度尘埃、Warp 效果与驾驶舱）共用 `LOGICAL_PIXEL_GLSL` 的 `logicalPixel()`：由片元的设备像素按整数运算 ⌊(2d + 1) · 320 ÷ 缓冲宽度⌋ 取中心所在的逻辑像素（区间 [x·s, (x + 1)·s)，行自顶向下，夹在逻辑画面内），中心恰在纹素边上时（如缓冲宽 485）一律取边后的像素；材质的 `logicalBuffer` uniform 为绘制缓冲尺寸（`logicalBufferUniform`、`setLogicalBuffer`），各层的网格比自身图像每边多一个逻辑像素，图像外的逻辑像素丢弃。此前星云、星点、尘埃与 Warp 效果用插值后的坐标取整，驾驶舱用浮点除法，恰在边上时可能各取一侧，使一个设备像素显示上一行的星云而不显示该行的驾驶舱叠加（P3-15/13 修复，证据见[其完成证据](../../plan/p3/15/subtasks/13-flight-render-resize.md#完成证据)）。未改用此规则（已知，不属该失败）：爆炸精灵仍以插值的源坐标取帧像素、按光栅化覆盖决定块边；受击闪烁的屏幕门在缩放比不小于 1 时仍以浮点除法取逻辑像素的 (x & 3, y & 3)。两者恰在边上时可能与其他层取不同一侧，浏览器回归未覆盖缩放下的精灵与屏幕门。
 - **游戏图像与屏幕阶段：** 每帧各层先画入一张绘制缓冲大小的游戏图像（运行缓存中的渲染目标，布局变化后重新取得），从黑色开始，代表原版持久帧缓冲与逐层擦除的结果（FC3，高概率）；深度是 24 位 `DepthTexture`，经 `CompositionFrame.depth` 交给精灵。然后屏幕阶段把它画到已清为黑的画布上：缺省原样复制，屏幕闪光以 `setScreen` 替换为调色板变换与平移，因此闪光作用于整幅 4:3 画面（含将来的驾驶舱与 HUD），不作用于画面外的黑边与 React 控件。
 - **层位与次序（FC2）：** `FLIGHT_LAYER_SLOTS` 为 `nebula`、`stars`、`dust`、`world`、`sprites`、`warp-effect`、`cockpit`。`LAYER_ORDER`：F1 与被毁视角为星云、星点、速度尘埃（单点）、世界、精灵、驾驶舱，只有这两类视角清除世界深度；Warp 为星点、世界、速度尘埃（线段，在世界之后）、Warp 效果、驾驶舱，不清深度（RS6：保留最后一次清除的深度，跨越其间的地图或基地帧）；6、8、0x13 只有驾驶舱槽。同一槽可有多层，按加入次序绘制；层只在其槽所在的视角被调用。二维层中只有精灵读深度，都不写深度，所以世界之前的层不得写深度（FC5）。
 - **层的接口：** `FlightLayer { slot, passes(frame) }` 每帧返回若干 `LayerPass { scene, camera, target?, clearColor?, clearDepth?, scissor? }`：目标缺省为游戏图像（屏幕阶段缺省为画布），层只清除自己的目标，世界槽的 pass 缺省裁剪到世界视口。`CompositionFrame` 只读：`logical`（逻辑变换）、`viewMode`、`subMode`、`view`、`render`（Runtime 的两份 Render State 与 alpha）、`projection`（会话帧给出的最新 projection）、`world`（`{ scene, camera, viewport }`，无世界视角为 null）、`logicalCamera`（按逻辑像素 (x, y) 画入游戏图像）与 `depth`（只能在画入自己的目标时采样）。`FlightScreen.passes(frame, image)` 把游戏图像纹理画到画布。合成在一次 `RenderSurface.drawPasses` 中提交整帧。

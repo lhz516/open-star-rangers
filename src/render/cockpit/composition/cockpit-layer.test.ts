@@ -1,6 +1,7 @@
-import { Camera, type DataTexture, type Mesh, type ShaderMaterial } from 'three';
+import { Camera, Vector2, type DataTexture, type Mesh, type ShaderMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { CompositionFrame } from '../../flight/composition/flight-layers.ts';
+import { LOGICAL_PIXEL_GLSL } from '../../flight/composition/logical-screen.ts';
 import { FlightGpuCache } from '../../flight/renderer/flight-gpu-cache.ts';
 import type { CockpitDrawContext, CockpitModule, CockpitPresentation } from '../presentation/cockpit-contract.ts';
 import {
@@ -106,7 +107,8 @@ describe('cockpit layer', () => {
     const { draw } = setup();
     const [pass] = draw();
     const { material } = pass.scene.children[0] as Mesh;
-    expect((material as ShaderMaterial).uniforms).toMatchObject({ scale: { value: 2 }, bufferHeight: { value: 960 } });
+    expect((material as ShaderMaterial).fragmentShader).toContain(LOGICAL_PIXEL_GLSL);
+    expect((material as ShaderMaterial).uniforms.logicalBuffer.value).toEqual(new Vector2(1280, 960));
     expect(material).toMatchObject({ depthTest: false, depthWrite: false });
     expect(pass).toEqual({ scene: pass.scene, camera: expect.any(Camera) });
   });

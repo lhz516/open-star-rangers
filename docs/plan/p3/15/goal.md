@@ -64,7 +64,7 @@ updated: "2026-10-30"
 | [09-annotation-audit.md](./subtasks/09-annotation-audit.md) | — | completed |
 | [10-e2e-documentation.md](./subtasks/10-e2e-documentation.md) | 01, 02, 03, 04 | completed |
 | [12-f1-disclosure.md](./subtasks/12-f1-disclosure.md) | — | completed |
-| [13-flight-render-resize.md](./subtasks/13-flight-render-resize.md) | — | in-progress |
+| [13-flight-render-resize.md](./subtasks/13-flight-render-resize.md) | — | completed |
 | [11-final-alignment.md](./subtasks/11-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 12, 13 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
@@ -97,6 +97,7 @@ updated: "2026-10-30"
 - **2026-10-30 — Fn+F11 复测：** 用户在新的运行中单独复测 Fn+F11，仍没有任何 F11 事件到达页面，同一会话中 Fn+F9、F10、F12 均送达；本机“显示桌面”为系统默认的 F11。结论改为宿主在浏览器之前拦截了 F11（高概率），应用无法处理；保留项与恢复条件不变，键位指南已记录。
 - **2026-10-30 — Subtask 08 恢复：** P3-14 已完成（`4138e15b`，`node tools/task-state.ts p3/14` 为 done），满足恢复条件；在原 `exec/p3-15-08` worktree 中变基到 main 后按 P3-14/26 的判定更新 V-06 一行。
 - **2026-10-30 — 修复项 13（飞行画面缩放取样）：** P3-14/28 的完整 `pnpm test:e2e` 中 `flight-render.development.spec.ts:63` 失败（`12 pixels at scale 0.7578125`），当前 main 上单独 8 次 7 次失败，P3-14 合入提交 `8bebe9ad` 上 6/6 失败；它会使本任务 AC-10 无法通过。协调者的临时探针显示失配像素取了相邻一格逻辑像素的颜色，位于驾驶舱叠加旁。依用户在本次执行中的授权（修改决定以解阻），新增 13 定位根因并按根因修复：产品违反 P3-12 AC-05/AC-16 时修复渲染代码，测试假设错误时修正判据；最终对齐依赖 13。`map-picture.development.spec.ts:211` 只在完整套件高负载下失败一次，由 13 一并复核并在 11 重跑。
+- **2026-10-30 — 13 完成：** 根因是产品缺陷：精确落在两个逻辑像素边界上的设备像素，星云、星点、尘埃、Warp 层与驾驶舱层取了不同的一侧，于是露出未被驾驶舱覆盖的那一行（随机星云在两行颜色不同时才显现，故间歇）。改为共享的整数取样规则后，该用例单独 10/10 通过，测试判据未改。爆炸精灵与受击闪烁点阵仍用旧取样，记为 render 已知问题。`map-picture.development.spec.ts:211` 有两处对负载敏感的测试判断（产品无缺陷），留给其所有者；11 在完整套件中复跑。
 
 ## 审批
 

@@ -1,8 +1,9 @@
 import type { DataTexture, Mesh, ShaderMaterial } from 'three';
-import { Camera } from 'three';
+import { Camera, Vector2 } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { RenderState } from '../../../core/projections/render-state.ts';
 import { scriptedRand } from '../../../core/rules/rand.test-support.ts';
+import { LOGICAL_MESH_VERTEX, LOGICAL_PIXEL_GLSL } from '../composition/logical-screen.ts';
 import type { CompositionFrame } from '../composition/flight-layers.ts';
 import type { CameraPose } from '../presentation/presentation-contract.ts';
 import { FlightGpuCache } from '../renderer/flight-gpu-cache.ts';
@@ -25,7 +26,7 @@ function setup(draws: readonly number[] = [...PICKS, ...PASS, ...PASS, ...PICKS,
   const layer = createWarpTunnelLayer({ cache, random });
   const logicalCamera = new Camera();
   const frame = (current: RenderState, camera: CameraPose | null = cameraAt(9000), previous = current): CompositionFrame => ({
-    view: 'warp', logicalCamera, render: renderFrame(current, previous),
+    view: 'warp', logicalCamera, logical: { scale: 485 / 640, bufferWidth: 485, bufferHeight: 364 }, render: renderFrame(current, previous),
     world: camera === null ? null : { scene: { view: 'warp', camera } },
   }) as unknown as CompositionFrame;
   return { cache, random, layer, frame, logicalCamera };
@@ -64,6 +65,8 @@ describe('Warp tunnel layer (AC-15)', () => {
     const { mesh, texture, drawn } = image(passes);
     const material = mesh.material as ShaderMaterial;
     expect([material.depthTest, material.depthWrite]).toEqual([false, false]);
+    expect([material.vertexShader, material.fragmentShader.includes(LOGICAL_PIXEL_GLSL)]).toEqual([LOGICAL_MESH_VERTEX, true]);
+    expect(material.uniforms.logicalBuffer.value).toEqual(new Vector2(485, 364));
     expect([mesh.position.x, mesh.position.y]).toEqual([0, 0]);
     expect([texture.image.width, texture.image.height]).toEqual([640, 315]);
     expect(drawn).toBeGreaterThan(0);

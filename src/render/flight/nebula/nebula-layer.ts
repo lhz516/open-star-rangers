@@ -4,7 +4,7 @@
  * world's drawn camera rows (nebula-placement.ts), blits the visible one into the logical screen exactly as the
  * original's frame buffer receives it (nebula-blit.ts), clipped to the view's viewport bottom, and draws those logical
  * pixels into the game image: opaque, in the DATA colours as stored (direct display), each logical pixel enlarged by
- * the logical scale without interpolation. It neither tests nor writes depth.
+ * the logical scale without interpolation (logical-screen.ts `LOGICAL_PIXEL_GLSL`). It neither tests nor writes depth.
  *
  * - **One at a time:** with the drawn camera's orthonormal rows at most one slot is visible (NB3); were two visible,
  *   the later slot's blit would cover the earlier one's, so the layer draws the last visible slot.
@@ -16,14 +16,15 @@
  * The run's GPU cache holds the layer's footprint texture, quad and material (`NEBULA_GPU_PLAN`), released with the run.
  */
 import {
-  BufferAttribute, BufferGeometry, DataTexture, DoubleSide, Mesh, NearestFilter, RGBAFormat, Scene, ShaderMaterial,
-  UnsignedByteType,
+  DataTexture, DoubleSide, Mesh, NearestFilter, RGBAFormat, Scene, ShaderMaterial,
+  UnsignedByteType, Vector2,
 } from 'three';
 import type { AssetId } from '../../../content/asset-id.ts';
 import { expandImage } from '../../../content/graphics/expand-image.ts';
 import type { ImagePayload } from '../../../content/graphics/image-payload.ts';
 import type { PalettePayload } from '../../../content/graphics/palette-payload.ts';
 import type { CompositionFrame, FlightLayer, LayerPass } from '../composition/flight-layers.ts';
+import { LOGICAL_MESH_VERTEX, LOGICAL_PIXEL_GLSL, logicalBufferUniform, logicalQuad, setLogicalBuffer } from '../composition/logical-screen.ts';
 import type { FlightGpuCache, FlightGpuPlan } from '../renderer/flight-gpu-cache.ts';
 import { FlightRenderError } from '../renderer/flight-render-error.ts';
 import { blitNebula, NEBULA_IMAGE_SIZE, NEBULA_REACH } from './nebula-blit.ts';
@@ -51,11 +52,13 @@ const TEXTURE = `${PATH}:footprint`;
 const GEOMETRY = `${PATH}:quad`;
 const MATERIAL = `${PATH}:material`;
 
-const VERTEX = 'varying vec2 texel; void main() { texel = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
 /** One footprint texel per logical pixel; texels no blit wrote are left alone. */
-const FRAGMENT = `uniform sampler2D footprint; varying vec2 texel;
+const FRAGMENT = `uniform sampler2D footprint; uniform ivec2 origin;
+${LOGICAL_PIXEL_GLSL}
 void main() {
-  vec4 colour = texelFetch(footprint, clamp(ivec2(floor(texel)), ivec2(0), ivec2(${NEBULA_FOOTPRINT - 1})), 0);
+  ivec2 texel = logicalPixel() - origin;
+  if (any(lessThan(texel, ivec2(0))) || any(greaterThan(texel, ivec2(${NEBULA_FOOTPRINT - 1})))) discard;
+  vec4 colour = texelFetch(footprint, texel, 0);
   if (colour.a < 0.5) discard;
   gl_FragColor = colour;
 }`;
@@ -77,6 +80,7 @@ class NebulaLayer implements FlightLayer {
   readonly slot = 'nebula';
   readonly #colours: readonly Uint8Array[];
   readonly #texture: DataTexture;
+  readonly #material: ShaderMaterial;
   readonly #mesh: Mesh;
   readonly #scene = new Scene();
   /** The slot, centre, angle and viewport bottom the footprint was last filled for. */
@@ -93,20 +97,18 @@ class NebulaLayer implements FlightLayer {
       texture.generateMipmaps = false;
       return texture;
     }) as DataTexture;
-    const geometry = cache.geometry(GEOMETRY, { vertices: 4, indices: 6 }, () => new BufferGeometry()
-      .setAttribute('position', new BufferAttribute(new Float32Array([0, 0, 0, size, 0, 0, 0, size, 0, size, size, 0]), 3))
-      .setIndex([0, 1, 2, 2, 1, 3]));
-    const material = cache.material(MATERIAL, () => new ShaderMaterial({
-      name: 'flight-nebula', uniforms: { footprint: { value: this.#texture } }, vertexShader: VERTEX, fragmentShader: FRAGMENT,
-      side: DoubleSide, depthTest: false, depthWrite: false,
-    }));
-    this.#mesh = new Mesh(geometry, material);
+    const geometry = cache.geometry(GEOMETRY, { vertices: 4, indices: 6 }, () => logicalQuad(size, size));
+    this.#material = cache.material(MATERIAL, () => new ShaderMaterial({
+      name: 'flight-nebula', uniforms: { footprint: { value: this.#texture }, origin: { value: new Vector2() }, logicalBuffer: logicalBufferUniform() },
+      vertexShader: LOGICAL_MESH_VERTEX, fragmentShader: FRAGMENT, side: DoubleSide, depthTest: false, depthWrite: false,
+    })) as ShaderMaterial;
+    this.#mesh = new Mesh(geometry, this.#material);
     this.#mesh.name = 'flight-nebula';
     this.#mesh.frustumCulled = false;
     this.#scene.add(this.#mesh);
   }
 
-  passes({ world, logicalCamera }: CompositionFrame): readonly LayerPass[] {
+  passes({ world, logical, logicalCamera }: CompositionFrame): readonly LayerPass[] {
     if (!world) return [];
     const { camera: { rows }, viewport: { bottom } } = world.scene;
     let placement: NebulaPlacement | null = null;
@@ -117,6 +119,7 @@ class NebulaLayer implements FlightLayer {
       this.#fill(placement, bottom);
       this.#drawnKey = key;
     }
+    setLogicalBuffer(this.#material, logical);
     return [{ scene: this.#scene, camera: logicalCamera }];
   }
 
@@ -137,6 +140,7 @@ class NebulaLayer implements FlightLayer {
     });
     this.#texture.needsUpdate = true;
     this.#mesh.position.set(left, top, 0);
+    (this.#material.uniforms.origin.value as Vector2).set(left, top);
   }
 }
 

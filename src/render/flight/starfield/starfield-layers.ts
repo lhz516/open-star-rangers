@@ -11,7 +11,7 @@
  *
  * Each layer rasterises its logical pixels into an RGBA image of the logical screen in the DATA palette's colours as
  * stored (direct display) and draws it opaque where it wrote, each logical pixel enlarged by the logical scale without
- * interpolation. Neither tests nor writes depth. A write past the last column continues on the next row, and one past
+ * interpolation (logical-screen.ts `LOGICAL_PIXEL_GLSL`). Neither tests nor writes depth. A write past the last column continues on the next row, and one past
  * the screen's end is lost, as in the original's frame buffer; the composition starts every frame from black, which
  * stands for the original's erases (`0x3fd20`, `0x44f00`, FC3). Map, base and 0x13 frames do not call either layer.
  *
@@ -19,14 +19,16 @@
  * `SPEED_DUST_GPU_PLAN`), released with the run.
  */
 import {
-  BufferAttribute, BufferGeometry, DataTexture, DoubleSide, Mesh, NearestFilter, RGBAFormat, Scene, ShaderMaterial,
+  DataTexture, DoubleSide, Mesh, NearestFilter, RGBAFormat, Scene, ShaderMaterial,
   UnsignedByteType, type Camera,
 } from 'three';
 import type { PalettePayload } from '../../../content/graphics/palette-payload.ts';
 import type { RandSource } from '../../../core/rules/original-random.ts';
 import type { Matrix3 } from '../../../core/world/entity-table.ts';
 import type { CompositionFrame, FlightLayer, LayerPass } from '../composition/flight-layers.ts';
-import { LOGICAL_HEIGHT, LOGICAL_WIDTH } from '../composition/logical-screen.ts';
+import {
+  LOGICAL_HEIGHT, type LogicalTransform, LOGICAL_MESH_VERTEX, LOGICAL_PIXEL_GLSL, LOGICAL_WIDTH, logicalBufferUniform, logicalQuad, setLogicalBuffer,
+} from '../composition/logical-screen.ts';
 import type { FlightGpuCache, FlightGpuPlan } from '../renderer/flight-gpu-cache.ts';
 import { FlightRenderError } from '../renderer/flight-render-error.ts';
 import { drawDustLine, DUST_MOST_COLOUR, SpeedDust, type SpeedDustPass, type SpeedDustTick } from './speed-dust.ts';
@@ -41,11 +43,11 @@ export const SPEED_DUST_GPU_PLAN = IMAGE_PLAN;
 /** The highest DATA index either layer draws: stars 1–6, dust 2–7. */
 const MOST_COLOUR = DUST_MOST_COLOUR;
 
-const VERTEX = 'varying vec2 texel; void main() { texel = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
 /** One image texel per logical pixel; texels nothing wrote are left alone. */
-const FRAGMENT = `uniform sampler2D image; varying vec2 texel;
+const FRAGMENT = `uniform sampler2D image;
+${LOGICAL_PIXEL_GLSL}
 void main() {
-  vec4 colour = texelFetch(image, clamp(ivec2(floor(texel)), ivec2(0), ivec2(${LOGICAL_WIDTH - 1}, ${LOGICAL_HEIGHT - 1})), 0);
+  vec4 colour = texelFetch(image, logicalPixel(), 0);
   if (colour.a < 0.5) discard;
   gl_FragColor = colour;
 }`;
@@ -65,6 +67,7 @@ class LogicalImage {
   /** Colours 0–7 as opaque RGBA texels in the image's byte order. */
   readonly #colours: Uint32Array;
   readonly #texture: DataTexture;
+  readonly #material: ShaderMaterial;
   readonly #texels: Uint32Array;
   readonly #scene = new Scene();
   /** The texels the last fill wrote. */
@@ -92,14 +95,12 @@ class LogicalImage {
     }) as DataTexture;
     const data = this.#texture.image.data as Uint8Array;
     this.#texels = new Uint32Array(data.buffer, data.byteOffset, width * height);
-    const geometry = cache.geometry(`${path}:quad`, { vertices: 4, indices: 6 }, () => new BufferGeometry()
-      .setAttribute('position', new BufferAttribute(new Float32Array([0, 0, 0, width, 0, 0, 0, height, 0, width, height, 0]), 3))
-      .setIndex([0, 1, 2, 2, 1, 3]));
-    const material = cache.material(`${path}:material`, () => new ShaderMaterial({
-      name: `flight-${path}`, uniforms: { image: { value: this.#texture } }, vertexShader: VERTEX, fragmentShader: FRAGMENT,
-      side: DoubleSide, depthTest: false, depthWrite: false,
-    }));
-    const mesh = new Mesh(geometry, material);
+    const geometry = cache.geometry(`${path}:quad`, { vertices: 4, indices: 6 }, () => logicalQuad(width, height));
+    this.#material = cache.material(`${path}:material`, () => new ShaderMaterial({
+      name: `flight-${path}`, uniforms: { image: { value: this.#texture }, logicalBuffer: logicalBufferUniform() },
+      vertexShader: LOGICAL_MESH_VERTEX, fragmentShader: FRAGMENT, side: DoubleSide, depthTest: false, depthWrite: false,
+    })) as ShaderMaterial;
+    const mesh = new Mesh(geometry, this.#material);
     mesh.name = `flight-${path}`;
     mesh.frustumCulled = false;
     this.#scene.add(mesh);
@@ -121,8 +122,10 @@ class LogicalImage {
     this.#texture.needsUpdate = true;
   }
 
-  passes(camera: Camera): readonly LayerPass[] {
-    return this.#written.length === 0 ? [] : [{ scene: this.#scene, camera }];
+  passes(logical: LogicalTransform, camera: Camera): readonly LayerPass[] {
+    if (this.#written.length === 0) return [];
+    setLogicalBuffer(this.#material, logical);
+    return [{ scene: this.#scene, camera }];
   }
 }
 
@@ -143,7 +146,7 @@ class StarFieldLayer implements FlightLayer {
     this.#image = new LogicalImage(cache, 'starField', palette);
   }
 
-  passes({ world, logicalCamera }: CompositionFrame): readonly LayerPass[] {
+  passes({ world, logical, logicalCamera }: CompositionFrame): readonly LayerPass[] {
     if (world === null) return [];
     const { camera: { rows }, viewport: { bottom } } = world.scene;
     const drawn = this.#drawn;
@@ -151,7 +154,7 @@ class StarFieldLayer implements FlightLayer {
       this.#image.fill((plot) => drawStars(rows, bottom, plot));
       this.#drawn = { rows: Object.freeze([...rows]) as unknown as Matrix3, bottom };
     }
-    return this.#image.passes(logicalCamera);
+    return this.#image.passes(logical, logicalCamera);
   }
 }
 
@@ -186,7 +189,7 @@ class Layer implements SpeedDustLayer {
     this.#dust.step(tick);
   }
 
-  passes({ render: { current }, logicalCamera }: CompositionFrame): readonly LayerPass[] {
+  passes({ render: { current }, logical, logicalCamera }: CompositionFrame): readonly LayerPass[] {
     const pass = this.#dust.pass;
     if (pass === null) return [];
     if (pass.tick !== current.tick) {
@@ -201,7 +204,7 @@ class Layer implements SpeedDustLayer {
       });
       this.#drawn = pass;
     }
-    return this.#image.passes(logicalCamera);
+    return this.#image.passes(logical, logicalCamera);
   }
 }
 

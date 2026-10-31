@@ -11,8 +11,8 @@
  * device pixel per logical pixel reproduces, up to exact ties, when x is shifted by −0.5 and y is not. Depth is the
  * library's z_p = B(z − f)/((B − f)·z) from the front plane f to the back plane B (FC4), as WebGL's [−1, 1].
  */
-import type { Camera} from 'three';
-import { Matrix4 } from 'three';
+import type { Camera, ShaderMaterial } from 'three';
+import { BufferAttribute, BufferGeometry, Matrix4, Vector2 } from 'three';
 import type { PixelRect } from '../../scene/render-surface.ts';
 import type { ViewportLayout } from '../../viewport/viewport-layout.ts';
 import type { PresentationViewport } from '../presentation/presentation-contract.ts';
@@ -57,6 +57,41 @@ export function deviceRect({ scale, bufferWidth, bufferHeight }: LogicalTransfor
   const left = clamp(x, bufferWidth);
   const top = clamp(y, bufferHeight);
   return Object.freeze({ x: left, y: top, width: clamp(x + width, bufferWidth) - left, height: clamp(y + height, bufferHeight) - top });
+}
+
+/** The vertex shader of a mesh in logical pixels, drawn with the logical camera. */
+export const LOGICAL_MESH_VERTEX = 'void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+
+/**
+ * A quad over the logical rectangle [0, width) × [0, height) and one logical pixel past it on every side, so that it covers
+ * every device pixel `logicalPixel()` places in the rectangle, whatever the rasteriser does on its edges.
+ */
+export const logicalQuad = (width: number, height: number): BufferGeometry => new BufferGeometry()
+  .setAttribute('position', new BufferAttribute(new Float32Array([-1, -1, 0, width + 1, -1, 0, -1, height + 1, 0, width + 1, height + 1, 0]), 3))
+  .setIndex([0, 1, 2, 2, 1, 3]);
+
+/**
+ * GLSL for a layer that enlarges logical pixels (AC-05, AC-16): `logicalPixel()` is the logical pixel of the fragment's
+ * device pixel, the one whose [x·s, (x + 1)·s) holds the device pixel's centre, rows from the top, kept on the logical
+ * screen (a device row past 480·s shows row 479). It is computed in integers, ⌊(2d + 1) · 320 ÷ bufferWidth⌋, so a
+ * centre exactly on a texel edge, as at 485 ÷ 640, falls in the pixel after the edge in every layer alike; an
+ * interpolated coordinate or a float division may land on either side, and two layers deciding differently show in
+ * one device pixel a combination no logical pixel has. The material's `logicalBuffer` uniform holds the drawing
+ * buffer's size (`logicalBufferUniform`, `setLogicalBuffer`); a layer's mesh must cover every device pixel it may
+ * draw, the fragment discarding the logical pixels outside its image.
+ */
+export const LOGICAL_PIXEL_GLSL = `uniform ivec2 logicalBuffer;
+ivec2 logicalPixel() {
+  ivec2 device = ivec2(gl_FragCoord.x, float(logicalBuffer.y) - gl_FragCoord.y);
+  return min((2 * device + 1) * ${LOGICAL_WIDTH / 2} / logicalBuffer.x, ivec2(${LOGICAL_WIDTH - 1}, ${LOGICAL_HEIGHT - 1}));
+}`;
+
+/** A material's `logicalBuffer` uniform for `LOGICAL_PIXEL_GLSL`. */
+export const logicalBufferUniform = (): { value: Vector2 } => ({ value: new Vector2(LOGICAL_WIDTH, LOGICAL_HEIGHT) });
+
+/** Sets `material`'s `logicalBuffer` uniform to the frame's drawing buffer. */
+export function setLogicalBuffer(material: ShaderMaterial, { bufferWidth, bufferHeight }: LogicalTransform): void {
+  (material.uniforms.logicalBuffer.value as Vector2).set(bufferWidth, bufferHeight);
 }
 
 /** Sets a camera's matrices once, for the renderer not to recompute them. */
