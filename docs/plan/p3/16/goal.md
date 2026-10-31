@@ -102,7 +102,7 @@ updated: "2026-10-30"
 | [10-compliance-artifacts.md](./subtasks/10-compliance-artifacts.md) | 04, 18, 19 | pending |
 | [11-render-test-risks.md](./subtasks/11-render-test-risks.md) | — | completed |
 | [12-r22-gap-audit.md](./subtasks/12-r22-gap-audit.md) | — | completed |
-| [13-comparison-verdicts.md](./subtasks/13-comparison-verdicts.md) | 07, 12 | in-progress |
+| [13-comparison-verdicts.md](./subtasks/13-comparison-verdicts.md) | 07, 12 | completed |
 | [14-gap-annotation-audit.md](./subtasks/14-gap-annotation-audit.md) | — | completed |
 | [15-unknowns-ownership.md](./subtasks/15-unknowns-ownership.md) | — | completed |
 | [16-exit-review-handoff.md](./subtasks/16-exit-review-handoff.md) | 01, 02, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 18, 19, 20 | pending |
@@ -143,6 +143,7 @@ updated: "2026-10-30"
 - **2026-10-31 — 08 完成：** 候选 `a02f4ad0`（代码已定稿）上 `pnpm check` 首次即通过（447 个文件、11,935 个测试与构建），两组 Python 测试（3、232 项）通过；`dist` 指纹 `sha256:74260a03…843d`（P2-13/04 算法）。没有失败或重跑。
 - **2026-10-31 — 06 完成：** 候选 `f2c61924`（产品代码与最终候选相同，其后只改 e2e 与文档）上按 P3-15/07 的方法复跑真实内容：两次成功（带僚机）与一次失败（不带僚机，两次能量救援后第三次损失失败）各自重试到 G-02/2，录制全部 `{ match: true }`；内容身份与 05 相同，规则版本 12；与 B-003、B-005、P3-11/19、P3-15/07 一致，没有规则差异或 Core 故障。私有脚本中地图右缘三次点击差一列，属驾驶脚本自身的像素公式，未作为产品问题调查，交 16 列为已知限制。
 - **2026-10-31 — 07 完成：** 适用性表覆盖 S-04 全部类别；R 类对照的新版一侧在 `f2c61924` 上整体重跑，原版一侧与历史输出逐字节相同，结论不变，所有运行中 `request-warp` × 待提交 `dock`/`depart` 出现 0 次；R-05b 种子 1 的覆盖守卫（12 对 13）与 P3-07 新版 4 个导弹窗口记为证据缺口交 13；P3-14/26 试听与 P3-15/06 物理按键不受影响，无需用户重做。协调者决定：AC-08 中 P3-15/01–04 的重新录制与产物身份分别由 09（AC-04）与 10（AC-05）验证，07 只覆盖对照部分。
+- **2026-10-31 — 13 完成：** 按最小证据单元计数：R 208 个单元（一致 82、已修正 2、已归因 2、经批准差异 46、限定 58、blocked 8、R-01 速率门槛 1、无判定用语 9、待修复 0），V 140 个单元（一致 78、已修正 2、经批准差异 23、外观缺口 33）；82 个一致的 R 单元中 69 个所在类别要求冻结配置，U-021 未冻结时最终验收未满足；与 P3-15 对照汇总的 12 处计数或用语不一致列为问题（见 [13](./subtasks/13-comparison-verdicts.md#完成证据)）。协调者决定：P3-05 的 9 个“无判定用语”单元在评审中按 R-23 未验证计入（物理按键到代码未确认，依判定规则“必需项未取得”即未满足，不以代码到动作的证据代替），这是 P3-05 既有残余责任，不新增判据；如用户日后接受代码到动作的证据，须另行批准。
 
 ## 审批
 
