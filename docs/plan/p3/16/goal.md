@@ -108,7 +108,7 @@ updated: "2026-10-30"
 | [16-exit-review-handoff.md](./subtasks/16-exit-review-handoff.md) | 01, 02, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 18, 19, 20 | pending |
 | [18-ac23-fixup-width.md](./subtasks/18-ac23-fixup-width.md) | — | completed |
 | [19-explosion-sprite-sampling.md](./subtasks/19-explosion-sprite-sampling.md) | — | in-progress |
-| [20-map-picture-recorder.md](./subtasks/20-map-picture-recorder.md) | — | pending |
+| [20-map-picture-recorder.md](./subtasks/20-map-picture-recorder.md) | — | in-progress |
 | [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
