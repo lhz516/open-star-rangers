@@ -104,7 +104,7 @@ updated: "2026-10-30"
 | [12-r22-gap-audit.md](./subtasks/12-r22-gap-audit.md) | — | completed |
 | [13-comparison-verdicts.md](./subtasks/13-comparison-verdicts.md) | 07, 12 | pending |
 | [14-gap-annotation-audit.md](./subtasks/14-gap-annotation-audit.md) | — | in-progress |
-| [15-unknowns-ownership.md](./subtasks/15-unknowns-ownership.md) | — | in-progress |
+| [15-unknowns-ownership.md](./subtasks/15-unknowns-ownership.md) | — | completed |
 | [16-exit-review-handoff.md](./subtasks/16-exit-review-handoff.md) | 01, 02, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 18, 19, 20 | pending |
 | [18-ac23-fixup-width.md](./subtasks/18-ac23-fixup-width.md) | — | in-progress |
 | [19-explosion-sprite-sampling.md](./subtasks/19-explosion-sprite-sampling.md) | — | pending |
@@ -134,6 +134,7 @@ updated: "2026-10-30"
 - **2026-10-30 — 12 完成：** P3-11 之后只有 P3-14 启动过原版（21 次，11 次合格），没有一次取得 R-22 八项中的任何一项；八项都保持 blocked，原判据与恢复条件见 [12](./subtasks/12-r22-gap-audit.md#完成证据)。没有新增启动。
 - **2026-10-30 — 11 完成，新增修复子任务 19、20（goal 变更）：** 11 在当前候选上复现（证据见 [11](./subtasks/11-render-test-risks.md#完成证据)）：(A) 爆炸精灵在缩放的边线上取边前一侧并读到下一帧的第 0 行，违反 P3-12 AC-05、AC-13、AC-16（原责任 P3-12/21），新增 [19](./subtasks/19-explosion-sprite-sampling.md)；(B) `map-picture.development.spec.ts:211` 的失败与负载无关，是记录器把第一帧当作精确发布锚点的测试测量缺陷，产品符合 DC-09（原责任 P3-13/28，AC-17），新增 [20](./subtasks/20-map-picture-recorder.md)，只改测试测量，不放宽判据、不加重试。受击闪烁屏幕门在本机不违反，作为交接风险。P3-15/13 记的“只对负载敏感”在本候选不成立。06–10、16、17 增加对 19 的依赖，09、16、17 增加对 20 的依赖，使候选检查与真实内容复跑绑定含修复的候选。两项都是不改变契约的缺陷修复（S-05、技术决定 10），由协调者依用户本轮授权批准 goal 变更；不改 spec。
 - **2026-10-30 — 04 完成：** `request-warp` 在本 tick 有待提交的玩家 `dock`/`depart` 时为 `ignored`/`wrong-context`（MW-04 第 1a 步），两种故障修复前已用正式 step 复现；`RULES_VERSION` 11 → 12，快照 9、replay 3 不变；P3-02 MW-12 补差异 10（协调者按 worker 的范围请求扩大写入范围，提交 `67550ed4`）。集成后 `pnpm check` 通过。
+- **2026-10-30 — 15 完成：** 登记表只改负责阶段一列：U-001、U-004、U-009、U-020 的 P3 部分与 U-027 的部件标志、槽 0/3 闭合；U-008、U-010、U-022、U-031 与 U-027 的其余分量、U-033 保留 P3，作为阻塞交 16；U-028 证据不足、不改。依据见 [15](./subtasks/15-unknowns-ownership.md#完成证据)。
 
 ## 审批
 
