@@ -101,7 +101,7 @@ updated: "2026-10-30"
 | [09-browser-regression.md](./subtasks/09-browser-regression.md) | 04, 18 | pending |
 | [10-compliance-artifacts.md](./subtasks/10-compliance-artifacts.md) | 04, 18 | pending |
 | [11-render-test-risks.md](./subtasks/11-render-test-risks.md) | — | in-progress |
-| [12-r22-gap-audit.md](./subtasks/12-r22-gap-audit.md) | — | in-progress |
+| [12-r22-gap-audit.md](./subtasks/12-r22-gap-audit.md) | — | completed |
 | [13-comparison-verdicts.md](./subtasks/13-comparison-verdicts.md) | 07, 12 | pending |
 | [14-gap-annotation-audit.md](./subtasks/14-gap-annotation-audit.md) | — | pending |
 | [15-unknowns-ownership.md](./subtasks/15-unknowns-ownership.md) | — | pending |
@@ -128,6 +128,7 @@ updated: "2026-10-30"
 - **2026-10-30 — 02 完成：** P3-03 覆盖表补 S-18、S-19、AC-22 三行与一条执行记录（证据见 [02](./subtasks/02-p3-03-coverage.md#完成证据)）。AC-23 暂不补：P3-03 spec 修订 3 的验证项 2 要求 fixup 目标偏移不是 16 位时以 `unsupported-payload` 拒绝，[P3-08/13](../08/subtasks/13-ai-static-data-import.md#完成证据) 记为偏差，没有该拒绝的实现与测试（`RegionFixup` 不暴露目标宽度）。依技术决定 7，授权定稿不能豁免必需证据；这是不改变契约的缺陷，按 S-05 交修复项 18，`node tools/task-state.ts p3/03` 在 18 完成前仍缺 AC-23。
 - **2026-10-30 — 新增修复子任务 18（goal 变更）：** 按 S-05 与技术决定 10，把 AC-23 的拒绝缺口作为独立修复：[18](./subtasks/18-ac23-fixup-width.md) 让关键字表对非 16 位 fixup 目标偏移报 `unsupported-payload`，加合成拒绝测试，再补 P3-03 覆盖表的 AC-23 行。它改 `src/original-data/`，在导入路径上，因此 05、06（真实导入）与 08、09、10（候选检查）以及 16、17 增加对 18 的依赖，使这些证据绑定含修复的候选。选择修复而不是修订 P3-03 spec 去掉该拒绝项：修复范围小、保留已批准的契约，不降低判据。这是 goal 的变更，由协调者依用户本轮授权（“如果在执行过程中有需要修改spec、goal或其他Decision。我授权你直接同意。”）批准；不改 spec。
 - **2026-10-30 — 03、01 完成：** 03 在 P3-02 MW-04 加第 1a 步（转换冲突），同步 CB-07、P3-09 的“同 tick 门禁与请求”与 P3-10 的“停靠请求与等待”，并在 P3-02 审批节记修订；原版查证：停靠到期与 `w` 同帧时原版先停靠再开始 Warp（各环节已确认（代码），组合高概率可达，后续未确认），离港与 `w` 同帧不可达（已确认（代码）），修复记为项目差异。01 的底稿列出审批来源 C 类（授权不足）项与需 07 判定的证据类别，并发现若干交 16 的文档问题（见 [01](./subtasks/01-candidate-evidence-map.md#完成证据)）。
+- **2026-10-30 — 12 完成：** P3-11 之后只有 P3-14 启动过原版（21 次，11 次合格），没有一次取得 R-22 八项中的任何一项；八项都保持 blocked，原判据与恢复条件见 [12](./subtasks/12-r22-gap-audit.md#完成证据)。没有新增启动。
 
 ## 审批
 
