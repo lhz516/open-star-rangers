@@ -93,7 +93,7 @@ updated: "2026-10-30"
 | [01-candidate-evidence-map.md](./subtasks/01-candidate-evidence-map.md) | — | completed |
 | [02-p3-03-coverage.md](./subtasks/02-p3-03-coverage.md) | — | completed |
 | [03-joint-fault-contract.md](./subtasks/03-joint-fault-contract.md) | — | completed |
-| [04-joint-fault-core.md](./subtasks/04-joint-fault-core.md) | 03 | in-progress |
+| [04-joint-fault-core.md](./subtasks/04-joint-fault-core.md) | 03 | completed |
 | [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | 18 | pending |
 | [06-real-content-reruns.md](./subtasks/06-real-content-reruns.md) | 04, 18, 19 | pending |
 | [07-affected-evidence.md](./subtasks/07-affected-evidence.md) | 01, 04, 19 | pending |
@@ -133,6 +133,7 @@ updated: "2026-10-30"
 - **2026-10-30 — 03、01 完成：** 03 在 P3-02 MW-04 加第 1a 步（转换冲突），同步 CB-07、P3-09 的“同 tick 门禁与请求”与 P3-10 的“停靠请求与等待”，并在 P3-02 审批节记修订；原版查证：停靠到期与 `w` 同帧时原版先停靠再开始 Warp（各环节已确认（代码），组合高概率可达，后续未确认），离港与 `w` 同帧不可达（已确认（代码）），修复记为项目差异。01 的底稿列出审批来源 C 类（授权不足）项与需 07 判定的证据类别，并发现若干交 16 的文档问题（见 [01](./subtasks/01-candidate-evidence-map.md#完成证据)）。
 - **2026-10-30 — 12 完成：** P3-11 之后只有 P3-14 启动过原版（21 次，11 次合格），没有一次取得 R-22 八项中的任何一项；八项都保持 blocked，原判据与恢复条件见 [12](./subtasks/12-r22-gap-audit.md#完成证据)。没有新增启动。
 - **2026-10-30 — 11 完成，新增修复子任务 19、20（goal 变更）：** 11 在当前候选上复现（证据见 [11](./subtasks/11-render-test-risks.md#完成证据)）：(A) 爆炸精灵在缩放的边线上取边前一侧并读到下一帧的第 0 行，违反 P3-12 AC-05、AC-13、AC-16（原责任 P3-12/21），新增 [19](./subtasks/19-explosion-sprite-sampling.md)；(B) `map-picture.development.spec.ts:211` 的失败与负载无关，是记录器把第一帧当作精确发布锚点的测试测量缺陷，产品符合 DC-09（原责任 P3-13/28，AC-17），新增 [20](./subtasks/20-map-picture-recorder.md)，只改测试测量，不放宽判据、不加重试。受击闪烁屏幕门在本机不违反，作为交接风险。P3-15/13 记的“只对负载敏感”在本候选不成立。06–10、16、17 增加对 19 的依赖，09、16、17 增加对 20 的依赖，使候选检查与真实内容复跑绑定含修复的候选。两项都是不改变契约的缺陷修复（S-05、技术决定 10），由协调者依用户本轮授权批准 goal 变更；不改 spec。
+- **2026-10-30 — 04 完成：** `request-warp` 在本 tick 有待提交的玩家 `dock`/`depart` 时为 `ignored`/`wrong-context`（MW-04 第 1a 步），两种故障修复前已用正式 step 复现；`RULES_VERSION` 11 → 12，快照 9、replay 3 不变；P3-02 MW-12 补差异 10（协调者按 worker 的范围请求扩大写入范围，提交 `67550ed4`）。集成后 `pnpm check` 通过。
 
 ## 审批
 

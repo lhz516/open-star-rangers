@@ -79,9 +79,12 @@ function markerEntityId(world: WorldState): EntityId | null {
   return null;
 }
 
-/** MW-04's gate on the committed state at the world clock; reading it changes nothing. */
+/**
+ * MW-04's gate on the committed state at the world clock; reading it changes nothing. Outside a tick no request is
+ * pending, so step 1a's conflict never refuses.
+ */
 function warpRequest(world: WorldState): WarpRequestReading {
-  const judgement = judgeWarpRequest(world, committedView(world), world.clock);
+  const judgement = judgeWarpRequest(world, committedView(world), world.clock, false);
   return typeof judgement === 'string' ? Object.freeze({ accepted: false, reason: judgement }) : ACCEPTED;
 }
 

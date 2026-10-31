@@ -33,7 +33,7 @@ import { COCKPIT_VIEW_MODE, interactionContext, type WarpTransit } from '../worl
 import type { WorldState } from '../world/world-state.ts';
 import { emitCommandResult, type CommandOf } from './commands.ts';
 import { availablePlayer } from './flight-control.ts';
-import { emit, type CommandView, type TickContext } from './pipeline.ts';
+import { emit, type CommandView, type Request, type RequestOf, type TickContext } from './pipeline.ts';
 import { BASE_VIEW_MODE, commitViewSwitch, MAP_VIEW_MODE, WARP_VIEW_MODE } from './view-switch.ts';
 
 /** Message 0x400 sub-command 0, posted by an accepted `request-warp` (MW-04). */
@@ -66,15 +66,17 @@ const coolingDown = (warpClock: number, intervalSeconds: number, clock: number):
   warpClock !== 0 && warpClock + INTERVAL_UNITS_PER_SECOND * intervalSeconds > clock;
 
 /**
- * The gate table of `request-warp` (MW-04), in order, judged in `view` at `clock`: an unavailable player; the Warp and
- * base contexts, whose keys have no `w`; a map opened from the base (previous view 6); no destination; the interval;
- * then the energy check c ≤ E, an exactly affordable cost passing. Returns the refusal, or the check of an accepted
- * request. A zero distance (c = 0) passes, and the marker is never read. The command batch judges it in the command
- * view; a reader may judge it in the committed view without changing anything.
+ * The gate table of `request-warp` (MW-04), in order, judged in `view` at `clock`: an unavailable player; a player
+ * `dock` or `depart` still pending in the tick (`transitionPending`, step 1a); the Warp and base contexts, whose keys
+ * have no `w`; a map opened from the base (previous view 6); no destination; the interval; then the energy check
+ * c ≤ E, an exactly affordable cost passing. Returns the refusal, or the check of an accepted request. A zero distance
+ * (c = 0) passes, and the marker is never read. The command batch judges it in the command view; a reader may judge
+ * it in the committed view without changing anything, outside a tick, where nothing is pending.
  */
-export function judgeWarpRequest(world: WorldState, view: Readonly<CommandView>, clock: number): WarpRefusal | WarpCheck {
+export function judgeWarpRequest(world: WorldState, view: Readonly<CommandView>, clock: number, transitionPending: boolean): WarpRefusal | WarpCheck {
   const player = availablePlayer(world);
   if (player === null) return 'player-unavailable';
+  if (transitionPending) return 'wrong-context';
   const context = interactionContext(view.viewMode);
   if (context === 'warp' || context === 'base') return 'wrong-context';
   if (context === 'map' && view.previousViewMode === BASE_VIEW_MODE) return 'wrong-context';
@@ -86,16 +88,27 @@ export function judgeWarpRequest(world: WorldState, view: Readonly<CommandView>,
 }
 
 /**
+ * The player's docking or launch that request handling has not applied yet (CB-08): sub-state 4's `dock`, sub-state 5's
+ * automatic `depart` and an accepted launch key's. Only the player is ever their subject. Either changes the view, the
+ * activity or the position the Warp would be judged on, so a `request-warp` judged with one pending is refused (MW-04
+ * step 1a). The queue, not the sub-state, is read: a code 9 in the batch sets sub-state 3 with the docking still
+ * pending, and the automatic launch has already set 0.
+ */
+const isPlayerTransition = (request: Request): request is RequestOf<'dock' | 'depart'> => request.type === 'dock' || request.type === 'depart';
+
+/**
  * Judges `request-warp` in the command view (MW-04): a refusal is `ignored` with its reason; an accepted request moves
  * the command view into the Warp view, so that the commands after it, a second `request-warp` included, are judged in
  * the Warp context, and holds the `warp-start` request. Its release follows P3-06's `control` and `match-speed` requests
  * and the player's launches judged before it, before the automatic target selection (pipeline.ts): the effects of the
  * batch's earlier commands apply before the Warp set-up overwrites speed and pose (MW-12 difference 9; in the original
- * one key per poll puts them in earlier frames).
+ * one key per poll puts them in earlier frames). A refusal for a pending docking or launch (step 1a) is a project
+ * difference, not the original's same-frame order (MW-04): the transition applies as it would without the request.
  */
 export function judgeRequestWarp(context: TickContext, command: CommandOf<'request-warp'>, commandIndex: number): void {
   const view = context.commandView;
-  const judgement = judgeWarpRequest(context.world, view, context.time.clock);
+  const transitionPending = context.requests.findLastPending(isPlayerTransition) !== undefined;
+  const judgement = judgeWarpRequest(context.world, view, context.time.clock, transitionPending);
   if (typeof judgement === 'string') {
     emitCommandResult(context, command, commandIndex, { outcome: 'ignored', reason: judgement });
     return;
@@ -114,8 +127,9 @@ function steeredBlock({ movement }: Entity): SteeredMovementBlock {
 
 /**
  * Request handling of a `warp-start`, without judging it again (MW-04): nothing applied before it in the tick changes
- * the gate's inputs (a throttle, match or launch leaves the position, energy and destination), so the check it
- * recomputes for `warp-started` still passes. In order:
+ * the gate's inputs (a throttle, match or launch leaves the position, energy and destination; a pending player `dock`
+ * or `depart`, which would, refuses the request at step 1a), so the check it recomputes for `warp-started` still
+ * passes. In order:
  *
  * 1. `0x2be00`: the origin is the player's position; `inWarp`; the player's target cleared without `target-changed`
  *    (CR-09); the block in mode 3; the transit length.

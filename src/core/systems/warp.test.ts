@@ -10,6 +10,7 @@ import { initialPlayerControl } from '../world/player-state.ts';
 import { constructWorld } from '../world/world.ts';
 import { addPlayerEntity, entityInit, expectFault, stateText, testState } from '../world/world.test-support.ts';
 import { enterBaseView } from './base-interior.test-support.ts';
+import { addActive, BASE_KIND_BIT, radioScene } from './radio.test-support.ts';
 import type { WorldState } from '../world/world-state.ts';
 import { committedView, PIPELINE, registerTick, type TickContext } from './pipeline.ts';
 import { switchView } from './view-switch.ts';
@@ -154,8 +155,9 @@ describe('the gate table of request-warp (MW-04)', () => {
   it('judges in the committed view for a reader without changing anything', () => {
     const { state } = setUp();
     const before = stateText(state);
-    expect(judgeWarpRequest(state, committedView(state), nextClock(state))).toEqual({ distance: 50000, cost: COST, energy: COST, affordable: true });
-    expect(judgeWarpRequest(state, { ...committedView(state), destination: null }, nextClock(state))).toBe('no-destination');
+    expect(judgeWarpRequest(state, committedView(state), nextClock(state), false)).toEqual({ distance: 50000, cost: COST, energy: COST, affordable: true });
+    expect(judgeWarpRequest(state, { ...committedView(state), destination: null }, nextClock(state), false)).toBe('no-destination');
+    expect(judgeWarpRequest(state, committedView(state), nextClock(state), true)).toBe('wrong-context');
     expect(stateText(state)).toBe(before);
   });
 });
@@ -326,6 +328,266 @@ describe('the Warp start (MW-04 warp-start, MW-05, MW-09)', () => {
   it('faults when the start no longer passes the check it was accepted on', () => {
     const { state, player } = setUp();
     expectFault(() => stepRequests(state, [warp], { 'request-handling': () => void (combat(player).energy = COST - 1) }), 'invariant-violated', 'warp.start-check');
+  });
+});
+
+// P3-16/04 (docs/plan/p3/16/spec.md, 技术决定 4, AC-08): MW-04 gate step 1a and CB-07 as revised on 2026-10-30
+// (docs/plan/p3/02/spec.md). A `request-warp` judged while the tick's request queue still holds the player's `dock` or
+// `depart` is ignored as `wrong-context`, after the unavailable player and before every other gate. Before the gate two
+// interactions of the formal step faulted: the Warp started in the tick sub-state 4 docked, and the next tick's
+// automatic launch left view 1 through a docking view switch that changed the page (`docking.view-switch`); and in
+// `[launch, request-warp]` the Warp was judged at the docked position but started after the launch placed the player,
+// where the cost no longer fit (`warp.start-check`). Each conflict below runs beside a twin without the request: the
+// two give the same events, but for the request's one result, and the same state, RNG state included.
+//
+// The base stands 500 from the player at POSITION, its row 1 (−1, 0, 0) pointing away from the destination, so a launch
+// places the player at (300, 2400, 300) (DK3: p + 1000 r1), 50106.39 from the destination: q = 50, c = trunc(200 ×
+// 50106 ÷ 1000) = 10021 > COST.
+
+const DOCKING_BASE_POSITION: Vec3 = Object.freeze({ x: 1300, y: 2400, z: 300 });
+const AWAY_FROM_DESTINATION = Object.freeze([-1, 0, 0, 0, -1, 0, 0, 0, 1]) as unknown as Entity['orientation'];
+const LAUNCH_POSITION: Vec3 = Object.freeze({ x: 300, y: 2400, z: 300 });
+const LAUNCH_COST = 10021;
+const LAUNCH: Command = { type: 'launch' };
+const open: Command = { type: 'communications', operation: 'open' };
+const digit = (value: number): Command => ({ type: 'select-number', value });
+
+interface ConflictOptions extends Options {
+  /** The docking wait's sub-state; 0 leaves the wait to the test. */
+  readonly subState?: 0 | 3 | 4;
+  /** The wait's deadline, against tick 1's previous clock 0. */
+  readonly deadline?: number;
+}
+
+/**
+ * setUp's player and record in a radio scene (its message tables answer a docking request), with the docking base
+ * above, face 0 preassigned so its reply needs no draw, and the wait in `subState` on it.
+ */
+function conflictScene({ subState = 4, deadline = 0, ...options }: ConflictOptions = {}) {
+  const scene = radioScene();
+  const { content } = scene.state.craftInfo;
+  const craft = content.craft.map((record, kindBit) => (kindBit === 0 ? { ...record, pairs: [{ at00: 10, at04: 100 }, { at00: 1000, at04: 200 }], atA4: 2, atA8: options.transitSeconds ?? 14, atB8: 64 } : record));
+  const state: WorldState = { ...scene.state, craftInfo: { ...scene.state.craftInfo, content: { ...content, craft } } };
+  const { player } = scene;
+  player.position = POSITION;
+  player.warpClock = options.warpClock ?? 0;
+  combat(player).energy = options.energy ?? COST;
+  state.player.control = initialPlayerControl(1);
+  state.player.map.destination = options.destination === undefined ? DESTINATION : options.destination;
+  const base = addActive({ state, player }, BASE_KIND_BIT, { position: DOCKING_BASE_POSITION, orientation: AWAY_FROM_DESTINATION });
+  base.communications.face = 0;
+  if (subState !== 0) {
+    state.flow.subState = subState;
+    state.flow.dockingDeadline = deadline;
+    state.player.dockingObject = base.id;
+  }
+  return { state, player, base };
+}
+
+type ConflictScene = ReturnType<typeof conflictScene>;
+
+/**
+ * Two copies of a scene, one stepped with `warp` inserted at `warpIndex` of the last tick's commands and one without
+ * it, through the same ticks: the last tick's events and results of each.
+ */
+function againstTwin(
+  make: () => ConflictScene, ticks: readonly (readonly Command[])[], warpIndex: number, prepare: (scene: ConflictScene) => void = () => {},
+) {
+  const run = (withWarp: boolean) => {
+    const scene = make();
+    prepare(scene);
+    const world = constructWorld(scene.state);
+    const events = ticks.map((commands, index) => {
+      const last = index === ticks.length - 1;
+      return [...world.step(input(last && withWarp ? [...commands.slice(0, warpIndex), warp, ...commands.slice(warpIndex)] : commands))];
+    });
+    return { scene, world, events: events.at(-1)! };
+  };
+  return { refused: run(true), idle: run(false) };
+}
+
+/** The refused run's events without the request's own result, its results shifted back to the twin's indices. */
+function withoutRequest(events: readonly DomainEvent[], warpIndex: number): DomainEvent[] {
+  return events.flatMap((event): DomainEvent[] => {
+    if (event.type !== 'command-result') return [event];
+    if (event.commandIndex === warpIndex) return [];
+    return [event.commandIndex > warpIndex ? { ...event, commandIndex: event.commandIndex - 1 } : event];
+  });
+}
+
+/** Checks the conflict: exactly one ignored/wrong-context result and otherwise the twin's events, state and RNG state. */
+function expectConflict({ refused, idle }: ReturnType<typeof againstTwin>, warpIndex: number, tick: number): void {
+  const result = refused.events.filter((event) => event.type === 'command-result' && event.commandIndex === warpIndex);
+  expect(result).toEqual([{ type: 'command-result', tick, commandIndex: warpIndex, commandType: 'request-warp', outcome: 'ignored', reason: 'wrong-context' }]);
+  expect(refused.events.filter(({ type }) => type === 'warp-started')).toEqual([]);
+  expect(withoutRequest(refused.events, warpIndex)).toEqual(idle.events);
+  expect(refused.scene.state.rngState).toEqual(idle.scene.state.rngState);
+  expect(stateText(refused.scene.state)).toBe(stateText(idle.scene.state));
+}
+
+describe('a Warp request against a pending dock or depart (MW-04 step 1a, CB-07; P3-16/04)', () => {
+  describe('the docking sub-state 4 posts in the same tick', () => {
+    it.each<[string, ConflictOptions]>([
+      ['enough energy', {}],
+      ['too little energy (before the energy gate)', { energy: COST - 1 }],
+      ['no destination (before the destination gate)', { destination: null }],
+      ['the interval running (before the interval gate)', { warpClock: 1 }],
+    ])('is ignored as wrong-context with %s; the docking applies as without it, and later ticks run', (_, options) => {
+      const twins = againstTwin(() => conflictScene(options), [[]], 0);
+      expectConflict(twins, 0, 1);
+      expect(types(twins.refused.events)).toEqual(['view-switched', 'docked', 'transition']);
+      const { state, player, base } = twins.refused.scene;
+      expect([player.activity, state.player.viewMode, state.flow.subState, state.player.dockingObject]).toEqual(['docked', BASE, 5, base.id]);
+      expect([player.inWarp, block(player).mode, state.player.warp, state.player.map.destination]).toEqual([false, 'craft', null, options.destination === undefined ? DESTINATION : null]);
+      // The tick after it (where the Warp the original order started left view 1 by the automatic launch's switch) and
+      // later ones run on as the twin's.
+      for (let tick = 2; tick <= 4; tick++) {
+        expect(twins.refused.world.step(input([]))).toEqual(twins.idle.world.step(input([])));
+      }
+      expect(stateText(state)).toBe(stateText(twins.idle.scene.state));
+    });
+
+    it.each<[string, number, number]>([
+      // Tick 1 reads the previous clock 0: the deadline 0 is reached at it, −2 passed before it.
+      ['at the deadline', 0, 1],
+      ['past the deadline', -2, 1],
+      // Tick 3 reads clock 4.
+      ['at the deadline two ticks on', 4, 3],
+    ])('conflicts %s, where the sub-state posts the docking', (_, deadline, tick) => {
+      const ticks = Array.from({ length: tick }, () => [] as Command[]);
+      expectConflict(againstTwin(() => conflictScene({ deadline }), ticks, 0), 0, tick);
+    });
+
+    it('stays refused when the docking then fails its execution gate; the Warp is not made up later in the tick', () => {
+      // The base at the range itself from the player: the execution gate is strict (DK2).
+      const twins = againstTwin(() => conflictScene(), [[]], 0, ({ base }) => void (base.position = { x: 1000, y: 3000, z: 300 }));
+      expectConflict(twins, 0, 1);
+      expect(types(twins.refused.events)).toEqual(['docking-cancelled']);
+      expect([twins.refused.scene.state.flow.subState, twins.refused.scene.state.player.viewMode]).toEqual([0, FLIGHT]);
+      // The next tick judges the request on its own: nothing is pending, so it is accepted.
+      expect(results(twins.refused.world.step(input([warp])))).toEqual([[0, 'request-warp', 'accepted', null]]);
+    });
+
+    it('conflicts after a code 9 in the same batch restarted the wait in sub-state 3, as the queue still holds the docking', () => {
+      // The menus are built in sub-state 0 (its one base skips to the near command menu); key 2 is code 9.
+      const prepare = ({ state, base }: ConflictScene) => {
+        constructWorld(state).step(input([open, digit(1)]));
+        Object.assign(state.flow, { subState: 4, dockingDeadline: 2 });
+        state.player.dockingObject = base.id;
+      };
+      const twins = againstTwin(() => conflictScene({ subState: 0 }), [[digit(2)]], 1, prepare);
+      expectConflict(twins, 1, 2);
+      expect(types(twins.refused.events)).toEqual(['left-page-changed', 'docking-requested', 'view-switched', 'docked', 'transition', 'command-delivered']);
+      expect(twins.refused.scene.state.flow.subState).toBe(3);
+    });
+
+    it('gives an unavailable player player-unavailable first', () => {
+      const twins = againstTwin(() => conflictScene(), [[]], 0, ({ player }) => void (player.destroyed = true));
+      expect(results(twins.refused.events)).toEqual([[0, 'request-warp', 'ignored', 'player-unavailable']]);
+      expect(withoutRequest(twins.refused.events, 0)).toEqual(twins.idle.events);
+      expect(stateText(twins.refused.scene.state)).toBe(stateText(twins.idle.scene.state));
+    });
+  });
+
+  describe('without a pending transition, the docking wait takes the gate table as before', () => {
+    it.each<[string, ConflictOptions]>([
+      ['sub-state 3', { subState: 3, deadline: 1e9 }],
+      ['sub-state 4 before its deadline', { deadline: 2 }],
+    ])('accepts in %s, drawing the start\'s 20', (_, options) => {
+      const { state } = conflictScene(options);
+      const rng = state.rngState;
+      const events = stepRequests(state, [warp]);
+      expect(results(events)).toEqual([[0, 'request-warp', 'accepted', null]]);
+      expect(others(events).find(({ type }) => type === 'warp-started')).toMatchObject({ origin: POSITION, check: { cost: COST } });
+      expect(state.flow.subState).toBe(options.subState ?? 4);
+      expect(state.rngState).toEqual(rngStateAfter(rng, 20));
+    });
+
+    it.each<[string, ConflictOptions, string]>([
+      ['sub-state 3 with too little energy', { subState: 3, deadline: 1e9, energy: COST - 1 }, 'insufficient-energy'],
+      ['sub-state 4 before its deadline without a destination', { deadline: 2, destination: null }, 'no-destination'],
+    ])('refuses in %s by the gate table', (_, options, reason) => {
+      const { state } = conflictScene(options);
+      const rng = state.rngState;
+      expect(results(stepRequests(state, [warp]))).toEqual([[0, 'request-warp', 'ignored', reason]]);
+      expect(state.flow.subState).toBe(options.subState ?? 4);
+      expect(state.rngState).toEqual(rng);
+    });
+  });
+
+  describe('a launch from the base', () => {
+    /** The player docked by the formal step at tick 1; the steps below start at tick 2. */
+    function docked(options: ConflictOptions = {}): ConflictScene {
+      const scene = conflictScene(options);
+      expect(types(constructWorld(scene.state).step(input([])))).toEqual(['view-switched', 'docked', 'transition']);
+      return scene;
+    }
+
+    it.each<[string, number]>([
+      // The cost from the docked position fits the energy at the judgement; from where the launch places the player it
+      // does not (before the gate, warp.start-check).
+      ['the energy for the docked position only', COST],
+      ['enough energy for either position', 1e6],
+    ])('ignores the request after an accepted launch in the batch with %s; the launch applies as without it', (_, energy) => {
+      const twins = againstTwin(() => docked({ energy }), [[LAUNCH]], 1);
+      expectConflict(twins, 1, 2);
+      expect(results(twins.refused.events)[0]).toEqual([0, 'launch', 'accepted', null]);
+      expect(types(twins.refused.events)).toEqual(['view-switched', 'departed', 'transition']);
+      const { state, player } = twins.refused.scene;
+      expect([player.activity, player.position, state.player.viewMode, player.inWarp, state.player.warp]).toEqual(['active', LAUNCH_POSITION, FLIGHT, false, null]);
+      // The next tick has nothing pending and judges the gates at the launch position, on the energy recharged in flight.
+      const next = twins.refused.world.step(input([warp]));
+      expect(results(next)).toEqual([[0, 'request-warp', 'accepted', null]]);
+      expect(others(next).find(({ type }) => type === 'warp-started')).toMatchObject({ origin: LAUNCH_POSITION, check: { cost: LAUNCH_COST } });
+    });
+
+    it('ignores a request after the launch and a second request after it, each once', () => {
+      const twins = againstTwin(() => docked({ energy: 1e6 }), [[LAUNCH, warp]], 1);
+      expect(results(twins.refused.events)).toEqual([
+        [0, 'launch', 'accepted', null], [1, 'request-warp', 'ignored', 'wrong-context'], [2, 'request-warp', 'ignored', 'wrong-context'],
+      ]);
+      expect(stateText(twins.refused.scene.state)).toBe(stateText(twins.idle.scene.state));
+    });
+
+    it('judges a request before the launch in the base context as before, and the launch after it still applies', () => {
+      const twins = againstTwin(() => docked({ energy: 1e6 }), [[LAUNCH]], 0);
+      expect(results(twins.refused.events)).toEqual([[0, 'request-warp', 'ignored', 'wrong-context'], [1, 'launch', 'accepted', null]]);
+      expect(types(twins.refused.events)).toEqual(types(twins.idle.events));
+      expect(twins.refused.events.find(({ type }) => type === 'departed')).toMatchObject({ origin: 'command', commandIndex: 1, position: LAUNCH_POSITION });
+      expect(stateText(twins.refused.scene.state)).toBe(stateText(twins.idle.scene.state));
+    });
+
+    it('ignores a request in the tick sub-state 5 launches automatically for a base gone invalid', () => {
+      const twins = againstTwin(() => docked({ energy: 1e6 }), [[]], 0, ({ base }) => void (base.state = 'pending-removal'));
+      expectConflict(twins, 0, 2);
+      expect(types(twins.refused.events).slice(0, 3)).toEqual(['view-switched', 'departed', 'transition']);
+      expect(twins.refused.events.find(({ type }) => type === 'departed')).toMatchObject({ origin: 'automatic' });
+      expect(twins.refused.scene.state.flow.subState).toBe(0);
+    });
+
+    it('ignores a request after the automatic launch from a map opened in the base', () => {
+      const twins = againstTwin(() => docked({ energy: 1e6 }), [[]], 0, ({ state, base }) => {
+        Object.assign(state.player, { viewMode: MAP, previousViewMode: BASE });
+        base.state = 'pending-removal';
+      });
+      expectConflict(twins, 0, 2);
+      expect(twins.refused.events.find(({ type }) => type === 'departed')).toMatchObject({ origin: 'automatic', viewMode: FLIGHT, previousViewMode: MAP });
+    });
+  });
+
+  it('takes an ignored launch for no departure: a launch key in flight before the request leaves it accepted', () => {
+    const { state } = conflictScene({ subState: 3, deadline: 1e9 });
+    const events = stepRequests(state, [LAUNCH, warp]);
+    expect(results(events)).toEqual([[0, 'launch', 'ignored', 'wrong-context'], [1, 'request-warp', 'accepted', null]]);
+    expect(others(events).find(({ type }) => type === 'warp-started')).toMatchObject({ origin: POSITION });
+  });
+
+  it('takes no weapon launch for a departure: a shot judged before the request leaves it accepted', () => {
+    const { state } = conflictScene({ subState: 3, deadline: 1e9 });
+    combat(state.entities.get(state.player.entityId!)!).charge = 0x7fffffff;
+    const events = step(state, [{ type: 'fire', channel: 'primary' }, warp]);
+    expect(results(events)).toEqual([[0, 'fire', 'accepted', null], [1, 'request-warp', 'accepted', null]]);
+    expect(others(events).map(({ type }) => type)).toContain('warp-started');
   });
 });
 

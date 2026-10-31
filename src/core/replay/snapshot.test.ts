@@ -204,8 +204,9 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     // both from 3 and 4 on their branches (MW-14, CB-16); their merge increments both once more, so that neither branch's
     // snapshots share a version with the merged state. P3-08/12 increments both once more (CR-25), P3-11/08 (ME-16) and
     // P3-12/10 (FS-08) each once on their branches, and their merge once more; P3-13/12 both once more (CK-05). P3-14/08
-    // increments only the rules version (FA-08), so merged with them the rules are 11 and the snapshot format 9.
-    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 9, 11]);
+    // increments only the rules version (FA-08), so merged with them the rules are 11 and the snapshot format 9. P3-16/04
+    // increments only the rules version (MW-04 step 1a, a command result), to 12.
+    expect([GAME_SNAPSHOT_FORMAT, GAME_SNAPSHOT_VERSION, RULES_VERSION]).toEqual(['osr-game-snapshot', 9, 12]);
     const { state } = snapshot;
     expect(Object.keys(state)).toEqual([
       'config', 'tick', 'clock', 'rngState', 'nextEntityId', 'entities', 'kindOrder', 'spawn', 'missionStatus', 'missionEvents', 'flow', 'player',
@@ -582,7 +583,7 @@ describe('formal snapshot (P3-02 AC-11, 快照、哈希与 replay)', () => {
     const snapshot = takeSnapshot(richState());
     const text = snapshotText(snapshot);
     expect(text).toMatch(/^[\x20-\x7e]+$/);
-    expect(text.startsWith('{"format":"osr-game-snapshot","version":9,"rulesVersion":11,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
+    expect(text.startsWith('{"format":"osr-game-snapshot","version":9,"rulesVersion":12,"state":{"config":{"content":{"schemaVersion":1,')).toBe(true);
     expect(snapshotHash(snapshot)).toBe(fnv1a64(text));
     expect(snapshotHash(snapshot)).toMatch(/^[0-9a-f]{16}$/);
 
