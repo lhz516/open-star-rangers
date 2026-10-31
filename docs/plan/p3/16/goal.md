@@ -112,7 +112,7 @@ updated: "2026-10-31"
 | [21-r22-original-runs.md](./subtasks/21-r22-original-runs.md) | — | in-progress |
 | [22-r07-fuse-windows.md](./subtasks/22-r07-fuse-windows.md) | — | completed |
 | [23-r05b-coverage-guard.md](./subtasks/23-r05b-coverage-guard.md) | — | completed |
-| [24-shimmer-logical-pixel.md](./subtasks/24-shimmer-logical-pixel.md) | — | in-progress |
+| [24-shimmer-logical-pixel.md](./subtasks/24-shimmer-logical-pixel.md) | — | completed |
 | [25-untested-r-branches.md](./subtasks/25-untested-r-branches.md) | — | pending |
 | [26-p3-12-appearance-gaps.md](./subtasks/26-p3-12-appearance-gaps.md) | — | pending |
 | [27-review-revision.md](./subtasks/27-review-revision.md) | 21, 22, 23, 24, 25, 26 | pending |
@@ -159,6 +159,7 @@ updated: "2026-10-31"
 - **2026-10-31 — spec 修订 1 与新增子任务 21–27（goal 变更）：** 用户原话（经父会话转达）：“开始第一组和第二组，如果难以做到就修改/放宽审阅标准，批准任何需要修改审阅标准的地方。”协调者据此在 spec 审批节写修订 1（允许第一、二组的原版运行与判据修订，取代技术决定 5 等处的相应限制），新增第一组 22（R-07 Φ 求值器）、23（R-05b 覆盖守卫）、24（屏幕门共用规则），第二组 21（R-22 八项）、25（9 个未测 R 分支，不含 R-23 物理键两项）、26（P3-12 的 11 个外观缺口），以及 27（评审修订）。17 回到 pending 并依赖 21–27，最终对齐将重跑。第三组（U-021 冻结、C/B? 事后审阅、R-23 物理键、P3-13 M 会话、P3-14 试听、物理 Fn+F11）不在范围内。
 - **2026-10-31 — 23 完成（以证据解决）：** R-05b 种子 1 的停放覆盖守卫在最终候选上按原判据恢复为 13/13：新版窗口由 160 tick 延长到 164 tick（窗口长度与计数 13 都不是 P3-06 spec 或 B-008 的判据，是新版一侧集成循环的取样参数），过滤、独立期望与 `== 13` 守卫不变；其余种子 52/52，敏感性检查 3/3 能发现缺失。没有判据修订。
 - **2026-10-31 — 22 完成（以证据解决）：** 私有 Φ 求值器按 P3-07 原判据覆盖首次引信检查（触发帧须恰为相位 3），自检 165/165；在最终候选上重判全部 R-07 窗口，只有原 4 个 `no-check` 窗口改变且全部成立，其余 1,470 个结果与 07 相同。R-07 的已归因单元满足恢复条件，交 27 改为“一致：直接”。没有判据修订。
+- **2026-10-31 — 24 完成：** 受击闪烁屏幕门改用共用的 `logicalPixel()`；窄于 640 的已批准差异不变。换回旧实现时 Node 规则测试 3 项失败，浏览器回归在 1066 宽的最底设备行失败（旧的浮点除法取到逻辑行 480 的门格，共用规则夹到 479）：旧实现在任何 GPU 上都违反共用规则，不只是跨 GPU 风险。集成后 `pnpm check` 通过（11,937 个测试），两项缩放回归 10 项通过。
 
 ## 审批
 

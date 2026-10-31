@@ -4,7 +4,7 @@ import type { RenderState } from '../../../core/projections/render-state.ts';
 import type { Matrix3 } from '../../../core/world/entity-table.ts';
 import { computeViewportLayout } from '../../viewport/viewport-layout.ts';
 import { COMPOSITION_GPU_PLAN, FlightComposition } from '../composition/flight-composition.ts';
-import { logicalTransform } from '../composition/logical-screen.ts';
+import { LOGICAL_HEIGHT, LOGICAL_PIXEL_GLSL, LOGICAL_WIDTH, logicalTransform } from '../composition/logical-screen.ts';
 import { vec } from '../presentation/presentation.test-support.ts';
 import { FlightGpuCache } from '../renderer/flight-gpu-cache.ts';
 import { FlightScene } from '../scene/flight-scene.ts';
@@ -49,6 +49,20 @@ function beforeRender(mesh: Mesh): ShaderMaterial {
   return material;
 }
 
+/** The fragment's choice of the screen door's pixel. */
+const PIXEL_LINE = `ivec2 pixel = logicalBuffer.x < 640 ? ivec2(gl_FragCoord.x, float(logicalBuffer.y) - gl_FragCoord.y) : logicalPixel();`;
+
+/** `PIXEL_LINE` along one axis, as the shader evaluates it in integers (logical-screen.ts `logicalPixel()`). */
+const shaderCell = (device: number, bufferWidth: number, size: number): number =>
+  bufferWidth < LOGICAL_WIDTH ? device : Math.min(Math.trunc(((2 * device + 1) * 320) / bufferWidth), size - 1);
+
+/** The float32 `steps` ULPs from the positive `value`. */
+function float32Step(value: number, steps: number): number {
+  const bits = new Int32Array(Float32Array.of(value).buffer);
+  bits[0] += steps;
+  return new Float32Array(bits.buffer)[0];
+}
+
 const poseMatrix = (rows: Matrix3, { x, y, z }: { x: number; y: number; z: number }) => new Matrix4().set(
   rows[0], rows[3], rows[6], x, rows[1], rows[4], rows[7], y, rows[2], rows[5], rows[8], z, 0, 0, 0, 1,
 );
@@ -66,7 +80,7 @@ describe('hit shimmer layer', () => {
     const material = beforeRender(meshes[0]);
     // Wrap 0 + start + two poses; one row per wrap; t = 3 one tick after the start.
     expect([material.uniforms.wrapRow.value, material.uniforms.bandRow.value]).toEqual([3, 3]);
-    expect(material.uniforms.logical.value).toEqual(new Vector2(2, LAYOUT.bufferHeight));
+    expect(material.uniforms.logicalBuffer.value).toEqual(new Vector2(LAYOUT.bufferWidth, LAYOUT.bufferHeight));
     expect(material.uniformsNeedUpdate).toBe(true);
   });
 
@@ -75,7 +89,66 @@ describe('hit shimmer layer', () => {
     const { advance, draw } = setup(small);
     const entities = [player(), shimmerEntity(3)];
     advance(shimmerState(1, entities), [hit(1, 3)]);
-    expect(beforeRender(draw(shimmerState(1, entities)).meshes[0]).uniforms.logical.value).toEqual(new Vector2(1, small.bufferHeight));
+    expect(beforeRender(draw(shimmerState(1, entities)).meshes[0]).uniforms.logicalBuffer.value).toEqual(new Vector2(320, small.bufferHeight));
+  });
+
+  it('takes the screen door cell of the shared rule’s logical pixel, or of the device pixel below 640 wide', () => {
+    const { advance, draw } = setup();
+    const entities = [player(), shimmerEntity(3)];
+    advance(shimmerState(1, entities), [hit(1, 3)]);
+    const { fragmentShader } = draw(shimmerState(1, entities)).meshes[0].material as ShaderMaterial;
+    expect(fragmentShader).toContain(LOGICAL_PIXEL_GLSL);
+    expect(fragmentShader).toContain(PIXEL_LINE);
+    expect(fragmentShader).toContain('(pixel.y & 3) * 4 + (pixel.x & 3)');
+    expect(fragmentShader).not.toMatch(/\/ *logical\.x/);
+    for (const width of [298, 485, 576, 640, 800, 960, 1066, 1280, 1600]) {
+      const height = Math.round((width * 3) / 4);
+      for (const [size, length] of [[LOGICAL_WIDTH, width], [LOGICAL_HEIGHT, height]]) {
+        for (let device = 0; device < length; device++) {
+          const cell = shaderCell(device, width, size);
+          if (width < LOGICAL_WIDTH) expect(cell).toBe(device);
+          else {
+            // Exact in rationals: x·W ≤ (d + ½)·640 < (x + 1)·W, the later pixel on an edge; past the screen, its last.
+            const centre = (2 * device + 1) * 320;
+            const holds = cell * width <= centre && centre < (cell + 1) * width;
+            expect(holds || (cell === size - 1 && centre >= size * width), `${device} of ${width}`).toBe(true);
+          }
+        }
+      }
+    }
+    // 485 wide: the device grid. 800 wide: device column 2's centre is exactly on logical edge 2, which takes pixel 2.
+    // 1066 wide: device row 266's centre is exactly on edge 160; the bottom row's, on 480, keeps row 479.
+    expect([shaderCell(145, 485, LOGICAL_WIDTH), shaderCell(2, 800, LOGICAL_WIDTH)]).toEqual([145, 2]);
+    expect([shaderCell(266, 1066, LOGICAL_HEIGHT), shaderCell(799, 1066, LOGICAL_HEIGHT)]).toEqual([160, 479]);
+  });
+
+  it('no longer depends on how the GPU rounds a float division on edge lines, as the replaced expression did', () => {
+    // P3-12's ⌊(d + ½) ÷ s⌋ in float32, s = max(W ÷ 640, 1): at an edge line the exact quotient is a whole number, and
+    // GLSL ES 3.00 (§4.5.1) allows a ÷ b to be 2.5 ULP off, so a GPU may floor to either side: two neighbouring cells,
+    // which the 0x7F door draws in turn. The shared rule's integer arithmetic has one result.
+    const edges: Record<number, number> = {};
+    for (const width of [485, 576, 800, 960, 1066]) {
+      const height = Math.round((width * 3) / 4);
+      const scale = Math.fround(Math.max(width / LOGICAL_WIDTH, 1));
+      edges[width] = 0;
+      for (const [size, length] of [[LOGICAL_WIDTH, width], [LOGICAL_HEIGHT, height]]) {
+        for (let device = 0; device < length; device++) {
+          const quotient = Math.fround(Math.fround(device + 0.5) / scale);
+          const [low, high] = [Math.floor(float32Step(quotient, -2)), Math.floor(float32Step(quotient, 2))];
+          const rule = shaderCell(device, width, size);
+          if (width < LOGICAL_WIDTH || ((2 * device + 1) * 320) % width !== 0) {
+            // Off edge lines, or on the device grid, every allowed rounding floors alike, to the same cell as now.
+            expect([low, high], `${device} of ${width}`).toEqual([rule, rule]);
+            continue;
+          }
+          edges[width]++;
+          expect([high - low, [low, high].includes(rule)], `${device} of ${width}`).toEqual([1, true]);
+        }
+      }
+    }
+    expect(edges).toEqual({ 485: 0, 576: 0, 800: 280, 960: 560, 1066: 4 });
+    // 1066 wide: the bottom device row's centre is logical 480.0; even rounded correctly, the old cell was row 480's.
+    expect(Math.floor(Math.fround(799.5 / Math.fround(1066 / 640)))).toBe(480);
   });
 
   it('draws a shared shell at its record’s place and orientation in its entity’s frame, at its step’s wrap and band', () => {

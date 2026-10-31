@@ -10,10 +10,11 @@
  *   are read at that same texel of the shell's texture and of the thresholds (one offset into both images).
  * - **Opacity and screen door:** the opacity is the band table's entry for the threshold at the shell's band (a shared
  *   shell's 15 × step), the screen door table's entry for it at the logical pixel (x & 3, y & 3) decides the pixel, both
- *   built on the CPU (shimmer-band.ts). Logical pixels are the 640 × 480 grid's: every logical pixel's device pixels
- *   share its decision. A drawing buffer narrower than 640 cannot resolve that grid; there the device pixels take its
- *   place, which keeps each opacity's coverage but not the original's phase. A skipped pixel is discarded: no colour,
- *   no depth.
+ *   built on the CPU (shimmer-band.ts). Logical pixels are the 640 × 480 grid's, each device pixel's taken by the rule
+ *   every layer that enlarges logical pixels shares (logical-screen.ts `logicalPixel()`), so every logical pixel's
+ *   device pixels share its decision. A drawing buffer narrower than 640 cannot resolve that grid; there the device
+ *   pixels take its place, which keeps each opacity's coverage but not the original's phase. A skipped pixel is
+ *   discarded: no colour, no depth.
  * - **Colour:** the texel's index through the shell's one-shade ramp, its nearest DATA colour (unlit).
  * - **Faces and depth:** as for models (model-lighting-layer.ts): `BackSide`, depth tested new ≤ stored and written.
  * - **Limits:** those of the lit models (continuous rasterisation at device pixels, ADR-0009); in addition the wrap's
@@ -29,6 +30,7 @@ import { fail } from '../../../content/contract-validation.ts';
 import type { Vec3 } from '../../../core/contracts/domain-events.ts';
 import type { Matrix3 } from '../../../core/world/entity-table.ts';
 import type { CompositionFrame, FlightLayer, LayerPass } from '../composition/flight-layers.ts';
+import { LOGICAL_PIXEL_GLSL, LOGICAL_WIDTH, logicalBufferUniform } from '../composition/logical-screen.ts';
 import type { FlightGpuCache } from '../renderer/flight-gpu-cache.ts';
 import type { HitShimmer } from './hit-shimmer.ts';
 import { BAND_TABLE_SIZE, bandTable, SCREEN_DOOR_TABLE_SIZE, screenDoorTable } from './shimmer-band.ts';
@@ -56,8 +58,7 @@ uniform highp sampler2D band;
 uniform highp sampler2D door;
 uniform highp sampler2D ramps;
 uniform int bandRow;
-// Device pixels per screen-door cell (at least 1), and the drawing buffer's height.
-uniform vec2 logical;
+${LOGICAL_PIXEL_GLSL}
 in vec2 affine;
 int byteAt(highp sampler2D image, ivec2 at) {
   return int(texelFetch(image, at, 0).r * 255.0 + 0.5);
@@ -67,8 +68,8 @@ void main() {
   ivec2 size = textureSize(texels, 0);
   ivec2 at = min(ivec2(floor(fract(uv) * vec2(size))), size - 1);
   int opacity = byteAt(band, ivec2(byteAt(thresholds, at), bandRow));
-  // Logical y grows downwards from the top of the drawing buffer.
-  ivec2 pixel = ivec2(floor(vec2(gl_FragCoord.x, logical.y - gl_FragCoord.y) / logical.x));
+  // A drawing buffer narrower than 640 cannot resolve the logical grid: its device pixels, rows from the top, stand for it.
+  ivec2 pixel = logicalBuffer.x < ${LOGICAL_WIDTH} ? ivec2(gl_FragCoord.x, float(logicalBuffer.y) - gl_FragCoord.y) : logicalPixel();
   if (byteAt(door, ivec2(opacity, (pixel.y & 3) * 4 + (pixel.x & 3))) == 0) discard;
   gl_FragColor = texelFetch(ramps, ivec2(byteAt(texels, at), 0), 0);
 }`;
@@ -107,7 +108,7 @@ export class HitShimmerLayer implements FlightLayer {
   readonly #cache: FlightGpuCache;
   readonly #scene = new Scene();
   readonly #meshes = new Map<string, ShellMesh>();
-  readonly #logical = new Vector2();
+  readonly #buffer = new Vector2();
   readonly #pose = new Matrix4();
   readonly #child = new Matrix4();
 
@@ -125,8 +126,7 @@ export class HitShimmerLayer implements FlightLayer {
       this.#meshes.clear();
       return [];
     }
-    // A drawing buffer narrower than 640 cannot resolve the logical grid: device pixels stand for it.
-    this.#logical.set(Math.max(frame.logical.scale, 1), frame.logical.bufferHeight);
+    this.#buffer.set(frame.logical.bufferWidth, frame.logical.bufferHeight);
     const poses = new Map(frame.world.scene.entities.map((entity) => [entity.entity.id, entity]));
     const used = new Set<string>();
     let index = 0;
@@ -163,12 +163,12 @@ export class HitShimmerLayer implements FlightLayer {
     mesh.matrixWorldAutoUpdate = false;
     mesh.frustumCulled = false;
     const entry: ShellMesh = { mesh, wrapRow: 0, bandRow: 0 };
-    // Shells share materials: each draw uploads its own rows and the frame's logical grid.
+    // Shells share materials: each draw uploads its own rows and the frame's drawing buffer.
     mesh.onBeforeRender = (_renderer, _scene, _camera, _geometry, material) => {
       const shader = material as ShaderMaterial;
       shader.uniforms.wrapRow.value = entry.wrapRow;
       shader.uniforms.bandRow.value = entry.bandRow;
-      shader.uniforms.logical.value.copy(this.#logical);
+      shader.uniforms.logicalBuffer.value.copy(this.#buffer);
       shader.uniformsNeedUpdate = true;
     };
     this.#meshes.set(key, entry);
@@ -195,7 +195,7 @@ export class HitShimmerLayer implements FlightLayer {
           ramps: { value: this.#texture(`${PATH}:${key}`, ramps.colours, ramps.shades, RGBAFormat, () => ramps.rgba) },
           wrapRow: { value: 0 },
           bandRow: { value: 0 },
-          logical: { value: new Vector2() },
+          logicalBuffer: logicalBufferUniform(),
         },
         vertexShader: VERTEX,
         fragmentShader: FRAGMENT,
