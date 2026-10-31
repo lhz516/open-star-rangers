@@ -109,11 +109,11 @@ updated: "2026-10-31"
 | [18-ac23-fixup-width.md](./subtasks/18-ac23-fixup-width.md) | — | completed |
 | [19-explosion-sprite-sampling.md](./subtasks/19-explosion-sprite-sampling.md) | — | completed |
 | [20-map-picture-recorder.md](./subtasks/20-map-picture-recorder.md) | — | completed |
-| [21-r22-original-runs.md](./subtasks/21-r22-original-runs.md) | — | in-progress |
+| [21-r22-original-runs.md](./subtasks/21-r22-original-runs.md) | — | completed |
 | [22-r07-fuse-windows.md](./subtasks/22-r07-fuse-windows.md) | — | completed |
 | [23-r05b-coverage-guard.md](./subtasks/23-r05b-coverage-guard.md) | — | completed |
 | [24-shimmer-logical-pixel.md](./subtasks/24-shimmer-logical-pixel.md) | — | completed |
-| [25-untested-r-branches.md](./subtasks/25-untested-r-branches.md) | — | pending |
+| [25-untested-r-branches.md](./subtasks/25-untested-r-branches.md) | — | in-progress |
 | [26-p3-12-appearance-gaps.md](./subtasks/26-p3-12-appearance-gaps.md) | — | pending |
 | [27-review-revision.md](./subtasks/27-review-revision.md) | 21, 22, 23, 24, 25, 26 | pending |
 | [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27 | pending |
@@ -160,6 +160,7 @@ updated: "2026-10-31"
 - **2026-10-31 — 23 完成（以证据解决）：** R-05b 种子 1 的停放覆盖守卫在最终候选上按原判据恢复为 13/13：新版窗口由 160 tick 延长到 164 tick（窗口长度与计数 13 都不是 P3-06 spec 或 B-008 的判据，是新版一侧集成循环的取样参数），过滤、独立期望与 `== 13` 守卫不变；其余种子 52/52，敏感性检查 3/3 能发现缺失。没有判据修订。
 - **2026-10-31 — 22 完成（以证据解决）：** 私有 Φ 求值器按 P3-07 原判据覆盖首次引信检查（触发帧须恰为相位 3），自检 165/165；在最终候选上重判全部 R-07 窗口，只有原 4 个 `no-check` 窗口改变且全部成立，其余 1,470 个结果与 07 相同。R-07 的已归因单元满足恢复条件，交 27 改为“一致：直接”。没有判据修订。
 - **2026-10-31 — 24 完成：** 受击闪烁屏幕门改用共用的 `logicalPixel()`；窄于 640 的已批准差异不变。换回旧实现时 Node 规则测试 3 项失败，浏览器回归在 1066 宽的最底设备行失败（旧的浮点除法取到逻辑行 480 的门格，共用规则夹到 479）：旧实现在任何 GPU 上都违反共用规则，不只是跨 GPU 风险。集成后 `pnpm check` 通过（11,937 个测试），两项缩放回归 10 项通过。
+- **2026-10-31 — 21 完成（以经批准的判据修订解决）：** 两次原版运行（`tools/baseline/measure.py`，配方 `p3-16-r1`，同一基准与设置、无注入）都不合格：r1-01 在阶段 A 由 agent 取消（友军火力始终未伤及僚机），r1-02 因 DOSBox-X 退出失败；其余情形没有可控路线，未再启动。依 spec 审批修订 1 的用户批准，P3-11 D-02 写入修订 1（D2-4/D2-5 接受代码与 Node 的限定结论），R-22 八项都按新判据以正式 step 与代码路径对应取得限定通过（无原版运行样本），记为 A 类批准，不计为运行时一致。B-005、B-003 记新事实，U-031 只加注记。
 
 ## 审批
 
