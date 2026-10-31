@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "02"
-updated: 2026-10-28
+updated: 2026-10-30
 related: [ADR-0004, ADR-0006, ADR-0015, B-003, B-004, B-006, U-008, U-009, U-010, U-011, U-021, U-022, U-023]
 ---
 
@@ -1482,7 +1482,7 @@ interface MapIcon {             // 一项 100 字节记录中规则读取的部�
 #### MW-04 命令、原因码与内部请求
 
 - **原因码：** `COMMAND_RESULT_REASONS` 增加 `no-destination` 与 `insufficient-energy`。三种命令未被接受时一律为 `ignored`（原版的拒绝都无提示、无音效，Warp 开始）。
-- **有效上下文：** 命令批次开始时，有效视角与有效上一视角取已提交的值；每个被接受的 `toggle-map` 与 `request-warp` 按下文更新它们。有效目的地取本批次中最后一个被接受的 select 的点，没有时取已提交的 `destination`。**每条命令**（含 P3-06、P3-07 的命令）都按判定时的有效视角推出交互上下文；P3-06 的轴在命令循环之后按最终的有效上下文处理（map、base 为 0）。CR-05 的共同前置判定不变。
+- **有效上下文：** 命令批次开始时，有效视角与有效上一视角取已提交的值；每个被接受的 `toggle-map` 与 `request-warp` 按下文更新它们。有效目的地取本批次中最后一个被接受的 select 的点，没有时取已提交的 `destination`。**每条命令**（含 P3-06、P3-07 的命令）都按判定时的有效视角推出交互上下文；P3-06 的轴在命令循环之后按最终的有效上下文处理（map、base 为 0）。CR-05 的共同前置判定不变。有效上下文只随本批被接受的命令推进：`mission-flow` 投递的 `dock` 与自动 `depart`（CB-02）要到请求处理才改变视角与活动，被接受的 `launch` 只推进有效视角，它的 `depart` 要到请求处理才移动玩家（CB-07、CB-10）。`request-warp` 以门禁第 1a 步处理这一差别；其他命令仍按有效上下文判定，本条不改变它们（2026-10-30 依 P3-16 修订，见[审批](#审批)）。
 - **`toggle-map`（地图模式）：**
   1. 有效上下文为 `map` → `accepted`（关闭），**不检查玩家是否可用**（项目决定，07 表：原版玩家被毁时视角已被被毁视角取代，不会在地图中；P3-11 接入前 Core 可能出现被毁仍在地图中，不能因此关不掉地图）；
   2. 玩家不可用（CR-05：实体不存在、已被毁、状态不是 7 或待移除；活动为停靠的玩家可以通过）→ `player-unavailable`；
@@ -1493,6 +1493,7 @@ interface MapIcon {             // 一项 100 字节记录中规则读取的部�
 - **`map-point`：** 玩家不可用 → `player-unavailable`；有效上下文不是 `map` → `wrong-context`；否则 `accepted`，在判定时量化：column = min(⌊right × s⌋, s − 1)，row = min(⌊down × s⌋, s − 1)，投递 `map-point` 请求。
 - **`request-warp`（Warp 开始的门禁表，次序如下）：**
   1. 玩家不可用 → `player-unavailable`；
+     - **1a. 转换冲突：** 本 tick 已有玩家的 `dock` 或 `depart` 待提交 → `wrong-context`（见下；记为 1a，以免改动既有引用的步号）；
   2. 有效上下文为 `warp` 或 `base` → `wrong-context`；
   3. 有效上下文为 `map` 且有效上一视角为 6（从基地打开的地图）→ `wrong-context`；
   4. 有效目的地为 null → `no-destination`；
@@ -1501,6 +1502,14 @@ interface MapIcon {             // 一项 100 字节记录中规则读取的部�
   7. 否则 `accepted`：有效上一视角 := 有效视角，有效视角 := 1，投递 `warp-start` 请求。
 
   零距离（c = 0）照常接受；标记是否有效不影响门禁（原版从不读标记）。同一 tick 的第二个 `request-warp` 在 `warp` 上下文中为 `wrong-context`，不会两次开始或扣费。通讯菜单对 `w` 的占用（≥ 32 项）由 P3-10 加在第 1 步之前。
+
+  **转换冲突（第 1a 步，2026-10-30 依 P3-16 修订，见[审批](#审批)）：**
+  - **条件：** 本 tick 的请求队列中有请求处理尚未应用的玩家 `dock` 或 `depart`（CB-08）。它们是 `mission-flow` 中子状态 4 到期投递的 `dock`，子状态 5 中停靠对象失效时的自动 `depart`，以及本批中先前被接受的 `launch` 投递的 `depart`（CB-07）。条件按请求队列判定，不按子状态：同批码 9 的重请求可把子状态 5 改回 3，自动离港已把它改为 0。这是只在 tick 内使用的判定输入，不进快照或 replay。
+  - **次序：** 玩家不可用仍先返回 `player-unavailable`。冲突检查先于第 2 步起的上下文、目的地、冷却与能量门禁，与第 2、3 步同为 `wrong-context`。
+  - **结果：** 被拒绝的命令只得到这一条 `command-result`。它不投递 `warp-start`，不改有效视角、有效上一视角、有效目的地、Warp 状态、目的地与能量，也不做 Warp 的世界抽取。已投递的 `dock`/`depart` 照原次序与执行门禁应用，本 tick 的其他规则照常推进。`dock` 在执行门禁失败时（CB-10 第 2 步），本 tick 的 Warp 也不补执行；下一次输入按当时的状态重新判定。
+  - **相邻行为：** 没有待提交的转换时，停靠等待（子状态 3–4）本身不是拒绝条件，照第 2 步起的门禁判定；离港完成后的新 tick 照常判定。被忽略或无效的 `launch` 不投递 `depart`，不构成冲突；武器的 `launch` 请求（CR-05，消息 8）不是离港。
+  - **读者：** MW-11 的 `warpRequest` 在 tick 之外按已提交的状态判定，那时没有待提交的请求，第 1a 步恒通过。
+  - **项目差异：** 这是保守的竞争处置，不宣称与 DOS 同帧行为一致。原版在停靠到期的同一帧读到 `w` 时，会先停靠，再开始 Warp（[DK4](../../../original/formats/executable.md#dk4-systems-while-docked-activity-3--confirmed-code-unless-marked)，组合高概率可达，后续未确认）。离港与 `w` 在原版的同一帧中不可达；Core 有序批次中的 `[launch, request-warp]` 在原版没有对应。
 - **地图上下文中的其他命令：** `select-number`、`confirm-selection`、`navigate-selection` 改为 `ignored`/`wrong-context`；P3-06、P3-07 的命令已是 `wrong-context`；`communications`、`launch` 仍为 `not-implemented`（P3-10）。Warp 上下文中 `toggle-map`、`map-point`、`request-warp` 为 `wrong-context`。
 - **内部请求：** P3-02 的 `Request` 联合增加：
 
@@ -1510,7 +1519,7 @@ interface MapIcon {             // 一项 100 字节记录中规则读取的部�
   | { type: 'warp-start'; commandIndex: number }
   ```
 
-  它们在请求处理中按投递次序应用，应用时不再判定。玩家位于种类遍历之首，它的请求只排在任务流程投递的请求之后；其前没有能改变上述判定输入（时钟、`warpClock`、玩家位置与能量、目的地）的请求，所以判定结果等于原版在消息处理时的结果。早先投递的 `control`、`launch`、`select-target` 请求按投递次序在它们之前或之后应用，不被追溯改写；唯一例外是 `warp-start`：它不在判定时立即投递，而是在玩家更新中排到 P3-06 的 `control`/`match-speed` 与 P3-07 释放的玩家发射请求之后投递（仍在自动选敌之前），使同批中先于 `request-warp` 被接受的命令的效果先于 Warp 设立应用（MW-12 的差异 9）。
+  它们在请求处理中按投递次序应用，应用时不再判定。玩家位于种类遍历之首，它的请求只排在任务流程投递的请求之后。在 `warp-start` 之前应用的请求中，能改变上述判定输入（时钟、`warpClock`、玩家位置与能量、目的地）或判定所依据的视角与活动的，只有玩家的 `dock` 与 `depart`（CB-10）；同批 select 的点已计入有效目的地。门禁第 1a 步在二者待提交时拒绝，所以被接受的 `request-warp` 之前没有这类请求，`warp-start` 应用时重算的检查与判定的结果相同；与原版的对应仍按 MW-12 的差异 1、9 所述的按键分帧。2026-10-30 依 P3-16 更正：旧文写作“其前没有能改变判定输入的请求，判定结果等于原版在消息处理时的结果”，漏了 `dock` 与 `depart`。早先投递的 `control`、`launch`、`select-target` 请求按投递次序在它们之前或之后应用，不被追溯改写；唯一例外是 `warp-start`：它不在判定时立即投递，而是在玩家更新中排到 P3-06 的 `control`/`match-speed` 与 P3-07 释放的玩家发射请求之后投递（仍在自动选敌之前），使同批中先于 `request-warp` 被接受的命令的效果先于 Warp 设立应用（MW-12 的差异 9）。
 - **应用：**
   - **`map-toggle`：** 已提交的视角为 8 时关闭：视角 := 上一视角，上一视角 := 8；否则打开：上一视角 := 视角，视角 := 8，`map.cursor` := `startPixel`。两者都不写左显示屏、`statusDisplay.redraw` 与玩家目标；关回基地不清目标（地图模式）。视角变化经 MW-09 的视角切换函数（地图本身没有规则副作用，6 的副作用归 P3-10）。发出 `map-toggled`。
   - **`map-point`：** `map.cursor` := `pixel`。hover 到此为止，不发事件。select 继续：`destination` := `0x4c4c0`(pixel)（z = +0.0）；按 MW-07 的选点在 `mapIcons` 中找图标，命中时 z := 该图标记录的 `position.z`，否则 +0.0（ps +0x8C 在此路径上恒存在）；随后按 MW-03 创建或移动标记；发出 `warp-destination-set`。坐标不变的 select 照常重写并发事件。
@@ -1936,7 +1945,7 @@ type IncomingChannel =
 
 #### CB-07 命令判定
 
-在 `flight-control.ts` 的唯一命令循环中按数组次序判定，每条恰一个 `command-result`。本条直接写入的菜单、页、通讯对象与停靠状态由后续条目读取（决定 8）。被接受的 `launch` 把有效上一视角设为有效视角、有效视角设为 max(原有效上一视角, 0xC)，与 MW-04 的有效视角一起维护。
+在 `flight-control.ts` 的唯一命令循环中按数组次序判定，每条恰一个 `command-result`。本条直接写入的菜单、页、通讯对象与停靠状态由后续条目读取（决定 8）。被接受的 `launch` 把有效上一视角设为有效视角、有效视角设为 max(原有效上一视角, 0xC)，与 MW-04 的有效视角一起维护。它投递的 `depart` 到请求处理才提交视角并移动玩家，所以同批其后的 `request-warp` 按 MW-04 第 1a 步为 `ignored`/`wrong-context`；被忽略的 `launch` 不投递 `depart`，不构成冲突。`mission-flow` 已投递的 `dock` 与自动 `depart` 同样只经 MW-04 第 1a 步约束 `request-warp`，本条其余的判定不变；没有待提交的转换时，停靠等待（子状态 3–4）本身不改变 `request-warp` 的判定（2026-10-30 依 P3-16 修订，见[审批](#审批)）。
 
 1. **共同前置：** 玩家不可用 → `ignored`/`player-unavailable`。
 2. **飞行上下文（有效视角的上下文为 `flight`）：** 菜单判定先于 P3-06、P3-07 的飞行动作（`0x27b44` 在 `0x264a0` 的比较树之前）。
@@ -3537,3 +3546,18 @@ P3-13 的类型 9 指示条按 [P3-13 spec](../13/spec.md#与-p3-14-的关系) �
 表现层的 `RenderEntity`、`CombatTarget` 与 projection 测试夹具补上 FA-02、FA-04 的字段与分区级警告；
 FS-08 的玩法摘要另去掉 `object-retired` 与 FA-05 的字段后，三个 replay 的摘要仍与 P3-12 之前相同。
 未重跑 review-spec，既有 goal 与 subtask 的历史证据不改写。
+
+**2026-10-30 修订（P3-16 技术决定 4：停靠/离港与 Warp 的同 tick 冲突；依 P3-16 spec 的 2026-10-30 批准定稿）：** 由 P3-16 的子任务 03 写入。
+
+- **批准出处：** 依 [P3-16 spec](../16/spec.md#审批) 的 2026-10-30 批准定稿。用户在调用 generate-goal 时说“approve spec and generate goal”，批准的契约中包括[技术决定 4](../16/spec.md#技术决定)：它规定了本修订的方案、边界与契约同步，并要求记录本 spec 的实际批准。这不是 P3-02、P3-09 或 P3-10 原任务的批准，也不是用户逐字审阅的条文；授权不涵盖总计划与 ADR 中的冻结决定，本修订不涉及它们。
+- **起因：** 上文“2026-10-15 合并说明”记下的两种未决联合故障（2026-10-16 说明仍记为未决）：(1) 停靠倒计时到期投递 `dock` 的同一 tick，`request-warp` 仍按飞行视角通过，下一 tick 以 `docking.view-switch` 故障；(2) 同批 `[launch, request-warp]` 按停靠位置判定能量，`warp-start` 在离港位姿重算时可能以 `warp.start-check` 故障。根因是判定与提交看到不同的上下文：有效上下文不反映待提交的 `dock`、自动 `depart` 与 `depart` 的位置变化。
+- **范围：** MW-04 的有效上下文一段、`request-warp` 门禁表新增的第 1a 步及其说明、内部请求一段的旧前提；CB-07 开头对 `launch` 的说明；本条记录。P3-09 spec 的行为表与“同 tick 门禁与请求”、P3-10 spec 的“停靠请求与等待”同步了重复的门禁条文。原因码、事件、请求类型与快照/replay 形状不变；实现时 `RULES_VERSION` 相对当时的值递增一次，快照与 replay 格式版本不变；冲突判定只用 tick 内的请求队列，不进存档或 replay（P3-16 spec 的数据模型）。合并说明中另一候选问题（离开视角 1 的停靠视角切换是否发出 `left-page-changed`）随冲突门禁不再出现，不作决定。本 spec 的其他范围、行为与验收要求不变，既有 goal 与 subtask 的历史证据不改写。修订后未重跑 review-spec。
+- **所选方案与理由：** 先前已投递的停靠/离港转换优先，冲突的 `request-warp` 在判定时拒绝，结果为一条 `ignored`/`wrong-context`。这样判定与提交看到同一上下文，不新增原因码或事件，不扩大到整个停靠等待期，也不改变请求顺序与 Runtime 调度。
+- **被排除的方案：**
+  1. 停靠等待（子状态 3–5）中一律拒绝 Warp：原版的子状态 3–4 不禁止 Warp（[DK4](../../../original/formats/executable.md#dk4-systems-while-docked-activity-3--confirmed-code-unless-marked)、[Warp 门禁](../../../original/formats/executable.md#warp-cost-and-warp-start-p3-0905)）。
+  2. 只检查子状态 5：同批码 9 的重请求可把它改回 3，自动离港已把它改为 0，会漏判。
+  3. 按停靠或离港之后的状态判定 Warp，让它照原版在停靠后接着开始：判定时要预演 `dock`/`depart` 的执行门禁与位姿；原版这条路径的后续未确认，Core 的视角切换也会故障。
+  4. 先给 `accepted`，在提交时悄悄取消：结果与事实不符。
+  5. UI 丢键、改固定步长、调整请求顺序或捕获 `CoreFaultError`：P3-16 spec 明确禁止。
+- **原版置信度（P3-16/03 的有界查证，读已有记录并只读复核 Warp 开始调用点的门禁，未运行原版）：** 停靠（子命令 0）与 `w` 同帧时，原版先停靠、再开始 Warp。各环节已确认（代码），组合高概率可达，后续未确认，也没有运行观察。离港（子命令 4）与 `w` 同帧不可达，已确认（代码）。Core 有序批次中的 `[launch, request-warp]` 在原版没有对应。事实记在 [DK4](../../../original/formats/executable.md#dk4-systems-while-docked-activity-3--confirmed-code-unless-marked)。
+- **项目差异：** 这是保守的竞争处置，不宣称与 DOS 同帧行为一致；与原版不同的只有上述停靠到期同帧的组合，不另取运行证据。
