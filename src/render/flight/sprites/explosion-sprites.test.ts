@@ -1,4 +1,4 @@
-import { Camera, DepthTexture, WebGLRenderTarget, type BufferAttribute, type DataTexture, type Mesh, type BufferGeometry, type ShaderMaterial } from 'three';
+import { Camera, DepthTexture, WebGLRenderTarget, type BufferAttribute, type DataTexture, type Mesh, type BufferGeometry, type ShaderMaterial, type Vector2 } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { AssetId } from '../../../content/asset-id.ts';
 import { readExplosionTable } from '../../../content/flight/flight-data-readers.ts';
@@ -7,6 +7,7 @@ import type { ImagePayload } from '../../../content/graphics/image-payload.ts';
 import type { PalettePayload } from '../../../content/graphics/palette-payload.ts';
 import type { ExplosionVariant } from '../../../core/world/entity-table.ts';
 import type { CompositionFrame } from '../composition/flight-layers.ts';
+import { LOGICAL_PIXEL_GLSL } from '../composition/logical-screen.ts';
 import type { PresentationListener } from '../presentation/flight-presentation.ts';
 import type { ExplosionKey, ExplosionSelection, PresentationCamera, PresentationExplosion, PresentationTick } from '../presentation/presentation-contract.ts';
 import { IDENTITY, renderState, vec } from '../presentation/presentation.test-support.ts';
@@ -85,7 +86,6 @@ const visibleQuads = (passes: readonly { scene: { children: unknown[] } }[]): Qu
   (passes[0]?.scene.children as Quad[] ?? []).filter(({ visible }) => visible).sort((a, b) => a.renderOrder - b.renderOrder);
 const corners = (quad: Quad) => Array.from((quad.geometry.getAttribute('position') as BufferAttribute).array);
 const attribute = (quad: Quad, name: string) => Array.from((quad.geometry.getAttribute(name) as BufferAttribute).array);
-const sources = (quad: Quad) => attribute(quad, 'source');
 const keyOf = (quad: Quad) => attribute(quad, 'key')[0];
 const keyAt = (z: number) => Math.fround(projectSprite(vec(0, 0, z), CAMERA, F1_VIEWPORT, BACK_PLANE, 1)!.d / 65535);
 
@@ -108,15 +108,15 @@ describe('explosion sprite layer', () => {
     expect([copyMaterial.depthTest, copyMaterial.depthWrite]).toEqual([false, false]);
     const [near, far] = visibleQuads(passes);
     expect(projectSprite(vec(0, 0, 100), CAMERA, F1_VIEWPORT, BACK_PLANE, 1)!.s).toBe(3);
-    // Centre (319, 157); left = 319 − (9 SAR 1), top = 157 − (6 SAR 1).
-    expect(corners(near)).toEqual([315, 154, 0, 324, 154, 0, 315, 160, 0, 324, 160, 0]);
-    expect(sources(near)).toEqual([0, 0, 3, 0, 0, 2, 3, 2]);
+    // Centre (319, 157); left = 319 − (9 SAR 1), top = 157 − (6 SAR 1); the quad is one logical pixel past the blocks.
+    expect(corners(near)).toEqual([314, 153, 0, 325, 153, 0, 314, 161, 0, 325, 161, 0]);
+    expect(attribute(near, 'blocks')).toEqual(Array.from({ length: 4 }, () => [315, 154, 324, 160]).flat());
     expect(attribute(near, 'place')).toEqual(Array.from({ length: 4 }, () => [315, 154, 3, 0]).flat());
     expect(attribute(near, 'key')).toEqual(Array(4).fill(keyAt(100)));
     expect(keyOf(far)).toBe(keyAt(200));
     const { uniforms } = near.material;
     expect(uniforms.depth.value).toBe(depth);
-    expect([uniforms.scale.value, uniforms.bufferHeight.value]).toEqual([2, 960]);
+    expect([uniforms.scale.value, (uniforms.logicalBuffer.value as Vector2).toArray()]).toEqual([2, [1280, 960]]);
     expect([near.material.depthTest, near.material.depthWrite]).toEqual([false, false]);
     expect(cache.counts()).toMatchObject({ renderTargets: 1 });
   });
@@ -126,6 +126,71 @@ describe('explosion sprite layer', () => {
     expect(blockDepthPixel(315, 154, LOGICAL)).toEqual({ column: 631, row: 960 - 1 - 309 });
     expect(blockDepthPixel(10, 20, { scale: 1.5, bufferWidth: 960, bufferHeight: 720 })).toEqual({ column: 15, row: 720 - 1 - 30 });
     expect(blockDepthPixel(639, 479, { scale: 1.5, bufferWidth: 960, bufferHeight: 719 })).toEqual({ column: 959, row: 0 });
+  });
+
+  it('gives a clipped sprite its kept blocks and their first frame pixel\'s place', () => {
+    const { sprites, frame, show, tick } = setup();
+    tick(10, 0x0c, ['core:1']);
+    // Centre (2, 157): left = −2, so block column 0 is clipped and the blocks start at logical x 1.
+    show({ ...explosion('core:1', 100), position: vec((-317.5 * 100) / 639, 0, 100) });
+    const [quad] = visibleQuads(sprites.passes(frame));
+    expect(attribute(quad, 'place')).toEqual(Array.from({ length: 4 }, () => [-2, 154, 3, 0]).flat());
+    expect(attribute(quad, 'blocks')).toEqual(Array.from({ length: 4 }, () => [1, 154, 7, 160]).flat());
+    expect(corners(quad)).toEqual([0, 153, 0, 8, 153, 0, 0, 161, 0, 8, 161, 0]);
+  });
+
+  it('shows in each device pixel the frame pixel of its logical pixel\'s block by the shared rule, never another frame\'s', () => {
+    const { sprites, frame, show, tick } = setup();
+    tick(10, 0x0c, ['core:1']);
+    show(explosion('core:1', 100));
+    const { fragmentShader } = visibleQuads(sprites.passes(frame))[0].material;
+    // The fragment's integer arithmetic, which shaderTexel below evaluates.
+    expect(fragmentShader).toContain(LOGICAL_PIXEL_GLSL);
+    expect(fragmentShader).toContain('ivec2 pixel = logicalPixel();');
+    expect(fragmentShader).toContain('if (any(lessThan(pixel, blocks.xy)) || any(greaterThanEqual(pixel, blocks.zw))) discard;');
+    expect(fragmentShader).toContain('ivec2 source = (pixel - origin) / s;');
+    expect(fragmentShader).toContain('texelFetch(frames, ivec2(source.x, int(vPlace.w) + source.y), 0)');
+    expect(fragmentShader).toContain('ivec2 at = ivec2(floor((vec2(origin + s * source) + 0.5) * scale));');
+    /** The stacked-frame texel device pixel (column, row) reads, or null when it is discarded. */
+    const shaderTexel = (column: number, row: number, width: number, [left, top, s, first]: number[], [x0, y0, x1, y1]: number[]) => {
+      const x = Math.min(639, Math.trunc(((2 * column + 1) * 320) / width));
+      const y = Math.min(479, Math.trunc(((2 * row + 1) * 320) / width));
+      if (x < x0 || y < y0 || x >= x1 || y >= y1) return null;
+      return [Math.trunc((x - left) / s), first + Math.trunc((y - top) / s)];
+    };
+    // A 3 × 2 frame, shown as frame 1 of 3, with block edges on logical edges where device pixel centres lie exactly
+    // (from logical 12, so that every block stays on the screen).
+    const [w, h, frameRow] = [3, 2, 2];
+    let edgeChecks = 0;
+    for (const width of [485, 576, 800, 960, 1066]) {
+      const edges = Array.from({ length: 300 }, (_, b) => b + 12).filter((b) => (b * width) % 320 === 0 && ((b * width) / 320) % 2 === 1);
+      expect(edges.length, `${width}`).toBeGreaterThan(0);
+      for (const s of [1, 2, 3]) for (const edge of edges.slice(0, 2)) for (const k of [0, 1, 2, w]) {
+        const left = edge - s * k;
+        const top = edge - s * Math.min(k, h);
+        const place = [left, top, s, frameRow];
+        const blocks = [left, top, left + w * s, top + h * s];
+        const device = (logical: number) => Math.floor((logical * width) / 640);
+        for (let row = device(top - 2); row <= device(top + h * s + 2); row++) {
+          for (let column = device(left - 2); column <= device(left + w * s + 2); column++) {
+            const centre = { x: ((2 * column + 1) * 320) / width, y: ((2 * row + 1) * 320) / width };
+            // The logical pixel whose [x, x + 1) holds the centre: on an edge, the later one.
+            const [x, y] = [Math.floor(centre.x), Math.floor(centre.y)];
+            const inside = x >= blocks[0] && x < blocks[2] && y >= blocks[1] && y < blocks[3];
+            const texel = shaderTexel(column, row, width, place, blocks);
+            expect(texel, `${width} s ${s} at ${left},${top}: ${column},${row}`)
+              .toEqual(inside ? [Math.floor((x - left) / s), frameRow + Math.floor((y - top) / s)] : null);
+            if (texel !== null) {
+              expect(texel[1] >= frameRow && texel[1] < frameRow + h).toBe(true);
+              // The quad, one logical pixel past the blocks, covers the centre.
+              expect(centre.x > blocks[0] - 1 && centre.x < blocks[2] + 1 && centre.y > blocks[1] - 1 && centre.y < blocks[3] + 1).toBe(true);
+            }
+            if (Number.isInteger(centre.x) || Number.isInteger(centre.y)) edgeChecks++;
+          }
+        }
+      }
+    }
+    expect(edgeChecks).toBeGreaterThan(0);
   });
 
   it('keeps one sprite image of the buffer\'s size, acquired again after a layout change', () => {
@@ -145,8 +210,8 @@ describe('explosion sprite layer', () => {
     show(explosion('core:1', 100));
     for (let at = 11; at <= 13; at++) tick(at, 0x0c);
     const [quad] = visibleQuads(sprites.passes(frame));
-    // Frame 1 from tick 13: rows 2–3 of the stacked frames.
-    expect(sources(quad)).toEqual([0, 2, 3, 2, 0, 4, 3, 4]);
+    // Frame 1 from tick 13: its first row is row 2 of the stacked frames.
+    expect(attribute(quad, 'place')).toEqual(Array.from({ length: 4 }, () => [315, 154, 3, 2]).flat());
     const texture = quad.material.uniforms.frames.value as DataTexture;
     expect([texture.image.width, texture.image.height]).toEqual([3, 6]);
     const data = texture.image.data as Uint8Array;

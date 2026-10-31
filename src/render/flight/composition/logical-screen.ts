@@ -63,11 +63,16 @@ export function deviceRect({ scale, bufferWidth, bufferHeight }: LogicalTransfor
 export const LOGICAL_MESH_VERTEX = 'void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
 
 /**
- * A quad over the logical rectangle [0, width) × [0, height) and one logical pixel past it on every side, so that it covers
- * every device pixel `logicalPixel()` places in the rectangle, whatever the rasteriser does on its edges.
+ * The corners of a quad over the logical rectangle [x0, x1) × [y0, y1) and one logical pixel past it on every side, so
+ * that it covers every device pixel `logicalPixel()` places in the rectangle, whatever the rasteriser does on its edges:
+ * top-left, top-right, bottom-left, bottom-right, z 0.
  */
+export const logicalQuadCorners = (x0: number, y0: number, x1: number, y1: number): number[] =>
+  [x0 - 1, y0 - 1, 0, x1 + 1, y0 - 1, 0, x0 - 1, y1 + 1, 0, x1 + 1, y1 + 1, 0];
+
+/** A quad over the logical rectangle [0, width) × [0, height) (`logicalQuadCorners`). */
 export const logicalQuad = (width: number, height: number): BufferGeometry => new BufferGeometry()
-  .setAttribute('position', new BufferAttribute(new Float32Array([-1, -1, 0, width + 1, -1, 0, -1, height + 1, 0, width + 1, height + 1, 0]), 3))
+  .setAttribute('position', new BufferAttribute(new Float32Array(logicalQuadCorners(0, 0, width, height)), 3))
   .setIndex([0, 1, 2, 2, 1, 3]);
 
 /**

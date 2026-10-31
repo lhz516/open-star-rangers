@@ -6,6 +6,9 @@
  *
  * - **Frames:** every ANIM frame is an `image` payload displayed directly under the run's DATA palette; each animation
  *   is one texture of its frames stacked top to bottom, expanded when first drawn, transparent pixels with alpha 0.
+ * - **Pixels (AC-05, AC-16):** a device pixel shows the frame pixel of the block its logical pixel lies in, by the rule
+ *   every layer that enlarges logical pixels shares (logical-screen.ts `logicalPixel()`); the quad extends one logical
+ *   pixel past the blocks and discards the device pixels outside them, so it never reads another frame's rows.
  * - **Depth (FC8):** each opaque source pixel's s × s block is drawn whole when its key d ÷ 65535 is not greater than the
  *   world's depth at the block's top-left logical pixel (the device pixel holding that pixel's centre), and not at all
  *   otherwise; no depth is written, so a farther sprite drawn later covers a nearer one, and a key above 65535 is never
@@ -31,7 +34,7 @@ import { expandImage } from '../../../content/graphics/expand-image.ts';
 import type { ImagePayload } from '../../../content/graphics/image-payload.ts';
 import type { PalettePayload } from '../../../content/graphics/palette-payload.ts';
 import type { CompositionFrame, FlightLayer, LayerPass } from '../composition/flight-layers.ts';
-import type { LogicalTransform } from '../composition/logical-screen.ts';
+import { LOGICAL_PIXEL_GLSL, logicalBufferUniform, logicalQuadCorners, setLogicalBuffer, type LogicalTransform } from '../composition/logical-screen.ts';
 import type { FlightPresentation } from '../presentation/flight-presentation.ts';
 import { PRESENTATION_LIMITS } from '../presentation/presentation-budget.ts';
 import type { ExplosionKey, ExplosionSelection } from '../presentation/presentation-contract.ts';
@@ -48,37 +51,42 @@ const PATH = 'sprites';
 /** Sprites drawn at once: at most one per explosion whose choice is kept. */
 export const MAX_SPRITES = PRESENTATION_LIMITS.selections;
 
-// `source` is in source pixels of the stacked frames, so a device pixel shows the frame pixel its centre lies in; `place`
-// (left, top, s, the frame's first row) and `key` are the same at the four corners.
+// `place` (left, top, s, the frame's first row), `blocks` (the drawn blocks' logical rectangle, ends excluded) and `key`
+// are the same at the four corners.
 const VERTEX = `
-attribute vec2 source;
 attribute vec4 place;
+attribute vec4 blocks;
 attribute float key;
-varying vec2 vSource;
 flat varying vec4 vPlace;
+flat varying vec4 vBlocks;
 flat varying float vKey;
 void main() {
-  vSource = source;
   vPlace = place;
+  vBlocks = blocks;
   vKey = key;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`;
-// The block's top-left logical pixel to its device pixel as `blockDepthPixel` maps it.
+// The device pixel shows the frame pixel of its logical pixel's block (logical-screen.ts `logicalPixel()`), never one of
+// another frame; the block's top-left logical pixel goes to its device pixel as `blockDepthPixel` maps it.
 const FRAGMENT = `
 uniform sampler2D frames;
 uniform sampler2D depth;
 uniform float scale;
-uniform int bufferHeight;
-varying vec2 vSource;
+${LOGICAL_PIXEL_GLSL}
 flat varying vec4 vPlace;
+flat varying vec4 vBlocks;
 flat varying float vKey;
 void main() {
-  vec2 pixel = floor(vSource);
-  vec4 texel = texelFetch(frames, ivec2(pixel), 0);
+  ivec2 pixel = logicalPixel();
+  ivec4 blocks = ivec4(vBlocks);
+  if (any(lessThan(pixel, blocks.xy)) || any(greaterThanEqual(pixel, blocks.zw))) discard;
+  ivec2 origin = ivec2(vPlace.xy);
+  int s = int(vPlace.z);
+  ivec2 source = (pixel - origin) / s;
+  vec4 texel = texelFetch(frames, ivec2(source.x, int(vPlace.w) + source.y), 0);
   if (texel.a < 0.5) discard;
-  vec2 block = vPlace.xy + vPlace.z * vec2(pixel.x, pixel.y - vPlace.w);
-  ivec2 at = ivec2(floor((block + 0.5) * scale));
-  at = clamp(ivec2(at.x, bufferHeight - 1 - at.y), ivec2(0), textureSize(depth, 0) - 1);
+  ivec2 at = ivec2(floor((vec2(origin + s * source) + 0.5) * scale));
+  at = clamp(ivec2(at.x, logicalBuffer.y - 1 - at.y), ivec2(0), textureSize(depth, 0) - 1);
   if (vKey > texelFetch(depth, at, 0).r) discard;
   gl_FragColor = vec4(texel.rgb, 0.0);
 }`;
@@ -248,7 +256,7 @@ export class ExplosionSprites implements FlightLayer {
       const { uniforms } = quad.material;
       uniforms.depth.value = frame.depth;
       uniforms.scale.value = frame.logical.scale;
-      uniforms.bufferHeight.value = frame.logical.bufferHeight;
+      setLogicalBuffer(quad.material, frame.logical);
     }
     this.#copy().uniforms.sprites.value = image.texture;
     return [
@@ -304,7 +312,7 @@ export class ExplosionSprites implements FlightLayer {
     })();
   }
 
-  /** Sets quad `at` to the clipped blocks of `sprite`, drawn after the quads before it. */
+  /** Sets quad `at` to the clipped blocks of `sprite` (`logicalQuadCorners`), drawn after the quads before it. */
   #place(at: number, { d, frame, animation }: QueuedSprite, { left, top, s, i0, i1, j0, j1 }: SpriteBlocks): void {
     const material = this.#material(animation);
     const quad = this.#quads[at] ?? this.#quad(at, material);
@@ -314,17 +322,16 @@ export class ExplosionSprites implements FlightLayer {
     const y0 = top + s * j0;
     const y1 = top + s * (j1 + 1);
     const row = frame * animation.height;
-    const v0 = row + j0;
-    const v1 = row + j1 + 1;
-    const write = (name: string, values: readonly number[]): void => {
+    /** Writes `values` to attribute `name`, repeated `times` (once per corner for a value the four corners share). */
+    const write = (name: string, values: readonly number[], times = 1): void => {
       const attribute = quad.geometry.getAttribute(name) as BufferAttribute;
-      (attribute.array as Float32Array).set(values);
+      for (let at = 0; at < times; at++) (attribute.array as Float32Array).set(values, at * values.length);
       attribute.needsUpdate = true;
     };
-    write('position', [x0, y0, 0, x1, y0, 0, x0, y1, 0, x1, y1, 0]);
-    write('source', [i0, v0, i1 + 1, v0, i0, v1, i1 + 1, v1]);
-    write('place', [left, top, s, row, left, top, s, row, left, top, s, row, left, top, s, row]);
-    write('key', Array(4).fill(d / DEPTH_KEY_SCALE));
+    write('position', logicalQuadCorners(x0, y0, x1, y1));
+    write('place', [left, top, s, row], 4);
+    write('blocks', [x0, y0, x1, y1], 4);
+    write('key', [d / DEPTH_KEY_SCALE], 4);
     quad.renderOrder = at;
     quad.visible = true;
   }
@@ -332,8 +339,8 @@ export class ExplosionSprites implements FlightLayer {
   #quad(at: number, material: ShaderMaterial): Mesh<BufferGeometry, ShaderMaterial> {
     const geometry = this.#resources.geometry(`${PATH}:quad:${at}`, { vertices: 4, indices: 6 }, () => new BufferGeometry()
       .setAttribute('position', new BufferAttribute(new Float32Array(12), 3))
-      .setAttribute('source', new BufferAttribute(new Float32Array(8), 2))
       .setAttribute('place', new BufferAttribute(new Float32Array(16), 4))
+      .setAttribute('blocks', new BufferAttribute(new Float32Array(16), 4))
       .setAttribute('key', new BufferAttribute(new Float32Array(4), 1))
       .setIndex([0, 1, 2, 2, 1, 3]));
     const quad = new Mesh(geometry, material);
@@ -357,7 +364,7 @@ export class ExplosionSprites implements FlightLayer {
       });
       return new ShaderMaterial({
         name: 'explosion-sprite',
-        uniforms: { frames: { value: texture }, depth: { value: null }, scale: { value: 1 }, bufferHeight: { value: 0 } },
+        uniforms: { frames: { value: texture }, depth: { value: null }, scale: { value: 1 }, logicalBuffer: logicalBufferUniform() },
         vertexShader: VERTEX, fragmentShader: FRAGMENT, side: DoubleSide, depthTest: false, depthWrite: false,
       });
     }) as ShaderMaterial;
