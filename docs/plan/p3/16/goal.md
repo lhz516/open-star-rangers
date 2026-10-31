@@ -95,8 +95,8 @@ updated: "2026-10-30"
 | [03-joint-fault-contract.md](./subtasks/03-joint-fault-contract.md) | — | completed |
 | [04-joint-fault-core.md](./subtasks/04-joint-fault-core.md) | 03 | completed |
 | [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | 18 | completed |
-| [06-real-content-reruns.md](./subtasks/06-real-content-reruns.md) | 04, 18, 19 | pending |
-| [07-affected-evidence.md](./subtasks/07-affected-evidence.md) | 01, 04, 19 | pending |
+| [06-real-content-reruns.md](./subtasks/06-real-content-reruns.md) | 04, 18, 19 | in-progress |
+| [07-affected-evidence.md](./subtasks/07-affected-evidence.md) | 01, 04, 19 | in-progress |
 | [08-engineering-checks.md](./subtasks/08-engineering-checks.md) | 04, 18, 19 | pending |
 | [09-browser-regression.md](./subtasks/09-browser-regression.md) | 04, 18, 19, 20 | pending |
 | [10-compliance-artifacts.md](./subtasks/10-compliance-artifacts.md) | 04, 18, 19 | pending |
