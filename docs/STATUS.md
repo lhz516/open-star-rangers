@@ -2,12 +2,12 @@
 type: status
 status: active
 phase: all
-updated: 2026-10-30
+updated: 2026-10-31
 ---
 
 # 项目进度
 
-**当前阶段：P3 完整玩法切片**（任务拆分已于 2026-10-08 批准；P3-01 至 P3-15 已完成，下一步为 P3-16 退出评审。P2 退出评审与 P1 本地退出评审已通过，P0 其余项目并行收尾）
+**当前阶段：P3 完整玩法切片**（任务拆分已于 2026-10-08 批准；P3-01 至 P3-15 已完成，P3-16 的退出评审已起草为 draft、待负责人确认。P2 退出评审与 P1 本地退出评审已通过，P0 其余项目并行收尾）
 
 本文件是项目总进度入口，只记录当前阶段、阶段状态摘要、任务索引入口、下一步与项目级阻塞，不跟踪阶段退出条件或任务执行状态。阶段范围和退出条件由[总计划 §12](./plan/master-plan.md#12-开发阶段与验收条件)定义，任务状态见各 goal，验收证据见 subtask 文档，最终退出判定见[阶段评审](./reviews/)。
 
@@ -18,7 +18,7 @@ updated: 2026-10-30
 | P0 基准与可行性 | 可行性评审已通过，其余项目并行收尾 | —（未设置任务索引） | [P0-feasibility](./reviews/P0-feasibility.md) |
 | P1 工程与运行骨架 | 本地退出评审已通过 | [P1 tasks](./plan/p1/tasks.md) | [P1-exit](./reviews/P1-exit.md) |
 | P2 玩法所需资源管线 | 退出评审已通过 | [P2 tasks](./plan/p2/tasks.md) | [P2-exit](./reviews/P2-exit.md) |
-| P3 完整玩法切片 | 进行中：P3-01 至 P3-15 已完成，下一步 P3-16 退出评审 | [P3 tasks](./plan/p3/tasks.md) | — |
+| P3 完整玩法切片 | 进行中：P3-01 至 P3-15 已完成；P3-16 的[退出评审草稿](./reviews/P3-exit.md)待负责人确认 | [P3 tasks](./plan/p3/tasks.md) | — |
 | P4 Classic 内容完成 | 未开始 | [P4 tasks](./plan/p4/tasks.md) | — |
 | P5 Classic 1.0 发布 | 未开始 | [P5 tasks](./plan/p5/tasks.md) | — |
 | P6 Enhanced 美化 | 未开始 | [P6 tasks](./plan/p6/tasks.md) | — |
@@ -52,7 +52,7 @@ updated: 2026-10-30
      - 生产导入白名单加入 `MAIN/COMMFACE.NOB`；种类 `0x4000` 移交 P3-08。规则与交接见 [Core 模块说明](./engineering/modules/core.md)。
    - **P3-08、P3-09、P3-10 于 2026-10-16 合入 main。** P3-09 与 P3-10（实现子任务至 24）已于 2026-10-15 先合入 P3-08 的分支，作为 P3-08 实现的基础（共享契约的衔接见 [P3-02 spec 的合并说明](./plan/p3/02/spec.md#审批)）；P3-10 其后的 25–28（原版运行、对照结论与文档，只改测量工具与文档）在合入 main 时再次合并。
      - 合并后 `RULES_VERSION` 为 7、快照格式 6、replay 格式 3、切片定义 6，`ConverterVersion` 为 `osr-import.graphics-5.logic-4.audio-2.models-4`：旧缓存须重新导入。
-     - 未决的跨任务项（见 [Core 模块说明](./engineering/modules/core.md)）：已知差异中的 P3-09 × P3-10 两个联合故障（停靠倒计时到期与 `request-warp` 同 tick、同批 `[launch, request-warp]`，负责修订 MW-04 或 CB-07）；交接中仍未接入的尾随警告攻击者遍历（P3-08 × P3-10：CR-16 的 `isClosingMissileLock` 未实现，与 CB-09 的条件须先统一；由 P3-14 已批准的 D1-03 交付，2026-10-29 随 P3-14 合入 main）。地图标签的威胁闪烁已由 P3-13 的 `MapLabel.threatened` 解决。
+     - 未决的跨任务项（见 [Core 模块说明](./engineering/modules/core.md)）：已知差异中的 P3-09 × P3-10 两个联合故障（停靠倒计时到期与 `request-warp` 同 tick、同批 `[launch, request-warp]`；已由 P3-16 按 MW-04 第 1a 步修复，`RULES_VERSION` 12）；交接中仍未接入的尾随警告攻击者遍历（P3-08 × P3-10：CR-16 的 `isClosingMissileLock` 未实现，与 CB-09 的条件须先统一；由 P3-14 已批准的 D1-03 交付，2026-10-29 随 P3-14 合入 main）。地图标签的威胁闪烁已由 P3-13 的 `MapLabel.threatened` 解决。
    - [P3-11](./plan/p3/11/spec.md)（任务事件、结果、救援与重试）的 goal 已于 2026-10-24 执行完成，结论与证据见 [goal](./plan/p3/11/goal.md) 与 [23 最终对齐](./plan/p3/11/subtasks/23-final-alignment.md#完成证据)。2026-10-24 合入 main。
      - 段 2 事件与任务总结、全清与结算（含正常玩法可达的状态 5 结算失败 `settlement-failed`）、被毁与能量耗尽、两次救援与第三次损失失败、僚机损失计时、退场与完成都是 Core 规则；会话新增 `completed` 阶段、终局占位 G-02/7 至 G-02/9 与 G-06 结果页（重试与返回）。API、已知差异与交接见 [Core 模块说明](./engineering/modules/core.md)。
      - D-01（[P3-02 spec](./plan/p3/02/spec.md#审批) 的 ME-01 至 ME-19、[P3-04 spec](./plan/p3/04/spec.md#审批) 的终局与救援衔接）与 D-02 均由用户明确批准。`RULES_VERSION` 8、快照格式 7，replay 格式 3 不变，replay-check 报告版本 2。
@@ -73,9 +73,10 @@ updated: 2026-10-30
    - [P3-15](./plan/p3/15/spec.md)（玩法闭环联合验证与原版对照）的 goal 已于 2026-10-30 在 main 上执行完成（13 个子任务，含修复项 12、13），结论与证据见 [goal](./plan/p3/15/goal.md) 与 [11 最终对齐](./plan/p3/15/subtasks/11-final-alignment.md#完成证据)。
      - 合成任务包的开发/生产全闭环与 replay、生命周期与资源平衡、类型 9 警告端到端、本机 Chrome 实机输入（Computer Use 与用户物理操作）、本地原版内容的成功/失败与重试均已通过；[对照汇总](./plan/p3/15/comparison-summary.md) 保留各责任任务的原分类。
      - 执行中的决定：F1 `cockpit-front` 并入 G-08 披露、规则归 P4（12）；修复了 2D 图层缩放取样不一致的产品缺陷（13）。保留项：本机物理 Fn+F11 被宿主拦截。
-     - 下一步：生成 P3-16（P3 退出评审与 P4 交接）的 spec。
+   - [P3-16](./plan/p3/16/spec.md)（P3 退出评审与 P4 交接）的 spec 与 [goal](./plan/p3/16/goal.md) 已于 2026-10-30 获用户批准并执行（状态见 goal）。修复了 P3-09 × P3-10 的两种同 tick 联合故障（MW-04 第 1a 步，`RULES_VERSION` 12）、P3-03 AC-23 的 fixup 宽度拒绝、缩放下的爆炸精灵取样与 map-picture 用例的测量缺陷；最终候选上的工程、浏览器、合规与真实内容复跑通过。
+     - 下一步：负责人审阅并确认 [P3 退出评审](./reviews/P3-exit.md)（draft）。草稿结论为“不通过”（R-22 八项 blocked、U-021 未冻结的最终前提、未验证的对照单元、外观证据缺口与审批缺口），恢复路线由负责人决定；确认前 P3 阶段状态与评审记录列不变，阶段切换与 P4 规划须另行授权。
 2. P2 已完成：P2-01 至 P2-13 全部完成，[P2 退出评审](./reviews/P2-exit.md)于 2026-10-08 确认通过并冻结（高概率判定与范围例外已逐项披露）。生产 `ConverterVersion` 为 `osr-import.graphics-3.logic-1.audio-1.models-3`，导入协议版本 5；P3 可消费的内容、适配与遗留责任见评审的[对后续阶段的影响](./reviews/P2-exit.md#4-对后续阶段的影响)，各任务的交付见 [P2 tasks](./plan/p2/tasks.md)。
-3. P0 收尾（用户）：试玩回答 U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-011 的飞行键位由 P3-05 自行取证，P3-01 测量时基对 cycles 的依赖，两者的负责阶段仍为 P0。U-015 的剩余部分见 [unknowns](./original/unknowns.md)；U-025 的负责阶段为 P3。
+3. P0 收尾（用户）：试玩回答 U-013，反馈流畅度以校准 cycles（U-021；它也是 P3 退出评审中多项对照的共同前提）；确定目标测试设备。U-011 的飞行键位由 P3-05 自行取证，P3-01 测量时基对 cycles 的依赖，两者的负责阶段仍为 P0。U-015 的剩余部分见 [unknowns](./original/unknowns.md)；U-025 的负责阶段为 P3。
 4. U-022 的剩余字段：规则语义归 P3，其余任务的字段归 P4（负责阶段见 [unknowns](./original/unknowns.md)）；模型槽位选择已确认，见 [executable](./original/formats/executable.md) §4。
 5. U-031（战役被毁后的救援与真实失败条件，见 [B-005](./original/behavior/B-005-campaign-rescue.md)）：P3-11 已取得所选任务正常玩法的失败链运行（两次救援后第三次损失失败），该路径升为已确认（运行）；其余部分的状态见 [unknowns](./original/unknowns.md)。不复用练习模式被毁即失败。
 

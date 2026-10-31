@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: "P3"
 task: "16"
-updated: "2026-10-30"
+updated: "2026-10-31"
 ---
 
 # P3-16：P3 退出评审与 P4 交接 — Goal
@@ -105,11 +105,11 @@ updated: "2026-10-30"
 | [13-comparison-verdicts.md](./subtasks/13-comparison-verdicts.md) | 07, 12 | completed |
 | [14-gap-annotation-audit.md](./subtasks/14-gap-annotation-audit.md) | — | completed |
 | [15-unknowns-ownership.md](./subtasks/15-unknowns-ownership.md) | — | completed |
-| [16-exit-review-handoff.md](./subtasks/16-exit-review-handoff.md) | 01, 02, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 18, 19, 20 | in-progress |
+| [16-exit-review-handoff.md](./subtasks/16-exit-review-handoff.md) | 01, 02, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 18, 19, 20 | completed |
 | [18-ac23-fixup-width.md](./subtasks/18-ac23-fixup-width.md) | — | completed |
 | [19-explosion-sprite-sampling.md](./subtasks/19-explosion-sprite-sampling.md) | — | completed |
 | [20-map-picture-recorder.md](./subtasks/20-map-picture-recorder.md) | — | completed |
-| [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20 | pending |
+| [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20 | in-progress |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -146,6 +146,7 @@ updated: "2026-10-30"
 - **2026-10-31 — 13 完成：** 按最小证据单元计数：R 208 个单元（一致 82、已修正 2、已归因 2、经批准差异 46、限定 58、blocked 8、R-01 速率门槛 1、无判定用语 9、待修复 0），V 140 个单元（一致 78、已修正 2、经批准差异 23、外观缺口 33）；82 个一致的 R 单元中 69 个所在类别要求冻结配置，U-021 未冻结时最终验收未满足；与 P3-15 对照汇总的 12 处计数或用语不一致列为问题（见 [13](./subtasks/13-comparison-verdicts.md#完成证据)）。协调者决定：P3-05 的 9 个“无判定用语”单元在评审中按 R-23 未验证计入（物理按键到代码未确认，依判定规则“必需项未取得”即未满足，不以代码到动作的证据代替），这是 P3-05 既有残余责任，不新增判据；如用户日后接受代码到动作的证据，须另行批准。
 - **2026-10-31 — 09 完成：** `--list` 发现 311 项（development 250、production 60、development-headed 1）。首次 `pnpm test:e2e` 退出 1：298 过、4 败、9 跳过，4 个失败都是屏幕锁定期间运行的 headed 隐藏页用例，锁屏已证实（技术决定 9）；保留首次失败材料后不改代码重跑整条命令一次，退出 0：302 过、0 败、9 跳过（均为按项目设计的构建分流）。P3-15 的 8 个联合用例全部通过；`dist` 指纹与 08 相同。首次失败的输出、报告、trace 与锁屏证据由协调者从 worker 会话目录复制到被忽略的 `local/research/p3-16/e2e/`。
 - **2026-10-31 — 10 完成：** `check:compliance` 一次通过（`osr-local-compliance`/1、7 个必需范围 completed、0 finding），`dist` 指纹与 08、09 相同；依赖、锁文件与构建配置相对 P3-15 基线无差异，许可/来源审阅复用，CSP 不变且 09 的生产项目在严格 CSP 与网络审计下通过。出站：以 P2-12 的扫描脚本比较当前构建与基线重建，新增的出站相关命中只做到定位级分诊（全部为本地）。协调者决定：AC-05 要求“产物变化时重核变化部分”，6 个改动源文件带来的新增命中已逐个分诊，满足该要求；最近一次逐命中数据流审阅仍是 P2-12/11，评审照此披露，不称为全面复审。私有输出由协调者复制到 `local/research/p3-16/compliance/`。
+- **2026-10-31 — 16 完成：** 新建 draft 评审 [P3-exit.md](../../../reviews/P3-exit.md)，结论“不通过”：闭环与缺省标注两项通过；核心规则对照、成功/失败与重试、Warp 三项不通过（第四项因 R-15/R-16 的 U-021 前提、C 类审批与未测分支保守判为不通过，交负责人确认时审阅）；八项主要交付都已实现，保真未达。工程一行待 17 的 `check:original`。协调者按 16 的建议文本更新 STATUS（任务摘要与“下一步”，阶段状态与评审记录列不变；并把已修复的联合故障从未决项改为已修复）与阶段索引（P3-16 行链接评审、第 7 节指向评审）。
 
 ## 审批
 

@@ -2,7 +2,7 @@
 type: guide
 status: active
 phase: all
-updated: 2026-10-29
+updated: 2026-10-31
 related: [ADR-0002, ADR-0006, ADR-0015]
 ---
 
@@ -690,7 +690,7 @@ Core 消费规范化逻辑数据，不认识原版封包。持续事实走投影
 |---|---|---|
 | P1-06/07/08/09/10（已交付） | `ui/game/`、`ui/pages/`、`ui/dev/`；`render/scene/`、`render/viewport/`；`platform/input/`；必要时 `app/composition/`；仓库根 `e2e/`（P1 的 `render/synthetic/` 与其他合成演示模块已于 P3-04 退役，见[退役记录](#p3-04-合成演示退役记录)） | 消费者各自实现订阅与释放，应用装配，不增游戏循环 |
 | P2（已交付） | `original-data/io/`、`disc/`、`archive/`、`formats/`、`source/`、`conversion/`；`content/` 按数据类别组织；`platform/files/`、`storage/`、`audio/`；`workers/` | 纯字节读取端口由解析层定义，File/fs 实现分别在平台/工具；转换数据不写入仓库 |
-| P3 | `core/contracts/`、`world/`、`systems/`、`rules/`、`projections/`、`replay/`（P3-02 已交付，规则任务在其中扩展）；`app/runtime/`、`app/session/`、`app/mission/`、`ui/game/`、`ui/mission/`、`ui/dev/`（P3-04 已交付，输入、画面与音效经任务所有者接入）；`app/flight-audio/`（P3-14 的实现已交付；V-06 的感知结论待 P3-14/26）；`render/flight/`（P3-12 已交付）；`render/cockpit/`（P3-13 已交付，经 `render/flight/` 的同一合成接入） | 真实系统显式按固定顺序执行；不建立第二个会话、帧循环或运行 |
+| P3 | `core/contracts/`、`world/`、`systems/`、`rules/`、`projections/`、`replay/`（P3-02 已交付，规则任务在其中扩展）；`app/runtime/`、`app/session/`、`app/mission/`、`ui/game/`、`ui/mission/`、`ui/dev/`（P3-04 已交付，输入、画面与音效经任务所有者接入）；`app/flight-audio/`（P3-14 已交付，V-06 的感知判定见 [P3-14/26](../plan/p3/14/subtasks/26-listening-verdicts.md#完成证据)）；`render/flight/`（P3-12 已交付）；`render/cockpit/`（P3-13 已交付，经 `render/flight/` 的同一合成接入） | 真实系统显式按固定顺序执行；不建立第二个会话、帧循环或运行 |
 | P4 | `core/save/`；内容模块的战役/任务数据；UI 简报、结果等页面；`platform/video/`、`music/`（音效播放端口 `platform/audio/` 已由 P2-08 交付） | 媒体实现由 spike/ADR 确定，不在目录方案中选解码器；存档模型与持久化分开 |
 | P5 | 扩展原版导入、平台存储/PWA、UI 错误反馈、`e2e/`、`tools/` 与 CI/发布配置 | 不建立装满所有业务的 release 模块；缓存管理不静默覆盖玩家存档 |
 | P6 | `render/styles/`、`effects/`、内容模块的外观覆盖契约、画质设置 | 同一 Core/逻辑定义/存档；碰撞等逻辑不从 Enhanced 模型重新推导 |
