@@ -50,6 +50,7 @@ updated: "2026-10-30"
 - `src/app/**/*.test.ts`、`tools/replay-check*.ts`：只在规则版本递增使断言需要同步时修改。
 - `docs/engineering/modules/core.md`：已知差异与交接。
 - `docs/engineering/source-structure.md`：只在 API 变化时修改。
+- `docs/plan/p3/02/spec.md`：只在 MW-12“已批准的差异”中补第 1a 步的项目差异（2026-10-30 协调者按 worker 的范围请求扩大）。
 
 ## 验收标准
 
