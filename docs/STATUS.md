@@ -7,7 +7,7 @@ updated: 2026-10-30
 
 # 项目进度
 
-**当前阶段：P3 完整玩法切片**（任务拆分已于 2026-10-08 批准；P3-01 至 P3-13 已完成，P3-14 已合入、待人耳判定与最终对齐。P2 退出评审与 P1 本地退出评审已通过，P0 其余项目并行收尾）
+**当前阶段：P3 完整玩法切片**（任务拆分已于 2026-10-08 批准；P3-01 至 P3-14 已完成。P2 退出评审与 P1 本地退出评审已通过，P0 其余项目并行收尾）
 
 本文件是项目总进度入口，只记录当前阶段、阶段状态摘要、任务索引入口、下一步与项目级阻塞，不跟踪阶段退出条件或任务执行状态。阶段范围和退出条件由[总计划 §12](./plan/master-plan.md#12-开发阶段与验收条件)定义，任务状态见各 goal，验收证据见 subtask 文档，最终退出判定见[阶段评审](./reviews/)。
 
@@ -18,7 +18,7 @@ updated: 2026-10-30
 | P0 基准与可行性 | 可行性评审已通过，其余项目并行收尾 | —（未设置任务索引） | [P0-feasibility](./reviews/P0-feasibility.md) |
 | P1 工程与运行骨架 | 本地退出评审已通过 | [P1 tasks](./plan/p1/tasks.md) | [P1-exit](./reviews/P1-exit.md) |
 | P2 玩法所需资源管线 | 退出评审已通过 | [P2 tasks](./plan/p2/tasks.md) | [P2-exit](./reviews/P2-exit.md) |
-| P3 完整玩法切片 | 进行中：P3-01 至 P3-13 已完成，P3-14 待人耳判定与最终对齐 | [P3 tasks](./plan/p3/tasks.md) | — |
+| P3 完整玩法切片 | 进行中：P3-01 至 P3-14 已完成，P3-15 执行中 | [P3 tasks](./plan/p3/tasks.md) | — |
 | P4 Classic 内容完成 | 未开始 | [P4 tasks](./plan/p4/tasks.md) | — |
 | P5 Classic 1.0 发布 | 未开始 | [P5 tasks](./plan/p5/tasks.md) | — |
 | P6 Enhanced 美化 | 未开始 | [P6 tasks](./plan/p6/tasks.md) | — |
@@ -66,10 +66,10 @@ updated: 2026-10-30
      - D-01、D-02 与执行中的决定由 agent 依用户 2026-10-28 的明确授权批准（[spec 审批](./plan/p3/13/spec.md#审批)）：`RULES_VERSION` 10、快照格式 9、replay 格式 3、切片定义 7，`ConverterVersion` 为 `osr-import.graphics-6.logic-4.audio-2.models-4`，旧缓存须重新导入。D-02 不建共享提示模型。
      - 与原版的对照见 [32 表现判定](./plan/p3/13/subtasks/32-presentation-verdicts.md#完成证据)：已有截图可判的项全部一致；新增 DOSBox-X 启动 0 次。需要用户游玩补采的 M-1/2/3/4/7/8 与若干非 M 项记为经批准的证据缺口（不计为一致），恢复方式见 `missing-evidence.md`。
      - P3-14 已于 2026-10-29 合入：类型 9 指示条改读分区级 `communications.warnings`，尾随警告的攻击者遍历已接入；类型 9 机体标签的端到端复验（AC-14/AC-21）交 P3-15。F1 键 `cockpit-front` 的 Core 规则经 P3-15/12 并入 G-08 披露，随其他视角归 P4（[slice-gaps](./engineering/slice-gaps.md#g-08-与-f1-前视)）。
-   - [P3-14](./plan/p3/14/spec.md)（飞行音效触发）的实现与工程文档已完成，2026-10-29 合入 main；[goal](./plan/p3/14/goal.md) 30 个子任务中 27 个完成，尚未完成的是 26（用户人耳判定）、27（屏幕解锁后重跑有头的真实隐藏用例）与 28（最终对齐）。
+   - [P3-14](./plan/p3/14/spec.md)（飞行音效触发）的 goal 已于 2026-10-30 在 main 上执行完成（31 个子任务，含修复项 29–31），2026-10-29 先合入 main；结论与证据见 [goal](./plan/p3/14/goal.md) 与 [28 最终对齐](./plan/p3/14/subtasks/28-final-alignment.md#完成证据)。
      - 原版音效规则（分派、逐对象声音表、8 个发声与 5 个类别、位置与引擎参数、锁定音与 9 型警告、模式矩阵）见 [audio](./original/formats/audio.md#flight-sound-presentation-p3-14)；`src/app/flight-audio/` 的模块与交接见 [app 模块说明](./engineering/modules/app.md)。
      - D-01（[P3-02 spec](./plan/p3/02/spec.md#审批) 的 FA-01 至 FA-09、[P3-04](./plan/p3/04/spec.md#审批)、[P2-08](./plan/p2/08/spec.md) 的播放器扩展）经用户明确批准；D-02 与执行中的决定依用户 2026-10-28 的授权批准。与 main 合并后 `RULES_VERSION` 11、快照格式 9、replay 格式 3。
-     - 与原版的对照：必需的原版参考已以 DOSBox-X 取得（24），25 的候选核对未发现规则级差异；6 个取不到原版录音的关系按“采样同一性 + 离散结论”记为经批准的证据缺口；V-06 的感知判定待用户用 `local/research/p3-14/25-candidate/kit/` 的试听页完成（26）。
+     - 与原版的对照：必需的原版参考已以 DOSBox-X 取得（24），25 的候选核对未发现规则级差异；6 个取不到原版录音的关系按“采样同一性 + 离散结论”记为经批准的证据缺口；V-06 的感知判定已由开发者在 [26](./plan/p3/14/subtasks/26-listening-verdicts.md#完成证据) 完成：有原版参考的 27 项全部一致。
 2. P2 已完成：P2-01 至 P2-13 全部完成，[P2 退出评审](./reviews/P2-exit.md)于 2026-10-08 确认通过并冻结（高概率判定与范围例外已逐项披露）。生产 `ConverterVersion` 为 `osr-import.graphics-3.logic-1.audio-1.models-3`，导入协议版本 5；P3 可消费的内容、适配与遗留责任见评审的[对后续阶段的影响](./reviews/P2-exit.md#4-对后续阶段的影响)，各任务的交付见 [P2 tasks](./plan/p2/tasks.md)。
 3. P0 收尾（用户）：试玩回答 U-013，反馈流畅度以校准 cycles（U-021）；确定目标测试设备。U-011 的飞行键位由 P3-05 自行取证，P3-01 测量时基对 cycles 的依赖，两者的负责阶段仍为 P0。U-015 的剩余部分见 [unknowns](./original/unknowns.md)；U-025 的负责阶段为 P3。
 4. U-022 的剩余字段：规则语义归 P3，其余任务的字段归 P4（负责阶段见 [unknowns](./original/unknowns.md)）；模型槽位选择已确认，见 [executable](./original/formats/executable.md) §4。

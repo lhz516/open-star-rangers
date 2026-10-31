@@ -104,7 +104,7 @@ updated: "2026-10-30"
 | [29-full-e2e-remediation.md](./subtasks/29-full-e2e-remediation.md) | 23 | completed |
 | [30-start-gain-remediation.md](./subtasks/30-start-gain-remediation.md) | 22 | completed |
 | [31-handoff-listening-sync.md](./subtasks/31-handoff-listening-sync.md) | 26 | completed |
-| [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29, 30, 31 | pending |
+| [28-final-alignment.md](./subtasks/28-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29, 30, 31 | completed |
 
 最后一行是仅验证的最终对齐。后续修复分配新 ID，放在该行之前并加入其依赖，不重编号或用最终验证实现新功能。
 
@@ -145,6 +145,7 @@ updated: "2026-10-30"
 - **2026-10-30 — Subtask 27 恢复：** 用户要求先完成 P3-14，屏幕未锁定，满足恢复条件；协调者在 main 检出中重跑三个有头的真实隐藏用例。
 - **2026-10-30 — Subtask 26 完成：** 开发者在试听页完成 32 项判定：27 个有原版参考的项全部一致（`enemy-fire` 复听后一致，首次因开火密度不同无法判定），5 个无参考的项候选可接受、仍按选项 (b) 记为经批准的证据缺口；10177 到爆炸的间隔差异经特别提示后判为一致，无需差异批准。见 [26 的完成证据](./subtasks/26-listening-verdicts.md#完成证据)。
 - **2026-10-30 — 最终对齐新增修复项 31：** 28 的文档核对发现 app 分册的 P3-14 交接仍写“V-06 感知待 26”与“外部前提：26 的人耳判定”，与 26 已完成不符；新增 31 只同步该交接，28 回到 pending 并依赖 31。工程检查（`pnpm check`、`pnpm check:compliance`、完整 `pnpm test:e2e`）已在当前 main 上启动，结果实际结束后计入 28。
+- **2026-10-30 — 最终对齐通过，goal 完成：** 全部 31 个子任务 completed（含修复项 29、30、31）。`pnpm check`、`pnpm check:compliance` 通过；完整 `pnpm test:e2e` 295 通过、2 失败，两者都不属于 P3-14：`flight-render.development.spec.ts:63` 为 29 已记录的既有失败（在 `8bebe9ad` 上同样 6/6 失败），`map-picture.development.spec.ts:211` 只在完整套件高负载下失败、单独 3/3 通过；交 P3-15 的工程门槛处理。仅本地提交，不推送。
 
 ## 审批
 
