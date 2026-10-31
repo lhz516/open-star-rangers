@@ -99,7 +99,7 @@ updated: "2026-10-30"
 | [23-browser-lifecycle-resources.md](./subtasks/23-browser-lifecycle-resources.md) | 22 | completed |
 | [24-original-reference-coverage.md](./subtasks/24-original-reference-coverage.md) | 05 | completed |
 | [25-private-candidate-comparison.md](./subtasks/25-private-candidate-comparison.md) | 22, 24 | completed |
-| [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | blocked |
+| [26-listening-verdicts.md](./subtasks/26-listening-verdicts.md) | 25 | completed |
 | [27-documentation-handoff.md](./subtasks/27-documentation-handoff.md) | 21, 23 | completed |
 | [29-full-e2e-remediation.md](./subtasks/29-full-e2e-remediation.md) | 23 | completed |
 | [30-start-gain-remediation.md](./subtasks/30-start-gain-remediation.md) | 22 | completed |
@@ -142,6 +142,7 @@ updated: "2026-10-30"
   Resume when: 屏幕解锁后在协调者检出中运行 `pnpm test:e2e --project=development-headed e2e/native-lifecycle.spec.ts` 与 `pnpm test:e2e --project=development e2e/audio-playback.spec.ts e2e/mission-flow.development.spec.ts`，全部通过后补 27 的完成证据并标记完成。
 - **STATUS 提议（27）：** 下次更新 P3-14 摘要时写明实现与工程文档已完成，V-06 感知待 26 的人耳判定。
 - **2026-10-30 — Subtask 27 恢复：** 用户要求先完成 P3-14，屏幕未锁定，满足恢复条件；协调者在 main 检出中重跑三个有头的真实隐藏用例。
+- **2026-10-30 — Subtask 26 完成：** 开发者在试听页完成 32 项判定：27 个有原版参考的项全部一致（`enemy-fire` 复听后一致，首次因开火密度不同无法判定），5 个无参考的项候选可接受、仍按选项 (b) 记为经批准的证据缺口；10177 到爆炸的间隔差异经特别提示后判为一致，无需差异批准。见 [26 的完成证据](./subtasks/26-listening-verdicts.md#完成证据)。
 
 ## 审批
 
