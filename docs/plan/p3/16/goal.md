@@ -56,7 +56,7 @@ updated: "2026-10-30"
 | S-02 | 02、18 | 02、18：路由输出；17 复核 |
 | S-03 | 05、08、09、10 | 17：在最终候选上运行 `check:original` 并复核各检查绑定的候选 |
 | S-04 | 01、07、06 | 07：适用性表定稿；17 抽查 |
-| S-05 | 03、04、11 | 04：Node 与 replay 回归；06、07：修复后补验；17 复核 |
+| S-05 | 03、04、11、18、19、20 | 04：Node 与 replay 回归；06、07：修复后补验；17 复核 |
 | S-06 | 12 | 12：逐项审计；17 复核 |
 | S-07 | 13、14、16 | 16：逐项判定；17 复核与结论一致 |
 | S-08 | 15 | 15：登记表差异审阅；17 复核 |
@@ -77,7 +77,7 @@ updated: "2026-10-30"
 | AC-12 | 16 | 17：五项退出条件与证据一致 |
 | AC-13 | 14 | 14：开发与生产构建的合成页面核对 |
 | AC-14 | 16 | 17：覆盖表与主要交付无漏项 |
-| AC-15 | 04、11、18、16 | 11：风险复现结论；16：失败与恢复条件表 |
+| AC-15 | 04、11、18、19、20、16 | 11：风险复现结论；16：失败与恢复条件表 |
 | AC-16 | 15 | 15：登记表逐行差异 |
 | AC-17 | 16 | 17：结论与逐项结果一致，draft 状态 |
 | AC-18 | 16 | 17：交接各类别齐全 |
@@ -95,19 +95,21 @@ updated: "2026-10-30"
 | [03-joint-fault-contract.md](./subtasks/03-joint-fault-contract.md) | — | completed |
 | [04-joint-fault-core.md](./subtasks/04-joint-fault-core.md) | 03 | in-progress |
 | [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | 18 | pending |
-| [06-real-content-reruns.md](./subtasks/06-real-content-reruns.md) | 04, 18 | pending |
-| [07-affected-evidence.md](./subtasks/07-affected-evidence.md) | 01, 04 | pending |
-| [08-engineering-checks.md](./subtasks/08-engineering-checks.md) | 04, 18 | pending |
-| [09-browser-regression.md](./subtasks/09-browser-regression.md) | 04, 18 | pending |
-| [10-compliance-artifacts.md](./subtasks/10-compliance-artifacts.md) | 04, 18 | pending |
-| [11-render-test-risks.md](./subtasks/11-render-test-risks.md) | — | in-progress |
+| [06-real-content-reruns.md](./subtasks/06-real-content-reruns.md) | 04, 18, 19 | pending |
+| [07-affected-evidence.md](./subtasks/07-affected-evidence.md) | 01, 04, 19 | pending |
+| [08-engineering-checks.md](./subtasks/08-engineering-checks.md) | 04, 18, 19 | pending |
+| [09-browser-regression.md](./subtasks/09-browser-regression.md) | 04, 18, 19, 20 | pending |
+| [10-compliance-artifacts.md](./subtasks/10-compliance-artifacts.md) | 04, 18, 19 | pending |
+| [11-render-test-risks.md](./subtasks/11-render-test-risks.md) | — | completed |
 | [12-r22-gap-audit.md](./subtasks/12-r22-gap-audit.md) | — | completed |
 | [13-comparison-verdicts.md](./subtasks/13-comparison-verdicts.md) | 07, 12 | pending |
 | [14-gap-annotation-audit.md](./subtasks/14-gap-annotation-audit.md) | — | pending |
 | [15-unknowns-ownership.md](./subtasks/15-unknowns-ownership.md) | — | in-progress |
-| [16-exit-review-handoff.md](./subtasks/16-exit-review-handoff.md) | 01, 02, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 18 | pending |
+| [16-exit-review-handoff.md](./subtasks/16-exit-review-handoff.md) | 01, 02, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 18, 19, 20 | pending |
 | [18-ac23-fixup-width.md](./subtasks/18-ac23-fixup-width.md) | — | pending |
-| [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18 | pending |
+| [19-explosion-sprite-sampling.md](./subtasks/19-explosion-sprite-sampling.md) | — | pending |
+| [20-map-picture-recorder.md](./subtasks/20-map-picture-recorder.md) | — | pending |
+| [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -121,6 +123,7 @@ updated: "2026-10-30"
 - 08、09、10、11、14 都会构建 `dist/`，按编号串行。
 - 03 与 04 分别写 spec 文档与 `src/core/`，有真实依赖。
 - 01、02、05、12、15 互不重叠，可以和 03 同时开始。
+- 19 改 `src/render/`，影响构建与飞行画面；06–10 依赖它。20 只改 map-picture 用例，09 依赖它。
 - 18 改 `src/original-data/`，在导入路径上；05、06、08、09、10 依赖它，使真实数据与候选检查绑定含修复的候选。
 
 ## 执行记录
@@ -129,6 +132,7 @@ updated: "2026-10-30"
 - **2026-10-30 — 新增修复子任务 18（goal 变更）：** 按 S-05 与技术决定 10，把 AC-23 的拒绝缺口作为独立修复：[18](./subtasks/18-ac23-fixup-width.md) 让关键字表对非 16 位 fixup 目标偏移报 `unsupported-payload`，加合成拒绝测试，再补 P3-03 覆盖表的 AC-23 行。它改 `src/original-data/`，在导入路径上，因此 05、06（真实导入）与 08、09、10（候选检查）以及 16、17 增加对 18 的依赖，使这些证据绑定含修复的候选。选择修复而不是修订 P3-03 spec 去掉该拒绝项：修复范围小、保留已批准的契约，不降低判据。这是 goal 的变更，由协调者依用户本轮授权（“如果在执行过程中有需要修改spec、goal或其他Decision。我授权你直接同意。”）批准；不改 spec。
 - **2026-10-30 — 03、01 完成：** 03 在 P3-02 MW-04 加第 1a 步（转换冲突），同步 CB-07、P3-09 的“同 tick 门禁与请求”与 P3-10 的“停靠请求与等待”，并在 P3-02 审批节记修订；原版查证：停靠到期与 `w` 同帧时原版先停靠再开始 Warp（各环节已确认（代码），组合高概率可达，后续未确认），离港与 `w` 同帧不可达（已确认（代码）），修复记为项目差异。01 的底稿列出审批来源 C 类（授权不足）项与需 07 判定的证据类别，并发现若干交 16 的文档问题（见 [01](./subtasks/01-candidate-evidence-map.md#完成证据)）。
 - **2026-10-30 — 12 完成：** P3-11 之后只有 P3-14 启动过原版（21 次，11 次合格），没有一次取得 R-22 八项中的任何一项；八项都保持 blocked，原判据与恢复条件见 [12](./subtasks/12-r22-gap-audit.md#完成证据)。没有新增启动。
+- **2026-10-30 — 11 完成，新增修复子任务 19、20（goal 变更）：** 11 在当前候选上复现（证据见 [11](./subtasks/11-render-test-risks.md#完成证据)）：(A) 爆炸精灵在缩放的边线上取边前一侧并读到下一帧的第 0 行，违反 P3-12 AC-05、AC-13、AC-16（原责任 P3-12/21），新增 [19](./subtasks/19-explosion-sprite-sampling.md)；(B) `map-picture.development.spec.ts:211` 的失败与负载无关，是记录器把第一帧当作精确发布锚点的测试测量缺陷，产品符合 DC-09（原责任 P3-13/28，AC-17），新增 [20](./subtasks/20-map-picture-recorder.md)，只改测试测量，不放宽判据、不加重试。受击闪烁屏幕门在本机不违反，作为交接风险。P3-15/13 记的“只对负载敏感”在本候选不成立。06–10、16、17 增加对 19 的依赖，09、16、17 增加对 20 的依赖，使候选检查与真实内容复跑绑定含修复的候选。两项都是不改变契约的缺陷修复（S-05、技术决定 10），由协调者依用户本轮授权批准 goal 变更；不改 spec。
 
 ## 审批
 
