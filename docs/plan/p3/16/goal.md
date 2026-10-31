@@ -96,7 +96,7 @@ updated: "2026-10-30"
 | [04-joint-fault-core.md](./subtasks/04-joint-fault-core.md) | 03 | completed |
 | [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | 18 | completed |
 | [06-real-content-reruns.md](./subtasks/06-real-content-reruns.md) | 04, 18, 19 | completed |
-| [07-affected-evidence.md](./subtasks/07-affected-evidence.md) | 01, 04, 19 | in-progress |
+| [07-affected-evidence.md](./subtasks/07-affected-evidence.md) | 01, 04, 19 | completed |
 | [08-engineering-checks.md](./subtasks/08-engineering-checks.md) | 04, 18, 19 | completed |
 | [09-browser-regression.md](./subtasks/09-browser-regression.md) | 04, 18, 19, 20 | in-progress |
 | [10-compliance-artifacts.md](./subtasks/10-compliance-artifacts.md) | 04, 18, 19 | pending |
@@ -142,6 +142,7 @@ updated: "2026-10-30"
 - **2026-10-31 — 20 完成：** 记录器以 store 现有 projection 为初值，按键前等到一个发布帧与其后的无标签帧；`:211` 单独与 8 线程满载各 10/10，判据仍区分 16/20 tick 周期。`:284` 的“≤ 4 个图内 tick”执行速度前提在其他会话重负载时不满足（11 次失败全在此处，属前提而非产品缺陷）；09 的全量 E2E 须在没有其他重负载时运行，失败时按技术决定 9 查因。集成后 `pnpm check` 通过。
 - **2026-10-31 — 08 完成：** 候选 `a02f4ad0`（代码已定稿）上 `pnpm check` 首次即通过（447 个文件、11,935 个测试与构建），两组 Python 测试（3、232 项）通过；`dist` 指纹 `sha256:74260a03…843d`（P2-13/04 算法）。没有失败或重跑。
 - **2026-10-31 — 06 完成：** 候选 `f2c61924`（产品代码与最终候选相同，其后只改 e2e 与文档）上按 P3-15/07 的方法复跑真实内容：两次成功（带僚机）与一次失败（不带僚机，两次能量救援后第三次损失失败）各自重试到 G-02/2，录制全部 `{ match: true }`；内容身份与 05 相同，规则版本 12；与 B-003、B-005、P3-11/19、P3-15/07 一致，没有规则差异或 Core 故障。私有脚本中地图右缘三次点击差一列，属驾驶脚本自身的像素公式，未作为产品问题调查，交 16 列为已知限制。
+- **2026-10-31 — 07 完成：** 适用性表覆盖 S-04 全部类别；R 类对照的新版一侧在 `f2c61924` 上整体重跑，原版一侧与历史输出逐字节相同，结论不变，所有运行中 `request-warp` × 待提交 `dock`/`depart` 出现 0 次；R-05b 种子 1 的覆盖守卫（12 对 13）与 P3-07 新版 4 个导弹窗口记为证据缺口交 13；P3-14/26 试听与 P3-15/06 物理按键不受影响，无需用户重做。协调者决定：AC-08 中 P3-15/01–04 的重新录制与产物身份分别由 09（AC-04）与 10（AC-05）验证，07 只覆盖对照部分。
 
 ## 审批
 
