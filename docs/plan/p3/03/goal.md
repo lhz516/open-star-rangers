@@ -3,7 +3,7 @@ type: plan
 status: accepted
 phase: P3
 task: "03"
-updated: 2026-10-09
+updated: 2026-10-30
 related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028, U-030]
 ---
 
@@ -76,6 +76,8 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | S-15 | 07–19、25–27 | 各行的合成样本测试；19：合成内容包与合成导入；26、27：合成 HUD 文字与 `repeat` 声音；20：浏览器回归 |
 | S-16 | 21 | 21：本地 CLI、nob-check、独立读取与外观核对 |
 | S-17 | 21、22 | 21：工具用法与 `AGENTS.md`；22：分册、目录树、指南、文档地图；23：链接检查 |
+| S-18 | [P3-10/29](../10/subtasks/29-comm-messages-import.md) | [P3-10/29](../10/subtasks/29-comm-messages-import.md#完成证据)：`comm-messages` 的读取器、解析、ID 链与读取日志的 Node 测试；本地 package-check 计数 |
+| S-19 | [P3-08/13](../08/subtasks/13-ai-static-data-import.md) | [P3-08/13](../08/subtasks/13-ai-static-data-import.md#完成证据)：关键字表的解析、转换与读取器的 Node 测试；本地 package-check 计数与哈希 |
 | AC-01 | 01–05、22、24 | 01–05、24：结构、类型、计数、引用、变换、文字规则与零值位置；14：ANIM 解码按代码确认的规则实现；22：U 项；23：文档无原版内容；门槛条款由 spec 修订 1 的批准满足 |
 | AC-02 | 07、28 | 07：段 2 的正向与拒绝表驱动测试，`loadMission` 透传、冻结与确定性；28：合并 P3-02 后 setupHash 覆盖事件触发 |
 | AC-03 | 10、15 | 10：TABL 4003 的选择与 CINF 记录；15：`subresource-mismatch` 与越界拒绝 |
@@ -97,6 +99,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 | AC-19 | 21 | 21：本地 CLI、nob-check、独立读取与外观核对，输出只在 `local/` |
 | AC-20 | 21、22 | 21：工具用法与 `AGENTS.md`；22：S-17 的其余文档与 audio 的 `flags` 8；23：`updated:`、链接与锚点 |
 | AC-21 | 19–23 | 23：`pnpm check` 与 `pnpm test:e2e` |
+| AC-22 | [P3-10/29](../10/subtasks/29-comm-messages-import.md) | [P3-10/29](../10/subtasks/29-comm-messages-import.md#完成证据)：正向、ID 链与拒绝、切片版本、白名单与读取日志的 Node 测试；本地 CLI 的版本 5 完整包与 RQ4 计数；`pnpm check` 与 `pnpm test:e2e` |
 
 ## 子任务跟踪
 
@@ -171,6 +174,7 @@ related: [ADR-0014, ADR-0015, ADR-0017, U-001, U-004, U-018, U-022, U-027, U-028
 - **2026-10-09 — 23 首轮最终对齐：未通过，新增修复子任务 28。** 已核对通过：01–22 与 24–27 的验收复选框全部勾选，覆盖表的每个 S 与 AC 都有对应证据；切片定义只有一份（版本 4，新增 15 个必需角色），`ConverterVersion` 只有一个生产定义（`osr-import.graphics-4.logic-2.audio-2.models-4`），导入协议为 5，logic payload schema 2、sound payload schema 2；读取日志测试（含闭包外诱饵）与 21 的独立读取（246 项 0 处不一致）证明只导入闭包的 18 项与 #47；合并后的分支 `pnpm check`（208 个文件、6,434 个测试与构建）、完整 `pnpm test:e2e`（185 项，代码状态与当前相同，22 只改文档）与 `pnpm check:original`（1,121 个文件，无发现）通过；本任务改动的 74 个文档链接与锚点有效，`updated:` 齐全。未通过：合并 main 后，P3-02 的 `setupHash`（`src/core/world/setup-hash.ts`）按显式字段表序列化 `MissionSetup`，不含 P3-03 加入的 `eventTriggers` 与声明的 `eventTrigger`，与 P3-02 spec 中“setupHash 覆盖校验后完整 setup 的全部静态输入”不符（22 报告）。这是两项任务合并后的集成缺口，不是契约变化：修复只满足已批准的 P3-02 契约，不需要用户决定。按 execute-goal §5，23 回到 pending，新增 28（依赖 22），23 改为依赖 28。另记：21 的完成证据把截图外观写作已确认，超出 spec 技术决定 11 的上限（最高为高概率）；22 已在 textures §6 更正，上文 21 的记录同步更正，不另设修复。
 - **2026-10-09 — 28 完成：** `setupHash` 在 `groups` 之后写入 `eventTriggers`（每个区间的 `lower`、`upper`、`messages`、`summarySelector`，按 `EventRange` 的声明顺序），声明与僚机选项的 `eventTrigger` 写在 `aiTarget` 之后；其他字段、顺序与算法不变。仓库中没有固定的 setupHash 期望值，合成 replay 固定的是 P1 场景的状态哈希，不受影响。新增测试：只在区间字段、消息字节、触发数量或声明的 `eventTrigger` 上不同时 setupHash 不同，键序不同时相同；replay 在同一声明身份下换了事件触发时被拒绝。去掉修复后这 3 个新测试失败。core 分册同步更正：setupHash 的覆盖范围，以及种类名来源改为 `data/craft-info`（CINF 机型记录 +0x04）。
 - **2026-10-09 — 23 第二轮最终对齐通过，goal 完成：** 28 集成后重新核对，全部 S 与 AC 都有当前证据，不变量与原版隔离通过；`pnpm check`（208 个文件、6,438 个测试与构建）、完整 `pnpm test:e2e`（185 项）与 `pnpm check:original`（无发现）通过。残余与后续见 23 的完成证据。没有 `exec-p3-03-*` 分支或 worktree 残留。
+- **2026-10-30 — 补覆盖映射（P3-16/02）：** spec 修订 2 的 S-18、AC-22 由 [P3-10/29](../10/subtasks/29-comm-messages-import.md) 实现，修订 3 的 S-19、AC-23 由 [P3-08/13](../08/subtasks/13-ai-static-data-import.md) 实现；两项修订都写明 P3-03 goal 不重新打开，因此覆盖表一直缺这四项，路由报告 goal 过期。P3-16 的子任务 02 逐项核对了交付证据（结论见 [P3-16/02](../16/subtasks/02-p3-03-coverage.md#完成证据)），本次只在覆盖表补 S-18、S-19、AC-22 三行，实现与验证指向交付子任务。AC-23 缺“fixup 不是 16 位目标偏移时拒绝”的证据（P3-08/13 记录的偏差），该行暂不补，缺口与恢复条件交 P3-16 按其 S-05 处理，路由因此仍报告缺 AC-23。P3-03 的子任务、依赖、状态与历史证据都不变，goal 不重新打开。
 
 ## 审批
 

@@ -91,7 +91,7 @@ updated: "2026-10-30"
 | 子任务 | 依赖 | 状态 |
 |---|---|---|
 | [01-candidate-evidence-map.md](./subtasks/01-candidate-evidence-map.md) | — | in-progress |
-| [02-p3-03-coverage.md](./subtasks/02-p3-03-coverage.md) | — | in-progress |
+| [02-p3-03-coverage.md](./subtasks/02-p3-03-coverage.md) | — | completed |
 | [03-joint-fault-contract.md](./subtasks/03-joint-fault-contract.md) | — | in-progress |
 | [04-joint-fault-core.md](./subtasks/04-joint-fault-core.md) | 03 | pending |
 | [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | — | pending |
@@ -122,6 +122,8 @@ updated: "2026-10-30"
 - 01、02、05、12、15 互不重叠，可以和 03 同时开始。
 
 ## 执行记录
+
+- **2026-10-30 — 02 完成：** P3-03 覆盖表补 S-18、S-19、AC-22 三行与一条执行记录（证据见 [02](./subtasks/02-p3-03-coverage.md#完成证据)）。AC-23 暂不补：P3-03 spec 修订 3 的验证项 2 要求 fixup 目标偏移不是 16 位时以 `unsupported-payload` 拒绝，[P3-08/13](../08/subtasks/13-ai-static-data-import.md#完成证据) 记为偏差，没有该拒绝的实现与测试（`RegionFixup` 不暴露目标宽度）。依技术决定 7，授权定稿不能豁免必需证据；这是不改变契约的缺陷，按 S-05 交修复项 18，`node tools/task-state.ts p3/03` 在 18 完成前仍缺 AC-23。
 
 ## 审批
 
