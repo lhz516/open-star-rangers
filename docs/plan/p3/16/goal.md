@@ -104,7 +104,7 @@ updated: "2026-10-30"
 | [12-r22-gap-audit.md](./subtasks/12-r22-gap-audit.md) | — | completed |
 | [13-comparison-verdicts.md](./subtasks/13-comparison-verdicts.md) | 07, 12 | pending |
 | [14-gap-annotation-audit.md](./subtasks/14-gap-annotation-audit.md) | — | pending |
-| [15-unknowns-ownership.md](./subtasks/15-unknowns-ownership.md) | — | pending |
+| [15-unknowns-ownership.md](./subtasks/15-unknowns-ownership.md) | — | in-progress |
 | [16-exit-review-handoff.md](./subtasks/16-exit-review-handoff.md) | 01, 02, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 18 | pending |
 | [18-ac23-fixup-width.md](./subtasks/18-ac23-fixup-width.md) | — | pending |
 | [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18 | pending |
