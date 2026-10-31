@@ -45,7 +45,7 @@ updated: "2026-10-30"
 | AC-07 | 07 | 07：内容身份、配置、输入路径与结果，与 P3-11/B-003/B-005 核对 |
 | AC-08 | 08 | 08 的汇总表；11 抽查来源与分类未被改写 |
 | AC-09 | 09、12 | 09 的逐项位置/标注/文档链接表；12 披露 F1 前视的处置后由 09 复审该行 |
-| AC-10 | 10、11 | 11：`pnpm check`、`pnpm test:e2e`、`pnpm check:compliance`、git 审阅 |
+| AC-10 | 10、11、13 | 11：`pnpm check`、`pnpm test:e2e`、`pnpm check:compliance`、git 审阅 |
 
 ## 子任务跟踪
 
@@ -64,7 +64,8 @@ updated: "2026-10-30"
 | [09-annotation-audit.md](./subtasks/09-annotation-audit.md) | — | completed |
 | [10-e2e-documentation.md](./subtasks/10-e2e-documentation.md) | 01, 02, 03, 04 | completed |
 | [12-f1-disclosure.md](./subtasks/12-f1-disclosure.md) | — | completed |
-| [11-final-alignment.md](./subtasks/11-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 12 | pending |
+| [13-flight-render-resize.md](./subtasks/13-flight-render-resize.md) | — | in-progress |
+| [11-final-alignment.md](./subtasks/11-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 12, 13 | pending |
 
 最后一行始终为最终对齐验证，依赖所有其他子任务。ID 分配后保持不变；新增修复项使用新 ID，插入最终验证之前并加入其依赖，不要求最终验证拥有最大的数字。
 
@@ -95,6 +96,7 @@ updated: "2026-10-30"
   Resume when（仅此保留项）: 在 macOS 键盘设置中把 F 键改为标准功能键，或确认 Fn+F11 未被系统快捷键占用后，用户在同一准备步骤下重按 Fn+F11 并观察 G-10 提示。
 - **2026-10-30 — Fn+F11 复测：** 用户在新的运行中单独复测 Fn+F11，仍没有任何 F11 事件到达页面，同一会话中 Fn+F9、F10、F12 均送达；本机“显示桌面”为系统默认的 F11。结论改为宿主在浏览器之前拦截了 F11（高概率），应用无法处理；保留项与恢复条件不变，键位指南已记录。
 - **2026-10-30 — Subtask 08 恢复：** P3-14 已完成（`4138e15b`，`node tools/task-state.ts p3/14` 为 done），满足恢复条件；在原 `exec/p3-15-08` worktree 中变基到 main 后按 P3-14/26 的判定更新 V-06 一行。
+- **2026-10-30 — 修复项 13（飞行画面缩放取样）：** P3-14/28 的完整 `pnpm test:e2e` 中 `flight-render.development.spec.ts:63` 失败（`12 pixels at scale 0.7578125`），当前 main 上单独 8 次 7 次失败，P3-14 合入提交 `8bebe9ad` 上 6/6 失败；它会使本任务 AC-10 无法通过。协调者的临时探针显示失配像素取了相邻一格逻辑像素的颜色，位于驾驶舱叠加旁。依用户在本次执行中的授权（修改决定以解阻），新增 13 定位根因并按根因修复：产品违反 P3-12 AC-05/AC-16 时修复渲染代码，测试假设错误时修正判据；最终对齐依赖 13。`map-picture.development.spec.ts:211` 只在完整套件高负载下失败一次，由 13 一并复核并在 11 重跑。
 
 ## 审批
 
