@@ -93,7 +93,7 @@ updated: "2026-10-30"
 | [01-candidate-evidence-map.md](./subtasks/01-candidate-evidence-map.md) | — | completed |
 | [02-p3-03-coverage.md](./subtasks/02-p3-03-coverage.md) | — | completed |
 | [03-joint-fault-contract.md](./subtasks/03-joint-fault-contract.md) | — | completed |
-| [04-joint-fault-core.md](./subtasks/04-joint-fault-core.md) | 03 | pending |
+| [04-joint-fault-core.md](./subtasks/04-joint-fault-core.md) | 03 | in-progress |
 | [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | 18 | pending |
 | [06-real-content-reruns.md](./subtasks/06-real-content-reruns.md) | 04, 18 | pending |
 | [07-affected-evidence.md](./subtasks/07-affected-evidence.md) | 01, 04 | pending |
@@ -101,7 +101,7 @@ updated: "2026-10-30"
 | [09-browser-regression.md](./subtasks/09-browser-regression.md) | 04, 18 | pending |
 | [10-compliance-artifacts.md](./subtasks/10-compliance-artifacts.md) | 04, 18 | pending |
 | [11-render-test-risks.md](./subtasks/11-render-test-risks.md) | — | in-progress |
-| [12-r22-gap-audit.md](./subtasks/12-r22-gap-audit.md) | — | pending |
+| [12-r22-gap-audit.md](./subtasks/12-r22-gap-audit.md) | — | in-progress |
 | [13-comparison-verdicts.md](./subtasks/13-comparison-verdicts.md) | 07, 12 | pending |
 | [14-gap-annotation-audit.md](./subtasks/14-gap-annotation-audit.md) | — | pending |
 | [15-unknowns-ownership.md](./subtasks/15-unknowns-ownership.md) | — | pending |
