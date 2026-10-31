@@ -95,10 +95,10 @@ updated: "2026-10-30"
 | [03-joint-fault-contract.md](./subtasks/03-joint-fault-contract.md) | — | completed |
 | [04-joint-fault-core.md](./subtasks/04-joint-fault-core.md) | 03 | completed |
 | [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | 18 | completed |
-| [06-real-content-reruns.md](./subtasks/06-real-content-reruns.md) | 04, 18, 19 | in-progress |
+| [06-real-content-reruns.md](./subtasks/06-real-content-reruns.md) | 04, 18, 19 | completed |
 | [07-affected-evidence.md](./subtasks/07-affected-evidence.md) | 01, 04, 19 | in-progress |
 | [08-engineering-checks.md](./subtasks/08-engineering-checks.md) | 04, 18, 19 | completed |
-| [09-browser-regression.md](./subtasks/09-browser-regression.md) | 04, 18, 19, 20 | pending |
+| [09-browser-regression.md](./subtasks/09-browser-regression.md) | 04, 18, 19, 20 | in-progress |
 | [10-compliance-artifacts.md](./subtasks/10-compliance-artifacts.md) | 04, 18, 19 | pending |
 | [11-render-test-risks.md](./subtasks/11-render-test-risks.md) | — | completed |
 | [12-r22-gap-audit.md](./subtasks/12-r22-gap-audit.md) | — | completed |
@@ -141,6 +141,7 @@ updated: "2026-10-30"
 - **2026-10-30 — 19 完成：** 爆炸精灵片元改用共用的 `logicalPixel()`，网格扩一个逻辑像素、块外丢弃，不再读相邻帧；修复前新回归在 485/576/800/960/1066 五个宽度全部失败，修复后 0 处不合，去掉修复后再次失败。集成后 `pnpm check` 通过，聚焦浏览器回归 5 项通过。worker 建议在 `docs/engineering/README.md` 的飞行渲染浏览器用例处列出新用例，交 16（其写入范围）。
 - **2026-10-31 — 20 完成：** 记录器以 store 现有 projection 为初值，按键前等到一个发布帧与其后的无标签帧；`:211` 单独与 8 线程满载各 10/10，判据仍区分 16/20 tick 周期。`:284` 的“≤ 4 个图内 tick”执行速度前提在其他会话重负载时不满足（11 次失败全在此处，属前提而非产品缺陷）；09 的全量 E2E 须在没有其他重负载时运行，失败时按技术决定 9 查因。集成后 `pnpm check` 通过。
 - **2026-10-31 — 08 完成：** 候选 `a02f4ad0`（代码已定稿）上 `pnpm check` 首次即通过（447 个文件、11,935 个测试与构建），两组 Python 测试（3、232 项）通过；`dist` 指纹 `sha256:74260a03…843d`（P2-13/04 算法）。没有失败或重跑。
+- **2026-10-31 — 06 完成：** 候选 `f2c61924`（产品代码与最终候选相同，其后只改 e2e 与文档）上按 P3-15/07 的方法复跑真实内容：两次成功（带僚机）与一次失败（不带僚机，两次能量救援后第三次损失失败）各自重试到 G-02/2，录制全部 `{ match: true }`；内容身份与 05 相同，规则版本 12；与 B-003、B-005、P3-11/19、P3-15/07 一致，没有规则差异或 Core 故障。私有脚本中地图右缘三次点击差一列，属驾驶脚本自身的像素公式，未作为产品问题调查，交 16 列为已知限制。
 
 ## 审批
 
