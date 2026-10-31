@@ -100,7 +100,7 @@ updated: "2026-10-30"
 | [08-engineering-checks.md](./subtasks/08-engineering-checks.md) | 04, 18 | pending |
 | [09-browser-regression.md](./subtasks/09-browser-regression.md) | 04, 18 | pending |
 | [10-compliance-artifacts.md](./subtasks/10-compliance-artifacts.md) | 04, 18 | pending |
-| [11-render-test-risks.md](./subtasks/11-render-test-risks.md) | — | pending |
+| [11-render-test-risks.md](./subtasks/11-render-test-risks.md) | — | in-progress |
 | [12-r22-gap-audit.md](./subtasks/12-r22-gap-audit.md) | — | pending |
 | [13-comparison-verdicts.md](./subtasks/13-comparison-verdicts.md) | 07, 12 | pending |
 | [14-gap-annotation-audit.md](./subtasks/14-gap-annotation-audit.md) | — | pending |
