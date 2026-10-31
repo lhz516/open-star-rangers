@@ -94,7 +94,7 @@ updated: "2026-10-30"
 | [02-p3-03-coverage.md](./subtasks/02-p3-03-coverage.md) | — | completed |
 | [03-joint-fault-contract.md](./subtasks/03-joint-fault-contract.md) | — | completed |
 | [04-joint-fault-core.md](./subtasks/04-joint-fault-core.md) | 03 | completed |
-| [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | 18 | in-progress |
+| [05-real-data-candidate.md](./subtasks/05-real-data-candidate.md) | 18 | completed |
 | [06-real-content-reruns.md](./subtasks/06-real-content-reruns.md) | 04, 18, 19 | pending |
 | [07-affected-evidence.md](./subtasks/07-affected-evidence.md) | 01, 04, 19 | pending |
 | [08-engineering-checks.md](./subtasks/08-engineering-checks.md) | 04, 18, 19 | pending |
@@ -136,6 +136,7 @@ updated: "2026-10-30"
 - **2026-10-30 — 04 完成：** `request-warp` 在本 tick 有待提交的玩家 `dock`/`depart` 时为 `ignored`/`wrong-context`（MW-04 第 1a 步），两种故障修复前已用正式 step 复现；`RULES_VERSION` 11 → 12，快照 9、replay 3 不变；P3-02 MW-12 补差异 10（协调者按 worker 的范围请求扩大写入范围，提交 `67550ed4`）。集成后 `pnpm check` 通过。
 - **2026-10-30 — 15 完成：** 登记表只改负责阶段一列：U-001、U-004、U-009、U-020 的 P3 部分与 U-027 的部件标志、槽 0/3 闭合；U-008、U-010、U-022、U-031 与 U-027 的其余分量、U-033 保留 P3，作为阻塞交 16；U-028 证据不足、不改。依据见 [15](./subtasks/15-unknowns-ownership.md#完成证据)。
 - **2026-10-30 — 18 完成：** 关键字表对 32 位 fixup 目标偏移报 `unsupported-payload`（`RegionFixup` 带 `targetBits`），解析器与转换器路径各有拒绝测试，去掉修复后失败；合法输出不变，`ConverterVersion` 不递增；内置表的契约没有宽度要求，未改。P3-03 覆盖表补 AC-23，`node tools/task-state.ts p3/03` 为 `done`。集成后 `pnpm check` 通过。
+- **2026-10-30 — 05 完成：** 候选 `9a3b21f2`（含 04、18）的 package-check 成功形状齐全、退出码 0；完整 `ContentIdentity` 与 P3-15/07 私有记录逐字段相同（含完整 manifest 与来源指纹），说明 04、18 没有改变转换输出。
 
 ## 审批
 
