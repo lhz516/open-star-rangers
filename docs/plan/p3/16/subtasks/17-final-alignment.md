@@ -44,11 +44,11 @@ updated: "2026-10-31"
 
 ## 验收标准
 
-- [ ] 每个 S/AC 都有对应证据或明确的 blocked 记录与恢复条件；没有以代理检查冒充实机、原版或人工证据。
-- [ ] `pnpm --silent check:original` 在最终候选上通过；各检查绑定的候选一致或已重跑。
-- [ ] AC-19：STATUS 与阶段索引符合确认前的限制，链接与元数据通过。
-- [ ] AC-20：git 审阅、原版隔离与清理通过；没有 push 或部署。
-- [ ] `node tools/task-state.ts p3/16` 与 `node tools/task-state.ts p3/03` 的输出与 tracker 一致。
+- [x] 每个 S/AC 都有对应证据或明确的 blocked 记录与恢复条件；没有以代理检查冒充实机、原版或人工证据。
+- [x] `pnpm --silent check:original` 在最终候选上通过；各检查绑定的候选一致或已重跑。
+- [x] AC-19：STATUS 与阶段索引符合确认前的限制，链接与元数据通过。
+- [x] AC-20：git 审阅、原版隔离与清理通过；没有 push 或部署。
+- [x] `node tools/task-state.ts p3/16` 与 `node tools/task-state.ts p3/03` 的输出与 tracker 一致。
 
 ## 验证方法
 
@@ -68,3 +68,14 @@ updated: "2026-10-31"
 - **审查：** rubber-duck 审查本项与评审：阻断项为“本项尚无证据却在评审中称已完成”，由本记录与 tracker 解决，并在全部文档定稿后重跑 `check:original`；非阻断项为 R 项汇总一句与判定规则不符，已更正。确认 STATUS 与阶段索引符合 AC-19，改动范围符合 AC-20，登记表只改负责阶段一列。
 - **文档影响：** 除上述评审更新外无其他文档需要修改；STATUS 已由协调者在 16 集成时更新，阶段状态在负责人确认前不变。
 - **2026-10-31 重新打开：** 依 spec 审批修订 1 新增 21–27，本项回到 pending；上面的记录是第一次最终对齐的证据，第二次最终对齐在 21–27 完成后重跑并另写记录。
+
+- **2026-10-31 第二次最终对齐（协调者，main，`85aa9dea` 之后的工作树；最终 `src` 树 `7b3eea260733600cee182d966259abeca75d287d`）：** 只做验证；对评审的修改限于扩大后的写入范围（工程边界一行、阶段责任覆盖计数、P3-16 交付与候选身份几处及相应问题表行）。
+  - **覆盖：** 21–27 全部 `completed`，验收复选框全部勾选；S-06、S-07、AC-09–AC-12、AC-15、AC-17 的新增证据在 21–27 与 goal 执行记录中。以证据解决与以经批准的判据修订解决分开记录，修订都写入责任 spec 的审批节并引用 spec 审批修订 1 的用户原话（A 类）：P3-05 对照修订 1、P3-07 D-02 修订 1、P3-09 D-02 修订 1、P3-11 D-02 修订 1 与 2、P3-12 的 2026-10-31 修订。第三组（U-021 冻结、C/B? 事后审阅、R-23 物理键与 Q-06、P3-13 M 会话、P3-14 试听、物理 Fn+F11）未动。
+  - **新候选上的检查链：** 24 改了生产模块，所以全部重跑。`pnpm check` 退出 0（447 个文件、11,937 个测试与构建）；Python `tools/ghidra` 3 项、`tools/baseline` 232 项通过。`pnpm exec playwright test --list` 316 项（development 255、production 60、development-headed 1），一次 `caffeinate -d -i pnpm test:e2e` 退出 0：307 通过、0 失败、9 跳过（都是 `cockpit-lifecycle` 按项目设计的构建分流，与 09 相同），开始与结束时屏幕未锁定，P3-15 联合用例、`map-picture` 与两项缩放回归都在其中且通过；没有重跑。`pnpm --silent check:compliance` 退出 0：`osr-local-compliance`/1、七个范围完成、0 finding；依赖与锁文件相对 P3-15 基线无变化。三次构建的 `dist` 指纹都是 `sha256:9659fc771f34da9f734557a2e5b99b61af0aa27064258c59996e8d12e60403b4`（9 个文件）。
+  - **复用：** 05（真实数据候选）与 06（真实内容复跑）之后只有 24 的屏幕门取格与测试文件改动，不触及导入、Core、流程或 replay，复用。
+  - **`check:original`：** 评审与证据定稿后 `pnpm build` 与 `pnpm --silent check:original` 都退出 0：`passed: true`、0 finding，index 与 worktree 各 2,123 项，`dist` 指纹同上。私有输出在 `local/research/p3-16/final-alignment-2/`。
+  - **评审：** 工程边界一行改为通过，阶段责任覆盖为 5 通过、11 不通过、1 待定；结论“不通过”与 draft 状态不变，五项退出条件判定不变，剩余阻塞项都属第三组。
+  - **AC-19：** STATUS 只改 P3-16 摘要与“下一步”（剩余阻塞项都属负责人本人处理的项），阶段状态仍为进行中，评审记录列仍为 `—`；阶段索引不需要改动。
+  - **链接与元数据：** `d2a793e4` 以来改动的 53 个 Markdown 文件、6,148 个相对链接与锚点（不含行内代码），0 处失效；都有 front matter 与 `updated:`。
+  - **AC-20：** `87794bf7` 以来的改动只有：21–27 的计划文档、spec 修订 1、STATUS、评审；责任 spec（P3-05/07/09/11/12）审批节的判据修订；`docs/original/` 中按新证据记的事实（B-003、B-005、B-006、B-010、executable、textures、key-map）与 U-031、U-025 的按证据更新；24 的屏幕门修复与回归（`src/render/flight/shimmer/`、两份 `e2e/`）；engineering README 与 render 说明。没有依赖或原版内容；没有 `exec-p3-16-*` 分支或 worktree 残留；DOSBox-X 与本任务的服务器、浏览器都已关闭（5100–5199 无监听）；没有 push、部署或阶段切换。
+  - **路由：** `node tools/task-state.ts p3/16` 为 `done (terminal)`；`p3/03` 为 `done (terminal)`。
