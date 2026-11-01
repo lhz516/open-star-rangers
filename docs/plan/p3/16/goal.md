@@ -113,8 +113,8 @@ updated: "2026-10-31"
 | [22-r07-fuse-windows.md](./subtasks/22-r07-fuse-windows.md) | — | completed |
 | [23-r05b-coverage-guard.md](./subtasks/23-r05b-coverage-guard.md) | — | completed |
 | [24-shimmer-logical-pixel.md](./subtasks/24-shimmer-logical-pixel.md) | — | completed |
-| [25-untested-r-branches.md](./subtasks/25-untested-r-branches.md) | — | in-progress |
-| [26-p3-12-appearance-gaps.md](./subtasks/26-p3-12-appearance-gaps.md) | — | pending |
+| [25-untested-r-branches.md](./subtasks/25-untested-r-branches.md) | — | completed |
+| [26-p3-12-appearance-gaps.md](./subtasks/26-p3-12-appearance-gaps.md) | — | in-progress |
 | [27-review-revision.md](./subtasks/27-review-revision.md) | 21, 22, 23, 24, 25, 26 | pending |
 | [17-final-alignment.md](./subtasks/17-final-alignment.md) | 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27 | pending |
 
@@ -161,6 +161,7 @@ updated: "2026-10-31"
 - **2026-10-31 — 22 完成（以证据解决）：** 私有 Φ 求值器按 P3-07 原判据覆盖首次引信检查（触发帧须恰为相位 3），自检 165/165；在最终候选上重判全部 R-07 窗口，只有原 4 个 `no-check` 窗口改变且全部成立，其余 1,470 个结果与 07 相同。R-07 的已归因单元满足恢复条件，交 27 改为“一致：直接”。没有判据修订。
 - **2026-10-31 — 24 完成：** 受击闪烁屏幕门改用共用的 `logicalPixel()`；窄于 640 的已批准差异不变。换回旧实现时 Node 规则测试 3 项失败，浏览器回归在 1066 宽的最底设备行失败（旧的浮点除法取到逻辑行 480 的门格，共用规则夹到 479）：旧实现在任何 GPU 上都违反共用规则，不只是跨 GPU 风险。集成后 `pnpm check` 通过（11,937 个测试），两项缩放回归 10 项通过。
 - **2026-10-31 — 21 完成（以经批准的判据修订解决）：** 两次原版运行（`tools/baseline/measure.py`，配方 `p3-16-r1`，同一基准与设置、无注入）都不合格：r1-01 在阶段 A 由 agent 取消（友军火力始终未伤及僚机），r1-02 因 DOSBox-X 退出失败；其余情形没有可控路线，未再启动。依 spec 审批修订 1 的用户批准，P3-11 D-02 写入修订 1（D2-4/D2-5 接受代码与 Node 的限定结论），R-22 八项都按新判据以正式 step 与代码路径对应取得限定通过（无原版运行样本），记为 A 类批准，不计为运行时一致。B-005、B-003 记新事实，U-031 只加注记。
+- **2026-10-31 — 25 完成（证据与经批准修订各半）：** 一次原版运行 b1-01（配方 `p3-16-b1`，complete，3,345/3,345 必需样本，完整性与清理通过）。以证据解决：R-07 速度匹配目标一致；R-14 基地作为揭示源一致（1,149/1,149）；R-15 地图与 Warp 中的能量更新一致（Warp 7、地图 11 个链节）；R-16 消息页 5 恢复一致。以经批准的判据修订解决（引用 spec 审批修订 1 的用户原话）：R-10 三条按 P3-07 D-02 修订 1 限定通过；R-13 Q-03 按 P3-05 对照修订 1 限定一致（码到动作）；R-15 吸附选取按 P3-09 D-02 修订 1 限定通过；R-21 C-2 三个单元按 P3-11 D-02 修订 2 限定一致（组合）。R-01 相对宿主时间仍依赖 U-021（第三组），未修订。R-14、R-15 能量与 R-16 的判据仍在 P3-09 D-02（C 类）之下。协调者在集成时同步了 `key-map.md` 战略地图鼠标一段的运行核对说明（扩大 25 的写入范围）。
 
 ## 审批
 
