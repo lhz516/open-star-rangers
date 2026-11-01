@@ -2,7 +2,7 @@
 type: format
 status: verified
 phase: P0
-updated: 2026-10-28
+updated: 2026-10-31
 related: [U-001, U-006, U-018, U-019, U-027, U-028, U-029, U-030, U-034]
 ---
 
@@ -137,7 +137,7 @@ Evidence: ignored `current-tex-equivalence-34.json`, `runtime-full-content-34-mi
 - **Band position:** `0x42664` computes *t* as the mission-clock units since the hit × 1/128 × 255, truncated. When *t* reaches 251 the effect ends.
 - **Shared copies:** kinds in `0xf9c7c` (bases included) share 16 copies, precomputed at *t* = 0, 15, …, 225; each step shows copy min(*t*/15, 15).
 
-**Display (Confirmed, code, P3-12/05):** the copy is the texture's second image, which the transparent rasterisers read as per-texel opacity at the colour texel's address: 0 is never drawn, 0xFF always, 0x7F through a 4 × 4 screen door anchored to the screen pixel (drawn where (x + y) is even in HI); a skipped pixel writes neither colour nor depth. The shell is unlit (one shade), TEX 11073's colour at that texel. The kind-`0x383` shell is a per-object copy wrapped by fixed sphere wraps (only kind 0x80's is sized from its mesh's bounds); the 16 shared copies of kinds `0xf9c7c` are built from the first such visual, each with wrap i of the shared list, and placed at the hit point. Stepping, wraps and end rules: [executable](./executable.md#hit-shimmer-and-effect-visuals-p3-1205). **Appearance (Likely):** in captures 103, 112 and 114 the shell pixels are the nearest DATA colours of TEX 11073's palette and form the band's solid stripes; frame-buffer reads of two baseline runs show the checkerboard on the predicted phase in early-band frames; its coverage later in the band was not observed ([HS6](./executable.md#hs6-how-the-opacity-image-is-drawn--confirmed-code), U-027).
+**Display (Confirmed, code, P3-12/05):** the copy is the texture's second image, which the transparent rasterisers read as per-texel opacity at the colour texel's address: 0 is never drawn, 0xFF always, 0x7F through a 4 × 4 screen door anchored to the screen pixel (drawn where (x + y) is even in HI); a skipped pixel writes neither colour nor depth. The shell is unlit (one shade), TEX 11073's colour at that texel. The kind-`0x383` shell is a per-object copy wrapped by fixed sphere wraps (only kind 0x80's is sized from its mesh's bounds); the 16 shared copies of kinds `0xf9c7c` are built from the first such visual, each with wrap i of the shared list, and placed at the hit point. Stepping, wraps and end rules: [executable](./executable.md#hit-shimmer-and-effect-visuals-p3-1205). **Appearance (Likely):** in captures 103, 112 and 114 the shell pixels are the nearest DATA colours of TEX 11073's palette and form the band's solid stripes; frame-buffer reads of two baseline runs show the checkerboard on the predicted phase in early-band frames, and P3-16/26's reads of mid-band frames (t ≈ 40–155) show the small even excess the band rule predicts; the late band stays unobserved ([HS6](./executable.md#hs6-how-the-opacity-image-is-drawn--confirmed-code), U-027).
 
 **Requirements for conversion:**
 
